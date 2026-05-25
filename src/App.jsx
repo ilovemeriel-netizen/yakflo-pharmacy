@@ -447,7 +447,8 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
 function DrugDeleteConfirm({ drug: dr, onClose, onDeleted }) {
   const { t } = useTheme()
   const [phase, setPhase] = useState('checking') /* 'checking' | 'blocked' | 'confirm' | 'deleting' */
-  const [refCount, setRefCount] = useState(0)
+  /* 카운트 분리: tx(차단 기준) / inv·snap(안내/경고용, 차단 X) */
+  const [counts, setCounts] = useState({ tx: 0, inv: 0, snap: 0 })
   const [confirmName, setConfirmName] = useState('')
   const [errMsg, setErrMsg] = useState(null)
 
@@ -455,19 +456,18 @@ function DrugDeleteConfirm({ drug: dr, onClose, onDeleted }) {
     (async () => {
       try {
         const code = dr.drug_code
-        const queries = [
-          supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('drug_code', code),
-          supabase.from('inventory_stock').select('*', { count: 'exact', head: true }).eq('drug_code', code),
-          supabase.from('monthly_snapshots').select('*', { count: 'exact', head: true }).eq('drug_code', code),
-        ]
-        let total = 0
-        for (const q of queries) {
-          const { count, error } = await q
-          if (error) continue /* 단일 테이블 오류는 무시하고 안전쪽으로 합산 */
-          total += count || 0
-        }
-        setRefCount(total)
-        setPhase(total > 0 ? 'blocked' : 'confirm')
+        /* 3개 테이블 카운트를 분리해서 보관:
+           · tx (transactions)   = 실제 입출고 거래 → 차단 기준
+           · inv (inventory_stock)·snap (monthly_snapshots) = 시스템 자동생성 → 안내/경고용 */
+        const txRes   = await supabase.from('transactions')     .select('*', { count: 'exact', head: true }).eq('drug_code', code)
+        const invRes  = await supabase.from('inventory_stock')  .select('*', { count: 'exact', head: true }).eq('drug_code', code)
+        const snapRes = await supabase.from('monthly_snapshots').select('*', { count: 'exact', head: true }).eq('drug_code', code)
+        const tx   = txRes.error   ? 0 : (txRes.count   || 0)
+        const inv  = invRes.error  ? 0 : (invRes.count  || 0)
+        const snap = snapRes.error ? 0 : (snapRes.count || 0)
+        setCounts({ tx, inv, snap })
+        /* 차단은 오직 tx 기준 — inv/snap은 차단하지 않음 (snap > 0이면 confirm에서 경고 표시) */
+        setPhase(tx > 0 ? 'blocked' : 'confirm')
       } catch (e) {
         setErrMsg('이력 확인 중 오류: ' + e.message)
         setPhase('confirm') /* 확인 단계로라도 진입해 사용자가 결정할 수 있게 */
@@ -498,12 +498,12 @@ function DrugDeleteConfirm({ drug: dr, onClose, onDeleted }) {
         <span style={{ fontFamily: 'monospace' }}>{dr.drug_code}</span> · <strong style={{ color: t.text }}>{dr.drug_name}</strong>
       </div>
 
-      {phase === 'checking' && <div style={{ fontSize: 12, color: t.textM, padding: '14px 0', textAlign: 'center' }}>거래·재고 이력 확인 중...</div>}
+      {phase === 'checking' && <div style={{ fontSize: 12, color: t.textM, padding: '14px 0', textAlign: 'center' }}>입출고 거래 이력 확인 중...</div>}
 
       {phase === 'blocked' && <>
         <div style={{ background: t.amberL, border: `1px solid ${t.amber}40`, borderRadius: 8, padding: '12px 14px', fontSize: 12, color: t.text, lineHeight: 1.6, marginBottom: 14 }}>
-          이 약품에는 거래·재고 이력 <strong style={{ color: t.amber }}>{refCount}건</strong>이 있어 영구 삭제할 수 없습니다.<br />
-          대신 약품 정보 수정에서 <strong>상태를 '중지'</strong>로 변경하면 목록에서 감출 수 있습니다.
+          이 약품에는 입출고 거래 <strong style={{ color: t.amber }}>{counts.tx}건</strong>이 있어 영구 삭제할 수 없습니다.<br />
+          상태를 <strong>'중지'</strong>로 변경해 목록에서 감출 수 있습니다.
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${t.border}`, background: 'transparent', color: t.textM, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>확인</button>
@@ -512,8 +512,12 @@ function DrugDeleteConfirm({ drug: dr, onClose, onDeleted }) {
 
       {(phase === 'confirm' || phase === 'deleting') && <>
         {errMsg && <div style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.textM, borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 11.5 }}>{errMsg}</div>}
+        {counts.snap > 0 && <div style={{ background: t.amberL, border: `1px solid ${t.amber}40`, borderRadius: 8, padding: '10px 12px', marginBottom: 10, fontSize: 11.5, color: t.text, lineHeight: 1.55 }}>
+          ⚠️ 이 약품은 과거 월마감 기록 <strong style={{ color: t.amber }}>{counts.snap}건</strong>에 약품코드로 남아 있습니다.<br />
+          삭제 후 과거 월마감 보고서에서 약품명이 표시되지 않을 수 있습니다.
+        </div>}
         <div style={{ fontSize: 12, color: t.textM, marginBottom: 8, lineHeight: 1.55 }}>
-          거래·재고 이력 없음. 영구 삭제하려면 아래 약품명을 정확히 입력해 주세요.
+          입출고 거래 없음. 영구 삭제하려면 아래 약품명을 정확히 입력해 주세요.
         </div>
         <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 10, padding: '9px 12px', background: t.bg, borderRadius: 6, border: `1px solid ${t.border}`, fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}>{dr.drug_name}</div>
         <input
