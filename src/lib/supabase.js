@@ -1,5 +1,16 @@
 import { createClient } from '@supabase/supabase-js'
 
-const SUPABASE_URL = 'https://ukzjhiweqezhrtqzpjkf.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVrempoaXdlcWV6aHJ0cXpwamtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzMzI1MDYsImV4cCI6MjA4OTkwODUwNn0.4ZZdxCkUDwghatETgn355tA9tTawI7FqO5fuj68yOtA'
+/* 환경변수에서 Supabase 설정 로드 (보안 분리)
+   - 로컬: .env 파일 (반드시 .gitignore에 포함)
+   - 배포: Netlify 환경변수
+   - 키 노출 시 즉시 Supabase Dashboard에서 anon key 회전 */
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  throw new Error(
+    '[Supabase] 환경변수가 설정되지 않았습니다. .env 파일에 VITE_SUPABASE_URL과 VITE_SUPABASE_ANON_KEY를 설정하세요. (.env.example 참고)'
+  )
+}
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)

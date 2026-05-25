@@ -2,8 +2,5 @@
   command = "npm run build"
   publish = "dist"
 
-[[redirects]]
-  from = "/data-api/*"
-  to = "https://apis.data.go.kr/:splat"
-  status = 200
-  force = true
+# 공공데이터 API는 netlify/functions/datago.js 가 /api/datago/* 로 처리
+# (서버 측에서 DATA_API_KEY 자동 첨부 — 클라이언트에 키 노출 없음)

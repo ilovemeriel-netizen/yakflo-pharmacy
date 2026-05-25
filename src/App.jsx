@@ -76,40 +76,31 @@ async function searchDrugAPI(keyword, apiType = 'easy') {
     hira: i => ({ name: i.GNLNM_CD_NM||i.gnlnmCdNm||'', ingredient: i.CPNT_NM||i.cpntNm||'', manufacturer: '', permitNo: i.MEFT_DIV_NO||'', category: i.MEFT_DIV_NM||'' }),
   }
   const mapFn = maps[apiType] || maps.easy
-  // 1차: Netlify 서버 함수 시도 (배포 환경 — 모든 API CORS 우회)
-  try {
-    const proxyUrl = `/api/drug?keyword=${encodeURIComponent(keyword)}&type=${apiType}`
-    const res = await fetch(proxyUrl)
-    if (res.ok) { const json = await res.json(); if (json.ok && json.data?.length) return { ok: true, data: json.data.map(mapFn) }; if (!json.ok && json.msg) return json; return { ok: true, data: [], msg: '검색 결과가 없습니다' } }
-  } catch { /* 로컬 환경 — 서버 함수 없음 → 2차 시도 */ }
-  // 2차: Vite 프록시 경로로 호출 (로컬 개발 환경 — CORS 우회)
-  const apiKey = import.meta.env.VITE_DATA_API_KEY
-  if (!apiKey || apiKey.includes('여기에')) return { ok: false, msg: '.env 파일에 VITE_DATA_API_KEY를 설정하세요.', data: [] }
-  const directAPIs = {
-    easy: { url: '/data-api/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList', param: 'itemName' },
-    permit: { url: '/data-api/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07', param: 'item_name' },
-    ati: { url: '/data-api/1471000/MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03', param: 'item_name' },
-    identify: { url: '/data-api/1471000/MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03', param: 'item_name' },
-    dur: { url: '/data-api/1471000/DURPrdlstInfoService03/getDurPrdlstInfoList03', param: 'itemName' },
-    maxDose: { url: '/data-api/1471000/DailyMaxDosgQyInfoService/getDailyMaxDosgQyList', param: 'itemName' },
-    hira: { url: '/data-api/B551182/msupCmpnMeftInfoService/getMajorCmpnNmCdList', param: 'cmpnNm' },
+  /* 통합 서버 프록시 호출 — /api/datago/{path}?{params} (serviceKey는 서버가 자동 첨부)
+     로컬 dev: vite.config.js의 datagoDevProxy / 배포: netlify/functions/datago.js */
+  const endpoints = {
+    easy:     { path: '1471000/DrbEasyDrugInfoService/getDrbEasyDrugList',                 param: 'itemName'  },
+    permit:   { path: '1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07',          param: 'item_name' },
+    ati:      { path: '1471000/MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03',   param: 'item_name' },
+    identify: { path: '1471000/MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03',   param: 'item_name' },
+    dur:      { path: '1471000/DURPrdlstInfoService03/getDurPrdlstInfoList03',             param: 'itemName'  },
+    maxDose:  { path: '1471000/DailyMaxDosgQyInfoService/getDailyMaxDosgQyList',           param: 'itemName'  },
+    hira:     { path: 'B551182/msupCmpnMeftInfoService/getMajorCmpnNmCdList',              param: 'cmpnNm'    },
   }
-  const api = directAPIs[apiType] || directAPIs.easy
+  const ep = endpoints[apiType] || endpoints.easy
   try {
-    const url = `${api.url}?serviceKey=${encodeURIComponent(apiKey)}&${api.param}=${encodeURIComponent(keyword)}&type=json&numOfRows=15`
+    const url = `/api/datago/${ep.path}?${ep.param}=${encodeURIComponent(keyword)}&type=json&numOfRows=15`
     const res = await fetch(url); const text = await res.text()
-    /* JSON 응답 시도 */
     try {
       const json = JSON.parse(text)
-      /* API 에러 응답 처리 */
       if (json?.response?.header?.resultCode && json.response.header.resultCode !== '00') {
         return { ok: false, msg: `API 오류: ${json.response.header.resultMsg || json.response.header.resultCode}`, data: [] }
       }
+      if (json?.ok === false) return { ok: false, msg: json.msg || 'API 오류', data: [] }
       const body = json?.body || json?.response?.body
       const items = body?.items?.item || body?.items || []
       return { ok: true, data: (Array.isArray(items) ? items : [items]).filter(i => i).map(mapFn) }
     } catch {
-      /* XML 에러 응답 처리 */
       if (text.includes('<returnAuthMsg>')) {
         const msgMatch = text.match(/<returnAuthMsg>([^<]*)</)
         return { ok: false, msg: `인증 오류: ${msgMatch?.[1] || 'API 키를 확인해 주세요'}`, data: [] }
@@ -118,9 +109,9 @@ async function searchDrugAPI(keyword, apiType = 'easy') {
         const msgMatch = text.match(/<errMsg>([^<]*)</)
         return { ok: false, msg: `API 오류: ${msgMatch?.[1] || '알 수 없는 오류'}`, data: [] }
       }
-      return { ok: false, msg: '응답 형식 오류 — API 키 또는 서비스 신청 상태를 확인해 주세요', data: [] }
+      return { ok: false, msg: '응답 형식 오류 — 서버 환경변수(DATA_API_KEY) 또는 서비스 신청 상태를 확인해 주세요', data: [] }
     }
-  } catch (e) { return { ok: false, msg: e.message === 'Failed to fetch' ? 'CORS 차단 — Vite 재시작 후 다시 시도해 주세요 (Ctrl+C → npm run dev)' : e.message, data: [] } }
+  } catch (e) { return { ok: false, msg: e.message === 'Failed to fetch' ? '서버 호출 실패 — dev 서버 재시작 필요 (Ctrl+C → npm run dev)' : e.message, data: [] } }
 }
 
 /* ── Sort Hook ── */
@@ -137,7 +128,7 @@ function useSort(ik = '', id = 'asc') {
 /* ── UI Atoms ── */
 function Bd({ children, bg, color }) { return <span style={{ background: bg, color, padding: '3px 10px', borderRadius: 8, fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>{children}</span> }
 function SB({ s }) { const { t } = useTheme(); const m = { '사용': [t.greenL, t.green], '중지': ['#F0F0EB', t.textL], '휴면': [t.amberL, t.amber] }; const [b, c] = m[s] || ['#F0F0EB', t.textL]; return <Bd bg={b} color={c}>{s}</Bd> }
-function Ft() { const { t } = useTheme(); return <div style={{ textAlign: 'center', padding: '20px 0 12px', fontSize: 11, color: t.textL, borderTop: `1px solid ${t.border}`, marginTop: 24 }}>Developed by <strong style={{ color: t.accent }}>이정화</strong> · 씨엔씨재활의학과 약무팀 · 2026</div> }
+function Ft() { const { t } = useTheme(); return <div style={{ textAlign: 'center', padding: '20px 0 12px', fontSize: 11, color: t.textL, borderTop: `1px solid ${t.border}`, marginTop: 24 }}>C O P Y R I G H T  ⓒ  2 0 2 6  J E O N G H W A   L E E<br /><br />All rights reserved. 무단 전재 및 재배포 금지.</div> }
 function Pg({ page: p, setPage: sp, tp, fl, pp }) { const { t } = useTheme(); if (tp <= 1) return null; const btn = dis => ({ padding: '5px 12px', borderRadius: 8, border: `1px solid ${t.border}`, cursor: dis ? 'not-allowed' : 'pointer', background: t.card, color: dis ? t.textL : t.text, fontWeight: 600, fontSize: 11, opacity: dis ? .4 : 1 }); return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderTop: `1px solid ${t.border}` }}><span style={{ fontSize: 11, color: t.textM }}>{fl.length}개 중 {Math.min((p - 1) * pp + 1, fl.length)}–{Math.min(p * pp, fl.length)}</span><div style={{ display: 'flex', gap: 3 }}><button onClick={() => sp(x => x - 1)} disabled={p === 1} style={btn(p === 1)}>◀</button>{Array.from({ length: Math.min(5, tp) }, (_, i) => { const pg = Math.max(1, Math.min(p - 2, tp - 4)) + i; return <button key={pg} onClick={() => sp(pg)} style={{ ...btn(false), background: p === pg ? t.accent : t.card, color: p === pg ? '#fff' : t.text, border: `1px solid ${p === pg ? t.accent : t.border}` }}>{pg}</button> })}<button onClick={() => sp(x => x + 1)} disabled={p === tp} style={btn(p === tp)}>▶</button></div></div> }
 function CN({ drug: d, onEdit }) { const { t } = useTheme(); return <td style={{ padding: '8px 12px', fontWeight: 600, textAlign: 'left', color: t.accent, cursor: 'pointer' }} onClick={() => onEdit(d)} onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.color = t.purple }} onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none'; e.currentTarget.style.color = t.accent }}>{d.drug_name}</td> }
 
@@ -201,8 +192,6 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     const searchName = overrideName || f.drug_name.trim()
     if (!searchName) { setMsg('약품명이 필요합니다'); return }
     setApiLd(true); setMsg(null); setApiResults([]); setLookupInfo(null)
-    const apiKey = import.meta.env.VITE_DATA_API_KEY
-    if (!apiKey) { setMsg('.env에 API키 필요'); setApiLd(false); return }
     const px = new DOMParser()
     const nm = searchName
     const isEng = s => s && /^[a-zA-Z\s()\[\]\-,.:;0-9]+$/.test(s)
@@ -228,7 +217,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
       for (const n of names) {
         if (found.permit) break
         try {
-          const r = await tf(`/data-api/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07?ServiceKey=${encodeURIComponent(apiKey)}&item_name=${encodeURIComponent(n)}&type=json&numOfRows=3&pageNo=1`)
+          const r = await tf(`/api/datago/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07?item_name=${encodeURIComponent(n)}&type=json&numOfRows=3&pageNo=1`)
           const txt = await r.text()
           try { const j = JSON.parse(txt); const b = j?.body||j?.response?.body; const its = b?.items?.item||b?.items||[]; const arr = Array.isArray(its)?its:[its].filter(Boolean)
             console.log(`[1차] 허가정보 검색 [${n}]:`, arr.length, '건')
@@ -261,7 +250,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
       for (const n of names) {
         if (found.easy) break
         try {
-          const r = await tf(`/data-api/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList?ServiceKey=${encodeURIComponent(apiKey)}&itemName=${encodeURIComponent(n)}&type=json&numOfRows=3&pageNo=1`)
+          const r = await tf(`/api/datago/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList?itemName=${encodeURIComponent(n)}&type=json&numOfRows=3&pageNo=1`)
           const txt = await r.text()
           try { const j = JSON.parse(txt); const b = j?.body||j?.response?.body; const its = b?.items?.item||b?.items||[]; const arr = Array.isArray(its)?its:[its].filter(Boolean)
             console.log(`[보조] e약은요 검색 [${n}]:`, arr.length, '건')
@@ -278,7 +267,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
       for (const n of names) {
         if (found.identify) break
         try {
-          const r = await tf(`/data-api/1471000/MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03?ServiceKey=${encodeURIComponent(apiKey)}&item_name=${encodeURIComponent(n)}&type=json&numOfRows=3&pageNo=1`)
+          const r = await tf(`/api/datago/1471000/MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03?item_name=${encodeURIComponent(n)}&type=json&numOfRows=3&pageNo=1`)
           const txt = await r.text()
           try { const j = JSON.parse(txt); const b = j?.body||j?.response?.body; const its = b?.items?.item||b?.items||[]; const arr = Array.isArray(its)?its:[its].filter(Boolean)
             console.log(`[보조] 낱알식별 검색 [${n}]:`, arr.length, '건')
@@ -294,7 +283,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
       for (const n of names) {
         if (found.price) break
         try {
-          const r1 = await tf(`/data-api/B551182/dgamtCrtrInfoService1.2/getDgamtList?ServiceKey=${encodeURIComponent(apiKey)}&numOfRows=5&pageNo=1&itmNm=${encodeURIComponent(n)}`)
+          const r1 = await tf(`/api/datago/B551182/dgamtCrtrInfoService1.2/getDgamtList?numOfRows=5&pageNo=1&itmNm=${encodeURIComponent(n)}`)
           const t1 = await r1.text(); const x1 = px.parseFromString(t1, 'text/xml'); const i1 = x1.querySelectorAll('item')
           console.log(`[보조] 약가 검색 [${n}]:`, i1.length, '건')
           if (i1.length > 0) {
@@ -323,7 +312,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
       /* ── 보조④: 성분약효 → 약효분류 ── */
       if (gnlCd) {
         try {
-          const r2 = await tf(`/data-api/B551182/msupCmpnMeftInfoService/getMajorCmpnNmCdList?ServiceKey=${encodeURIComponent(apiKey)}&numOfRows=5&pageNo=1&gnlNmCd=${encodeURIComponent(gnlCd)}`)
+          const r2 = await tf(`/api/datago/B551182/msupCmpnMeftInfoService/getMajorCmpnNmCdList?numOfRows=5&pageNo=1&gnlNmCd=${encodeURIComponent(gnlCd)}`)
           const t2 = await r2.text(); const x2 = px.parseFromString(t2, 'text/xml'); const i2 = x2.querySelectorAll('item')
           console.log(`[보조] 성분약효 검색 [${gnlCd}]:`, i2.length, '건')
           if (i2.length > 0) { const it = i2[0]; const g = tag => it.querySelector(tag)?.textContent || ''
@@ -508,10 +497,12 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 
 /* ═══ 헤더 — 반응형 (모바일 햄버거) ═══ */
 function Header({ menu: m, setMenu: sm }) {
-  const { t, dark, toggle, user, logout } = useTheme()
+  const { t, dark, toggle, user, profile, logout } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }]
+  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }]
   function nav(id) { sm(id); setMobileOpen(false) }
+  const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
+  const isAdmin = profile?.role === 'admin'
   return <>
     <div className="no-print cnc-header" style={{ background: t.nav, padding: '0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 56, position: 'sticky', top: 0, zIndex: 900 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flex: '0 0 auto' }} onClick={() => nav('dashboard')}>
@@ -520,7 +511,8 @@ function Header({ menu: m, setMenu: sm }) {
       </div>
       <div className="cnc-nav-desktop" style={{ display: 'flex', gap: 2, flex: '1 1 auto', justifyContent: 'center' }}>{ms.map(x => <button key={x.id} onClick={() => nav(x.id)} style={{ padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: m === x.id ? 700 : 400, background: m === x.id ? t.navHi + '22' : 'transparent', color: m === x.id ? t.navHi : 'rgba(255,255,255,0.55)', border: m === x.id ? `1px solid ${t.navHi}40` : '1px solid transparent', transition: 'all .15s' }}>{x.l}</button>)}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
-        <span className="cnc-date" style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{user?.email?.split('@')[0]}</span>
+        <button onClick={() => nav('mypage')} title="마이페이지" className="cnc-date" style={{ padding: '4px 10px', borderRadius: 6, border: m === 'mypage' ? `1px solid ${t.navHi}60` : '1px solid rgba(255,255,255,0.10)', background: m === 'mypage' ? t.navHi + '22' : 'rgba(255,255,255,0.04)', color: m === 'mypage' ? t.navHi : 'rgba(255,255,255,0.65)', cursor: 'pointer', fontSize: 11, fontWeight: 500, transition: 'all .15s' }}>{displayName}</button>
+        {isAdmin && <button onClick={() => nav('admin')} title="가입자 관리" style={{ padding: '4px 10px', borderRadius: 6, border: m === 'admin' ? `1px solid ${t.navHi}60` : '1px solid rgba(255,255,255,0.15)', background: m === 'admin' ? t.navHi + '22' : 'rgba(255,255,255,0.04)', color: m === 'admin' ? t.navHi : 'rgba(255,255,255,0.55)', cursor: 'pointer', fontSize: 10, fontWeight: 600 }}>관리</button>}
         <button onClick={logout} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 10, fontWeight: 500 }}>로그아웃</button>
         <button onClick={toggle} style={{ width: 38, height: 20, borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: dark ? t.navHi + '30' : 'rgba(255,255,255,0.08)', cursor: 'pointer', position: 'relative', padding: 0 }}><div style={{ width: 16, height: 16, borderRadius: 8, background: dark ? t.navHi : 'rgba(255,255,255,0.4)', position: 'absolute', top: 1, left: dark ? 19 : 1, transition: 'all .2s' }} /></button>
         <button className="cnc-hamburger" onClick={() => setMobileOpen(!mobileOpen)} style={{ display: 'none', width: 32, height: 32, borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: mobileOpen ? t.navHi + '20' : 'transparent', cursor: 'pointer', color: t.navText, fontSize: 18, alignItems: 'center', justifyContent: 'center' }}>{mobileOpen ? '✕' : '☰'}</button>
@@ -559,7 +551,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
       {[{ l: '전체 약품', v: s.total, c: t.accent, nav: { menu: 'druglist', status: STATS } }, { l: '사용', v: s.active, c: t.green, nav: { menu: 'druglist', status: ['사용'] } }, { l: '중지', v: s.stopped, c: t.textL, nav: { menu: 'druglist', status: ['중지'] } }, { l: '향정마약', v: s.narc, c: t.purple, nav: { menu: 'narcotic' } }].map((c, i) => <div key={i} onClick={() => onNav(c.nav)} style={tc(c.c)} onMouseEnter={hv} onMouseLeave={hx}><div style={{ fontSize: 12, color: t.textM, fontWeight: 500, marginBottom: 8 }}>{c.l}</div><div style={{ fontSize: 34, fontWeight: 800, color: c.c, letterSpacing: -1 }}>{c.v}</div></div>)}
     </div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
-      {[{ l: '비보험', v: s.nonIns, c: t.blue }, { l: '재고부족', v: s.shortage, c: t.red, nav: { menu: 'stock', filter: '부족' } }, { l: '유효기한 ≤30일', v: s.e30, c: t.red, nav: { menu: 'expiry', focus: 'urgent' } }, { l: '유효기한 ≤90일', v: s.e90, c: t.amber, nav: { menu: 'expiry', focus: 'warning' } }].map((c, i) => <div key={i} onClick={() => c.nav && onNav(c.nav)} style={{ background: t.card, borderRadius: 12, padding: '14px 18px', border: `1px solid ${t.border}`, cursor: c.nav ? 'pointer' : 'default', transition: 'all .15s', boxShadow: t.shadow }} onMouseEnter={hv} onMouseLeave={hx}><div style={{ fontSize: 11, color: t.textM }}>{c.l}</div><div style={{ fontSize: 26, fontWeight: 700, color: c.c, marginTop: 4 }}>{c.v}</div></div>)}
+      {[{ l: '비보험', v: s.nonIns, c: t.blue, nav: { menu: 'nonins' } }, { l: '재고부족', v: s.shortage, c: t.red, nav: { menu: 'stock', filter: '부족' } }, { l: '유효기한 ≤30일', v: s.e30, c: t.red, nav: { menu: 'expiry', focus: 'urgent' } }, { l: '유효기한 ≤90일', v: s.e90, c: t.amber, nav: { menu: 'expiry', focus: 'warning' } }].map((c, i) => <div key={i} onClick={() => c.nav && onNav(c.nav)} style={{ background: t.card, borderRadius: 12, padding: '14px 18px', border: `1px solid ${t.border}`, cursor: c.nav ? 'pointer' : 'default', transition: 'all .15s', boxShadow: t.shadow }} onMouseEnter={hv} onMouseLeave={hx}><div style={{ fontSize: 11, color: t.textM }}>{c.l}</div><div style={{ fontSize: 26, fontWeight: 700, color: c.c, marginTop: 4 }}>{c.v}</div></div>)}
     </div>
     {s.e30 > 0 && <div onClick={() => onNav({ menu: 'expiry', focus: 'urgent' })} style={{ background: t.redL, border: `1px solid ${t.red}30`, borderRadius: 12, padding: '12px 18px', marginBottom: 14, color: t.red, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: t.shadow }}>⚠ 유효기한 30일 이내 약품 <strong>{s.e30}개</strong> — 즉시 확인 필요</div>}
     {/* ★ 3-Column: 입출고 + 반품/폐기 + 재고총괄 — 클릭 → 해당 페이지 이동 */}
@@ -841,8 +833,6 @@ function DrugRegister({onRefresh}) {
   /* API 5종 조회 — 1차:e약은요 → 2차:허가정보+낱알식별 → 보조:약가+성분약효 */
   async function fetchDrugPrice(drugName, ingredientFromSearch){
     if(!drugName)return;setPriceLoading(true);setPriceInfo(null)
-    const apiKey=import.meta.env.VITE_DATA_API_KEY
-    if(!apiKey||apiKey.includes('여기에')){setPriceLoading(false);return}
     let info={};const px=new DOMParser()
     const isEng=s=>s&&/^[a-zA-Z\s()\[\]\-,.:;0-9]+$/.test(s)
     /* 이름 정제 */
@@ -856,7 +846,7 @@ function DrugRegister({onRefresh}) {
     for(const nm of easyNames){
       if(info.efficacy)break
       try{
-        const url=`/data-api/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList?ServiceKey=${encodeURIComponent(apiKey)}&itemName=${encodeURIComponent(nm)}&type=json&numOfRows=3&pageNo=1`
+        const url=`/api/datago/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList?itemName=${encodeURIComponent(nm)}&type=json&numOfRows=3&pageNo=1`
         const res=await fetch(url);const text=await res.text()
         try{
           const j=JSON.parse(text);const b=j?.body||j?.response?.body
@@ -874,7 +864,7 @@ function DrugRegister({onRefresh}) {
     for(const nm of names){
       if(info.permitFound)break
       try{
-        const url=`/data-api/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07?ServiceKey=${encodeURIComponent(apiKey)}&item_name=${encodeURIComponent(nm)}&type=json&numOfRows=3&pageNo=1`
+        const url=`/api/datago/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07?item_name=${encodeURIComponent(nm)}&type=json&numOfRows=3&pageNo=1`
         const res=await fetch(url);const text=await res.text()
         try{
           const json=JSON.parse(text);const body=json?.body||json?.response?.body
@@ -906,7 +896,7 @@ function DrugRegister({onRefresh}) {
     for(const nm of names){
       if(info.identifyFound)break
       try{
-        const url=`/data-api/1471000/MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03?ServiceKey=${encodeURIComponent(apiKey)}&item_name=${encodeURIComponent(nm)}&type=json&numOfRows=3&pageNo=1`
+        const url=`/api/datago/1471000/MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03?item_name=${encodeURIComponent(nm)}&type=json&numOfRows=3&pageNo=1`
         const res=await fetch(url);const text=await res.text()
         try{
           const json=JSON.parse(text);const body=json?.body||json?.response?.body
@@ -926,7 +916,7 @@ function DrugRegister({onRefresh}) {
     for(const nm of names){
       if(info.upperPrice)break
       try{
-        const url=`/data-api/B551182/dgamtCrtrInfoService1.2/getDgamtList?ServiceKey=${encodeURIComponent(apiKey)}&numOfRows=5&pageNo=1&itmNm=${encodeURIComponent(nm)}`
+        const url=`/api/datago/B551182/dgamtCrtrInfoService1.2/getDgamtList?numOfRows=5&pageNo=1&itmNm=${encodeURIComponent(nm)}`
         const res=await fetch(url);const text=await res.text()
         const xml=px.parseFromString(text,'text/xml');const items=xml.querySelectorAll('item')
         console.log(`[보조] 약가 검색 [${nm}]:`,items.length,'건')
@@ -954,7 +944,7 @@ function DrugRegister({onRefresh}) {
     let foundEff=false
     if(gnlNmCd&&!foundEff){
       try{
-        const url2=`/data-api/B551182/msupCmpnMeftInfoService/getMajorCmpnNmCdList?ServiceKey=${encodeURIComponent(apiKey)}&numOfRows=10&pageNo=1&gnlNmCd=${encodeURIComponent(gnlNmCd)}`
+        const url2=`/api/datago/B551182/msupCmpnMeftInfoService/getMajorCmpnNmCdList?numOfRows=10&pageNo=1&gnlNmCd=${encodeURIComponent(gnlNmCd)}`
         const res2=await fetch(url2);const text2=await res2.text()
         const xml2=px.parseFromString(text2,'text/xml');const items2=xml2.querySelectorAll('item')
         console.log(`[보조] 성분약효 코드검색 [${gnlNmCd}]:`, items2.length, '건')
@@ -972,7 +962,7 @@ function DrugRegister({onRefresh}) {
       const searchTerms=[info.ingredientKr,ingredientInParen,ingredientFromSearch&&!ingredientFromSearch.startsWith('이 약은')?ingredientFromSearch:''].filter(s=>s&&s.length>1)
       for(const term of searchTerms){
         try{
-          const url2=`/data-api/B551182/msupCmpnMeftInfoService/getMajorCmpnNmCdList?ServiceKey=${encodeURIComponent(apiKey)}&numOfRows=10&pageNo=1&gnlNm=${encodeURIComponent(term)}`
+          const url2=`/api/datago/B551182/msupCmpnMeftInfoService/getMajorCmpnNmCdList?numOfRows=10&pageNo=1&gnlNm=${encodeURIComponent(term)}`
           const res2=await fetch(url2);const text2=await res2.text()
           const xml2=px.parseFromString(text2,'text/xml');const items2=xml2.querySelectorAll('item')
           console.log(`[보조] 성분약효 이름검색 [${term}]:`,items2.length,'건')
@@ -1694,6 +1684,247 @@ function Report({drugs,txns,onNav}){
   </div>
 }
 
+/* ═══ 성공 토스트 (공용) ═══ */
+function Toast({ msg, kind = 'ok', onClose }) {
+  const { t } = useTheme()
+  useEffect(() => { if (!msg) return; const id = setTimeout(onClose, 3000); return () => clearTimeout(id) }, [msg, onClose])
+  if (!msg) return null
+  const isOk = kind === 'ok'
+  return <div style={{ position: 'fixed', top: 72, right: 20, zIndex: 9999, background: isOk ? t.green : t.red, color: '#fff', padding: '12px 20px', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 10, animation: 'toastIn .25s ease-out' }}>
+    <style>{`@keyframes toastIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}`}</style>
+    <span>{isOk ? '✓' : '!'}</span>{msg}
+  </div>
+}
+
+/* ═══ 마이페이지 — 내 정보 조회 및 수정 + 탈퇴 ═══ */
+function MyPage({ profile, onProfileUpdated }) {
+  const { t, user, logout } = useTheme()
+  const [form, setForm] = useState({ full_name: '', phone: '', dept: '', position: '' })
+  const [saving, setSaving] = useState(false)
+  const [toast, setToast] = useState(null)
+  const [errMsg, setErrMsg] = useState(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const isEmailUser = (user?.app_metadata?.provider || 'email') === 'email'
+
+  useEffect(() => {
+    if (profile) setForm({ full_name: profile.full_name || '', phone: profile.phone || '', dept: profile.dept || '', position: profile.position || '' })
+  }, [profile])
+
+  async function handleSave() {
+    setSaving(true); setErrMsg(null)
+    const payload = { full_name: form.full_name.trim() || null, phone: form.phone.trim() || null, dept: form.dept.trim() || null, position: form.position.trim() || null }
+    const { error } = await supabase.from('profiles').update(payload).eq('id', user.id)
+    setSaving(false)
+    if (error) { setErrMsg(error.message.includes('profiles') ? '프로필 테이블이 아직 준비되지 않았습니다. DB 스키마(profiles_schema.sql)를 먼저 실행해 주세요.' : error.message); return }
+    setToast({ msg: '저장되었습니다', kind: 'ok' })
+    onProfileUpdated?.()
+  }
+
+  const ip = { width: '100%', padding: '11px 14px', border: `1.5px solid ${t.border}`, borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.card, color: t.text, transition: 'border-color .15s' }
+  const ipRO = { ...ip, background: t.bg, color: t.textM, cursor: 'not-allowed' }
+  const lb = { fontSize: 11, color: t.textM, display: 'block', marginBottom: 6, fontWeight: 600, letterSpacing: 0.2 }
+  const fmtDate = s => { if (!s) return '-'; const d = new Date(s); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
+  const roleBadge = profile?.role === 'admin'
+    ? { bg: t.purpleL, color: t.purple, text: '관리자' }
+    : { bg: t.greenL, color: t.green, text: '일반' }
+
+  return <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 20px 80px' }}>
+    <Toast msg={toast?.msg} kind={toast?.kind} onClose={() => setToast(null)} />
+    <div style={{ marginBottom: 24 }}>
+      <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, margin: 0, letterSpacing: -0.3 }}>마이페이지</h2>
+      <div style={{ fontSize: 12, color: t.textL, marginTop: 6 }}>내 프로필 정보를 확인하고 수정할 수 있습니다.</div>
+    </div>
+
+    {errMsg && <div style={{ background: t.redL, color: t.red, borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, fontWeight: 500, border: `1px solid ${t.red}30` }}>{errMsg}</div>}
+
+    {/* 기본 정보 카드 */}
+    <div style={{ background: t.card, borderRadius: 16, border: `1px solid ${t.border}`, boxShadow: t.shadow, padding: '24px 28px', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${t.border}` }}>
+        <div style={{ width: 52, height: 52, borderRadius: 14, background: `linear-gradient(135deg, ${t.accent}, ${t.green})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 20, fontWeight: 700 }}>{(form.full_name || user?.email || '?').charAt(0).toUpperCase()}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{form.full_name || '이름 미설정'}</div>
+          <div style={{ fontSize: 11, color: t.textL, marginTop: 2 }}>{user?.email}</div>
+        </div>
+        <span style={{ background: roleBadge.bg, color: roleBadge.color, padding: '4px 10px', borderRadius: 8, fontSize: 10, fontWeight: 700 }}>{roleBadge.text}</span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={lb}>이메일 (변경 불가)</label>
+          <input type="email" value={user?.email || ''} readOnly style={ipRO} />
+        </div>
+        <div>
+          <label style={lb}>이름</label>
+          <input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="홍길동" style={ip} maxLength={40} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
+        </div>
+        <div>
+          <label style={lb}>전화번호</label>
+          <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="010-0000-0000" style={ip} maxLength={20} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
+        </div>
+        <div>
+          <label style={lb}>부서</label>
+          <input value={form.dept} onChange={e => setForm(f => ({ ...f, dept: e.target.value }))} placeholder="약제과" style={ip} maxLength={30} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
+        </div>
+        <div>
+          <label style={lb}>직책</label>
+          <input value={form.position} onChange={e => setForm(f => ({ ...f, position: e.target.value }))} placeholder="약사" style={ip} maxLength={30} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, paddingTop: 16, borderTop: `1px solid ${t.border}` }}>
+        <div style={{ fontSize: 11, color: t.textL }}>
+          가입일 <span style={{ color: t.textM, fontWeight: 500, marginLeft: 4 }}>{fmtDate(profile?.created_at)}</span>
+          {profile?.updated_at && <><span style={{ margin: '0 10px', color: t.border }}>·</span>최근 수정 <span style={{ color: t.textM, fontWeight: 500, marginLeft: 4 }}>{fmtDate(profile.updated_at)}</span></>}
+        </div>
+        <button onClick={handleSave} disabled={saving} style={{ padding: '10px 22px', borderRadius: 10, border: 'none', background: saving ? t.textL : `linear-gradient(135deg, ${t.accent}, ${t.green})`, color: '#fff', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', boxShadow: saving ? 'none' : '0 4px 12px rgba(128,74,135,0.25)', transition: 'all .15s' }}>{saving ? '저장 중...' : '저장'}</button>
+      </div>
+    </div>
+
+    {/* 비밀번호 안내 */}
+    <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, padding: '16px 20px', fontSize: 12, color: t.textM, lineHeight: 1.6, marginBottom: 16 }}>
+      비밀번호를 변경하려면 로그아웃 후 로그인 화면의 <span style={{ color: t.accent, fontWeight: 600 }}>비밀번호 찾기</span>를 이용해 주세요.
+    </div>
+
+    {/* 회원 탈퇴 섹션 */}
+    <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.red}30`, padding: '16px 20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: t.red, marginBottom: 4 }}>회원 탈퇴</div>
+          <div style={{ fontSize: 11, color: t.textM, lineHeight: 1.5 }}>탈퇴 시 계정과 프로필이 즉시 영구 삭제되며, 복구할 수 없습니다. (등록한 약품 데이터는 조직 공용이므로 유지)</div>
+        </div>
+        <button onClick={() => setShowDeleteModal(true)} style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${t.red}`, background: 'transparent', color: t.red, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }} onMouseEnter={e => { e.currentTarget.style.background = t.redL }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>탈퇴하기</button>
+      </div>
+    </div>
+
+    {showDeleteModal && <DeleteAccountModal isEmailUser={isEmailUser} onClose={() => setShowDeleteModal(false)} onDeleted={async () => { setShowDeleteModal(false); await logout() }} />}
+    <Ft />
+  </div>
+}
+
+/* ═══ 탈퇴 확인 모달 ═══ */
+function DeleteAccountModal({ isEmailUser, onClose, onDeleted }) {
+  const { t, user } = useTheme()
+  const [confirmText, setConfirmText] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const canSubmit = confirmText === '탈퇴' && (!isEmailUser || password.length > 0) && !busy
+
+  async function handleDelete() {
+    setBusy(true); setErr(null)
+    try {
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess?.session?.access_token
+      if (!token) { setErr('세션이 만료되었습니다. 다시 로그인해 주세요.'); setBusy(false); return }
+      const res = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ confirmText, ...(isEmailUser ? { password } : {}) }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json.ok) { setErr(json.msg || '탈퇴 처리 실패'); setBusy(false); return }
+      await onDeleted()
+    } catch (e) { setErr('네트워크 오류: ' + e.message); setBusy(false) }
+  }
+
+  const ip = { width: '100%', padding: '11px 14px', border: `1.5px solid ${t.border}`, borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.card, color: t.text }
+
+  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20 }}>
+    <div onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 16, padding: '24px 26px', maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: t.red, marginBottom: 6 }}>정말 탈퇴하시겠습니까?</div>
+      <div style={{ fontSize: 12, color: t.textM, marginBottom: 18, lineHeight: 1.6 }}>
+        탈퇴하면 <strong style={{ color: t.text }}>{user?.email}</strong> 계정과 프로필이 즉시 영구 삭제됩니다.<br />이 작업은 <strong style={{ color: t.red }}>되돌릴 수 없습니다.</strong>
+      </div>
+
+      {err && <div style={{ background: t.redL, color: t.red, borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 500 }}>{err}</div>}
+
+      {isEmailUser && <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 6, fontWeight: 600 }}>현재 비밀번호</label>
+        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="비밀번호" style={ip} autoComplete="current-password" />
+      </div>}
+
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 6, fontWeight: 600 }}>확인을 위해 <span style={{ color: t.red, fontWeight: 700 }}>탈퇴</span>를 입력해 주세요</label>
+        <input value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder="탈퇴" style={ip} />
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button onClick={onClose} disabled={busy} style={{ padding: '10px 16px', borderRadius: 10, border: `1px solid ${t.border}`, background: 'transparent', color: t.textM, fontSize: 13, fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer' }}>취소</button>
+        <button onClick={handleDelete} disabled={!canSubmit} style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: canSubmit ? t.red : t.textL, color: '#fff', fontSize: 13, fontWeight: 700, cursor: canSubmit ? 'pointer' : 'not-allowed' }}>{busy ? '처리 중...' : '영구 탈퇴'}</button>
+      </div>
+    </div>
+  </div>
+}
+
+/* ═══ 관리자 — 가입자 조회 ═══ */
+function AdminUsers() {
+  const { t } = useTheme()
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [q, setQ] = useState('')
+  const [errMsg, setErrMsg] = useState(null)
+  const { hs, so, SI, TS } = useSort('created_at', 'desc')
+
+  async function load() {
+    setLoading(true); setErrMsg(null)
+    const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
+    setLoading(false)
+    if (error) { setErrMsg(error.message); return }
+    setRows(data || [])
+  }
+  useEffect(() => { load() }, [])
+
+  const ql = q.trim().toLowerCase()
+  const filtered = rows.filter(r => !ql || [r.email, r.full_name, r.dept, r.position].some(v => (v || '').toLowerCase().includes(ql)))
+  const sorted = so(filtered)
+  const fmtDate = s => { if (!s) return '-'; const d = new Date(s); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
+
+  return <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 20px 80px' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20, gap: 16, flexWrap: 'wrap' }}>
+      <div>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, margin: 0, letterSpacing: -0.3 }}>가입자 관리</h2>
+        <div style={{ fontSize: 12, color: t.textL, marginTop: 6 }}>가입된 사용자 {rows.length}명 · 검색 결과 {filtered.length}명</div>
+      </div>
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="이메일·이름·부서·직책 검색" style={{ minWidth: 260, padding: '10px 14px', border: `1.5px solid ${t.border}`, borderRadius: 10, fontSize: 13, outline: 'none', background: t.card, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
+    </div>
+
+    {errMsg && <div style={{ background: t.redL, color: t.red, borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, fontWeight: 500, border: `1px solid ${t.red}30` }}>{errMsg.includes('profiles') ? '프로필 테이블이 아직 준비되지 않았습니다. DB 스키마(profiles_schema.sql)를 먼저 실행해 주세요.' : errMsg}</div>}
+
+    <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, boxShadow: t.shadow, overflow: 'hidden' }}>
+      {loading ? <div style={{ padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 13 }}>불러오는 중...</div>
+        : sorted.length === 0 ? <div style={{ padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 13 }}>표시할 사용자가 없습니다.</div>
+        : <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead><tr style={{ background: t.bg }}>
+              <th onClick={() => hs('email')} style={TS('email')}>이메일<SI col="email" /></th>
+              <th onClick={() => hs('full_name')} style={TS('full_name')}>이름<SI col="full_name" /></th>
+              <th onClick={() => hs('phone')} style={TS('phone')}>전화번호<SI col="phone" /></th>
+              <th onClick={() => hs('dept')} style={TS('dept')}>부서<SI col="dept" /></th>
+              <th onClick={() => hs('position')} style={TS('position')}>직책<SI col="position" /></th>
+              <th onClick={() => hs('role')} style={TS('role')}>권한<SI col="role" /></th>
+              <th onClick={() => hs('created_at')} style={TS('created_at')}>가입일<SI col="created_at" /></th>
+            </tr></thead>
+            <tbody>{sorted.map(r => <tr key={r.id} style={{ borderTop: `1px solid ${t.border}` }}>
+              <td style={{ padding: '10px 12px', color: t.text, fontWeight: 500 }}>{r.email || '-'}</td>
+              <td style={{ padding: '10px 12px', color: t.text }}>{r.full_name || <span style={{ color: t.textL }}>-</span>}</td>
+              <td style={{ padding: '10px 12px', color: t.textM, fontFamily: 'monospace', fontSize: 11 }}>{r.phone || <span style={{ color: t.textL }}>-</span>}</td>
+              <td style={{ padding: '10px 12px', color: t.textM }}>{r.dept || <span style={{ color: t.textL }}>-</span>}</td>
+              <td style={{ padding: '10px 12px', color: t.textM }}>{r.position || <span style={{ color: t.textL }}>-</span>}</td>
+              <td style={{ padding: '10px 12px' }}>
+                {r.role === 'admin'
+                  ? <span style={{ background: t.purpleL, color: t.purple, padding: '3px 10px', borderRadius: 8, fontSize: 10, fontWeight: 700 }}>관리자</span>
+                  : <span style={{ background: t.greenL, color: t.green, padding: '3px 10px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>일반</span>}
+              </td>
+              <td style={{ padding: '10px 12px', color: t.textM, fontSize: 11 }}>{fmtDate(r.created_at)}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>}
+    </div>
+    <Ft />
+  </div>
+}
+
 /* ═══ 로그인 페이지 ═══ */
 function LoginPage({ onLogin }) {
   const [mode, setMode] = useState('login') // login | signup | reset
@@ -1728,6 +1959,19 @@ function LoginPage({ onLogin }) {
     if (error) { setMsg(error.message); return }
     setMsg('✅ 비밀번호 재설정 링크를 이메일로 보냈습니다')
   }
+  async function handleKakao() {
+    setLoading(true); setMsg(null)
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'kakao',
+      options: { redirectTo: window.location.origin },
+    })
+    if (error) { setLoading(false); setMsg('카카오 로그인 실패: ' + error.message) }
+    /* 성공 시 카카오 페이지로 자동 리다이렉트됨 */
+  }
+  function handleNaver() {
+    setLoading(true); setMsg(null)
+    window.location.href = '/api/auth/naver/login'
+  }
   const ip = { width: '100%', padding: '12px 16px', border: `1.5px solid ${t.border}`, borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: '#fff', color: t.text }
   return <div style={{ minHeight: '100vh', background: `linear-gradient(135deg, ${t.nav} 0%, #804A87 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
     <style>{`@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');*{font-family:'Roboto','Apple SD Gothic Neo',sans-serif;}`}</style>
@@ -1742,6 +1986,24 @@ function LoginPage({ onLogin }) {
       {mode !== 'reset' && <div style={{ marginBottom: 14 }}><label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 4, fontWeight: 500 }}>비밀번호</label><input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="••••••" style={ip} onKeyDown={e => e.key === 'Enter' && (mode === 'login' ? handleLogin() : handleSignup())} /></div>}
       {mode === 'signup' && <div style={{ marginBottom: 14 }}><label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 4, fontWeight: 500 }}>비밀번호 확인</label><input type="password" value={pw2} onChange={e => setPw2(e.target.value)} placeholder="••••••" style={ip} onKeyDown={e => e.key === 'Enter' && handleSignup()} /></div>}
       <button onClick={mode === 'login' ? handleLogin : mode === 'signup' ? handleSignup : handleReset} disabled={loading} style={{ width: '100%', padding: 14, borderRadius: 10, border: 'none', background: loading ? t.textL : `linear-gradient(135deg, #804A87, #019748)`, color: '#fff', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', marginBottom: 16 }}>{loading ? '처리 중...' : mode === 'login' ? '로그인' : mode === 'signup' ? '회원가입' : '재설정 링크 보내기'}</button>
+
+      {/* ── 소셜 로그인 (login/signup 모드에서만 노출, reset 모드 제외) ── */}
+      {mode !== 'reset' && <>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 14px' }}>
+          <div style={{ flex: 1, height: 1, background: t.border }} />
+          <span style={{ fontSize: 11, color: t.textL, fontWeight: 500 }}>또는 간편 로그인</span>
+          <div style={{ flex: 1, height: 1, background: t.border }} />
+        </div>
+        <button onClick={handleKakao} disabled={loading} aria-label="카카오로 시작하기" style={{ width: '100%', padding: 12, borderRadius: 10, border: 'none', background: loading ? '#F5E16A' : '#FEE500', color: '#191919', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#191919" d="M9 1.5C4.86 1.5 1.5 4.18 1.5 7.5c0 2.16 1.43 4.05 3.58 5.11l-.74 2.71c-.07.24.2.43.41.3l3.25-2.15c.33.04.66.03.99 0 4.14 0 7.5-2.68 7.5-6S13.14 1.5 9 1.5z"/></svg>
+          카카오로 시작하기
+        </button>
+        <button onClick={handleNaver} disabled={loading} aria-label="네이버로 시작하기" style={{ width: '100%', padding: 12, borderRadius: 10, border: 'none', background: loading ? '#5FCD86' : '#03C75A', color: '#fff', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="#fff" d="M9.96 8.56L5.95 2.5H2.5v11h3.59V7.44l4.01 6.06h3.4v-11h-3.54v6.06z"/></svg>
+          네이버로 시작하기
+        </button>
+      </>}
+
       <div style={{ display: 'flex', justifyContent: 'center', gap: 16, fontSize: 12 }}>
         {mode !== 'login' && <button onClick={() => { setMode('login'); setMsg(null) }} style={{ background: 'none', border: 'none', color: '#804A87', cursor: 'pointer', fontWeight: 500 }}>로그인</button>}
         {mode !== 'signup' && <button onClick={() => { setMode('signup'); setMsg(null) }} style={{ background: 'none', border: 'none', color: '#019748', cursor: 'pointer', fontWeight: 500 }}>회원가입</button>}
@@ -1755,6 +2017,7 @@ function LoginPage({ onLogin }) {
 export default function App() {
   const [dark, setDark] = useState(false)
   const [user, setUser] = useState(null)
+  const [profile, setProfile] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [menu, setMenu] = useState('dashboard')
   const [drugs, setDrugs] = useState([])
@@ -1767,7 +2030,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
 
   const t = dark ? themes.dark : themes.light
-  const themeVal = { t, dark, toggle: () => setDark(d => !d), user, logout: async () => { await supabase.auth.signOut(); setUser(null) } }
+  const themeVal = { t, dark, toggle: () => setDark(d => !d), user, profile, logout: async () => { await supabase.auth.signOut(); setUser(null); setProfile(null); setMenu('dashboard') } }
 
   /* 인증 상태 확인 */
   useEffect(() => {
@@ -1775,6 +2038,18 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => { setUser(session?.user || null) })
     return () => subscription.unsubscribe()
   }, [])
+
+  /* 비보험 메뉴 진입 시 navFilter 자동 적용 (헤더 클릭/대시보드 카드 클릭 모두 처리) */
+  useEffect(() => { if (menu === 'nonins') setNf({ insType: '비보험' }) }, [menu])
+
+  /* 프로필 로드 (profiles 테이블이 아직 없을 수도 있으므로 silent fail) */
+  async function loadProfile() {
+    if (!user) { setProfile(null); return }
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+    if (error) { setProfile(null); return }
+    setProfile(data)
+  }
+  useEffect(() => { loadProfile() }, [user])
 
   async function load() {
     const d = await fetchAll()
@@ -1860,12 +2135,15 @@ export default function App() {
         <Header menu={menu} setMenu={setMenu} />
         {menu === 'dashboard' && <Dashboard drugs={drugs} inv={inv} txns={txns} onNav={handleNav} onEdit={setEditDrug} />}
         {menu === 'druglist' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} />}
+        {menu === 'nonins' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} />}
         {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} />}
         {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} />}
         {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} />}
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} />}
         {menu === 'report' && <Report drugs={drugs} txns={txns} onNav={handleNav} />}
         {menu === 'register' && <DrugRegister onRefresh={load} />}
+        {menu === 'mypage' && <MyPage profile={profile} onProfileUpdated={loadProfile} />}
+        {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
 
         {editDrug && <DrugEditModal drug={editDrug} onClose={() => setEditDrug(null)} onSaved={() => { setEditDrug(null); load() }} onLotManage={d => { setEditDrug(null); setLotDrug(d) }} />}
         {adjustDrug && <AdjustModal drug={adjustDrug} onClose={() => setAdjustDrug(null)} onSaved={() => { setAdjustDrug(null); load() }} />}
