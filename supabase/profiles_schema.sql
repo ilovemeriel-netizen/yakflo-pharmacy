@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════
--- CNC Pharmacy · 사용자 프로필 (profiles) 테이블 + RLS + 트리거
+-- Yakflo · 사용자 프로필 (profiles) 테이블 + RLS + 트리거
 -- 실행 위치: Supabase Dashboard → SQL Editor
 -- 안전 재실행 가능 (IF NOT EXISTS / DROP POLICY IF EXISTS 사용)
 -- ════════════════════════════════════════════════════════════════

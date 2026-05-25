@@ -3,7 +3,7 @@ import { supabase } from './lib/supabase'
 import * as XLSX from 'xlsx'
 
 /* ═══════════════════════════════════════════════════
-   CNC Pharmacy · Soft UI + Eco-Minimalism
+   Yakflo · Soft UI + Eco-Minimalism
    세이지 그린 + 오프 화이트 · 다크 헤더
    ═══════════════════════════════════════════════════ */
 const themes = {
