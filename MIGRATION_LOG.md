@@ -80,6 +80,7 @@ git push --force-with-lease origin main
 | 2026-05-25 | 0. 안전망 | `saas-migration` 브랜치 생성 + MIGRATION_LOG.md 작성 | (이번 단계) |
 | 2026-06-21 | P0. 환경점검 | `.env.example`에 `MFDS_API_KEY` 보강(이름만). build✅/lint baseline 103e·8w 기록 | `yakflo-runbook-p0` |
 | 2026-06-21 | P1-1. 통제어휘 | `0006_p1_controlled_vocab.sql`(어휘 7종 seed `drug_vocab` + `drugs.compound_type`·`prescription_type` 추가, 비강제) + `verify/P1_data_verification.sql`(검증 SELECT) | `yakflo-runbook-p0` |
+| 2026-06-21 | 리전 이전 | `0007_relink_users_after_region_move.sql` — Sydney→Seoul 이전 후 이메일 기준 사용자 재매핑(tenant_members owner/member + profiles admin), 옛 UUID 비의존 | `yakflo-runbook-p0` |
 
 > **P1 진행 메모 (2026-06-21)**
 > - `yakflo_data`는 DB 테이블이 아니라 **원천 엑셀**(1,103행·42컬럼). 적재 대상은 운영 `drugs`(0002 캡처 1083행) → **P1-2 적재는 이미 과거 수행**.
