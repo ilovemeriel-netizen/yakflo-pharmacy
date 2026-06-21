@@ -81,6 +81,14 @@ git push --force-with-lease origin main
 | 2026-06-21 | P0. 환경점검 | `.env.example`에 `MFDS_API_KEY` 보강(이름만). build✅/lint baseline 103e·8w 기록 | `yakflo-runbook-p0` |
 | 2026-06-21 | P1-1. 통제어휘 | `0006_p1_controlled_vocab.sql`(어휘 7종 seed `drug_vocab` + `drugs.compound_type`·`prescription_type` 추가, 비강제) + `verify/P1_data_verification.sql`(검증 SELECT) | `yakflo-runbook-p0` |
 | 2026-06-21 | 리전 이전 | `0007_relink_users_after_region_move.sql` — Sydney→Seoul 이전 후 이메일 기준 사용자 재매핑(tenant_members owner/member + profiles admin), 옛 UUID 비의존 | `yakflo-runbook-p0` |
+| 2026-06-21 | 리전 이전 | `scripts/load_yakflodata.mjs` — 개선본 1103 적재 로더(drugs+inventory+snapshot, 전월재고→현재고 이월·입출고0·약품코드 문자열강제, dry-run 기본, env service_role) | `yakflo-runbook-p0` |
+
+> **리전 이전 결정 메모 (재생성 가이드 v1.1, 2026-06-21)**
+> - **위험2**: 스키마 = 옛 DB `public` 단일 스냅샷 `0000_baseline.sql`만 psql 직접 적용. `db push`/0001~0007 재적용 금지("already exists" 방지). 0001~0007은 이력 보존만.
+> - **약품 데이터**: 옛 1083 복사 ❌ → 개선본 `yakflodata.xlsx` 1103행 적재. 적재 후 drugs=**1103**이 정상.
+> - 출처: drugs/inventory_stock/monthly_snapshots → xlsx · 공유 레퍼런스 7개 → 옛 DB 복사 · 메타 3개 → 재로그인 후 0007로 재연결.
+> - 0007은 가이드 **8단계에서 수동 실행**(스냅샷/푸시 아님).
+> - ⚠️ 로더 미확정: `inventory_stock` 현재고 컬럼명(`CONFIG.INVENTORY_QTY_COL`)은 `0000_baseline.sql`에서 확인 후 확정. xlsx 헤더도 실제 파일 대조 필요.
 
 > **P1 진행 메모 (2026-06-21)**
 > - `yakflo_data`는 DB 테이블이 아니라 **원천 엑셀**(1,103행·42컬럼). 적재 대상은 운영 `drugs`(0002 캡처 1083행) → **P1-2 적재는 이미 과거 수행**.
