@@ -95,10 +95,10 @@ insert into public.drug_vocab (axis, code, label, sort_order, note) values
 on conflict (axis, code) do update
   set label = excluded.label, sort_order = excluded.sort_order, note = excluded.note;
 
--- ⑦ 상태 (drugs.status) — 3종 (가이드 §7)
+-- ⑦ 상태 (drugs.status) — 3종 (가이드 §7, 실측값: 사용·중지·휴면)
 insert into public.drug_vocab (axis, code, label, sort_order, note) values
   ('status', '사용', '사용', 1, '메인 뷰 우선 노출'),
-  ('status', '해면', '해면', 2, '곧 사용 예정·대기 (배지)'),
+  ('status', '휴면', '휴면', 2, '곧 사용 예정·대기 (배지)'),
   ('status', '중지', '중지', 3, '아카이브(복귀 가능)')
 on conflict (axis, code) do update
   set label = excluded.label, sort_order = excluded.sort_order, note = excluded.note;
