@@ -82,6 +82,16 @@ git push --force-with-lease origin main
 | 2026-06-21 | P1-1. 통제어휘 | `0006_p1_controlled_vocab.sql`(어휘 7종 seed `drug_vocab` + `drugs.compound_type`·`prescription_type` 추가, 비강제) + `verify/P1_data_verification.sql`(검증 SELECT) | `yakflo-runbook-p0` |
 | 2026-06-21 | 리전 이전 | `0007_relink_users_after_region_move.sql` — Sydney→Seoul 이전 후 이메일 기준 사용자 재매핑(tenant_members owner/member + profiles admin), 옛 UUID 비의존 | `yakflo-runbook-p0` |
 | 2026-06-21 | 리전 이전 | `scripts/load_yakflodata.mjs` — 개선본 1103 적재 로더(drugs+inventory+snapshot, 전월재고→현재고 이월·입출고0·약품코드 문자열강제, dry-run 기본, env service_role) | `yakflo-runbook-p0` |
+| 2026-06-21 | 리전이전 실행 | **새 Seoul 프로젝트(ref `phgkjrvdtcdrdiuigici`) 구축 완료**: `0000_baseline.sql`(pg_dump 스키마)+0006 적용, 1103 적재 | `yakflo-runbook-p0` |
+
+> **리전 이전 실행 기록 (2026-06-21) — 완료된 부분**
+> - 도구: Docker 미설치 → `pg_dump`(PostgreSQL 18 winget 설치)로 옛 DB 스키마 덤프. 새 프로젝트 적용은 `supabase login` 토큰으로 **Management API(`/database/query`)** 사용(DB 비밀번호 우회).
+> - 옛 Sydney ref=`ukzjhiweqezhrtqzpjkf`(pooler `aws-1-ap-southeast-2`), 새 Seoul ref=`phgkjrvdtcdrdiuigici`.
+> - baseline 적용 시 제거한 것: `\restrict`/`\unrestrict`(psql 메타), `ALTER DEFAULT PRIVILEGES`(권한거부), `CREATE SCHEMA public`(기본 존재). UTF-8 강제(한글 COMMENT 깨짐 방지).
+> - **검증 통과**: 15정상테이블+drug_vocab(25)+RLS17정책, drugs/inv/snap 각 **1103**, tx 0, 고아 0. 분포 §8 일치. 코드없는 중지약품 **282개에 NOCODE- 합성코드**.
+> - drugs 실측: `insurance_price` 없음(→`edi_price`), drug_code unique 없음(일반 insert), 모든 수량·금액 integer(반올림).
+> - ⚠️ **미완(사용자 진행 필요)**: 인증 재설정(카카오/네이버 Provider·Redirect URL), `.env`·Netlify·Vercel 키 교체, 재로그인 후 `0007` 실행(메타 재연결), 앱 검증, 옛 프로젝트 삭제. 레퍼런스 7테이블은 거의 빈 상태(drug_master 5행, `supabase/reference_data.sql` 미적용).
+> - 🔐 노출된 옛 DB 비밀번호(채팅)는 옛 프로젝트 삭제로 무효화 예정. 새 프로젝트 service_role/access token은 미노출.
 
 > **리전 이전 결정 메모 (재생성 가이드 v1.1, 2026-06-21)**
 > - **위험2**: 스키마 = 옛 DB `public` 단일 스냅샷 `0000_baseline.sql`만 psql 직접 적용. `db push`/0001~0007 재적용 금지("already exists" 방지). 0001~0007은 이력 보존만.
