@@ -25,4 +25,19 @@ dist-ssr
 
 # Local Netlify folder
 .netlify
+
+# ── 비밀·키 (절대 커밋 금지) ──
 .env
+.env.*
+!.env.example
+*service_role*
+*.pat
+
+# ── 원본 약품 데이터 (커밋 불필요) ──
+*.xlsx
+yakflodata.xlsx
+
+# ── Supabase CLI 캐시 / 생성된 데이터 덤프 ──
+supabase/.temp/
+supabase/reference_data.sql
+supabase/seed_data.sql
