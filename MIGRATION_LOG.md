@@ -78,3 +78,12 @@ git push --force-with-lease origin main
 | 일자 | 단계 | 변경 요약 | 커밋 |
 |---|---|---|---|
 | 2026-05-25 | 0. 안전망 | `saas-migration` 브랜치 생성 + MIGRATION_LOG.md 작성 | (이번 단계) |
+| 2026-06-21 | P0. 환경점검 | `.env.example`에 `MFDS_API_KEY` 보강(이름만). build✅/lint baseline 103e·8w 기록 | `yakflo-runbook-p0` |
+| 2026-06-21 | P1-1. 통제어휘 | `0006_p1_controlled_vocab.sql`(어휘 7종 seed `drug_vocab` + `drugs.compound_type`·`prescription_type` 추가, 비강제) + `verify/P1_data_verification.sql`(검증 SELECT) | `yakflo-runbook-p0` |
+
+> **P1 진행 메모 (2026-06-21)**
+> - `yakflo_data`는 DB 테이블이 아니라 **원천 엑셀**(1,103행·42컬럼). 적재 대상은 운영 `drugs`(0002 캡처 1083행) → **P1-2 적재는 이미 과거 수행**.
+> - 어휘 7종 중 `복합/단일`·`전문/일반` 컬럼이 라이브 부재 → 0006에서 additive 추가(NULL 허용).
+> - 라이브 `drugs`(1083행)에 CHECK/NOT NULL 제약은 **걸지 않음** — 0002 원칙대로 데이터 안정화(P1-3) 이후로 미룸.
+> - **P1-2/3/4 미완**: 원천 엑셀 또는 라이브 DB 조회 권한 필요. `verify/P1_data_verification.sql`을 사용자가 Supabase에서 실행 → 결과로 P1-3(확인필요 225건·보관방법 483건 보강) 백로그 확정 예정.
+> - `drug_lots`: App.jsx LotModal이 사용하나 0002 시점 DB 부재 기록 → **현 존재 여부 확인 필요**(가이드 §12 신규 설계 후보).
