@@ -40,9 +40,8 @@ const CONFIG = {
   SNAP_YEAR: 2026,
   SNAP_MONTH: 6,
 
-  // ⚠️ inventory_stock의 '현재고 수량' 컬럼명 — 0000_baseline.sql에서 확인 후 맞출 것.
-  //    (App.jsx는 inventory_stock을 읽기만 해 코드로 확정 불가. 흔한 후보: quantity / qty / current_qty)
-  INVENTORY_QTY_COL: 'quantity',
+  // inventory_stock의 현재고 수량 컬럼 (0000_baseline 확인 완료: current_qty integer)
+  INVENTORY_QTY_COL: 'current_qty',
 
   EXPECTED_ROWS: 1103,              // 적재 후 sanity 기대값 (1083 아님)
   BATCH: 500,
@@ -218,8 +217,15 @@ async function insertBatched(table, rows) {
   }
 }
 
-// 4-2) inventory_stock (현재고=전월재고 이월) — ⚠ 컬럼명 CONFIG.INVENTORY_QTY_COL 확인 필수
-const invRows = valid.map(p => ({ drug_code: p.drug_code, [CONFIG.INVENTORY_QTY_COL]: p._opening, tenant_id }))
+// 4-2) inventory_stock (현재고=전월재고 이월) — current_qty만 채우고
+//      파생·통계(current_amount/safety_stock/max_stock/prev_year_usage/recent_3m_usage/
+//      monthly_avg/stock_status/order_alert)는 DB 기본값/널로 둔다(적재 단계 미적용).
+const invRows = valid.map(p => ({
+  drug_code: p.drug_code,
+  drug_name: p.drug_name || null,
+  [CONFIG.INVENTORY_QTY_COL]: p._opening,
+  tenant_id,
+}))
 console.log(`▶ inventory_stock 적재… (수량 컬럼='${CONFIG.INVENTORY_QTY_COL}')`)
 await insertBatched('inventory_stock', invRows)
 
