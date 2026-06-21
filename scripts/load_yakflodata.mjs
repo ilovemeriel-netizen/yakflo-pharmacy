@@ -29,7 +29,7 @@ import process from 'node:process'
 // CONFIG — 실행 전 확인할 값 (특히 ⚠ 표시)
 // ─────────────────────────────────────────────────────────────────
 const CONFIG = {
-  XLSX_PATH: './yakflodata.xlsx',   // 개선본 1103행 파일 경로
+  XLSX_PATH: process.env.YAKFLO_XLSX || './yakflodata.xlsx',   // 개선본 1103행 (env YAKFLO_XLSX로 경로 지정 가능)
   SHEET_NAME: null,                 // null = 첫 시트
   HEADER_ROW: 3,                    // 헤더가 있는 행(1-base). 1~2행은 제목/빈칸 → 건너뜀
   TENANT_SLUG: 'cnc',               // 적재 대상 테넌트 (drugs.tenant_id 스탬프)
@@ -45,6 +45,9 @@ const CONFIG = {
 
   EXPECTED_ROWS: 1103,              // 적재 후 sanity 기대값 (1083 아님)
   BATCH: 500,
+  // 약품명 있고 코드 없는 행(중지 단종 약품 등)에 부여할 합성 코드 접두사.
+  // 출현순 결정적 부여 → 재실행해도 동일 → upsert 안전. null이면 합성 안 함(코드없으면 제외).
+  SYNTH_CODE_PREFIX: 'NOCODE-',
 }
 
 const COMMIT = process.argv.includes('--commit')
@@ -82,7 +85,8 @@ const H = {
 // 헤더/별칭 정규화: 공백·줄바꿈·캐리지리턴 제거
 function norm(s) { return String(s ?? '').replace(/_x000D_/gi, '').replace(/\s+/g, '').trim() }
 function asText(v) { return String(v ?? '').trim() }
-function asNum(v) { const n = Number(String(v ?? '').replace(/,/g, '')); return Number.isFinite(n) ? n : 0 }
+// drugs/inventory/snapshot의 수량·금액 컬럼은 전부 integer/bigint → 정수 반올림
+function asNum(v) { const n = Number(String(v ?? '').replace(/,/g, '')); return Number.isFinite(n) ? Math.round(n) : 0 }
 
 // 정규화된 행에서 별칭 매칭
 function pick(normRow, keys) {
@@ -147,8 +151,21 @@ const parsed = raw.map((r, i) => {
   }
 })
 
+// 합성 코드 부여: 약품명 있고 코드 없는 행(중지 단종 등)에 출현순 결정적 코드
+let synthCount = 0
+if (CONFIG.SYNTH_CODE_PREFIX) {
+  for (const p of parsed) {
+    if (!p.drug_code && p.drug_name) {
+      p.drug_code = CONFIG.SYNTH_CODE_PREFIX + String(++synthCount).padStart(4, '0')
+      p._synth = true
+    }
+    p.valid = !!p.drug_code && !!p.drug_name
+  }
+}
+
 const valid = parsed.filter(p => p.valid)
 const invalid = parsed.filter(p => !p.valid)
+if (synthCount) console.log(`합성 코드 부여: ${synthCount}건 (${CONFIG.SYNTH_CODE_PREFIX}0001~)`)
 
 // ── 3) 미리보기 요약 ──
 const dist = (arr, key) => arr.reduce((m, p) => { m[p[key]] = (m[p[key]] || 0) + 1; return m }, {})
@@ -161,7 +178,15 @@ console.log('마약구분 분포:', dist(valid, 'narcotic_type'))
 if (dateCoerced) console.log(`⚠️ 약품코드 날짜변환 의심 ${dateCoerced}건 — 원본 셀을 '텍스트' 서식으로 저장 후 재시도`)
 if (valid.length !== CONFIG.EXPECTED_ROWS)
   console.log(`⚠️ 유효행(${valid.length}) ≠ 기대(${CONFIG.EXPECTED_ROWS}) — 파일/헤더/HEADER_ROW 확인`)
-if (invalid.length) console.log('무효행(코드/약품명 누락) 예시:', invalid.slice(0, 3).map(p => p._row))
+if (invalid.length) {
+  const noCode = invalid.filter(p => !p.drug_code).length
+  const noName = invalid.filter(p => p.drug_code && !p.drug_name).length
+  const both = invalid.filter(p => !p.drug_code && !p.drug_name).length
+  console.log(`무효 사유: 코드없음 ${noCode} · 약품명없음 ${noName} · 둘다없음 ${both}`)
+  const noCodeByStatus = invalid.filter(p => !p.drug_code).reduce((m, p) => { m[p.status] = (m[p.status] || 0) + 1; return m }, {})
+  console.log('코드없음 상태분포:', noCodeByStatus)
+  console.log('무효행 예시(행번호):', invalid.slice(0, 3).map(p => p._row))
+}
 console.log('drugs 샘플:', valid.slice(0, 2).map(p => ({ drug_code: p.drug_code, drug_name: p.drug_name, category: p.category, current_qty: p.current_qty, narcotic_type: p.narcotic_type })))
 
 if (!COMMIT) {
@@ -189,7 +214,7 @@ const drugRows = valid.map(p => ({
   compound_type: p.compound_type, prescription_type: p.prescription_type,
   efficacy: p.efficacy, manufacturer: p.manufacturer,
   specification: p.specification, unit: p.unit,
-  insurance_type: p.insurance_type, insurance_code: p.insurance_code, insurance_price: p.insurance_price,
+  insurance_type: p.insurance_type, insurance_code: p.insurance_code, edi_price: p.insurance_price,
   price_unit: p.price_unit, storage_method: p.storage_method, status: p.status,
   expiry_date: p.expiry_date, is_narcotic: p.is_narcotic, narcotic_type: p.narcotic_type,
   current_qty: p.current_qty, tenant_id,
@@ -199,7 +224,9 @@ for (let i = 0; i < drugRows.length; i += CONFIG.BATCH) {
   let attempt = 0
   while (true) {
     const slice = drugRows.slice(i, i + CONFIG.BATCH)
-    const { error } = await supa.from('drugs').upsert(slice, { onConflict: 'drug_code' })
+    // drugs는 drug_code unique 제약이 없어 일반 insert (빈 테이블 초기 적재).
+    // 재적재 시 중복 방지를 위해 사전에 truncate 필요.
+    const { error } = await supa.from('drugs').insert(slice)
     if (!error) break
     const m = error.message.match(/'([^']+)' column|column ["']([^"']+)["']/)
     const col = m && (m[1] || m[2])
