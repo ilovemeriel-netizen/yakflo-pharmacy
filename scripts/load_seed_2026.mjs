@@ -57,7 +57,8 @@ const num = v => { const n = parseFloat(String(v).replace(/,/g, '')); return Num
 function ownerCreds() {
   const f = '.owner-login.local'
   if (!existsSync(f)) throw new Error('.owner-login.local 없음(owner 로그인 필요)')
-  const o = {}; for (const ln of readFileSync(f, 'utf8').split(/\r?\n/)) { const m = ln.match(/^(\w+)=(.+)$/); if (m) o[m[1]] = m[2] }
+  let txt = readFileSync(f, 'utf8'); if (txt.charCodeAt(0) === 0xfeff) txt = txt.slice(1)   // utf-8-sig BOM
+  const o = {}; for (const ln of txt.split(/\r?\n/)) { const m = ln.match(/^(\w+)=(.+)$/); if (m) o[m[1]] = m[2].trim() }
   return o
 }
 async function main() {
@@ -70,8 +71,11 @@ async function main() {
   const { error: aerr } = await sb.auth.signInWithPassword({ email, password })
   if (aerr) throw new Error('owner 로그인 실패: ' + aerr.message)
 
-  const { data: tn } = await sb.from('tenants').select('id').eq('slug', TENANT_SLUG).single()
-  const tid = tn.id
+  // tid는 tenants 직접 SELECT(RLS 정책 0개) 대신 본인 tenant_members 행(0010 self-select 정책)으로 해석
+  const { data: { user } } = await sb.auth.getUser()
+  const { data: tm } = await sb.from('tenant_members').select('tenant_id').eq('user_id', user.id).limit(1).maybeSingle()
+  const tid = tm?.tenant_id
+  if (!tid) throw new Error('owner tenant 매핑 없음(tenant_members)')
   console.log(`[모드] ${COMMIT ? '본 적용(--commit)' : '미리보기(쓰기 안 함)'} · tenant=${TENANT_SLUG}`)
 
   // drug_name → drug_code 맵 (NOCODE 합성코드 포함, DB의 정상 UTF-8 기준)
@@ -127,18 +131,19 @@ async function main() {
   }
 
   // ── Task4: monthly_snapshots upsert (2026-01~05) ──
+  // 한 배치 내 (snap_year,snap_month,drug_code) 중복은 upsert 불가 → dedup(코드행 우선, 동급은 후행 우선)
   const ms = parseCsv(FILES.monthly)
-  const perMonth = {}
-  const recs = []
+  const byKey = new Map()   // key → { rec, coded }
+  let dupDropped = 0
   for (const r of ms) {
     const sm = (r.snapshot_month || '').trim()         // 2026-01
     const m = sm.match(/^(\d{4})-(\d{2})$/); if (!m) continue
     const yr = +m[1], mo = +m[2]
     if (yr !== 2026 || mo < 1 || mo > 5) continue
+    const coded = !!(r.drug_code && r.drug_code.trim())
     const code = resolveCode(r.drug_code, r['약품명']); if (!code) continue
-    perMonth[sm] = (perMonth[sm] || 0) + 1
     const open = num(r.opening_qty), inq = num(r.in_qty)
-    recs.push({
+    const rec = {
       tenant_id: tid, drug_code: code, snap_year: yr, snap_month: mo,
       opening_qty: open, opening_amount: num(r.opening_amt),
       total_in_qty: inq, total_in_amount: num(r.in_amt),
@@ -146,8 +151,15 @@ async function main() {
       total_out_qty: num(r.used_qty), total_out_amount: num(r.used_amt),
       total_disp_qty: num(r.disposal_qty), total_ret_qty: num(r.return_qty),
       closing_qty: num(r.closing_qty), closing_amount: num(r.closing_amt),
-    })
+    }
+    const key = `${yr}-${mo}-${code}`
+    const prev = byKey.get(key)
+    if (prev) { dupDropped++; if (prev.coded && !coded) continue }   // 코드행 우선 보존
+    byKey.set(key, { rec, coded })
   }
+  const recs = [...byKey.values()].map(v => v.rec)
+  const perMonth = {}
+  for (const v of recs) { const k = `2026-${String(v.snap_month).padStart(2, '0')}`; perMonth[k] = (perMonth[k] || 0) + 1 }
   if (COMMIT) {
     for (let i = 0; i < recs.length; i += 500) {
       const { error } = await sb.from('monthly_snapshots')
@@ -160,7 +172,7 @@ async function main() {
   console.log(`narcotic_type 보강 대상 ${nNarc}건 (확인필요만 적용)`)
   console.log(`prescription_type 보강 대상 ${nPresc}건 (통합본 해소분)`)
   console.log(`inventory_stock 차이 ${diffs}건 (대조만, 덮어쓰기 없음)`)
-  console.log(`monthly_snapshots 대상 ${recs.length}행 · 월별 ` + JSON.stringify(perMonth))
+  console.log(`monthly_snapshots 대상 ${recs.length}행(중복 ${dupDropped}건 dedup) · 월별 ` + JSON.stringify(perMonth))
   if (!COMMIT) console.log('\n미리보기 모드 — 실제 적용은 --commit')
   await sb.auth.signOut()
 }
