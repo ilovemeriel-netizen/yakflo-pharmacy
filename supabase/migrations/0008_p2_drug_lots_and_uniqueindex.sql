@@ -32,6 +32,11 @@ create table if not exists public.drug_lots (
 create index if not exists drug_lots_drug_code_idx on public.drug_lots (drug_code);
 create index if not exists drug_lots_tenant_idx    on public.drug_lots (tenant_id);
 
+-- 테이블 GRANT (기존 운영 테이블과 동일 — 행 격리는 RLS가 담당)
+grant all on table public.drug_lots to anon;
+grant all on table public.drug_lots to authenticated;
+grant all on table public.drug_lots to service_role;
+
 -- ────────────────────────────────────────────────────────────────
 -- 2) tenant 자동 태깅 트리거 (기존 set_tenant_id_from_user 재사용)
 -- ────────────────────────────────────────────────────────────────
@@ -82,4 +87,10 @@ commit;
 -- select policyname, cmd from pg_policies where tablename='drug_lots';     -- own_tenant 4종
 -- select indexname from pg_indexes where tablename='drugs' and indexname='drugs_tenant_drug_code_key';
 -- select count(*) from public.drugs;                                      -- 1103 (무변동)
+--
+-- ════════════════════════════════════════════════════════════════
+-- 롤백 (역방향) — 필요 시 실행. 가산적이라 데이터 영향 없음.
+-- ────────────────────────────────────────────────────────────────
+-- drop index if exists public.drugs_tenant_drug_code_key;
+-- drop table if exists public.drug_lots cascade;   -- 정책·트리거·인덱스 함께 제거
 -- ════════════════════════════════════════════════════════════════
