@@ -48,6 +48,9 @@ const CONFIG = {
   // 약품명 있고 코드 없는 행(중지 단종 약품 등)에 부여할 합성 코드 접두사.
   // 출현순 결정적 부여 → 재실행해도 동일 → upsert 안전. null이면 합성 안 함(코드없으면 제외).
   SYNTH_CODE_PREFIX: 'NOCODE-',
+  // import 게이트: true면 '확인필요'·빈 보관방법이 있을 때 --commit 적재를 보류(재발 방지).
+  // 기본 false = 경고만(가산적, 기존 동작 무변).
+  STRICT_VOCAB: false,
 }
 
 const COMMIT = process.argv.includes('--commit')
@@ -188,6 +191,17 @@ if (invalid.length) {
   console.log('무효행 예시(행번호):', invalid.slice(0, 3).map(p => p._row))
 }
 console.log('drugs 샘플:', valid.slice(0, 2).map(p => ({ drug_code: p.drug_code, drug_name: p.drug_name, category: p.category, current_qty: p.current_qty, narcotic_type: p.narcotic_type })))
+
+// ── import 게이트: '확인필요'(규제/전문)·빈 보관방법 검증 (재발 방지) ──
+//    ※ 기존 225·483 보강이 아니라, 향후 적재 시 같은 미보강 데이터가 재유입되는 것을 경고/보류.
+const needReview = valid.filter(p => p.narcotic_type === '확인필요' || p.prescription_type === '확인필요')
+const blankStorage = valid.filter(p => !p.storage_method)
+if (needReview.length || blankStorage.length) {
+  console.log(`⚠️ import 게이트: 확인필요(규제/전문) ${needReview.length}건 · 보관방법 빈값 ${blankStorage.length}건 — 보강 권장`)
+  if (CONFIG.STRICT_VOCAB && COMMIT) {
+    die('STRICT_VOCAB: 확인필요/빈 보관방법이 남아 있어 적재를 보류합니다. 통합본·약가마스터로 보강 후 재시도하세요.')
+  }
+}
 
 if (!COMMIT) {
   console.log('─'.repeat(60))
