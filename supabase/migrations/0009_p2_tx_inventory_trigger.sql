@@ -18,20 +18,34 @@ alter table public.drugs
 
 -- ────────────────────────────────────────────────────────────────
 -- 2) 거래 적용 함수 — type별 증감을 inventory_stock·drugs.current_qty에 원자 반영
---    입고 +, 반품 +(반납 재입고), 출고 −, 폐기 −
+--    입고 + / 출고 − / 폐기 − / 반품 −(공급처 반품 = 재고 차감)
+--    음수 재고 차단: delta<0 일 때 현재고 부족이면 예외(거래 INSERT 전체 롤백).
+--    ★ 단일 정본: inventory_stock·drugs.current_qty는 '이 트리거만' 갱신한다.
+--      프론트/다른 경로에서 current_qty를 직접 수정 금지(거래로만 변동).
 --    SECURITY DEFINER: 트리거가 재고 행을 일관 갱신(같은 tenant 한정)
 -- ────────────────────────────────────────────────────────────────
 create or replace function public.apply_tx_to_inventory()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
   delta integer;
+  cur   integer;
 begin
   delta := case new.type
     when '입고' then  new.quantity
-    when '반품' then  new.quantity
     when '출고' then -new.quantity
     when '폐기' then -new.quantity
+    when '반품' then -new.quantity
     else 0 end;
+
+  -- 음수 재고 차단 (출고·폐기·반품)
+  if delta < 0 then
+    select current_qty into cur from public.inventory_stock
+      where drug_code = new.drug_code and tenant_id = new.tenant_id;
+    if coalesce(cur, 0) + delta < 0 then
+      raise exception '재고 부족: % (현재고 %, 차감요청 %)', new.drug_code, coalesce(cur, 0), -delta
+        using errcode = 'check_violation';
+    end if;
+  end if;
 
   if delta <> 0 then
     update public.inventory_stock

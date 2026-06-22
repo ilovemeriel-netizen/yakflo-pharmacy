@@ -76,7 +76,10 @@
 | 로트/유효기한 | `lot_no`·`expiry_date` | |
 | 공급처·담당·승인 | `supplier`·`handler`·`approver` | |
 | 사유·상태·메모 | `reason`·`process_status`·`memo` | |
-> 쓰기는 RLS·권한(owner/admin/member) 경유. 재고 반영(inventory_stock 갱신)은 RPC/트리거 또는 명시적 갱신 — **P2-4에서 방식 확정**.
+> 쓰기는 RLS·권한(owner/admin/member) 경유.
+> **재고 단일 정본(P2-4 확정)**: `inventory_stock.current_qty`·`drugs.current_qty`는 거래 트리거
+> `trg_apply_tx_to_inventory`(0009)**만** 갱신한다 — 입고 +, 출고·폐기·반품 −(공급처 반품), 음수 재고는 예외로 차단.
+> UI·다른 경로에서 `current_qty`를 **직접 수정 금지**(재고는 거래로만 변동). 활성화/복귀는 `status`만 변경.
 
 ### 재고 현황 상태 분기 (inventory_stock 기준)
 | 상태 | 조건 | 색 |

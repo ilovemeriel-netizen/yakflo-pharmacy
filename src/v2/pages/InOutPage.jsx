@@ -4,8 +4,9 @@ import { searchDrugs, insertTransaction, insertLot, fetchRecentTransactions, fet
 
 const TYPES = [
   { v: '입고', sign: '+' }, { v: '출고', sign: '−' },
-  { v: '반품', sign: '+' }, { v: '폐기', sign: '−' },
+  { v: '반품', sign: '−' }, { v: '폐기', sign: '−' },
 ]
+const OUTBOUND = ['출고', '폐기', '반품'] // 재고 차감 — 현재고 초과 차단
 const today = () => new Date().toISOString().slice(0, 10)
 
 export default function InOutPage() {
@@ -44,6 +45,9 @@ export default function InOutPage() {
     if (!picked) { setMsg({ t: 'err', m: '약품을 선택하세요.' }); return }
     const nQty = Number(qty)
     if (!nQty || nQty <= 0) { setMsg({ t: 'err', m: '수량을 입력하세요.' }); return }
+    if (OUTBOUND.includes(type) && nQty > (picked.current_qty || 0)) {
+      setMsg({ t: 'err', m: `현재고 부족: ${picked.drug_name} 현재고 ${picked.current_qty || 0}, ${type} 요청 ${nQty}` }); return
+    }
     setBusy(true); setMsg(null)
     try {
       await insertTransaction({
