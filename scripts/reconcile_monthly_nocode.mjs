@@ -58,6 +58,10 @@ const num = v => { const n = parseFloat(String(v).replace(/,/g, '')); return Num
 // ── 정규화 (비교 전용) ──
 const norm1 = s => (s || '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase()
 const norm2 = s => norm1(s).replace(/[\s()[\]{}·∙•・,./\\\-_'"`~]+/g, '')
+// 핵심명: 괄호 주석 제거(norm3), 그리고 '/' 앞부분만(norm4) — 변경/대체/중단 주석 제거용
+const stripParen = s => (s || '').replace(/[(（[][^)）\]]*[)）\]]/g, ' ')
+const norm3 = s => norm2(stripParen(s))
+const norm4 = s => norm2(stripParen(s).split('/')[0])
 
 async function main() {
   const env = { ...readEnvFile('.env') }
@@ -79,8 +83,8 @@ async function main() {
   // ── drugs 정본: 이름 → 코드 (exact / norm1 / norm2) ──
   const exactName = new Map()
   const codeToName = new Map()
-  const n1 = new Map()   // norm1 → Set(code)
-  const n2 = new Map()   // norm2 → Set(code)
+  const n1 = new Map(), n2 = new Map(), n3 = new Map(), n4 = new Map()   // norm키 → Set(code)
+  const add = (map, k, code) => { if (k) { if (!map.has(k)) map.set(k, new Set()); map.get(k).add(code) } }
   let drugCount = 0
   for (let from = 0; ; from += 1000) {
     const { data, error } = await sb.from('drugs').select('drug_code,drug_name').eq('tenant_id', tid).range(from, from + 999)
@@ -91,12 +95,12 @@ async function main() {
       const nm = d.drug_name || ''
       codeToName.set(d.drug_code, nm)
       if (nm && !exactName.has(nm.trim())) exactName.set(nm.trim(), d.drug_code)
-      const k1 = norm1(nm); if (k1) { if (!n1.has(k1)) n1.set(k1, new Set()); n1.get(k1).add(d.drug_code) }
-      const k2 = norm2(nm); if (k2) { if (!n2.has(k2)) n2.set(k2, new Set()); n2.get(k2).add(d.drug_code) }
+      add(n1, norm1(nm), d.drug_code); add(n2, norm2(nm), d.drug_code)
+      add(n3, norm3(nm), d.drug_code); add(n4, norm4(nm), d.drug_code)
     }
     if (data.length < 1000) break
   }
-  console.log(`drugs 정본 ${drugCount}종 로드 (exact ${exactName.size} · norm1 ${n1.size} · norm2 ${n2.size})`)
+  console.log(`drugs 정본 ${drugCount}종 로드`)
 
   const uniq = (map, k) => { const s = map.get(k); return s && s.size === 1 ? [...s][0] : null }
 
@@ -117,7 +121,9 @@ async function main() {
   const recDbg = []                // 회복 매칭쌍 검증용: {mo, code, csvName, dbName, how}
   const residual = []              // 미복원: {mo, name, used, inq, disp, ret, close, open}
   const stat = {}                  // 월별 집계
-  let viaCsvCode = 0, viaExact = 0, viaN1 = 0, viaN2 = 0, ambiguous = 0
+  let viaCsvCode = 0, viaExact = 0, ambiguous = 0
+  const viaNorm = { n1: 0, n2: 0, n3: 0, n4: 0 }
+  const ambDbg = new Map()  // csvName → [후보 codes]
   for (const r of ms) {
     const m = (r.snapshot_month || '').match(/^(\d{4})-(\d{2})$/); if (!m) continue
     const yr = +m[1], mo = +m[2]
@@ -126,17 +132,18 @@ async function main() {
     stat[mo].csv++
     const name = r['약품명'] || ''
 
-    // 매칭 우선순위
+    // 매칭 우선순위: CSV코드 → 정확명 → norm1 → norm2 → norm3(괄호제거) → norm4('/'앞)
     let code = null, how = null
     if (r.drug_code && r.drug_code.trim()) { code = r.drug_code.trim(); how = 'csvcode' }
     else if (exactName.has(name.trim())) { code = exactName.get(name.trim()); how = 'exact' }
     else {
-      const c1 = uniq(n1, norm1(name))
-      if (c1) { code = c1; how = 'n1' }
-      else {
-        const c2 = uniq(n2, norm2(name))
-        if (c2) { code = c2; how = 'n2' }
-        else if ((n1.get(norm1(name))?.size || 0) > 1 || (n2.get(norm2(name))?.size || 0) > 1) { how = 'ambiguous' }
+      for (const [tier, fn, map] of [['n1', norm1, n1], ['n2', norm2, n2], ['n3', norm3, n3], ['n4', norm4, n4]]) {
+        const c = uniq(map, fn(name)); if (c) { code = c; how = tier; break }
+      }
+      if (!code) {
+        for (const [, fn, map] of [['n1', norm1, n1], ['n2', norm2, n2], ['n3', norm3, n3], ['n4', norm4, n4]]) {
+          const s = map.get(fn(name)); if (s && s.size > 1) { how = 'ambiguous'; ambDbg.set(name, [...s]); break }
+        }
       }
     }
 
@@ -144,12 +151,12 @@ async function main() {
     if (how === 'exact') viaExact++
 
     // 회복 대상 = 정규화로만 매칭된 신규 키 (기존 DB·정확매칭 미존재)
-    if ((how === 'n1' || how === 'n2') && code) {
+    if (['n1', 'n2', 'n3', 'n4'].includes(how) && code) {
       const key = `${mo}|${code}`
       if (existing.has(key) || recByKey.has(key)) {
         // 이미 적재됐거나 같은 배치서 중복 → 가산 대상 아님
       } else {
-        if (how === 'n1') viaN1++; else viaN2++
+        viaNorm[how]++
         recDbg.push({ mo, code, csvName: name, dbName: codeToName.get(code), how })
         const open = num(r.opening_qty), inq = num(r.in_qty)
         recByKey.set(key, {
@@ -194,7 +201,7 @@ async function main() {
 
   // ── 보고 ──
   console.log('\n── 매칭 요약 ──')
-  console.log(`CSV코드 ${viaCsvCode} · 정확명 ${viaExact} · norm1회복 ${viaN1} · norm2회복 ${viaN2} · 모호(자동제외) ${ambiguous}`)
+  console.log(`CSV코드 ${viaCsvCode} · 정확명 ${viaExact} · norm1 ${viaNorm.n1} · norm2 ${viaNorm.n2} · norm3(괄호) ${viaNorm.n3} · norm4('/') ${viaNorm.n4} · 모호(자동제외) ${ambiguous}`)
   console.log(`회복(신규 upsert 대상) ${recs.length}행`)
 
   console.log('\n── 회복 매칭쌍 검증 (월마감명 → 정본명) ──')
@@ -220,6 +227,9 @@ async function main() {
   // 잔여 명단 (상태별, 월 무관 유니크 이름)
   const byCls = { 사용: new Set(), 휴면: new Set(), 중지: new Set() }
   for (const r of residual) byCls[r.cls].add(r.name)
+  console.log('\n── 모호(다중 후보로 자동제외) ──')
+  for (const [nm, codes] of ambDbg) console.log(`  · ${nm}\n     후보: ${codes.map(c => `${c}(${codeToName.get(c)})`).join(' | ')}`)
+
   console.log('\n── 잔여 미복원 명단(유니크) ──')
   for (const cls of ['사용', '휴면', '중지']) {
     const arr = [...byCls[cls]].sort()
