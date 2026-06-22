@@ -1,0 +1,3 @@
+# SPA fallback — react-router 딥링크(/app/*) 새로고침 시 index.html 서빙.
+# Netlify Functions(/api/*)는 함수 path 바인딩이 우선하므로 영향 없음.
+/*    /index.html   200
