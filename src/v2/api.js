@@ -32,7 +32,7 @@ export async function fetchDrugs({ page = 0, pageSize = 50, category = '', statu
   else if (statuses.length > 1) q = q.in('status', statuses)
   const s = sanitize(search)
   if (s) q = q.or(`drug_name.ilike.%${s}%,drug_code.ilike.%${s}%`)
-  q = q.order('status').order('drug_name').range(page * pageSize, page * pageSize + pageSize - 1)
+  q = q.order('status_sort').order('drug_name').range(page * pageSize, page * pageSize + pageSize - 1)
   const { data, count, error } = await q
   if (error) throw error
   return { rows: data || [], total: count || 0 }
