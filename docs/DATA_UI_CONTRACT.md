@@ -90,9 +90,11 @@
 
 ---
 
-## 7. 미결 사항 (구현 전 확인 필요)
-1. **보험코드 정본**: `insurance_code` vs `edi_code` 중 무엇을 표시·검색 기준으로? (둘 다 데이터 있는지 확인 필요)
-2. **재고 정본**: 운영 현재고를 `inventory_stock`으로 단일화 OK? (drugs.current_qty는 시드)
-3. **drug_lots**: 부재 → 유효기한 탭 로트별 관리. (a) 테이블 신설 (b) drugs.lot_no/expiry_date 단일 로트로 제한. → **부수 결정 항목**
-4. **drug_code unique index**: 360° 조인 신뢰성 위해 가산적 추가 권장(별도 마이그레이션).
-5. **ATC 부재**: 가이드 ATC 도넛은 구분 분포로 대체 — 합의 필요.
+## 7. 미결 사항 → 결정 (P2-2 재대조 결과 반영)
+1. ✅ **보험코드 정본 = `insurance_code`** — 라이브 실측: `insurance_code` 523건 / `edi_code` 0건(빈값). edi_code 미사용.
+2. ✅ **재고 정본 = `inventory_stock`** — `drugs.current_qty`는 마스터 시드, 운영 현재고는 inventory_stock.
+3. ✅ **drug_lots 신설** — `0008` 마이그레이션으로 생성(App LotModal 호환 컬럼 + RLS + tenant 트리거). 유효기한 탭은 drug_lots(로트별) + drugs.expiry_date(대표) 병행.
+4. ✅ **drug_code unique index 추가** — 라이브 중복 0 확인 → `drugs(tenant_id, drug_code)` unique(`0008`).
+5. ✅ **ATC 부재 → 구분(category) 분포로 대체** (대시보드 도넛).
+
+> 보험약가 = `edi_price`(>0 506건). 코드 조인은 RLS 테넌트 스코프 내에서 `drug_code` 단일 축.
