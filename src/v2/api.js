@@ -20,19 +20,28 @@ function sanitize(s) {
   return String(s || '').replace(/[(),*%]/g, ' ').trim()
 }
 
-/* 약품 목록 — 서버 페이지네이션(.range) + count. 필터는 drug_vocab 값. */
-export async function fetchDrugs({ page = 0, pageSize = 50, category = '', status = '', search = '' }) {
-  let q = supabase
-    .from('drugs')
-    .select('drug_code,drug_name,category,current_qty,expiry_date,status,is_narcotic,narcotic_type,insurance_type,ingredient_kr', { count: 'exact' })
+const LIST_COLS = 'drug_code,drug_name,category,current_qty,expiry_date,status,is_narcotic,narcotic_type,ingredient_kr,insurance_type,insurance_code,storage_method'
+
+/* 약품 목록 — 서버 페이지네이션(.range) + count.
+   statuses: 표시할 상태 배열(예: 메인=['사용','휴면'], 아카이브=['중지']).
+   정렬 status asc → 사용(ㅅ)<중지(ㅈ)<휴면(ㅎ) 이므로 메인에서 '사용 우선'. */
+export async function fetchDrugs({ page = 0, pageSize = 50, category = '', statuses = [], search = '' }) {
+  let q = supabase.from('drugs').select(LIST_COLS, { count: 'exact' })
   if (category) q = q.eq('category', category)
-  if (status) q = q.eq('status', status)
+  if (statuses.length === 1) q = q.eq('status', statuses[0])
+  else if (statuses.length > 1) q = q.in('status', statuses)
   const s = sanitize(search)
   if (s) q = q.or(`drug_name.ilike.%${s}%,drug_code.ilike.%${s}%`)
-  q = q.order('drug_name').range(page * pageSize, page * pageSize + pageSize - 1)
+  q = q.order('status').order('drug_name').range(page * pageSize, page * pageSize + pageSize - 1)
   const { data, count, error } = await q
   if (error) throw error
   return { rows: data || [], total: count || 0 }
+}
+
+/* 상태 변경(활성화 휴면→사용 / 복귀 중지→사용) — RLS update_own_tenant 경유 */
+export async function updateDrugStatus(code, status) {
+  const { error } = await supabase.from('drugs').update({ status }).eq('drug_code', code)
+  if (error) throw error
 }
 
 /* 약품 360° 탭 소스 (코드 조인, RLS 경유) */

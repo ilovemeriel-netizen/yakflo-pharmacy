@@ -4,6 +4,7 @@ import Layout from './v2/Layout.jsx'
 import RequireAuth from './v2/RequireAuth.jsx'
 import Placeholder from './v2/Placeholder.jsx'
 import DrugsPage from './v2/pages/DrugsPage.jsx'
+import ArchivePage from './v2/pages/ArchivePage.jsx'
 
 /* P2-1 라우팅 골격 (가산적)
    - '/'(및 그 외 모든 경로): 기존 App.jsx 그대로 보존 — 이메일 로그인→drugs 1103 동작 무수정
@@ -15,6 +16,7 @@ export default function Root() {
         <Route path="/app" element={<RequireAuth><Layout /></RequireAuth>}>
           <Route index element={<Placeholder title="대시보드" step="P2 / 대시보드" source="drugs(category·status·is_narcotic) 집계 + inventory_stock" />} />
           <Route path="drugs" element={<DrugsPage />} />
+          <Route path="archive" element={<ArchivePage />} />
           <Route path="inout" element={<Placeholder title="입출고관리" step="P2-4" source="transactions(type·quantity·unit_price·supplier…)" />} />
           <Route path="inventory" element={<Placeholder title="재고관리" step="P2-4" source="inventory_stock(current_qty·safety_stock·max_stock)" />} />
           <Route path="expiry" element={<Placeholder title="유효기한" step="P2-2 / drug_lots 신설" source="drugs.expiry_date·lot_no (+ drug_lots 예정)" />} />
