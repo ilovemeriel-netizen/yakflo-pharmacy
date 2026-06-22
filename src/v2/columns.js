@@ -23,6 +23,15 @@ export const STATUS_CHIP = {
   중지: { bg: '#f0f0f2', fg: '#888' },
 }
 
+/* 재고 현황 상태 — current_qty vs safety_stock/max_stock (부족/발주/정상/과잉) */
+export function stockStatus(d) {
+  const q = d.current_qty || 0, sf = d.safety_stock || 0, mx = d.max_stock || 0
+  if (q === 0) return { label: '부족', bg: '#fde8e8', fg: '#c0392b' }
+  if (sf > 0 && q <= sf) return { label: '발주', bg: '#fff4e0', fg: '#b06a00' }
+  if (mx > 0 && q > mx) return { label: '과잉', bg: '#f0e8f7', fg: BRAND.purple }
+  return { label: '정상', bg: '#e6f6ec', fg: BRAND.green }
+}
+
 /* localStorage 기반 표시 컬럼 로드/저장 (비밀값 없음) */
 export function loadCols() {
   try {

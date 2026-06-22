@@ -44,6 +44,52 @@ export async function updateDrugStatus(code, status) {
   if (error) throw error
 }
 
+/* ── P2-4 거래·재고 ── */
+
+/* 약품 검색(거래 폼 선택용) */
+export async function searchDrugs(q, limit = 8) {
+  const s = sanitize(q)
+  if (!s) return []
+  const { data, error } = await supabase
+    .from('drugs').select('drug_code,drug_name,current_qty')
+    .or(`drug_name.ilike.%${s}%,drug_code.ilike.%${s}%`).limit(limit)
+  if (error) throw error
+  return data || []
+}
+
+/* 통합 거래 기록 — transactions INSERT(트리거가 재고 원자 갱신). tenant는 트리거 자동. */
+export async function insertTransaction(tx) {
+  const { data, error } = await supabase.from('transactions').insert([tx]).select().maybeSingle()
+  if (error) throw error
+  return data
+}
+
+/* 입고 시 로트 기록(옵션) */
+export async function insertLot(lot) {
+  const { error } = await supabase.from('drug_lots').insert([lot])
+  if (error) throw error
+}
+
+export async function fetchRecentTransactions(limit = 20) {
+  const { data, error } = await supabase
+    .from('transactions').select('*').order('created_at', { ascending: false }).limit(limit)
+  if (error) throw error
+  return data || []
+}
+
+/* 재고 현황 목록 — current_qty 오름차순(부족 우선) */
+export async function fetchInventoryList({ page = 0, pageSize = 50, category = '', search = '' }) {
+  let q = supabase
+    .from('drugs').select('drug_code,drug_name,category,current_qty,safety_stock,max_stock,status', { count: 'exact' })
+  if (category) q = q.eq('category', category)
+  const s = sanitize(search)
+  if (s) q = q.or(`drug_name.ilike.%${s}%,drug_code.ilike.%${s}%`)
+  q = q.order('current_qty', { ascending: true }).range(page * pageSize, page * pageSize + pageSize - 1)
+  const { data, count, error } = await q
+  if (error) throw error
+  return { rows: data || [], total: count || 0 }
+}
+
 /* 약품 360° 탭 소스 (코드 조인, RLS 경유) */
 export async function fetchDrug(code) {
   const { data, error } = await supabase.from('drugs').select('*').eq('drug_code', code).maybeSingle()
