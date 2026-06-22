@@ -1826,6 +1826,10 @@ function MyPage({ profile, onProfileUpdated }) {
   const [toast, setToast] = useState(null)
   const [errMsg, setErrMsg] = useState(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [newPw, setNewPw] = useState('')
+  const [newPw2, setNewPw2] = useState('')
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwMsg, setPwMsg] = useState(null)
   const isEmailUser = (user?.app_metadata?.provider || 'email') === 'email'
 
   useEffect(() => {
@@ -1840,6 +1844,18 @@ function MyPage({ profile, onProfileUpdated }) {
     if (error) { setErrMsg(error.message.includes('profiles') ? '프로필 테이블이 아직 준비되지 않았습니다. DB 스키마(profiles_schema.sql)를 먼저 실행해 주세요.' : error.message); return }
     setToast({ msg: '저장되었습니다', kind: 'ok' })
     onProfileUpdated?.()
+  }
+
+  async function handleChangePw() {
+    setPwMsg(null)
+    if (newPw.length < 6) { setPwMsg('비밀번호는 6자 이상이어야 합니다'); return }
+    if (newPw !== newPw2) { setPwMsg('비밀번호가 일치하지 않습니다'); return }
+    setPwSaving(true)
+    const { error } = await supabase.auth.updateUser({ password: newPw })
+    setPwSaving(false)
+    if (error) { setPwMsg(error.message); return }
+    setNewPw(''); setNewPw2('')
+    setPwMsg('✅ 비밀번호가 변경되었습니다')
   }
 
   const ip = { width: '100%', padding: '11px 14px', border: `1.5px solid ${t.border}`, borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.card, color: t.text, transition: 'border-color .15s' }
@@ -1902,10 +1918,31 @@ function MyPage({ profile, onProfileUpdated }) {
       </div>
     </div>
 
-    {/* 비밀번호 안내 */}
-    <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, padding: '16px 20px', fontSize: 12, color: t.textM, lineHeight: 1.6, marginBottom: 16 }}>
-      비밀번호를 변경하려면 로그아웃 후 로그인 화면의 <span style={{ color: t.accent, fontWeight: 600 }}>비밀번호 찾기</span>를 이용해 주세요.
-    </div>
+    {/* 비밀번호 변경 */}
+    {isEmailUser ? (
+      <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, padding: '20px 24px', marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>비밀번호 변경</div>
+        <div style={{ fontSize: 11, color: t.textL, marginBottom: 14 }}>임시 비밀번호를 받으셨다면 여기서 정식 비밀번호로 바꿔 주세요.</div>
+        {pwMsg && <div style={{ background: pwMsg.startsWith('✅') ? t.greenL : t.redL, color: pwMsg.startsWith('✅') ? t.green : t.red, borderRadius: 8, padding: '9px 12px', marginBottom: 12, fontSize: 12, fontWeight: 500 }}>{pwMsg}</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <label style={lb}>새 비밀번호</label>
+            <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="6자 이상" style={ip} autoComplete="new-password" />
+          </div>
+          <div>
+            <label style={lb}>새 비밀번호 확인</label>
+            <input type="password" value={newPw2} onChange={e => setNewPw2(e.target.value)} placeholder="6자 이상" style={ip} autoComplete="new-password" onKeyDown={e => e.key === 'Enter' && handleChangePw()} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+          <button onClick={handleChangePw} disabled={pwSaving} style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: pwSaving ? t.textL : t.accent, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: pwSaving ? 'not-allowed' : 'pointer' }}>{pwSaving ? '변경 중...' : '비밀번호 변경'}</button>
+        </div>
+      </div>
+    ) : (
+      <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, padding: '16px 20px', fontSize: 12, color: t.textM, lineHeight: 1.6, marginBottom: 16 }}>
+        소셜 로그인 계정은 별도 비밀번호가 없습니다. 가입하신 카카오·네이버 등에서 비밀번호를 관리해 주세요.
+      </div>
+    )}
 
     {/* 회원 탈퇴 섹션 */}
     <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.red}30`, padding: '16px 20px' }}>
@@ -2158,7 +2195,7 @@ function LoginPage({ onLogin }) {
   async function handleReset() {
     if (!email) { setMsg('이메일을 입력해주세요'); return }
     setLoading(true); setMsg(null)
-    const { error } = await supabase.auth.resetPasswordForEmail(email)
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin })
     setLoading(false)
     if (error) { setMsg(error.message); return }
     setMsg('✅ 비밀번호 재설정 링크를 이메일로 보냈습니다')
@@ -2217,6 +2254,40 @@ function LoginPage({ onLogin }) {
   </div>
 }
 
+/* ═══ 비밀번호 재설정(복구) 페이지 — 이메일 링크 클릭 시 노출 ═══ */
+function RecoveryPage({ onDone }) {
+  const [pw, setPw] = useState('')
+  const [pw2, setPw2] = useState('')
+  const [msg, setMsg] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const t = themes.light
+  async function handleUpdate() {
+    if (pw.length < 6) { setMsg('비밀번호는 6자 이상이어야 합니다'); return }
+    if (pw !== pw2) { setMsg('비밀번호가 일치하지 않습니다'); return }
+    setLoading(true); setMsg(null)
+    const { error } = await supabase.auth.updateUser({ password: pw })
+    setLoading(false)
+    if (error) { setMsg(error.message); return }
+    setMsg('✅ 비밀번호가 변경되었습니다. 잠시 후 이동합니다…')
+    setTimeout(() => onDone?.(), 1000)
+  }
+  const ip = { width: '100%', padding: '12px 16px', border: `1.5px solid ${t.border}`, borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: '#fff', color: t.text }
+  return <div style={{ minHeight: '100vh', background: `linear-gradient(135deg, ${t.nav} 0%, #804A87 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+    <style>{`@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');*{font-family:'Roboto','Apple SD Gothic Neo',sans-serif;}`}</style>
+    <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 400, padding: '40px 36px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+      <div style={{ textAlign: 'center', marginBottom: 28 }}>
+        <div style={{ width: 56, height: 56, borderRadius: 14, background: `linear-gradient(135deg, #804A87, #019748)`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: 24, fontWeight: 700, color: '#fff' }}>+</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: t.nav }}>새 비밀번호 설정</div>
+        <div style={{ fontSize: 12, color: t.textL, marginTop: 4 }}>사용할 새 비밀번호를 입력해 주세요</div>
+      </div>
+      {msg && <div style={{ background: msg.startsWith('✅') ? t.greenL : t.redL, borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: msg.startsWith('✅') ? t.green : t.red, fontSize: 13, fontWeight: 500 }}>{msg}</div>}
+      <div style={{ marginBottom: 14 }}><label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 4, fontWeight: 500 }}>새 비밀번호</label><input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="6자 이상" style={ip} autoComplete="new-password" /></div>
+      <div style={{ marginBottom: 18 }}><label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 4, fontWeight: 500 }}>새 비밀번호 확인</label><input type="password" value={pw2} onChange={e => setPw2(e.target.value)} placeholder="6자 이상" style={ip} autoComplete="new-password" onKeyDown={e => e.key === 'Enter' && handleUpdate()} /></div>
+      <button onClick={handleUpdate} disabled={loading} style={{ width: '100%', padding: 14, borderRadius: 10, border: 'none', background: loading ? t.textL : `linear-gradient(135deg, #804A87, #019748)`, color: '#fff', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>{loading ? '처리 중...' : '비밀번호 변경'}</button>
+    </div>
+  </div>
+}
+
 /* ═══ 메인 App ═══ */
 export default function App() {
   const [dark, setDark] = useState(false)
@@ -2224,6 +2295,7 @@ export default function App() {
   const [profile, setProfile] = useState(null)
   const [memberRole, setMemberRole] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [recovery, setRecovery] = useState(false)
   const [menu, setMenu] = useState('dashboard')
   const [drugs, setDrugs] = useState([])
   const [inv, setInv] = useState([])
@@ -2240,7 +2312,10 @@ export default function App() {
   /* 인증 상태 확인 */
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => { setUser(session?.user || null); setAuthLoading(false) })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => { setUser(session?.user || null) })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (_event === 'PASSWORD_RECOVERY') setRecovery(true)
+      setUser(session?.user || null)
+    })
     return () => subscription.unsubscribe()
   }, [])
 
@@ -2296,6 +2371,9 @@ export default function App() {
       </div>
     </ThemeCtx.Provider>
   )
+
+  /* 비밀번호 재설정 링크 진입 → 새 비밀번호 설정 화면 (로그인 여부보다 우선) */
+  if (recovery) return <RecoveryPage onDone={() => setRecovery(false)} />
 
   /* 미로그인 → 로그인 페이지 */
   if (!user) return <LoginPage />
