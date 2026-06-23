@@ -10,6 +10,7 @@
 
 ## 1) status '??' 보정 (Task2) — 준비 완료·미실행
 - 비정규 status 전수(사용/중지/휴면 외): **DWASPI100 1건** (status='??' hex 3f3f, qty 1500). 그 외 0건.
+- **치환문자 전수 점검(2026-06-23 확장)**: drugs 11개 텍스트 컬럼(drug_name·ingredient_kr/en·manufacturer·category·specification·storage_method·memo·notes·dosage·status) 및 inventory_stock.drug_name에서 `?`(0x3F)·U+FFFD 잔재 검색 → **status 1건(DWASPI100)만 해당, 그 외 전부 0**. 한글 데이터는 정상 UTF-8(콘솔 깨짐은 표시 인코딩일 뿐). 즉 보정 대상은 1건 단독.
 - 보정 스크립트 `scripts/fix_status_anomaly.mjs`(미리보기 기본, `--commit`/`--status=` 지정). 기본 보정값 '사용'(qty 1500·활성). 가드(원본값 그대로일 때만)·롤백 SQL 출력.
 - 롤백: `update drugs set status='??' where tenant_id='<cnc>' and drug_code='DWASPI100';`
 
