@@ -48,3 +48,11 @@ export async function fetchMonthlyReport(year) {
   if (error) throw error
   return data || []
 }
+
+/* 월간 보고서 상세(단일 월): 재고현황·입출고·손실·유효기간 집계 RPC(0017).
+   폐기/반품 금액은 행 단가(기말금액/기말수량) 기반, 유효기간은 현재 시점 drugs 기준. */
+export async function fetchMonthlyReportDetail(year, month) {
+  const { data, error } = await supabase.rpc('app_monthly_report_detail', { p_year: year, p_month: month })
+  if (error) throw error
+  return data
+}
