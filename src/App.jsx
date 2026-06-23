@@ -721,7 +721,8 @@ const DRUG_COLS = [
   { key: 'manufacturer', label: '제조사', default: true, align: 'left' },
   { key: 'unit', label: '단위', default: false, align: 'center' },
   { key: 'specification', label: '규격', default: false, align: 'center' },
-  { key: 'price_unit', label: '단가', default: true, align: 'right' },
+  { key: 'edi_price', label: '단가', default: true, align: 'right' },
+  { key: 'price_unit', label: '통당단가', default: false, align: 'right' },
   { key: 'insurance_price', label: 'EDI단가', default: false, align: 'right' },
   { key: 'current_qty', label: '현재고', default: true, align: 'right' },
   { key: 'insurance_type', label: '급여구분', default: true, align: 'center' },
@@ -734,6 +735,7 @@ const DRUG_COLS = [
 ]
 
 function DrugList({ drugs, navFilter: nf, onEdit }) {
+  const __pe = useTheme(); const canEditPrice = __pe.profile?.role === 'admin' || __pe.memberRole === 'owner' || __pe.memberRole === 'admin'; const [ediOv, setEdiOv] = useState({}); const [ediEdit, setEdiEdit] = useState(null); async function saveEdi(code, raw) { const v = Number(raw); if (raw === '' || Number.isNaN(v) || v < 0) { setEdiEdit(null); return } const { error } = await supabase.from('drugs').update({ edi_price: v }).eq('drug_code', code); if (!error) setEdiOv(o => ({ ...o, [code]: v })); setEdiEdit(null) }
   const { t } = useTheme(); const [search, setSearch] = useState(''); const [cats, setCats] = useState(CATS); const [stats, setStats] = useState(nf?.status || ['사용']); const [narcOnly, setNarcOnly] = useState(false); const [insF, setInsF] = useState(nf?.insType || '전체'); const [page, setPage] = useState(1); const [visCols, setVisCols] = useState(DRUG_COLS.filter(c => c.default).map(c => c.key))
   const { hs, so, SI, TS } = useSort('drug_name')
   useEffect(() => { if (nf?.status) setStats(Array.isArray(nf.status) ? nf.status : [nf.status]); if (nf?.narcotic) setNarcOnly(true); else setNarcOnly(false); if (nf?.insType) setInsF(nf.insType); else setInsF('전체'); setPage(1) }, [nf])
@@ -746,6 +748,7 @@ function DrugList({ drugs, navFilter: nf, onEdit }) {
     if (col.key === 'ingredient_kr') return <span title={d.ingredient_kr || ''} style={{ color: t.textM, fontSize: 11, maxWidth: 140, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{d.ingredient_kr || '-'}</span>
     if (col.key === 'ingredient_en') return <span title={d.ingredient_en || ''} style={{ color: t.textL, fontSize: 10, maxWidth: 140, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle', fontStyle: 'italic' }}>{d.ingredient_en || '-'}</span>
     if (col.key === 'current_qty') return <span style={{ fontWeight: 600, color: d.current_qty === 0 ? t.red : t.text }}>{d.current_qty?.toLocaleString()}</span>
+    if (col.key === 'edi_price') { const cur = ediOv[d.drug_code] ?? d.edi_price; if (ediEdit === d.drug_code) return <input autoFocus type="number" min="0" defaultValue={cur || ''} onKeyDown={e => { if (e.key === 'Enter') saveEdi(d.drug_code, e.target.value); if (e.key === 'Escape') setEdiEdit(null) }} onBlur={e => saveEdi(d.drug_code, e.target.value)} style={{ width: 72, padding: '2px 4px', border: `1px solid ${t.accent}`, borderRadius: 4, fontSize: 11, textAlign: 'right' }} />; const disp = cur ? Number(cur).toLocaleString() + '원' : '-'; return canEditPrice ? <span onClick={() => setEdiEdit(d.drug_code)} title="클릭하여 구입단가 수정 (owner/admin)" style={{ cursor: 'pointer', borderBottom: `1px dashed ${t.textL}` }}>{disp}</span> : disp }
     if (col.key === 'price_unit') return d.price_unit ? d.price_unit.toLocaleString() + '원' : '-'
     if (col.key === 'insurance_type') return isNonIns(d) ? <Bd bg={t.blueL} color={t.blue}>비보험</Bd> : <span style={{ fontSize: 10, color: t.textL }}>보험</span>
     if (col.key === 'expiry_date') return <span style={exS(d.expiry_date, t)}>{d.expiry_date || '-'}</span>
