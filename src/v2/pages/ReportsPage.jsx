@@ -85,7 +85,7 @@ export default function ReportsPage() {
                 ))}
                 <tr style={{ background: 'rgba(46,74,98,0.05)' }}>
                   <td style={{ ...td, fontWeight: 800 }}>합계</td>
-                  <td style={{ ...tdR, fontWeight: 700 }}>{tot.items.toLocaleString()}</td>
+                  <td style={{ ...tdR, fontWeight: 700, color: T.textL }} title="품목수는 월간 합산 불가(중복)">—</td>
                   <td style={{ ...tdR, fontWeight: 700 }}>{fmtQ(tot.in_qty)}</td>
                   <td style={{ ...tdR, fontWeight: 700 }}>{fmtW(tot.in_amt)}</td>
                   <td style={{ ...tdR, fontWeight: 700 }}>{fmtQ(tot.out_qty)}</td>
