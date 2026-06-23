@@ -370,7 +370,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   async function save() {
     if (!f.drug_name.trim()) { setMsg('약품명 필수'); return }
     setSaving(true); setMsg(null)
-    const ud = { drug_name: f.drug_name, category: f.category, ingredient_kr: f.ingredient_kr, manufacturer: f.manufacturer, price_unit: Number(f.price_unit) || 0, current_qty: Number(f.current_qty) || 0, expiry_date: f.expiry_date || null, status: f.status, is_narcotic: f.narcotic_type !== '일반' }
+    const ud = { drug_name: f.drug_name, category: f.category, ingredient_kr: f.ingredient_kr, manufacturer: f.manufacturer, price_unit: Number(f.price_unit) || 0, expiry_date: f.expiry_date || null, status: f.status, is_narcotic: f.narcotic_type !== '일반' }
     if (f.drug_code.trim() !== oc) ud.drug_code = f.drug_code.trim()
     const ts = (k, v) => { ud[k] = v }
     ;['narcotic_type', 'lot_no', 'insurance_type', 'insurance_code', 'ingredient_en', 'efficacy', 'efficacy_class', 'specification', 'unit', 'storage_method', 'storage_location', 'notes'].forEach(k => ts(k, f[k]))
@@ -554,9 +554,12 @@ function DrugDeleteConfirm({ drug: dr, onClose, onDeleted }) {
 function AdjustModal({ drug: dr, onClose, onSaved }) {
   const { t } = useTheme(); const [qty, setQty] = useState(dr.current_qty || 0); const [reason, setReason] = useState('실사 결과 반영'); const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null); const diff = qty - (dr.current_qty || 0)
   async function save() { if (!reason.trim()) { setMsg('사유 필수'); return }; setSaving(true)
-    const ud = { current_qty: Number(qty), last_adjusted_date: new Date().toISOString().split('T')[0], last_adjusted_qty: diff, last_adjusted_reason: `${reason} (${diff > 0 ? '+' : ''}${diff})` }
-    let res = await supabase.from('drugs').update(ud).eq('drug_code', dr.drug_code)
-    for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete ud[m[1]];res=await supabase.from('drugs').update(ud).eq('drug_code',dr.drug_code)}
+    const d = Number(qty) - (dr.current_qty || 0)
+    if (d === 0) { setSaving(false); setMsg('변동 없음'); setTimeout(() => { onSaved?.(); onClose() }, 500); return }
+    /* 실사 조정도 거래로 일원화: transactions type='조정'(quantity=목표−현재) → 0009 트리거가 drugs+inventory 동기. 직접 update 제거. */
+    const tx = { drug_code: dr.drug_code, drug_name: dr.drug_name, type: '조정', quantity: d, reason: `${reason} (${d > 0 ? '+' : ''}${d})`, transaction_date: new Date().toISOString().split('T')[0] }
+    let res = await supabase.from('transactions').insert([tx])
+    for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
     setSaving(false)
     if(res.error){setMsg(res.error.message);return}
     setMsg('OK'); setTimeout(() => { onSaved?.(); onClose() }, 500) }
@@ -1514,16 +1517,14 @@ function TransactionForm({drugs,onReload}){
     let res=await supabase.from('transactions').insert([tx])
     for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
     if(res.error){setMsg('오류: '+res.error.message);setSaving(false);return}
-    const newQty=tab==='입고'?((selDrug.current_qty||0)+q):Math.max(0,(selDrug.current_qty||0)-q)
-    await supabase.from('drugs').update({current_qty:newQty}).eq('drug_code',selDrug.drug_code)
+    /* 재고는 0009 트리거가 단일 기록(drugs+inventory 동기). 클라 직접 update·음수 절삭 제거 — 부족 시 트리거 RAISE가 위 res.error로 차단. */
     setMsg(`${tab} 완료! ${selDrug.drug_name} ${q}개`);setSelDrug(null);setSearch('');setForm(p=>({...p,qty:'',note:'',lot_no:'',expiry_date:'',reason:'',supplier:''}));setSaving(false);onReload?.();loadTxns()
     setTimeout(()=>setMsg(null),3000)
   }
   async function delTx(tx){
     if(!confirm(`${tx.drug_name} ${tx.type} ${tx.quantity}개를 삭제하시겠습니까?`))return
     await supabase.from('transactions').delete().eq('id',tx.id)
-    const d=drugs.find(x=>x.drug_code===tx.drug_code)
-    if(d){const revert=tx.type==='입고'?Math.max(0,(d.current_qty||0)-tx.quantity):(d.current_qty||0)+tx.quantity;await supabase.from('drugs').update({current_qty:revert}).eq('drug_code',tx.drug_code)}
+    /* 삭제 역보정은 0015 AFTER DELETE 트리거(trg_revert_tx_from_inventory)가 drugs+inventory 동기 처리. */
     onReload?.();loadTxns()
   }
   /* 엑셀 대량 업로드 */
@@ -1556,11 +1557,7 @@ function TransactionForm({drugs,onReload}){
       const tx={drug_code:r.drug_code,drug_name:r.drug_name,type:tab,sub_type:r.sub_type||null,quantity:r.quantity,unit_price:r.unit_price,total_amount:r.total_amount,note:r.note||null,transaction_date:r.transaction_date,reason:r.reason||null,handler:r.handler||null,approver:r.approver||null,process_status:r.process_status||null,supplier:r.supplier||null,lot_no:r.lot_no||null,expiry_date:r.expiry_date||null}
       let res=await supabase.from('transactions').insert([tx])
       for(let rt=0;rt<3&&res.error&&res.error.message?.includes('column');rt++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
-      if(!res.error){
-        const d=drugs.find(x=>x.drug_code===r.drug_code)
-        if(d){const nq=tab==='입고'?((d.current_qty||0)+r.quantity):Math.max(0,(d.current_qty||0)-r.quantity);await supabase.from('drugs').update({current_qty:nq}).eq('drug_code',r.drug_code)}
-        ok++
-      }else fail++
+      if(!res.error){ ok++ /* 재고는 0009 트리거 단일기록. 음수는 트리거 RAISE로 차단(해당 행 fail). */ }else fail++
     }
     setBulkLd(false);setBulkMsg(`완료! ${ok}건 등록, ${fail}건 실패`);setBulkData([]);onReload?.();loadTxns()
     setTimeout(()=>setBulkMsg(null),4000)
