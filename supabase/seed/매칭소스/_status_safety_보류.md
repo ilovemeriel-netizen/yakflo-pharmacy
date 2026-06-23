@@ -8,6 +8,9 @@
 - 그러나 파일 비번으로 로그인 실패(`Invalid login credentials`) → **파일의 비밀번호가 현재 계정 비번과 불일치**(옛 비번 잔존 또는 새 비번 오기입).
 - 조치 요청: 마이페이지에서 **실제 로그인되는 현재 비번**을 `.owner-login.local`의 `password=`에 정확히 입력. 기억 안 나면 Supabase Dashboard→Authentication→Users→비번 재설정 후 파일 갱신. 갱신되면 아래 ①②를 즉시 실행.
 
+## ✅ 적용 완료 (2026-06-23, owner 로그인 성공 후)
+- **status 보정 완료**: DWASPI100 `'??'`→`'사용'`(BEGIN/ROLLBACK 검증→RLS 본 적용). 결과: 비정규 status **0건**, 사용 517→**518**, 총 1109(KPI 정합). 롤백 `update drugs set status='??' … drug_code='DWASPI100';`
+
 ## 1) status '??' 보정 (Task2) — 준비 완료·미실행
 - 비정규 status 전수(사용/중지/휴면 외): **DWASPI100 1건** (status='??' hex 3f3f, qty 1500). 그 외 0건.
 - **치환문자 전수 점검(2026-06-23 확장)**: drugs 11개 텍스트 컬럼(drug_name·ingredient_kr/en·manufacturer·category·specification·storage_method·memo·notes·dosage·status) 및 inventory_stock.drug_name에서 `?`(0x3F)·U+FFFD 잔재 검색 → **status 1건(DWASPI100)만 해당, 그 외 전부 0**. 한글 데이터는 정상 UTF-8(콘솔 깨짐은 표시 인코딩일 뿐). 즉 보정 대상은 1건 단독.
