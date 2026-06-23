@@ -1,0 +1,45 @@
+-- inventory_stock 42종 소수 보정 롤백 (원본 정수값 복원)
+-- ⚠ 0013(integer→numeric) 자체 롤백은 0013 파일의 역방향 SQL 사용. 본 파일은 데이터값만 복원.
+-- tenant=cnc(5e0aa267-cf21-4227-af97-a27b32b04c07)
+update public.inventory_stock set current_qty = 68   where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='7DEXAMTS';
+update public.inventory_stock set current_qty = 11   where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='7FIASPFT';
+update public.inventory_stock set current_qty = 3    where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='7HMLR';
+update public.inventory_stock set current_qty = 25   where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='7VCMYC';
+update public.inventory_stock set current_qty = 2752 where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='ADLT';
+update public.inventory_stock set current_qty = 634  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='BSPR10';
+update public.inventory_stock set current_qty = 334  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='CIRT80';
+update public.inventory_stock set current_qty = 2811 where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='CLRMZ50';
+update public.inventory_stock set current_qty = 67   where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='CONCR';
+update public.inventory_stock set current_qty = 1214 where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='DICRZ';
+update public.inventory_stock set current_qty = 187  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='DPS5';
+update public.inventory_stock set current_qty = 1911 where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='ETSR60';
+update public.inventory_stock set current_qty = 123  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='FEBURIC40';
+update public.inventory_stock set current_qty = 287  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='GRD2';
+update public.inventory_stock set current_qty = 52   where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='HDTON';
+update public.inventory_stock set current_qty = 413  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='JANUST100';
+update public.inventory_stock set current_qty = 954  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='LSX';
+update public.inventory_stock set current_qty = 266  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='MEDC625';
+update public.inventory_stock set current_qty = 343  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='MIRTA7.5';
+update public.inventory_stock set current_qty = 632  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='NAXEN-F';
+update public.inventory_stock set current_qty = 241  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='NBCT';
+update public.inventory_stock set current_qty = 970  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='NEOCT5';
+update public.inventory_stock set current_qty = 1281 where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='NTRGLCR';
+update public.inventory_stock set current_qty = 45   where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='OLMEC4';
+update public.inventory_stock set current_qty = 4131 where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='ORFILSTR15';
+update public.inventory_stock set current_qty = 436  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='PKMEZ';
+update public.inventory_stock set current_qty = 168  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='PND';
+update public.inventory_stock set current_qty = 766  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='PRGBL25';
+update public.inventory_stock set current_qty = 1462 where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='PSDFD';
+update public.inventory_stock set current_qty = 423  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='RPZ2';
+update public.inventory_stock set current_qty = 704  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='RVTRL';
+update public.inventory_stock set current_qty = 5    where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='SAPDRSOL3';
+update public.inventory_stock set current_qty = 634  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='SCOBLOC1';
+update public.inventory_stock set current_qty = 140  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='SLMT10';
+update public.inventory_stock set current_qty = 2298 where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='SSOFTEN';
+update public.inventory_stock set current_qty = 937  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='SYNSRID';
+update public.inventory_stock set current_qty = 1964 where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='TOPMAT1';
+update public.inventory_stock set current_qty = 102  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='TRL5';
+update public.inventory_stock set current_qty = 232  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='TROL1';
+update public.inventory_stock set current_qty = 477  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='TRS5';
+update public.inventory_stock set current_qty = 13   where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='TRSBFXTC1';
+update public.inventory_stock set current_qty = 576  where tenant_id='5e0aa267-cf21-4227-af97-a27b32b04c07' and drug_code='ZOLM';

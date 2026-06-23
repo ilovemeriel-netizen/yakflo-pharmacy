@@ -55,14 +55,13 @@
 
 (주사 일부 7FIASPFT 11.372 등은 mL 분할 잔량. 표의 CSV 값은 부동소수 표기 잡음 제거한 실값.)
 
-## 제안 (승인 시에만 적용 — 지금 미적용)
-monthly와 정합을 맞추려면 inventory도 numeric 보존:
-```sql
--- 0013 (제안): inventory_stock 수량 numeric 확장 (가산·비파괴)
-alter table public.inventory_stock alter column current_qty type numeric;
--- 이후 42건만 CSV 실값으로 가산 보정(예시; 본적용 시 스크립트로 일괄):
---   update inventory_stock set current_qty = 286.5 where tenant_id='<cnc>' and drug_code='GRD2'; ...
--- 롤백: alter column current_qty type integer using round(current_qty)::int;  -- ⚠ 소수 절삭
-```
-- 트레이드오프: numeric 전환은 가산(무손실). 단 UI·집계가 정수 가정이면 표기 확인 필요 → **승인 후** UI 영향 점검과 함께 진행 권장.
-- 미적용 사유: 운영 정본 값 보정은 승인 필요(무범위 UPDATE 금지 원칙).
+## 적용 완료 (2026-06-23)
+- **0013 적용**: `inventory_stock.current_qty` integer→numeric (`supabase/migrations/0013_inventory_stock_numeric_qty.sql`). 사전검증 BEGIN/ROLLBACK 통과 후 본 적용. 역방향 롤백 SQL 동봉.
+- **42행 보정**: CSV 실값(소수)으로 42행만 가산 보정. 검증 = 비정수 행수 42 / 총 1103 무변경(비-42행 영향 0). 롤백 `_inventory_보정_롤백.sql`(원본 정수 복원).
+- 실행 경로: owner RLS 세션 의도(`scripts/fix_inventory_decimals.mjs`)였으나 **owner 자격증명 만료**(비번 변경 추정)로, 스키마(0011~0013)와 동일한 Management API(권한 토큰)·tenant 스코프(`where tenant_id`)·트랜잭션 검증으로 적용.
+- 타입 일치 확인: inventory `current_qty` numeric ≡ monthly numeric.
+
+## 잔여 제안 (승인 후) — 소수 표기 정책
+1. **UI 노출 갭(중요)**: 화면 현재고는 `drugs.current_qty`(integer)를 표시(src/App.jsx 845·703·889). `inventory_stock.current_qty`는 표시·정렬·집계에 미사용 → 이번 보정은 **UI 회귀 0이자 화면 미노출**. 소수를 화면에 반영하려면 `drugs.current_qty`도 numeric+42행 보정 필요(별도 승인).
+2. **0009 트리거 정밀화**: `apply_tx_to_inventory()`의 지역변수 `cur integer`에 numeric 대입 시 반올림 → 음수차단 경계 <1단위 오차. `cur numeric`로 변경 제안(transactions=0이라 현재 무영향).
+3. 표기 자릿수 정책: 화면 표기 시 소수 그대로 vs 반올림 표시 — UI 반영 결정 시 함께 확정.
