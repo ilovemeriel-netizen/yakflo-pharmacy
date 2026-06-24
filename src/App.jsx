@@ -1515,8 +1515,8 @@ function TransactionForm({drugs,onReload}){
     if(!selDrug||!form.qty){setMsg('약품과 수량을 입력해주세요');return}
     if((tab==='반품'||tab==='폐기')&&!form.reason){setMsg('사유를 선택해주세요');return}
     setSaving(true);setMsg(null)
-    const q=parseInt(form.qty);const amt=q*(selDrug.price_unit||0)
-    const tx={drug_code:selDrug.drug_code,drug_name:selDrug.drug_name,type:tab,sub_type:form.sub_type||null,quantity:q,unit_price:selDrug.price_unit||0,total_amount:amt,note:form.note||null,transaction_date:new Date().toISOString().split('T')[0],reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
+    const q=parseInt(form.qty);const amt=q*(selDrug.purchase_price||0)
+    const tx={drug_code:selDrug.drug_code,drug_name:selDrug.drug_name,type:tab,sub_type:form.sub_type||null,quantity:q,unit_price:selDrug.purchase_price||0,total_amount:amt,note:form.note||null,transaction_date:new Date().toISOString().split('T')[0],reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
     let res=await supabase.from('transactions').insert([tx])
     for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
     if(res.error){setMsg('오류: '+res.error.message);setSaving(false);return}
@@ -1540,7 +1540,7 @@ function TransactionForm({drugs,onReload}){
         const code=String(r['약품코드']||r['drug_code']||'').trim().toUpperCase()
         const drug=drugs.find(d=>d.drug_code===code)
         const qtyVal=Number(r[tab==='입고'?'입고수량':tab==='출고'?'출고수량':tab==='반품'?'반품수량':'폐기수량']||r['수량']||r['quantity']||0)
-        const price=Number(r['단가']||r['unit_price']||drug?.price_unit||0)
+        const price=Number(r['단가']||r['unit_price']||drug?.purchase_price||0)
         return{idx:i+1,drug_code:code,drug_name:drug?.drug_name||r['약품명']||'',found:!!drug,quantity:qtyVal,unit_price:price,total_amount:qtyVal*price,
           sub_type:String(r['구분']||r['sub_type']||'').trim(),note:String(r['비고']||'').trim(),supplier:String(r['공급업체']||'').trim(),
           lot_no:String(r['로트번호']||r['LOT번호']||'').trim(),expiry_date:String(r['유효기한']||'').trim(),
@@ -1582,7 +1582,7 @@ function TransactionForm({drugs,onReload}){
         <div style={{fontSize:14,fontWeight:700,color:tc[tab]?.c,marginBottom:12}}>{tab} 등록</div>
         <input value={search} onChange={e=>{setSearch(e.target.value);setSelDrug(null)}} placeholder="약품 검색 (코드/이름)..." style={{...ip,marginBottom:6}}/>
         {search.trim()&&!selDrug&&filtered.length>0&&<div style={{border:`1px solid ${t.border}`,borderRadius:6,maxHeight:120,overflowY:'auto',marginBottom:6}}>{filtered.slice(0,8).map(d=><div key={d.drug_code} onClick={()=>{setSelDrug(d);setSearch(d.drug_name)}} style={{padding:'6px 10px',cursor:'pointer',fontSize:11,borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>{d.drug_name} <span style={{color:t.textL,fontSize:9}}>({d.drug_code})</span></div>)}</div>}
-        {selDrug&&<div style={{background:tc[tab]?.bg,borderRadius:6,padding:'6px 10px',marginBottom:6,fontSize:11,color:tc[tab]?.c}}><strong>{selDrug.drug_name}</strong> · 재고:{selDrug.current_qty} · ₩{selDrug.price_unit?.toLocaleString()}</div>}
+        {selDrug&&<div style={{background:tc[tab]?.bg,borderRadius:6,padding:'6px 10px',marginBottom:6,fontSize:11,color:tc[tab]?.c}}><strong>{selDrug.drug_name}</strong> · 재고:{selDrug.current_qty} · ₩{selDrug.purchase_price?.toLocaleString()}</div>}
         {subs.length>0&&<select value={form.sub_type} onChange={e=>sf('sub_type',e.target.value)} style={{...ip,marginBottom:6}}><option value="">구분 선택</option>{subs.map(s=><option key={s}>{s}</option>)}</select>}
         <input type="number" value={form.qty} onChange={e=>sf('qty',e.target.value)} placeholder="수량" style={{...ip,marginBottom:6}}/>
         {(tab==='입고')&&<input value={form.supplier} onChange={e=>sf('supplier',e.target.value)} placeholder="공급업체" style={{...ip,marginBottom:6}}/>}
@@ -1674,10 +1674,10 @@ function Report({drugs,txns,onNav}){
         const dispQ=dTx.filter(x=>x.type==='폐기').reduce((a,x)=>a+(x.quantity||0),0);
         const retQ=dTx.filter(x=>x.type==='반품').reduce((a,x)=>a+(x.quantity||0),0);
         return{drug_code:d.drug_code,snap_year:cy,snap_month:cm,
-          opening_qty:prev.closing_qty||d.current_qty||0,opening_amount:prev.closing_amount||(d.current_qty||0)*(d.price_unit||0),
+          opening_qty:prev.closing_qty||d.current_qty||0,opening_amount:prev.closing_amount||(d.current_qty||0)*(d.purchase_price||0),
           total_in_qty:inQ,total_in_amount:inA,total_out_qty:outQ,total_out_amount:outA,
           total_disp_qty:dispQ,total_ret_qty:retQ,
-          closing_qty:d.current_qty||0,closing_amount:(d.current_qty||0)*(d.price_unit||0)}
+          closing_qty:d.current_qty||0,closing_amount:(d.current_qty||0)*(d.purchase_price||0)}
       });
       await supabase.from('monthly_snapshots').delete().eq('snap_year',cy).eq('snap_month',cm);
       const batch=[];for(let i=0;i<rows.length;i+=500)batch.push(rows.slice(i,i+500));
@@ -1712,7 +1712,7 @@ function Report({drugs,txns,onNav}){
     if(search.trim()){const q=search.trim().toLowerCase();return d.drug_name?.toLowerCase().includes(q)||d.drug_code?.toLowerCase().includes(q)}
     return true
   }));
-  const tot=filtered.reduce((a,d)=>({oa:a.oa+(d.opening_amount||0),ia:a.ia+(d.total_in_amount||0),oua:a.oua+(d.total_out_amount||0),ca:a.ca+(d.closing_amount||0),dq:a.dq+(d.total_disp_qty||0),rq:a.rq+(d.total_ret_qty||0),oq:a.oq+(d.opening_qty||0),iq:a.iq+(d.total_in_qty||0),ouq:a.ouq+(d.total_out_qty||0),cq:a.cq+(d.closing_qty||0),da:a.da+((d.total_disp_qty||0)*(drugMap[d.drug_code]?.price_unit||0)),ra:a.ra+((d.total_ret_qty||0)*(drugMap[d.drug_code]?.price_unit||0))}),{oa:0,ia:0,oua:0,ca:0,dq:0,rq:0,oq:0,iq:0,ouq:0,cq:0,da:0,ra:0});
+  const tot=filtered.reduce((a,d)=>({oa:a.oa+(d.opening_amount||0),ia:a.ia+(d.total_in_amount||0),oua:a.oua+(d.total_out_amount||0),ca:a.ca+(d.closing_amount||0),dq:a.dq+(d.total_disp_qty||0),rq:a.rq+(d.total_ret_qty||0),oq:a.oq+(d.opening_qty||0),iq:a.iq+(d.total_in_qty||0),ouq:a.ouq+(d.total_out_qty||0),cq:a.cq+(d.closing_qty||0),da:a.da+((d.total_disp_qty||0)*(drugMap[d.drug_code]?.purchase_price||0)),ra:a.ra+((d.total_ret_qty||0)*(drugMap[d.drug_code]?.purchase_price||0))}),{oa:0,ia:0,oua:0,ca:0,dq:0,rq:0,oq:0,iq:0,ouq:0,cq:0,da:0,ra:0});
   /* 구분별 */
   const catSum=CATS.map(cat=>{const items=filtered.filter(d=>d.category===cat);if(!items.length)return null;return{cat,count:items.length,inA:items.reduce((a,d)=>a+(d.total_in_amount||0),0),outA:items.reduce((a,d)=>a+(d.total_out_amount||0),0),closeA:items.reduce((a,d)=>a+(d.closing_amount||0),0)}}).filter(Boolean);
   const inCnt=filtered.filter(d=>(d.total_in_qty||0)>0).length,outCnt=filtered.filter(d=>(d.total_out_qty||0)>0).length,dispCnt=filtered.filter(d=>(d.total_disp_qty||0)>0).length,retCnt=filtered.filter(d=>(d.total_ret_qty||0)>0).length,itemCnt=filtered.filter(d=>(d.closing_qty||0)!==0).length;
@@ -1721,9 +1721,18 @@ function Report({drugs,txns,onNav}){
   const expExpired=_pe.filter(d=>d.expiry_date<_pt).length,expU30=_pe.filter(d=>d.expiry_date>=_pt&&d.expiry_date<_pf(30)).length,expW60=_pe.filter(d=>d.expiry_date>=_pf(30)&&d.expiry_date<_pf(60)).length,expC90=_pe.filter(d=>d.expiry_date>=_pf(60)&&d.expiry_date<_pf(90)).length;
 
   function dl(){
-    const ws=XLSX.utils.json_to_sheet(filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,전월재고수:d.opening_qty,전월재고금액:d.opening_amount,입고수량:d.total_in_qty,입고금액:d.total_in_amount,출고수량:d.total_out_qty,출고금액:d.total_out_amount,폐기수량:d.total_disp_qty,반품수량:d.total_ret_qty,기말재고수:d.closing_qty,기말재고금액:d.closing_amount})));
     const wb=XLSX.utils.book_new();const sn=rtype==='monthly'?`${year}년${month}월보고서`:`${year}년연간보고서`;
-    XLSX.utils.book_append_sheet(wb,ws,sn);XLSX.writeFile(wb,`${sn}.xlsx`)
+    const sum=[['씨엔씨재활의학과병원 약품관리 월간보고서'],['보고월',`${year}년 ${rtype==='monthly'?month+'월':'연간'}`],[],
+      ['[재고 현황]'],['관리 품목수',itemCnt],['현재고',Math.round(tot.ca)],['전월재고',Math.round(tot.oa)],['증감',Math.round(tot.ca-tot.oa)],[],
+      ['[입출고 현황]','건수','금액'],['입고',inCnt,Math.round(tot.ia)],['출고',outCnt,Math.round(tot.oua)],['순입고',inCnt-outCnt,Math.round(tot.ia-tot.oua)],[],
+      ['[손실 현황]','건수','금액'],['폐기',dispCnt,Math.round(tot.da)],['반품',retCnt,Math.round(tot.ra)],[],
+      ['[유효기간 관리]'],['만료',expExpired],['긴급(30일)',expU30],['주의(60일)',expW60],['확인(90일)',expC90],[],
+      [nowStamp()],['Copyright © 2026 Jeonghwa Lee. All rights reserved.']];
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'요약');
+    const list=filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,전월재고수:d.opening_qty,전월재고금액:d.opening_amount,입고수량:d.total_in_qty,입고금액:d.total_in_amount,출고수량:d.total_out_qty,출고금액:d.total_out_amount,폐기수량:d.total_disp_qty,반품수량:d.total_ret_qty,기말재고수:d.closing_qty,기말재고금액:d.closing_amount}));
+    const HDR=['약품코드','약품명','구분','전월재고수','전월재고금액','입고수량','입고금액','출고수량','출고금액','폐기수량','반품수량','기말재고수','기말재고금액'];
+    const ws=list.length?XLSX.utils.json_to_sheet(list):XLSX.utils.aoa_to_sheet([HDR]);
+    XLSX.utils.book_append_sheet(wb,ws,'약품목록');XLSX.writeFile(wb,`${sn}.xlsx`)
   }
 
   const tab=active=>({padding:'8px 20px',borderRadius:8,border:'none',cursor:'pointer',fontSize:13,fontWeight:600,background:active?t.accent:t.bg,color:active?'#fff':t.textM});
@@ -1784,7 +1793,7 @@ function Report({drugs,txns,onNav}){
     </div>
 
     {/* 상세 테이블 */}
-    <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
+    <div className="cnc-report-table" style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
       <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.accent}}>{rtype==='monthly'?`${year}년 ${month}월`:`${year}년 연간`} 보고서 ({filtered.length}건) {ld&&<span style={{fontSize:11,color:t.textL}}>로딩...</span>}</div>
       <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
         <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['opening_qty','전월재고'],['total_in_qty','입고'],['total_out_qty','출고'],['total_disp_qty','폐기'],['total_ret_qty','반품'],['closing_qty','기말재고'],['closing_amount','기말금액']].map(([k,h])=><th key={k} style={TS(k)} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}</tr></thead>
@@ -1841,7 +1850,7 @@ function Report({drugs,txns,onNav}){
           <div>Copyright © 2026 Jeonghwa Lee. All rights reserved.</div>
         </div>
       </div>
-      <style>{'.cnc-print-month{display:none}@media print{@page{size:A4 portrait;margin:12mm}body *{visibility:hidden!important}.cnc-print-month,.cnc-print-month *{visibility:visible!important}.cnc-print-month{display:block!important;position:absolute;left:0;top:0;width:100%}.cnc-print-month table{font-size:12.5px!important}.cnc-print-month td,.cnc-print-month th{padding:6px 10px!important;font-size:12.5px!important}}'}</style>
+      <style>{'.cnc-print-month{display:none}@media print{.cnc-print-month{display:none!important}.cnc-report-table{page-break-before:always}.cnc-report-table table{font-size:9px!important}}'}</style>
     </div><Ft/>
   </div>
 }
