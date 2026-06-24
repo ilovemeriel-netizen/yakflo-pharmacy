@@ -36,6 +36,7 @@ const ThemeCtx = createContext()
 function useTheme() { return useContext(ThemeCtx) }
 const CATS = ['경구제','주사제','외용제','수액제','영양제','의약외품']
 const STATS = ['사용','중지','휴면']
+const MAIN_STATS = ['사용','휴면']
 const PP = 20
 const TYPES = ['입고','출고','반품','폐기']
 const STORAGE_OPTS = ['실온','실온/차광','냉장','냉장/차광']
@@ -621,7 +622,7 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 function Header({ menu: m, setMenu: sm }) {
   const { t, dark, toggle, user, profile, logout } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }]
+  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'archive', l: '🗄 아카이브' }]
   function nav(id) { sm(id); setMobileOpen(false) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
@@ -657,15 +658,15 @@ function Header({ menu: m, setMenu: sm }) {
 function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
   const { t } = useTheme(); const { hs, so, SI, TS } = useSort('drug_name')
   const today = new Date(), fmt = d => d.toISOString().split('T')[0], ym = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`, d30 = new Date(today), d90 = new Date(today); d30.setDate(d30.getDate() + 30); d90.setDate(d90.getDate() + 90)
-  const active = drugs.filter(d => d.status === '사용')
-  const s = { total: drugs.length, active: active.length, stopped: drugs.filter(d => d.status === '중지').length, dormant: drugs.filter(d => d.status === '휴면').length, narc: drugs.filter(d => isN(d)).length, nonIns: drugs.filter(d => isNonIns(d) && d.status === '사용').length, shortage: inv.filter(d => d.stock_status === '부족').length, e30: drugs.filter(d => d.expiry_date && d.expiry_date <= fmt(d30) && d.status === '사용').length, e90: drugs.filter(d => d.expiry_date && d.expiry_date > fmt(d30) && d.expiry_date <= fmt(d90) && d.status === '사용').length }
-  const totalAmt = active.reduce((a, d) => a + (d.current_qty || 0) * (d.purchase_price || 0), 0)
+  const active = drugs.filter(d => d.status === '사용'); const main = drugs.filter(d => MAIN_STATS.includes(d.status))
+  const s = { total: main.length, active: active.length, stopped: drugs.filter(d => d.status === '중지').length, dormant: drugs.filter(d => d.status === '휴면').length, narc: drugs.filter(d => isN(d)).length, nonIns: drugs.filter(d => isNonIns(d) && MAIN_STATS.includes(d.status)).length, shortage: inv.filter(d => d.stock_status === '부족').length, e30: drugs.filter(d => d.expiry_date && d.expiry_date <= fmt(d30) && MAIN_STATS.includes(d.status)).length, e90: drugs.filter(d => d.expiry_date && d.expiry_date > fmt(d30) && d.expiry_date <= fmt(d90) && MAIN_STATS.includes(d.status)).length }
+  const totalAmt = main.reduce((a, d) => a + (d.current_qty || 0) * (d.purchase_price || 0), 0)
   const mTx = txns.filter(tx => tx.transaction_date?.startsWith(ym))
   const txS = { inC: mTx.filter(x => x.type === '입고').length, inA: mTx.filter(x => x.type === '입고').reduce((a, x) => a + (x.total_amount || 0), 0), outC: mTx.filter(x => x.type === '출고').length, outA: mTx.filter(x => x.type === '출고').reduce((a, x) => a + (x.total_amount || 0), 0), retC: mTx.filter(x => x.type === '반품').length, retA: mTx.filter(x => x.type === '반품').reduce((a, x) => a + (x.total_amount || 0), 0), dspC: mTx.filter(x => x.type === '폐기').length, dspA: mTx.filter(x => x.type === '폐기').reduce((a, x) => a + (x.total_amount || 0), 0), dspQ: mTx.filter(x => x.type === '폐기').reduce((a, x) => a + (x.quantity || 0), 0) }
   txS.lossT = txS.retC + txS.dspC; txS.lossA = txS.retA + txS.dspA
-  const catData = CATS.map(cat => { const items = active.filter(d => d.category === cat); return { cat, total: items.length, qty: items.reduce((a, d) => a + (d.current_qty || 0), 0), expSoon: items.filter(d => { const x = exD(d.expiry_date); return x !== null && x <= 90 }).length } }).filter(c => c.total > 0)
+  const catData = CATS.map(cat => { const items = main.filter(d => d.category === cat); return { cat, total: items.length, qty: items.reduce((a, d) => a + (d.current_qty || 0), 0), expSoon: items.filter(d => { const x = exD(d.expiry_date); return x !== null && x <= 90 }).length } }).filter(c => c.total > 0)
   const catC = { '경구제': t.accent, '주사제': t.green, '외용제': t.blue, '수액제': t.mint || '#92C8E0', '영양제': '#A8CF5C', '의약외품': t.coral || t.amber }
-  const sorted = so(active.slice(0, 15))
+  const sorted = so(main.slice(0, 15))
   const tc = bc => ({ background: t.card, borderRadius: 14, padding: '20px', border: `1px solid ${t.border}`, borderTop: `3px solid ${bc}`, cursor: 'pointer', transition: 'all .2s', boxShadow: t.shadow })
   const hv = e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = t.shadowH }
   const hx = e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = t.shadow }
@@ -673,7 +674,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
   const sR = (label, value, color, unit) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${t.border}` }}><span style={{ fontSize: 12, color: t.textM }}>{label}</span><span style={{ fontSize: 13, fontWeight: 700, color: color || t.text }}>{typeof value === 'number' ? value.toLocaleString() : value}{unit || ''}</span></div>
   return <div style={{ padding: '20px 24px' }}>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 14 }}>
-      {[{ l: '전체 약품', v: s.total, c: t.accent, nav: { menu: 'druglist', status: STATS } }, { l: '사용', v: s.active, c: t.green, nav: { menu: 'druglist', status: ['사용'] } }, { l: '중지', v: s.stopped, c: t.textL, nav: { menu: 'druglist', status: ['중지'] } }, { l: '향정마약', v: s.narc, c: t.purple, nav: { menu: 'narcotic' } }].map((c, i) => <div key={i} onClick={() => onNav(c.nav)} style={tc(c.c)} onMouseEnter={hv} onMouseLeave={hx}><div style={{ fontSize: 12, color: t.textM, fontWeight: 500, marginBottom: 8 }}>{c.l}</div><div style={{ fontSize: 34, fontWeight: 800, color: c.c, letterSpacing: -1 }}>{c.v}</div></div>)}
+      {[{ l: '전체 약품', v: s.total, c: t.accent, nav: { menu: 'druglist', status: MAIN_STATS } }, { l: '사용', v: s.active, c: t.green, nav: { menu: 'druglist', status: ['사용'] } }, { l: '중지', v: s.stopped, c: t.textL, nav: { menu: 'archive' } }, { l: '향정마약', v: s.narc, c: t.purple, nav: { menu: 'narcotic' } }].map((c, i) => <div key={i} onClick={() => onNav(c.nav)} style={tc(c.c)} onMouseEnter={hv} onMouseLeave={hx}><div style={{ fontSize: 12, color: t.textM, fontWeight: 500, marginBottom: 8 }}>{c.l}</div><div style={{ fontSize: 34, fontWeight: 800, color: c.c, letterSpacing: -1 }}>{c.v}</div></div>)}
     </div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
       {[{ l: '비보험', v: s.nonIns, c: t.blue, nav: { menu: 'nonins' } }, { l: '재고부족', v: s.shortage, c: t.red, nav: { menu: 'stock', filter: '부족' } }, { l: '유효기한 ≤30일', v: s.e30, c: t.red, nav: { menu: 'expiry', focus: 'urgent' } }, { l: '유효기한 ≤90일', v: s.e90, c: t.amber, nav: { menu: 'expiry', focus: 'warning' } }].map((c, i) => <div key={i} onClick={() => c.nav && onNav(c.nav)} style={{ background: t.card, borderRadius: 12, padding: '14px 18px', border: `1px solid ${t.border}`, cursor: c.nav ? 'pointer' : 'default', transition: 'all .15s', boxShadow: t.shadow }} onMouseEnter={hv} onMouseLeave={hx}><div style={{ fontSize: 11, color: t.textM }}>{c.l}</div><div style={{ fontSize: 26, fontWeight: 700, color: c.c, marginTop: 4 }}>{c.v}</div></div>)}
@@ -693,15 +694,15 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
       <div onClick={() => onNav({ menu: 'stock' })} style={{ background: t.card, borderRadius: 14, padding: '18px 22px', border: `1px solid ${t.border}`, boxShadow: t.shadow, cursor: 'pointer', transition: 'all .15s' }} onMouseEnter={hv} onMouseLeave={hx}>
         {sT('■', '재고 총괄')}
         {sR('관리 품목수', s.total, t.accent, '개')}{sR('현재고 총금액', totalAmt, t.accent, '원')}
-        <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${t.border}` }}><div style={{ fontSize: 11, color: t.textM, marginBottom: 6 }}>📋 사용상태</div><div style={{ display: 'flex', gap: 8 }}>{[{ l: '사용', v: s.active, c: t.green, nav: { menu: 'druglist', status: ['사용'] } }, { l: '휴면', v: s.dormant, c: t.amber, nav: { menu: 'druglist', status: ['휴면'] } }, { l: '중지', v: s.stopped, c: t.textL, nav: { menu: 'druglist', status: ['중지'] } }].map((x, i) => <div key={i} onClick={e => { e.stopPropagation(); onNav(x.nav) }} style={{ flex: 1, textAlign: 'center', padding: '6px', background: t.bg, borderRadius: 8, cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.background = t.border} onMouseLeave={e => e.currentTarget.style.background = t.bg}><div style={{ fontSize: 9, color: t.textL }}>{x.l}</div><div style={{ fontSize: 16, fontWeight: 700, color: x.c }}>{x.v}</div></div>)}</div></div>
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${t.border}` }}><div style={{ fontSize: 11, color: t.textM, marginBottom: 6 }}>📋 사용상태</div><div style={{ display: 'flex', gap: 8 }}>{[{ l: '사용', v: s.active, c: t.green, nav: { menu: 'druglist', status: ['사용'] } }, { l: '휴면', v: s.dormant, c: t.amber, nav: { menu: 'druglist', status: ['휴면'] } }, { l: '중지', v: s.stopped, c: t.textL, nav: { menu: 'archive' } }].map((x, i) => <div key={i} onClick={e => { e.stopPropagation(); onNav(x.nav) }} style={{ flex: 1, textAlign: 'center', padding: '6px', background: t.bg, borderRadius: 8, cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.background = t.border} onMouseLeave={e => e.currentTarget.style.background = t.bg}><div style={{ fontSize: 9, color: t.textL }}>{x.l}</div><div style={{ fontSize: 16, fontWeight: 700, color: x.c }}>{x.v}</div></div>)}</div></div>
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${t.border}` }}><div style={{ fontSize: 11, color: t.textM, marginBottom: 6 }}>📦 재고현황</div><div style={{ display: 'flex', gap: 8 }}>{[{ l: '부족', v: s.shortage, c: t.red, nav: { menu: 'stock', filter: '부족' } }, { l: '정상', v: s.active - s.shortage, c: t.green, nav: { menu: 'stock', filter: '정상' } }].map((x, i) => <div key={i} onClick={e => { e.stopPropagation(); onNav(x.nav) }} style={{ flex: 1, textAlign: 'center', padding: '6px', background: t.bg, borderRadius: 8, cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.background = t.border} onMouseLeave={e => e.currentTarget.style.background = t.bg}><div style={{ fontSize: 9, color: t.textL }}>{x.l}</div><div style={{ fontSize: 16, fontWeight: 700, color: x.c }}>{x.v}</div></div>)}</div></div>
       </div>
     </div>
-    <div style={{ fontSize: 11, color: t.textL, margin: "2px 0 8px 2px" }}>구분별 현황 · <b>사용 약품 기준</b></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 18 }}>
-      {catData.map(c => { const cc = catC[c.cat] || t.accent; return <div key={c.cat} onClick={() => onNav({ menu: 'druglist', status: ['사용'] })} style={{ background: t.card, borderRadius: 14, padding: '18px 22px', border: `1px solid ${t.border}`, borderLeft: `4px solid ${cc}`, cursor: 'pointer', transition: 'all .15s', boxShadow: t.shadow }} onMouseEnter={hv} onMouseLeave={hx}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}><span style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{c.cat}</span><span style={{ fontSize: 14, fontWeight: 700, color: cc }}>{c.total}개</span></div><div style={{ display: 'flex', gap: 20, alignItems: 'baseline' }}>{c.expSoon > 0 && <div><div style={{ fontSize: 10, color: t.textL, marginBottom: 2 }}>유효기한 주의</div><div style={{ fontSize: 22, fontWeight: 800, color: t.amber }}>{c.expSoon}</div></div>}</div><div style={{ height: 4, background: t.border, borderRadius: 2, marginTop: 12 }}><div style={{ height: '100%', background: cc, borderRadius: 2, width: `${Math.min(c.total / Math.max(s.active, 1) * 100, 100)}%`, opacity: 0.5 }} /></div></div> })}
+    <div style={{ fontSize: 11, color: t.textL, margin: "2px 0 8px 2px" }}>구분별 현황 · <b>사용·휴면 기준</b></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 18 }}>
+      {catData.map(c => { const cc = catC[c.cat] || t.accent; return <div key={c.cat} onClick={() => onNav({ menu: 'druglist', status: ['사용'] })} style={{ background: t.card, borderRadius: 14, padding: '18px 22px', border: `1px solid ${t.border}`, borderLeft: `4px solid ${cc}`, cursor: 'pointer', transition: 'all .15s', boxShadow: t.shadow }} onMouseEnter={hv} onMouseLeave={hx}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}><span style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{c.cat}</span><span style={{ fontSize: 14, fontWeight: 700, color: cc }}>{c.total}개</span></div><div style={{ display: 'flex', gap: 20, alignItems: 'baseline' }}>{c.expSoon > 0 && <div><div style={{ fontSize: 10, color: t.textL, marginBottom: 2 }}>유효기한 주의</div><div style={{ fontSize: 22, fontWeight: 800, color: t.amber }}>{c.expSoon}</div></div>}</div><div style={{ height: 4, background: t.border, borderRadius: 2, marginTop: 12 }}><div style={{ height: '100%', background: cc, borderRadius: 2, width: `${Math.min(c.total / Math.max(s.total, 1) * 100, 100)}%`, opacity: 0.5 }} /></div></div> })}
     </div>
     <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, overflow: 'hidden', boxShadow: t.shadow }}>
-      <div style={{ padding: '14px 22px', borderBottom: `1px solid ${t.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: t.accentL }}><span style={{ fontWeight: 700, fontSize: 14, color: t.accent }}>사용 중인 약품</span><span style={{ fontSize: 13, fontWeight: 700, color: t.accent }}>{s.active}개</span></div>
+      <div style={{ padding: '14px 22px', borderBottom: `1px solid ${t.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: t.accentL }}><span style={{ fontWeight: 700, fontSize: 14, color: t.accent }}>사용·휴면 약품</span><span style={{ fontSize: 13, fontWeight: 700, color: t.accent }}>{s.total}개</span></div>
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead><tr>{[['drug_code', '약품코드'], ['drug_name', '약품명'], ['category', '구분'], ['current_qty', '현재고'], ['expiry_date', '유효기한'], ['status', '상태']].map(([k, h]) => <th key={k} style={TS(k)} onClick={() => hs(k)}>{h}<SI col={k} /></th>)}</tr></thead>
         <tbody>{sorted.map((d, i) => <tr key={i} style={{ borderBottom: `1px solid ${t.border}` }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}><td style={{ padding: '9px 12px', fontSize: 10, color: t.textM, textAlign: 'left' }}>{d.drug_code}<NT d={d} /></td><CN drug={d} onEdit={onEdit} /><td style={{ padding: '9px 12px', color: t.textM, fontSize: 11 }}>{d.category}</td><td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: d.current_qty === 0 ? t.red : t.text }}>{d.current_qty?.toLocaleString()}</td><td style={{ padding: '9px 12px', fontSize: 11, ...exS(d.expiry_date, t) }}>{d.expiry_date || '-'}</td><td style={{ padding: '9px 12px' }}><SB s={d.status} /></td></tr>)}</tbody>
@@ -736,7 +737,7 @@ const DRUG_COLS = [
 
 function DrugList({ drugs, navFilter: nf, onEdit }) {
   const __pe = useTheme(); const canEditPrice = __pe.profile?.role === 'admin' || __pe.memberRole === 'owner' || __pe.memberRole === 'admin'; const [ediOv, setEdiOv] = useState({}); const [ediEdit, setEdiEdit] = useState(null); async function saveEdi(code, raw) { const v = Number(raw); if (raw === '' || Number.isNaN(v) || v < 0) { setEdiEdit(null); return } const { error } = await supabase.from('drugs').update({ purchase_price: v }).eq('drug_code', code); if (!error) setEdiOv(o => ({ ...o, [code]: v })); setEdiEdit(null) }
-  const { t } = useTheme(); const [search, setSearch] = useState(''); const [cats, setCats] = useState(CATS); const [stats, setStats] = useState(nf?.status || ['사용']); const [narcOnly, setNarcOnly] = useState(false); const [insF, setInsF] = useState(nf?.insType || '전체'); const [page, setPage] = useState(1); const [visCols, setVisCols] = useState(DRUG_COLS.filter(c => c.default).map(c => c.key))
+  const { t } = useTheme(); const [search, setSearch] = useState(''); const [cats, setCats] = useState(CATS); const [stats, setStats] = useState(nf?.status || MAIN_STATS); const [narcOnly, setNarcOnly] = useState(false); const [insF, setInsF] = useState(nf?.insType || '전체'); const [page, setPage] = useState(1); const [visCols, setVisCols] = useState(DRUG_COLS.filter(c => c.default).map(c => c.key))
   const { hs, so, SI, TS } = useSort('drug_name')
   useEffect(() => { if (nf?.status) setStats(Array.isArray(nf.status) ? nf.status : [nf.status]); if (nf?.narcotic) setNarcOnly(true); else setNarcOnly(false); if (nf?.insType) setInsF(nf.insType); else setInsF('전체'); setPage(1) }, [nf])
   const filtered = so(drugs.filter(d => { if (narcOnly && !isN(d)) return false; if (!stats.includes(d.status)) return false; if (!cats.includes(d.category)) return false; if (insF !== '전체') { const normalized = isNonIns(d) ? '비보험' : '보험'; if (normalized !== insF) return false } if (search.trim()) { const q = search.trim().toLowerCase(); return d.drug_name?.toLowerCase().includes(q) || d.drug_code?.toLowerCase().includes(q) || d.ingredient_kr?.toLowerCase().includes(q) || d.manufacturer?.toLowerCase().includes(q) }; return true }))
@@ -779,7 +780,7 @@ function DrugList({ drugs, navFilter: nf, onEdit }) {
 }
 /* ═══ 유효기한 — 칩 클릭 라우팅 ═══ */
 function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
-  const{t}=useTheme();const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(['사용']);const[aLv,setALv]=useState(focusLevel||null)
+  const{t}=useTheme();const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
   const[editRow,setEditRow]=useState(null);const[editVal,setEditVal]=useState({})
   const fd=drugs.filter(d=>cats.includes(d.category)&&stats.includes(d.status))
   const unusedDays=d=>{if(!d.last_used_date)return null;return Math.floor((new Date()-new Date(d.last_used_date))/864e5)}
@@ -845,7 +846,7 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
 /* ═══ 재고현황 — ★ 사용량 엑셀 업로드 추가 ═══ */
 function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
   const{t}=useTheme();
-  const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(['사용']);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{hs,so,SI,TS}=useSort('drug_name');
+  const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{hs,so,SI,TS}=useSort('drug_name');
   const[uMsg,setUMsg]=useState(null);const uRef=useRef()
   useEffect(()=>{if(nf?.filter){setFilter(nf.filter);setPage(1)}},[nf])
   const im={};inv.forEach(i=>{im[i.drug_code]=i});const merged=drugs.filter(d=>stats.includes(d.status)).map(d=>{const iv=im[d.drug_code]||{};const q=d.current_qty||0,sf=iv.safety_stock||d.safety_stock||0,mx=iv.max_stock||d.max_stock||0;let st='정상';if(q===0)st='재고없음';else if(sf>0&&q<sf)st='부족';else if(mx>0&&q>mx)st='과잉';return{...d,safety_stock:sf,max_stock:mx,monthly_avg:iv.monthly_avg||d.monthly_avg||0,stockStatus:st}})
@@ -907,7 +908,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
 
 /* ═══ 향정마약 전용 — ★ 카드 클릭 필터링 ═══ */
 function NarcoticMgmt({drugs,onEdit,onAdjust}){
-  const{t}=useTheme();const[stats,setStats]=useState(['사용']);const narcs=drugs.filter(d=>isN(d)&&stats.includes(d.status));const{hs,so,SI,TS}=useSort('drug_name')
+  const{t}=useTheme();const[stats,setStats]=useState(MAIN_STATS);const narcs=drugs.filter(d=>isN(d)&&stats.includes(d.status));const{hs,so,SI,TS}=useSort('drug_name')
   const[filter,setFilter]=useState('전체')
   const byType={향정:narcs.filter(d=>getNT(d)==='향정'),마약:narcs.filter(d=>getNT(d)==='마약')};const expiring=narcs.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180})
   const display=filter==='전체'?narcs:filter==='향정'?byType['향정']:filter==='마약'?byType['마약']:expiring
@@ -2504,6 +2505,7 @@ export default function App() {
         {menu === 'dashboard' && <Dashboard drugs={drugs} inv={inv} txns={txns} onNav={handleNav} onEdit={setEditDrug} />}
         {menu === 'druglist' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} />}
         {menu === 'nonins' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} />}
+        {menu === 'archive' && <DrugList drugs={drugs} navFilter={{ status: ['중지'], archive: true }} onEdit={setEditDrug} />}
         {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} />}
         {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} />}
         {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} />}
