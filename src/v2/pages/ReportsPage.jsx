@@ -2,10 +2,19 @@ import { useEffect, useState } from 'react'
 import { T, BRAND } from '../theme'
 import { fetchMonthlyReport, fetchMonthlyReportDetail } from '../appApi'
 
-/* /app 보고서 — 월간 보고서 양식(단일 월) + 연간 요약 표.
-   집계는 DB측 RPC(0014 app_monthly_report, 0017 app_monthly_report_detail). 기존 컴포넌트 무수정·신규 추가. */
+/* /app 보고서 — 월간 보고서 양식(단일 월) + 연간 요약 표 + A4 인쇄 양식.
+   집계는 DB측 RPC(0014 app_monthly_report, 0017 app_monthly_report_detail). 기존 컴포넌트 무수정·신규 추가.
+   인쇄: @media print로 격리(.yf-print-report만 보임), 화면 레이아웃 회귀 0. */
 
-const HOSPITAL = '약플로 약제과' // 병원명(추후 설정값으로 분리 가능)
+const HOSPITAL = '씨엔씨재활의학과병원' // 병원명(인쇄 양식 헤더)
+const COPYRIGHT = 'Copyright © 2026 Jeonghwa Lee. All rights reserved.'
+const pad2 = (n) => String(n).padStart(2, '0')
+const stampNow = () => {
+  const n = new Date()
+  return `${n.getFullYear()}-${pad2(n.getMonth() + 1)}-${pad2(n.getDate())} ${pad2(n.getHours())}:${pad2(n.getMinutes())} 작성`
+}
+const PRINT_CSS = '.yf-print-report{display:none}@media print{body *{visibility:hidden!important}.yf-print-report,.yf-print-report *{visibility:visible!important}.yf-print-report{display:block!important;position:absolute;left:0;top:0;width:100%}.yf-no-print{display:none!important}@page{size:A4;margin:13mm}}'
+
 const glass = {
   background: 'rgba(255,255,255,0.66)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
   border: '1px solid rgba(255,255,255,0.6)', borderRadius: 16, boxShadow: '0 6px 24px rgba(46,74,98,0.08)',
@@ -39,8 +48,9 @@ export default function ReportsPage() {
   return (
     <div className="yf-app" style={{ background: 'linear-gradient(135deg,#f4eff8 0%,#eef5f1 100%)', margin: -24, padding: 24, minHeight: 'calc(100vh - 56px)' }}>
       <style>{`@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');.yf-app{font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',sans-serif;}`}</style>
+      <style>{PRINT_CSS}</style>
 
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
+      <div className="yf-no-print" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
         <div>
           <h1 style={{ fontSize: 21, fontWeight: 800, margin: '0 0 2px', color: T.text }}>월마감 보고서</h1>
           <div style={{ fontSize: 13, color: T.textM }}>월간 보고서 양식 + 연간 요약 (monthly_snapshots 집계)</div>
@@ -53,8 +63,8 @@ export default function ReportsPage() {
 
       <MonthlyReport year={year} />
 
-      <h2 style={{ fontSize: 15, fontWeight: 800, color: T.text, margin: '22px 0 10px' }}>연간 요약</h2>
-      <section style={{ ...glass, padding: 0, overflow: 'hidden' }}>
+      <h2 className="yf-no-print" style={{ fontSize: 15, fontWeight: 800, color: T.text, margin: '22px 0 10px' }}>연간 요약</h2>
+      <section className="yf-no-print" style={{ ...glass, padding: 0, overflow: 'hidden' }}>
         {loading && <div style={{ padding: 40, textAlign: 'center', color: T.textL, fontSize: 13 }}>불러오는 중…</div>}
         {err && <div style={{ padding: 40, textAlign: 'center', color: '#c0392b', fontSize: 13 }}>오류: {err}</div>}
         {!loading && !err && rows.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: T.textL, fontSize: 13 }}>{year}년 월마감 데이터가 없습니다.</div>}
@@ -101,14 +111,14 @@ export default function ReportsPage() {
         )}
       </section>
 
-      <div style={{ fontSize: 11.5, color: T.textL, marginTop: 12 }}>
+      <div className="yf-no-print" style={{ fontSize: 11.5, color: T.textL, marginTop: 12 }}>
         ※ 기말수량·금액은 각 월 스냅샷 합계(누적 아님). 06월은 이월 스냅샷으로 입·출고 0.
       </div>
     </div>
   )
 }
 
-/* 월간 보고서(단일 월) — 결산 양식 6개 섹션 */
+/* 월간 보고서(단일 월) — 결산 양식 6개 섹션 + A4 인쇄 양식 */
 function MonthlyReport({ year }) {
   const [month, setMonth] = useState(5)
   const [d, setD] = useState(null)
@@ -133,65 +143,145 @@ function MonthlyReport({ year }) {
   const lossAmt = d ? Number(d.disp_amt) + Number(d.ret_amt) : 0
 
   return (
-    <section style={{ ...glass, padding: 0, overflow: 'hidden' }}>
-      {/* ① 헤더 */}
-      <div style={{ background: 'linear-gradient(135deg,#804A87 0%,#6d3f74 100%)', color: '#fff', padding: '18px 22px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 12, opacity: 0.85, letterSpacing: 1 }}>{HOSPITAL}</div>
-          <div style={{ fontSize: 19, fontWeight: 800, marginTop: 2 }}>{year}년 {month}월 월간 재고 보고서</div>
+    <>
+      <section className="yf-no-print" style={{ ...glass, padding: 0, overflow: 'hidden' }}>
+        {/* ① 헤더 */}
+        <div style={{ background: 'linear-gradient(135deg,#804A87 0%,#6d3f74 100%)', color: '#fff', padding: '18px 22px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.85, letterSpacing: 1 }}>{HOSPITAL}</div>
+            <div style={{ fontSize: 19, fontWeight: 800, marginTop: 2 }}>{year}년 {month}월 월간 재고 보고서</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select value={month} onChange={(e) => { setLoading(true); setMonth(Number(e.target.value)) }}
+              style={{ padding: '7px 11px', border: 'none', borderRadius: 8, fontSize: 13, background: 'rgba(255,255,255,0.92)', color: T.text, fontWeight: 700 }}>
+              {monthOpts.map((m) => <option key={m} value={m}>{m}월</option>)}
+            </select>
+            <button onClick={() => window.print()} disabled={!d}
+              style={{ padding: '7px 13px', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 800, background: '#fff', color: BRAND.purple, cursor: d ? 'pointer' : 'default', opacity: d ? 1 : 0.5 }}>🖨 인쇄</button>
+          </div>
         </div>
-        <select value={month} onChange={(e) => { setLoading(true); setMonth(Number(e.target.value)) }}
-          style={{ padding: '7px 11px', border: 'none', borderRadius: 8, fontSize: 13, background: 'rgba(255,255,255,0.92)', color: T.text, fontWeight: 700 }}>
-          {monthOpts.map((m) => <option key={m} value={m}>{m}월</option>)}
-        </select>
-      </div>
 
-      {loading && <div style={{ padding: 40, textAlign: 'center', color: T.textL, fontSize: 13 }}>불러오는 중…</div>}
-      {err && <div style={{ padding: 40, textAlign: 'center', color: '#c0392b', fontSize: 13 }}>오류: {err}</div>}
+        {loading && <div style={{ padding: 40, textAlign: 'center', color: T.textL, fontSize: 13 }}>불러오는 중…</div>}
+        {err && <div style={{ padding: 40, textAlign: 'center', color: '#c0392b', fontSize: 13 }}>오류: {err}</div>}
+        {!loading && !err && d && (
+          <div style={{ padding: 22 }}>
+            {/* ② 재고현황 */}
+            <Block title="② 재고 현황">
+              <Cell label="관리 품목수" value={`${fmtN(d.items)} 종`} />
+              <Cell label="전월재고 금액" value={`${fmtW(prevStock)} 원`} />
+              <Cell label="현재고 금액" value={`${fmtW(d.closing_amt)} 원`} strong />
+              <Cell label="증감" value={`${fmtW(delta)} 원`} color={delta >= 0 ? BRAND.green : '#c0392b'} />
+            </Block>
+
+            {/* ③ 입출고현황 */}
+            <Block title="③ 입출고 현황">
+              <Cell label="입고" value={`${fmtN(d.in_cnt)} 건`} sub={`${fmtW(d.in_amt)} 원`} />
+              <Cell label="출고" value={`${fmtN(d.out_cnt)} 건`} sub={`${fmtW(d.out_amt)} 원`} />
+              <Cell label="순입고(입고−출고)" value={`${fmtN(netCnt)} 건`} sub={`${fmtW(netAmt)} 원`} color={netAmt >= 0 ? BRAND.green : '#c0392b'} />
+            </Block>
+
+            {/* ④ 손실현황 */}
+            <Block title="④ 손실 현황">
+              <Cell label="폐기" value={`${fmtN(d.disp_cnt)} 건`} sub={`${fmtW(d.disp_amt)} 원`} color={Number(d.disp_cnt) > 0 ? '#c0392b' : T.textM} />
+              <Cell label="반품" value={`${fmtN(d.ret_cnt)} 건`} sub={`${fmtW(d.ret_amt)} 원`} color={Number(d.ret_cnt) > 0 ? '#b06a00' : T.textM} />
+              <Cell label="손실 합계" value={`${fmtN(lossCnt)} 건`} sub={`${fmtW(lossAmt)} 원`} strong />
+            </Block>
+
+            {/* ⑤ 유효기간 관리 */}
+            <Block title="⑤ 유효기간 관리 (현재 시점 기준)">
+              <Cell label="만료" value={`${fmtN(d.exp_expired)} 종`} color={Number(d.exp_expired) > 0 ? '#c0392b' : T.textM} />
+              <Cell label="긴급 (30일)" value={`${fmtN(d.exp_urgent30)} 종`} color={Number(d.exp_urgent30) > 0 ? '#c0392b' : T.textM} />
+              <Cell label="주의 (60일)" value={`${fmtN(d.exp_warn60)} 종`} color={Number(d.exp_warn60) > 0 ? '#b06a00' : T.textM} />
+              <Cell label="확인 (90일)" value={`${fmtN(d.exp_check90)} 종`} color={Number(d.exp_check90) > 0 ? BRAND.purple : T.textM} />
+            </Block>
+
+            {/* ⑥ 작성일·작성자 */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 28, marginTop: 18, paddingTop: 14, borderTop: `1px solid ${T.border}`, fontSize: 12.5, color: T.textM }}>
+              <span>작성일: <b style={{ color: T.text }}>{today()}</b></span>
+              <span>작성자: <b style={{ color: T.text }}>약제과</b></span>
+            </div>
+            <div style={{ fontSize: 11.5, color: T.textL, marginTop: 8 }}>
+              ※ 폐기·반품 금액은 행 단가(기말금액/기말수량) 기반 — 결산 KPI와 일치. 유효기간은 현재 재고 기준(월별 스냅샷 아님).
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* A4 인쇄 전용 양식 — 화면 숨김, @media print에서만 표시 */}
       {!loading && !err && d && (
-        <div style={{ padding: 22 }}>
-          {/* ② 재고현황 */}
-          <Block title="② 재고 현황">
-            <Cell label="관리 품목수" value={`${fmtN(d.items)} 종`} />
-            <Cell label="전월재고 금액" value={`${fmtW(prevStock)} 원`} />
-            <Cell label="현재고 금액" value={`${fmtW(d.closing_amt)} 원`} strong />
-            <Cell label="증감" value={`${delta >= 0 ? '+' : ''}${fmtW(delta)} 원`} color={delta >= 0 ? BRAND.green : '#c0392b'} />
-          </Block>
-
-          {/* ③ 입출고현황 */}
-          <Block title="③ 입출고 현황">
-            <Cell label="입고" value={`${fmtN(d.in_cnt)} 건`} sub={`${fmtW(d.in_amt)} 원`} />
-            <Cell label="출고" value={`${fmtN(d.out_cnt)} 건`} sub={`${fmtW(d.out_amt)} 원`} />
-            <Cell label="순입고(입고−출고)" value={`${netCnt >= 0 ? '+' : ''}${fmtN(netCnt)} 건`}
-              sub={`${netAmt >= 0 ? '+' : ''}${fmtW(netAmt)} 원`} color={netAmt >= 0 ? BRAND.green : '#c0392b'} />
-          </Block>
-
-          {/* ④ 손실현황 */}
-          <Block title="④ 손실 현황">
-            <Cell label="폐기" value={`${fmtN(d.disp_cnt)} 건`} sub={`${fmtW(d.disp_amt)} 원`} color={Number(d.disp_cnt) > 0 ? '#c0392b' : T.textM} />
-            <Cell label="반품" value={`${fmtN(d.ret_cnt)} 건`} sub={`${fmtW(d.ret_amt)} 원`} color={Number(d.ret_cnt) > 0 ? '#b06a00' : T.textM} />
-            <Cell label="손실 합계" value={`${fmtN(lossCnt)} 건`} sub={`${fmtW(lossAmt)} 원`} strong />
-          </Block>
-
-          {/* ⑤ 유효기간 관리 */}
-          <Block title="⑤ 유효기간 관리 (현재 시점 기준)">
-            <Cell label="만료" value={`${fmtN(d.exp_expired)} 종`} color={Number(d.exp_expired) > 0 ? '#c0392b' : T.textM} />
-            <Cell label="긴급 (30일)" value={`${fmtN(d.exp_urgent30)} 종`} color={Number(d.exp_urgent30) > 0 ? '#c0392b' : T.textM} />
-            <Cell label="주의 (60일)" value={`${fmtN(d.exp_warn60)} 종`} color={Number(d.exp_warn60) > 0 ? '#b06a00' : T.textM} />
-            <Cell label="확인 (90일)" value={`${fmtN(d.exp_check90)} 종`} color={Number(d.exp_check90) > 0 ? BRAND.purple : T.textM} />
-          </Block>
-
-          {/* ⑥ 작성일·작성자 */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 28, marginTop: 18, paddingTop: 14, borderTop: `1px solid ${T.border}`, fontSize: 12.5, color: T.textM }}>
-            <span>작성일: <b style={{ color: T.text }}>{today()}</b></span>
-            <span>작성자: <b style={{ color: T.text }}>약제과</b></span>
-          </div>
-          <div style={{ fontSize: 11.5, color: T.textL, marginTop: 8 }}>
-            ※ 폐기·반품 금액은 행 단가(기말금액/기말수량) 기반 — 결산 KPI와 일치. 유효기간은 현재 재고 기준(월별 스냅샷 아님).
-          </div>
-        </div>
+        <PrintableMonthlyReport year={year} month={month} d={d}
+          prevStock={prevStock} delta={delta} netCnt={netCnt} netAmt={netAmt} lossCnt={lossCnt} lossAmt={lossAmt} />
       )}
-    </section>
+    </>
+  )
+}
+
+/* A4 1페이지 인쇄 양식 (첨부 PDF 사양) */
+function PrintableMonthlyReport({ year, month, d, prevStock, delta, netCnt, netAmt, lossCnt, lossAmt }) {
+  return (
+    <div className="yf-print-report" style={{ color: '#222', background: '#fff', fontSize: 13, lineHeight: 1.4 }}>
+      <div style={{ background: BRAND.purple, color: '#fff', padding: '12px 16px', textAlign: 'center', fontSize: 19, fontWeight: 800 }}>🏥 {HOSPITAL} 약품관리 월간보고서</div>
+      <div style={{ textAlign: 'center', color: BRAND.purple, fontWeight: 700, margin: '8px 0 14px' }}>▶ 보고월: {year}년 {month}월</div>
+
+      <PSection title="■ 재고 현황">
+        <PRow label="관리 품목수" bg="#e3f0e3" value={`${fmtN(d.items)}개`} />
+        <PRow label="현재고" bg="#e3f0e3" value={`${fmtW(d.closing_amt)}원`} />
+        <PRow label="전월재고" bg="#e3f0e3" value={`${fmtW(prevStock)}원`} />
+        <PRow label="증감" bg="#e3f0e3" value={`${fmtW(delta)}원`} />
+      </PSection>
+
+      <PSection title="■ 입출고 현황">
+        <PRow2 label="입고" bg="#ece4f1" cnt={`${fmtN(d.in_cnt)}건`} amt={`${fmtW(d.in_amt)}원`} />
+        <PRow2 label="출고" bg="#f1e4ee" cnt={`${fmtN(d.out_cnt)}건`} amt={`${fmtW(d.out_amt)}원`} />
+        <PRow2 label="순입고" bg="#ececec" cnt={`${fmtN(netCnt)}건`} amt={`${fmtW(netAmt)}원`} />
+      </PSection>
+
+      <PSection title="■ 손실 현황">
+        <PRow2 label="폐기" bg="#f6dede" cnt={`${fmtN(d.disp_cnt)}건`} amt={`${fmtW(d.disp_amt)}원`} />
+        <PRow2 label="반품" bg="#f7f3d6" cnt={`${fmtN(d.ret_cnt)}건`} amt={`${fmtW(d.ret_amt)}원`} />
+        <PRow2 label="손실(단순합)" bg={BRAND.purple} fg="#fff" cnt={`${fmtN(lossCnt)}건`} amt={`${fmtW(lossAmt)}원`} />
+      </PSection>
+
+      <PSection title="■ 유효기간 관리">
+        <PRow label="★ 만료" bg="#f6dede" value={`${fmtN(d.exp_expired)}건`} />
+        <PRow label="▲ 긴급 (30일)" bg="#fce6cf" value={`${fmtN(d.exp_urgent30)}건`} />
+        <PRow label="◆ 주의 (60일)" bg="#f7f3d6" value={`${fmtN(d.exp_warn60)}건`} />
+        <PRow label="● 확인 (90일)" bg="#e3f0e3" value={`${fmtN(d.exp_check90)}건`} />
+      </PSection>
+
+      <div style={{ textAlign: 'center', color: '#999', fontSize: 11, marginTop: 22 }}>
+        <div>{stampNow()}</div>
+        <div>{COPYRIGHT}</div>
+      </div>
+    </div>
+  )
+}
+
+function PSection({ title, children }) {
+  return (
+    <div style={{ marginBottom: 9 }}>
+      <div style={{ background: BRAND.green, color: '#fff', fontWeight: 800, fontSize: 13.5, padding: '5px 10px' }}>{title}</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}><tbody>{children}</tbody></table>
+    </div>
+  )
+}
+
+function PRow({ label, value, bg }) {
+  return (
+    <tr>
+      <td style={{ ...pTd, background: bg || '#eee', fontWeight: 700, width: '42%' }}>{label}</td>
+      <td style={{ ...pTd, textAlign: 'right', fontWeight: 800, color: BRAND.purple }}>{value}</td>
+    </tr>
+  )
+}
+
+function PRow2({ label, cnt, amt, bg, fg }) {
+  return (
+    <tr>
+      <td style={{ ...pTd, background: bg || '#eee', color: fg || '#222', fontWeight: 700, width: '42%' }}>{label}</td>
+      <td style={{ ...pTd, textAlign: 'right', width: '29%' }}>{cnt}</td>
+      <td style={{ ...pTd, textAlign: 'right', width: '29%', fontWeight: 700 }}>{amt}</td>
+    </tr>
   )
 }
 
@@ -217,3 +307,4 @@ function Cell({ label, value, sub, color, strong }) {
 const th = { padding: '11px 14px', fontSize: 11, color: T.textL, fontWeight: 600, borderBottom: `1px solid ${T.border}`, whiteSpace: 'nowrap', background: 'rgba(255,255,255,0.4)' }
 const td = { padding: '10px 14px', borderBottom: `1px solid ${T.border}`, whiteSpace: 'nowrap' }
 const tdR = { ...td, textAlign: 'right', color: T.textM }
+const pTd = { border: '1px solid #bbb', padding: '6px 10px' }
