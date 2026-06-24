@@ -1632,6 +1632,11 @@ function TransactionForm({drugs,onReload}){
 }
 
 /* ═══ 보고서 — 월마감 스냅샷 + 인쇄 ═══ */
+function nowStamp(){const n=new Date();const p=x=>String(x).padStart(2,'0');return n.getFullYear()+'-'+p(n.getMonth()+1)+'-'+p(n.getDate())+' '+p(n.getHours())+':'+p(n.getMinutes())+' 작성'}
+const mpTd={border:'1px solid #bbb',padding:'6px 10px'};
+function MSec({title,children}){return <div style={{marginBottom:9}}><div style={{background:'#019748',color:'#fff',fontWeight:800,fontSize:13.5,padding:'5px 10px'}}>{title}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><tbody>{children}</tbody></table></div>}
+function MRow({label,value,bg}){return <tr><td style={{...mpTd,background:bg||'#eee',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',fontWeight:800,color:'#804A87'}}>{value}</td></tr>}
+function MRow2({label,cnt,amt,bg,fg}){return <tr><td style={{...mpTd,background:bg||'#eee',color:fg||'#222',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',width:'29%'}}>{cnt}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontWeight:700}}>{amt}</td></tr>}
 function Report({drugs,txns,onNav}){
   const{t}=useTheme();
   const cy=new Date().getFullYear(),cm=new Date().getMonth()+1;
@@ -1710,6 +1715,10 @@ function Report({drugs,txns,onNav}){
   const tot=filtered.reduce((a,d)=>({oa:a.oa+(d.opening_amount||0),ia:a.ia+(d.total_in_amount||0),oua:a.oua+(d.total_out_amount||0),ca:a.ca+(d.closing_amount||0),dq:a.dq+(d.total_disp_qty||0),rq:a.rq+(d.total_ret_qty||0),oq:a.oq+(d.opening_qty||0),iq:a.iq+(d.total_in_qty||0),ouq:a.ouq+(d.total_out_qty||0),cq:a.cq+(d.closing_qty||0),da:a.da+((d.total_disp_qty||0)*(drugMap[d.drug_code]?.price_unit||0)),ra:a.ra+((d.total_ret_qty||0)*(drugMap[d.drug_code]?.price_unit||0))}),{oa:0,ia:0,oua:0,ca:0,dq:0,rq:0,oq:0,iq:0,ouq:0,cq:0,da:0,ra:0});
   /* 구분별 */
   const catSum=CATS.map(cat=>{const items=filtered.filter(d=>d.category===cat);if(!items.length)return null;return{cat,count:items.length,inA:items.reduce((a,d)=>a+(d.total_in_amount||0),0),outA:items.reduce((a,d)=>a+(d.total_out_amount||0),0),closeA:items.reduce((a,d)=>a+(d.closing_amount||0),0)}}).filter(Boolean);
+  const inCnt=filtered.filter(d=>(d.total_in_qty||0)>0).length,outCnt=filtered.filter(d=>(d.total_out_qty||0)>0).length,dispCnt=filtered.filter(d=>(d.total_disp_qty||0)>0).length,retCnt=filtered.filter(d=>(d.total_ret_qty||0)>0).length,itemCnt=filtered.filter(d=>(d.closing_qty||0)!==0).length;
+  const _pn=new Date(),_pf=x=>{const z=new Date(_pn);z.setDate(z.getDate()+x);return z.toISOString().slice(0,10)},_pt=_pn.toISOString().slice(0,10);
+  const _pe=drugs.filter(d=>d.status!=='중지'&&d.expiry_date);
+  const expExpired=_pe.filter(d=>d.expiry_date<_pt).length,expU30=_pe.filter(d=>d.expiry_date>=_pt&&d.expiry_date<_pf(30)).length,expW60=_pe.filter(d=>d.expiry_date>=_pf(30)&&d.expiry_date<_pf(60)).length,expC90=_pe.filter(d=>d.expiry_date>=_pf(60)&&d.expiry_date<_pf(90)).length;
 
   function dl(){
     const ws=XLSX.utils.json_to_sheet(filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,전월재고수:d.opening_qty,전월재고금액:d.opening_amount,입고수량:d.total_in_qty,입고금액:d.total_in_amount,출고수량:d.total_out_qty,출고금액:d.total_out_amount,폐기수량:d.total_disp_qty,반품수량:d.total_ret_qty,기말재고수:d.closing_qty,기말재고금액:d.closing_amount})));
@@ -1802,6 +1811,37 @@ function Report({drugs,txns,onNav}){
           <td style={{padding:'8px 10px',textAlign:'right'}}>₩{tot.ca.toLocaleString()}</td>
         </tr></tfoot>}
       </table></div>
+      <div className="cnc-print-month" style={{color:'#222',background:'#fff',fontSize:13,lineHeight:1.4}}>
+        <div style={{background:'#804A87',color:'#fff',padding:'12px 16px',textAlign:'center',fontSize:19,fontWeight:800}}>🏥 씨엔씨재활의학과병원 약품관리 월간보고서</div>
+        <div style={{textAlign:'center',color:'#804A87',fontWeight:700,margin:'8px 0 14px'}}>▶ 보고월: {year}년 {rtype==='monthly'?month+'월':'연간'}</div>
+        <MSec title="■ 재고 현황">
+          <MRow label="관리 품목수" bg="#e3f0e3" value={itemCnt.toLocaleString()+'개'} />
+          <MRow label="현재고" bg="#e3f0e3" value={'₩'+Math.round(tot.ca).toLocaleString()} />
+          <MRow label="전월재고" bg="#e3f0e3" value={'₩'+Math.round(tot.oa).toLocaleString()} />
+          <MRow label="증감" bg="#e3f0e3" value={'₩'+Math.round(tot.ca-tot.oa).toLocaleString()} />
+        </MSec>
+        <MSec title="■ 입출고 현황">
+          <MRow2 label="입고" bg="#ece4f1" cnt={inCnt+'건'} amt={'₩'+Math.round(tot.ia).toLocaleString()} />
+          <MRow2 label="출고" bg="#f1e4ee" cnt={outCnt+'건'} amt={'₩'+Math.round(tot.oua).toLocaleString()} />
+          <MRow2 label="순입고" bg="#ececec" cnt={(inCnt-outCnt)+'건'} amt={'₩'+Math.round(tot.ia-tot.oua).toLocaleString()} />
+        </MSec>
+        <MSec title="■ 손실 현황">
+          <MRow2 label="폐기" bg="#f6dede" cnt={dispCnt+'건'} amt={'₩'+Math.round(tot.da).toLocaleString()} />
+          <MRow2 label="반품" bg="#f7f3d6" cnt={retCnt+'건'} amt={'₩'+Math.round(tot.ra).toLocaleString()} />
+          <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(dispCnt+retCnt)+'건'} amt={'₩'+Math.round(tot.da+tot.ra).toLocaleString()} />
+        </MSec>
+        <MSec title="■ 유효기간 관리">
+          <MRow label="★ 만료" bg="#f6dede" value={expExpired+'건'} />
+          <MRow label="▲ 긴급 (30일)" bg="#fce6cf" value={expU30+'건'} />
+          <MRow label="◆ 주의 (60일)" bg="#f7f3d6" value={expW60+'건'} />
+          <MRow label="● 확인 (90일)" bg="#e3f0e3" value={expC90+'건'} />
+        </MSec>
+        <div style={{textAlign:'center',color:'#999',fontSize:11,marginTop:22}}>
+          <div>{nowStamp()}</div>
+          <div>Copyright © 2026 Jeonghwa Lee. All rights reserved.</div>
+        </div>
+      </div>
+      <style>{'.cnc-print-month{display:none}@media print{@page{size:A4 portrait;margin:12mm}body *{visibility:hidden!important}.cnc-print-month,.cnc-print-month *{visibility:visible!important}.cnc-print-month{display:block!important;position:absolute;left:0;top:0;width:100%}.cnc-print-month table{font-size:12.5px!important}.cnc-print-month td,.cnc-print-month th{padding:6px 10px!important;font-size:12.5px!important}}'}</style>
     </div><Ft/>
   </div>
 }
