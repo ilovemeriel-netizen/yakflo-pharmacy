@@ -2450,6 +2450,18 @@ export default function App() {
   }
 
   useEffect(() => { if (user) load() }, [user])
+  /* Realtime: 거래/재고/약품 변경 즉시 반영(디바운스 — 대량 커밋 깜빡임·부하 방지). 구독 RLS 경유·cleanup */
+  useEffect(() => {
+    if (!user) return
+    let timer
+    const bump = () => { clearTimeout(timer); timer = setTimeout(() => load(), 400) }
+    const ch = supabase.channel('rt-yakflo')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, bump)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_stock' }, bump)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'drugs' }, bump)
+      .subscribe()
+    return () => { clearTimeout(timer); supabase.removeChannel(ch) }
+  }, [user])
 
   function handleNav(nav) {
     if (nav.menu) setMenu(nav.menu)
