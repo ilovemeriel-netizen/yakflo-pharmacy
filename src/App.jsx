@@ -899,7 +899,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
   async function uploadUsage(e){
     const file=e.target.files[0];if(!file)return;setUMsg('업로드 중...')
     const reader=new FileReader();reader.onload=async ev=>{
-      try{const wb=XLSX.read(ev.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''})
+      try{const wb=XLSX.read(ev.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:false})
       let ok=0,fail=0
       for(const r of rows){
         const code=String(r['약품코드']||r['drug_code']||'').trim();if(!code)continue
@@ -1265,7 +1265,7 @@ function DrugRegister({onRefresh}) {
     reader.onload=ev=>{
       try{
         const wb2=XLSX.read(ev.target.result,{type:'array'})
-        const rows=XLSX.utils.sheet_to_json(wb2.Sheets[wb2.SheetNames[0]],{defval:''})
+        const rows=XLSX.utils.sheet_to_json(wb2.Sheets[wb2.SheetNames[0]],{defval:'',raw:false})
         if(rows.length===0){setBulkMsg({type:'error',text:'데이터가 없습니다.'});return}
         const parsed=rows.map((r,i)=>{
           const code=String(r['약품코드']||r['약품코드(필수)']||r['drug_code']||'').trim().toUpperCase()
@@ -1577,7 +1577,7 @@ function TransactionForm({drugs,onReload}){
   function xlUpload(e){
     const file=e.target.files[0];if(!file)return;setBulkMsg(null)
     const reader=new FileReader();reader.onload=ev=>{
-      try{const wb=XLSX.read(ev.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''})
+      try{const wb=XLSX.read(ev.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:false})
       if(!rows.length){setBulkMsg('데이터 없음');return}
       const parsed=rows.map((r,i)=>{
         const code=String(r['약품코드']||r['drug_code']||'').trim().toUpperCase()
