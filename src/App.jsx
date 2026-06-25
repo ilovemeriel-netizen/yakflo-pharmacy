@@ -175,6 +175,38 @@ function ColToggle({ cols, visible, setVisible }) {
   </div>
 }
 
+function Drug360Modal({ drug: dr, onClose }) {
+  const { t } = useTheme();
+  const [tab, setTab] = useState('개요');
+  const [txs, setTxs] = useState(null);
+  const [lots, setLots] = useState(null);
+  useEffect(() => { let on = true;
+    supabase.from('transactions').select('*').eq('drug_code', dr.drug_code).order('transaction_date', { ascending: false }).limit(100).then(({ data }) => { if (on) setTxs(data || []) });
+    supabase.from('drug_lots').select('*').eq('drug_code', dr.drug_code).order('expiry_date').then(({ data }) => { if (on) setLots(data || []) });
+    return () => { on = false }; }, [dr.drug_code]);
+  const q = dr.current_qty || 0, sf = dr.safety_stock || 0, mx = dr.max_stock || 0;
+  let st = '정상'; if (q === 0) st = '재고없음'; else if (sf > 0 && q < sf) st = '부족'; else if (mx > 0 && q > mx) st = '과잉';
+  const stc = st === '재고없음' ? t.red : st === '부족' ? t.amber : st === '과잉' ? t.blue : t.green;
+  const dday = exD(dr.expiry_date); const acc = atcColor(dr.atc_l1);
+  const TABS = ['개요', '입출고', '재고', '유효기한', '향정'];
+  const chip = (v) => v ? <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: acc + '1A', color: acc, border: '1px solid ' + acc + '33', marginRight: 6, marginBottom: 4 }}>{v}</span> : null;
+  const row = (label, val) => <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid ' + t.border, fontSize: 13 }}><span style={{ color: t.textM }}>{label}</span><span style={{ fontWeight: 600, color: t.text, textAlign: 'right' }}>{val}</span></div>;
+  const dstr = (x) => x !== null ? 'D' + (x <= 0 ? x : '-' + x) : '-';
+  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
+    <div onClick={e => e.stopPropagation()} style={{ background: t.card, borderRadius: 16, width: '100%', maxWidth: 640, boxShadow: t.shadowH, overflow: 'hidden' }}>
+      <div style={{ background: t.nav, padding: '16px 20px', color: '#fff' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}><div><div style={{ fontSize: 17, fontWeight: 700 }}>{dr.drug_name}</div><div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{dr.drug_code} · {dr.category || '-'}</div></div><button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 28, height: 28, borderRadius: 8, cursor: 'pointer', fontSize: 15 }}>✕</button></div></div>
+      <div style={{ display: 'flex', gap: 2, padding: '8px 12px 0', borderBottom: '1px solid ' + t.border, background: t.bg }}>{TABS.map(x => <button key={x} onClick={() => setTab(x)} style={{ padding: '8px 14px', border: 'none', borderBottom: tab === x ? '2px solid ' + t.accent : '2px solid transparent', background: 'transparent', color: tab === x ? t.accent : t.textM, fontWeight: tab === x ? 700 : 500, fontSize: 12, cursor: 'pointer' }}>{x}</button>)}</div>
+      <div style={{ padding: '16px 20px', maxHeight: '60vh', overflowY: 'auto' }}>
+        {tab === '개요' && <div><div style={{ marginBottom: 10 }}>{chip(dr.atc_l1)}{chip(dr.atc_l2)}{chip(dr.atc_l3)}{!dr.atc_l1 && <span style={{ color: t.textL, fontSize: 12 }}>ATC 미분류</span>}</div>{row('상태', <SB s={dr.status} />)}{row('구분', dr.category || '-')}{row('구입단가', dr.purchase_price ? Number(dr.purchase_price).toLocaleString() + '원' : '-')}{row('성분명', dr.ingredient_kr || '-')}{row('제조사', dr.manufacturer || '-')}{row('규격 / 단위', (dr.specification || '-') + ' / ' + (dr.unit || '-'))}{row('현재고', q.toLocaleString() + '  (' + st + ')')}</div>}
+        {tab === '입출고' && <div>{txs === null ? <div style={{ color: t.textL, textAlign: 'center', padding: 20 }}>불러오는 중...</div> : !txs.length ? <div style={{ color: t.textL, textAlign: 'center', padding: 20, fontSize: 12 }}>거래 내역 없음</div> : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}><thead><tr>{['일자', '유형', '수량', '금액'].map((h, hi) => <th key={h} style={{ textAlign: hi < 2 ? 'left' : 'right', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border }}>{h}</th>)}</tr></thead><tbody>{txs.map((x, i) => { const tcl = x.type === '입고' ? t.green : x.type === '출고' ? t.blue : x.type === '폐기' ? t.red : t.amber; return <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '6px 8px', color: t.textM }}>{x.transaction_date}</td><td style={{ padding: '6px 8px' }}><Bd bg={tcl + '18'} color={tcl}>{x.type}</Bd></td><td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{x.quantity?.toLocaleString()}</td><td style={{ padding: '6px 8px', textAlign: 'right', color: t.textM }}>{x.total_amount ? '₩' + x.total_amount.toLocaleString() : '-'}</td></tr> })}</tbody></table>}</div>}
+        {tab === '재고' && <div>{row('현재고', <span style={{ color: stc, fontWeight: 700 }}>{q.toLocaleString()}</span>)}{row('재고상태', <Bd bg={stc + '18'} color={stc}>{st}</Bd>)}{row('안전재고', sf || '-')}{row('최대재고', mx || '-')}{row('월평균 사용', dr.monthly_avg || '-')}{row('재고금액', dr.purchase_price ? '₩' + (q * Number(dr.purchase_price)).toLocaleString() : '-')}</div>}
+        {tab === '유효기한' && <div>{row('대표 유효기한', <span style={exS(dr.expiry_date, t)}>{(dr.expiry_date || '-') + (dday !== null ? '  (' + dstr(dday) + ')' : '')}</span>)}<div style={{ marginTop: 12, marginBottom: 6, fontSize: 11, color: t.textM, fontWeight: 700 }}>LOT 목록</div>{lots === null ? <div style={{ color: t.textL, padding: 12 }}>불러오는 중...</div> : !lots.length ? <div style={{ color: t.textL, padding: 12, fontSize: 12 }}>등록된 LOT 없음</div> : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}><thead><tr>{['LOT', '유효기한', '수량', 'D-day'].map(h => <th key={h} style={{ textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border }}>{h}</th>)}</tr></thead><tbody>{lots.map((l, i) => { const dd = exD(l.expiry_date); return <tr key={i} style={{ borderBottom: '1px solid ' + t.border, opacity: l.is_active ? 1 : 0.5 }}><td style={{ padding: '6px 8px', fontWeight: 600 }}>{l.lot_no}</td><td style={{ padding: '6px 8px', ...exS(l.expiry_date, t) }}>{l.expiry_date}</td><td style={{ padding: '6px 8px' }}>{l.quantity?.toLocaleString()}</td><td style={{ padding: '6px 8px' }}>{dstr(dd)}</td></tr> })}</tbody></table>}</div>}
+        {tab === '향정' && <div>{row('규제 구분', getNT(dr) === '일반' ? <span style={{ color: t.textL }}>일반 (비규제)</span> : <Bd bg={getNT(dr) === '마약' ? t.redL : t.purpleL} color={getNT(dr) === '마약' ? t.red : t.purple}>{getNT(dr)}</Bd>)}{row('마약류 여부', isN(dr) ? '해당' : '비해당')}{row('유효기한 D-day', dstr(dday))}{row('보관 방법', dr.storage_method || '-')}{getNT(dr) === '일반' && <div style={{ marginTop: 12, fontSize: 12, color: t.textL }}>향정·마약류가 아닌 일반 약품입니다.</div>}</div>}
+      </div>
+    </div>
+  </div>;
+}
+
 /* ═══ 약품 수정 모달 (드래그 가능) ═══ */
 function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   const { t, profile, memberRole } = useTheme(); const oc = dr.drug_code || ''
@@ -745,14 +777,14 @@ const DRUG_COLS = [
 
 function DrugList({ drugs, navFilter: nf, onEdit }) {
   const __pe = useTheme(); const canEditPrice = __pe.profile?.role === 'admin' || __pe.memberRole === 'owner' || __pe.memberRole === 'admin'; const [ediOv, setEdiOv] = useState({}); const [ediEdit, setEdiEdit] = useState(null); async function saveEdi(code, raw) { const v = Number(raw); if (raw === '' || Number.isNaN(v) || v < 0) { setEdiEdit(null); return } const { error } = await supabase.from('drugs').update({ purchase_price: v }).eq('drug_code', code); if (!error) setEdiOv(o => ({ ...o, [code]: v })); setEdiEdit(null) }
-  const { t } = useTheme(); const [search, setSearch] = useState(''); const [cats, setCats] = useState(CATS); const [stats, setStats] = useState(nf?.status || MAIN_STATS); const [narcOnly, setNarcOnly] = useState(false); const [insF, setInsF] = useState(nf?.insType || '전체'); const [page, setPage] = useState(1); const [visCols, setVisCols] = useState(DRUG_COLS.filter(c => c.default).map(c => c.key)); const [atcF, setAtcF] = useState(nf?.atc || null)
+  const { t, open360 } = useTheme(); const [search, setSearch] = useState(''); const [cats, setCats] = useState(CATS); const [stats, setStats] = useState(nf?.status || MAIN_STATS); const [narcOnly, setNarcOnly] = useState(false); const [insF, setInsF] = useState(nf?.insType || '전체'); const [page, setPage] = useState(1); const [visCols, setVisCols] = useState(DRUG_COLS.filter(c => c.default).map(c => c.key)); const [atcF, setAtcF] = useState(nf?.atc || null)
   const { hs, so, SI, TS } = useSort('drug_name')
   useEffect(() => { if (nf?.status) setStats(Array.isArray(nf.status) ? nf.status : [nf.status]); if (nf?.narcotic) setNarcOnly(true); else setNarcOnly(false); if (nf?.insType) setInsF(nf.insType); else setInsF('전체'); setPage(1) }, [nf])
   const filtered = so(drugs.filter(d => { if (narcOnly && !isN(d)) return false; if (atcF && d.atc_l1 !== atcF) return false; if (!stats.includes(d.status)) return false; if (!cats.includes(d.category)) return false; if (insF !== '전체') { const normalized = isNonIns(d) ? '비보험' : '보험'; if (normalized !== insF) return false } if (search.trim()) { const q = search.trim().toLowerCase(); return d.drug_name?.toLowerCase().includes(q) || d.drug_code?.toLowerCase().includes(q) || d.ingredient_kr?.toLowerCase().includes(q) || d.manufacturer?.toLowerCase().includes(q) }; return true }))
   const tp = Math.ceil(filtered.length / PP), paged = filtered.slice((page - 1) * PP, page * PP); const activeCols = DRUG_COLS.filter(c => visCols.includes(c.key))
   function dl() { const ws = XLSX.utils.json_to_sheet(filtered.map(d => { const o = {}; DRUG_COLS.forEach(c => { o[c.label] = d[c.key] || '' }); return o })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '약품'); XLSX.writeFile(wb, `약품목록_${new Date().toISOString().split('T')[0]}.xlsx`) }
   function cellVal(d, col) {
-    if (col.key === 'drug_code') return <><span style={{ fontSize: 10, color: t.textM }}>{d.drug_code}</span><NT d={d} /></>
+    if (col.key === 'drug_code') return <><span onClick={() => open360 && open360(d)} title="360° 상세 보기" style={{ fontSize: 10, color: t.accent, cursor: 'pointer', borderBottom: '1px dotted ' + t.textL }}>{d.drug_code}</span><NT d={d} /></>
     if (col.key === 'drug_name') return <CN drug={d} onEdit={onEdit} />
     if (col.key === 'ingredient_kr') return <span title={d.ingredient_kr || ''} style={{ color: t.textM, fontSize: 11, maxWidth: 140, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{d.ingredient_kr || '-'}</span>
     if (col.key === 'ingredient_en') return <span title={d.ingredient_en || ''} style={{ color: t.textL, fontSize: 10, maxWidth: 140, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle', fontStyle: 'italic' }}>{d.ingredient_en || '-'}</span>
@@ -2363,10 +2395,11 @@ export default function App() {
   const [editDrug, setEditDrug] = useState(null)
   const [adjustDrug, setAdjustDrug] = useState(null)
   const [lotDrug, setLotDrug] = useState(null)
+  const [d360, setD360] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const t = dark ? themes.dark : themes.light
-  const themeVal = { t, dark, toggle: () => setDark(d => !d), user, profile, memberRole, logout: async () => { await supabase.auth.signOut(); setUser(null); setProfile(null); setMemberRole(null); setMenu('dashboard') } }
+  const themeVal = { t, open360: setD360, dark, toggle: () => setDark(d => !d), user, profile, memberRole, logout: async () => { await supabase.auth.signOut(); setUser(null); setProfile(null); setMemberRole(null); setMenu('dashboard') } }
 
   /* 인증 상태 확인 */
   useEffect(() => {
@@ -2525,6 +2558,7 @@ export default function App() {
         {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
 
         {editDrug && <DrugEditModal drug={editDrug} onClose={() => setEditDrug(null)} onSaved={() => { setEditDrug(null); load() }} onLotManage={d => { setEditDrug(null); setLotDrug(d) }} />}
+        {d360 && <Drug360Modal drug={d360} onClose={() => setD360(null)} />}
         {adjustDrug && <AdjustModal drug={adjustDrug} onClose={() => setAdjustDrug(null)} onSaved={() => { setAdjustDrug(null); load() }} />}
         {lotDrug && <LotModal drug={lotDrug} onClose={() => setLotDrug(null)} onSaved={() => { setLotDrug(null); load() }} />}
       </div>
