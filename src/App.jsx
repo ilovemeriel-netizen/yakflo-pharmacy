@@ -73,7 +73,7 @@ async function fetchAll() { let a = [], f = 0; while (true) { const { data, erro
 async function searchDrugAPI(keyword, apiType = 'easy') {
   const maps = {
     easy: i => ({ name: i.itemName||'', efficacy: i.efcyQesitm||'', manufacturer: i.entpName||'', storage: i.depositMethodQesitm||'', usage: i.useMethodQesitm||'', warning: i.atpnWarnQesitm||'', sideEffect: i.seQesitm||'', image: i.itemImage||'', itemSeq: i.itemSeq||'' }),
-    permit: i => { const raw=i.MAIN_ITEM_INGR||i.PRDUCT_NM||''; const isE=s=>s&&/^[a-zA-Z\s()\[\]\-,.:;0-9]+$/.test(s); const parts=raw.split(/[;；,，\/]/).map(s=>s.trim()).filter(Boolean); const en=parts.find(p=>isE(p))||''; const kr=parts.find(p=>!isE(p))||''; return { name:i.ITEM_NAME||'', manufacturer:i.ENTP_NAME||'', ingredient:raw, ingredientEn:en, ingredientKr:kr, storage:i.STORAGE_METHOD||'', unit:i.PACK_UNIT||'', insuranceCode:i.EDI_CODE||'', image:i.ITEM_IMAGE||'', packUnit:i.PACK_UNIT||'', route:i.INJC_PTH_NM||i.EE_DOC_DATA&&'', storageMethod:i.STORAGE_METHOD||'' } },
+    permit: i => { const raw=i.MAIN_ITEM_INGR||i.PRDUCT_NM||''; const isE=s=>s&&/^[a-zA-Z\s()[\]\-,.:;0-9]+$/.test(s); const parts=raw.split(/[;；,，/]/).map(s=>s.trim()).filter(Boolean); const en=parts.find(p=>isE(p))||''; const kr=parts.find(p=>!isE(p))||''; return { name:i.ITEM_NAME||'', manufacturer:i.ENTP_NAME||'', ingredient:raw, ingredientEn:en, ingredientKr:kr, storage:i.STORAGE_METHOD||'', unit:i.PACK_UNIT||'', insuranceCode:i.EDI_CODE||'', image:i.ITEM_IMAGE||'', packUnit:i.PACK_UNIT||'', route:i.INJC_PTH_NM||i.EE_DOC_DATA&&'', storageMethod:i.STORAGE_METHOD||'' } },
     ati: i => ({ name: i.ITEM_NAME||'', manufacturer: i.ENTP_NAME||'', ingredient: i.MAIN_ITEM_INGR||i.PRDUCT_NM||'', shape: i.DRUG_SHAPE||'', image: i.ITEM_IMAGE||'' }),
     identify: i => ({ name: i.ITEM_NAME||'', shape: i.DRUG_SHAPE||'', color: i.COLOR_CLASS1||'', mark: i.MARK_CODE_FRONT||'', image: i.ITEM_IMAGE||'', line: i.LINE_FRONT||'' }),
     dur: i => ({ name: i.ITEM_NAME||'', durType: i.DUR_SEQ||'', ingredient: i.INGR_NAME||'', manufacturer: i.ENTP_NAME||'', prohibit: i.PROHBT_CONTENT||'' }),
@@ -240,7 +240,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     try {
     const px = new DOMParser()
     const nm = searchName
-    const isEng = s => s && /^[a-zA-Z\s()\[\]\-,.:;0-9]+$/.test(s)
+    const isEng = s => s && /^[a-zA-Z\s()[\]\-,.:;0-9]+$/.test(s)
     const cleaned = nm.replace(/[\d]+[\s]*(mg|ml|g|mcg|밀리그램|밀리리터|그램|정|캡슐|주|병|앰플|밀리)/gi, '').trim()
     const short = nm.replace(/(정|캡슐|주사|시럽|현탁|산|과립|주|액|크림|연고|겔|패치|좌제).*$/,'').trim()
     const names = [...new Set([nm, cleaned, short].filter(s => s.length > 1))].slice(0, 3)
@@ -269,10 +269,10 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
             console.log(`[1차] 허가정보 검색 [${n}]:`, arr.length, '건')
             if (arr.length > 0) { const h = arr[0]
               const mainIngr = h.MAIN_ITEM_INGR||''
-              const ingrParts = mainIngr.split(/[;；,，\/]/).map(s=>s.trim()).filter(Boolean)
+              const ingrParts = mainIngr.split(/[;；,，/]/).map(s=>s.trim()).filter(Boolean)
               const ingrEn = ingrParts.find(p=>isEng(p))||''
               const ingrKr = ingrParts.find(p=>!isEng(p))||''
-              const parenKr = nm.match(/[(\（]([가-힣\s]+)[)\）]/)?.[1]||''
+              const parenKr = nm.match(/[(（]([가-힣\s]+)[)）]/)?.[1]||''
               info.storageMethod = h.STORAGE_METHOD||''
               info.packUnit = h.PACK_UNIT||''
               info.insuranceCode = h.EDI_CODE||''
@@ -381,7 +381,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     /* 최종 성분명 언어 검증: 영어/한글 뒤바뀜 자동 교정 */
     sF(p => {
       let en = info.ingredientEn||p.ingredient_en, kr = info.ingredientKr||p.ingredient_kr
-      const chk = s => s && /^[a-zA-Z\s()\[\]\-,.:;0-9]+$/.test(s)
+      const chk = s => s && /^[a-zA-Z\s()[\]\-,.:;0-9]+$/.test(s)
       if (en && !chk(en) && kr && chk(kr)) { const tmp=en; en=kr; kr=tmp }
       else if (en && !chk(en) && !kr) { kr=en; en='' }
       else if (kr && chk(kr) && !en) { en=kr; kr='' }
@@ -395,7 +395,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
 
   /* 리스트에서 다른 약품 선택 → 약품명 교체 후 재조회 */
   function selectApiResult(item) {
-    const parenKr2=(item.name||'').match(/[(\（]([가-힣\s]+)[)\）]/)?.[1]||''
+    const parenKr2=(item.name||'').match(/[(（]([가-힣\s]+)[)）]/)?.[1]||''
     if (item.name) sF(p => ({ ...p, drug_name: item.name, manufacturer: item.manufacturer || p.manufacturer, efficacy: item.efficacy || p.efficacy, storage_method: item.storage ? stdStorage(item.storage) : p.storage_method, unit: item.unit || p.unit, insurance_code: item.insuranceCode || p.insurance_code, ingredient_en: item.ingredientEn || p.ingredient_en, ingredient_kr: item.ingredientKr || parenKr2 || p.ingredient_kr }))
     setApiResults([])
     lookupApi(item.name)
@@ -1091,11 +1091,11 @@ function DrugRegister({onRefresh}) {
   async function fetchDrugPrice(drugName, ingredientFromSearch){
     if(!drugName)return;setPriceLoading(true);setPriceInfo(null)
     let info={};const px=new DOMParser()
-    const isEng=s=>s&&/^[a-zA-Z\s()\[\]\-,.:;0-9]+$/.test(s)
+    const isEng=s=>s&&/^[a-zA-Z\s()[\]\-,.:;0-9]+$/.test(s)
     /* 이름 정제 */
     const cleaned=drugName.replace(/[\d]+[\s]*(mg|ml|g|mcg|밀리그램|밀리리터|그램)/gi,'').trim()
     const short=drugName.replace(/(정|캡슐|주사|시럽|현탁|산|과립|주|액|크림|연고|겔|패치|좌제).*$/,'').trim()
-    const paren=drugName.match(/[(\（]([^)\）]+)[)\）]/)?.[1]||''
+    const paren=drugName.match(/[(（]([^)）]+)[)）]/)?.[1]||''
     const names=[...new Set([drugName,cleaned,short,paren,ingredientFromSearch].filter(s=>s&&s.length>1))]
     console.log('신규등록 API 검색명:', names)
     /* ── 1차 소스: e약은요 → 효능, 보관방법 ── */
@@ -1134,7 +1134,7 @@ function DrugRegister({onRefresh}) {
             if(h.EDI_CODE)info.insuranceCode=h.EDI_CODE
             if(h.PACK_UNIT)info.packUnit=h.PACK_UNIT
             const mainIngr=h.MAIN_ITEM_INGR||''
-            const ingrParts=mainIngr.split(/[;；,，\/]/).map(s=>s.trim()).filter(Boolean)
+            const ingrParts=mainIngr.split(/[;；,，/]/).map(s=>s.trim()).filter(Boolean)
             const ingrEn=ingrParts.find(p=>isEng(p))||''
             const ingrKr=ingrParts.find(p=>!isEng(p))||''
             if(!info.ingredientKr&&ingrKr)info.ingredientKr=ingrKr
@@ -1196,7 +1196,7 @@ function DrugRegister({onRefresh}) {
     }
     /* ── 보조: 성분약효정보 → 약효분류명 ── */
     const gnlNmCd=info.gnlNmCode||''
-    const parenMatch=drugName.match(/[(\（]([^)\）]+)[)\）]/)
+    const parenMatch=drugName.match(/[(（]([^)）]+)[)）]/)
     const ingredientInParen=parenMatch?parenMatch[1]:''
     let foundEff=false
     if(gnlNmCd&&!foundEff){
@@ -1257,10 +1257,10 @@ function DrugRegister({onRefresh}) {
 
   function applyResult(item) {
     const ing=item.ingredient||''
-    const isEng=s=>s&&/^[a-zA-Z\s()\[\]\-,.:;0-9]+$/.test(s)
+    const isEng=s=>s&&/^[a-zA-Z\s()[\]\-,.:;0-9]+$/.test(s)
     const enVal=item.ingredientEn||(isEng(ing)?ing:'')
     const krVal=item.ingredientKr||(!isEng(ing)&&ing?ing:'')
-    const parenKr=(item.name||'').match(/[(\（]([가-힣\s]+)[)\）]/)?.[1]||''
+    const parenKr=(item.name||'').match(/[(（]([가-힣\s]+)[)）]/)?.[1]||''
     setForm(f=>({...f,
       drug_name:item.name||f.drug_name,
       manufacturer:item.manufacturer||f.manufacturer,
