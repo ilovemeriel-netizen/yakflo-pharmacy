@@ -104,6 +104,20 @@ export default defineConfig(({ mode }) => {
   /* Netlify Functions는 process.env에서 키를 읽으므로 .env 값을 주입 */
   Object.assign(process.env, env)
   return {
+    build: {
+      chunkSizeWarningLimit: 700,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('xlsx')) return 'xlsx'
+              if (id.includes('@supabase')) return 'supabase'
+              if (id.includes('react')) return 'react-vendor'
+            }
+          },
+        },
+      },
+    },
     plugins: [
       react(),
       datagoDevProxy(),

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, createContext, useContext } from 'react'
 import { supabase } from './lib/supabase'
-import * as XLSX from 'xlsx'
+/* XLSX는 동적 import로 별도 청크 분리(초기 번들 축소). 모든 사용은 사용자 액션 핸들러 내부뿐 → 로드 시점 안전 */
+let XLSX; import('xlsx').then(m => { XLSX = m })
 
 /* ═══════════════════════════════════════════════════
    Yakflo · Soft UI + Eco-Minimalism
