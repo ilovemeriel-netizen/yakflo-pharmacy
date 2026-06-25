@@ -655,7 +655,7 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 function Header({ menu: m, setMenu: sm }) {
   const { t, dark, toggle, user, profile, logout } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'archive', l: '🗄 아카이브' }]
+  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'archive', l: '🗄 아카이브' }]
   function nav(id) { sm(id); setMobileOpen(false) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
@@ -690,6 +690,32 @@ function Header({ menu: m, setMenu: sm }) {
 const ATC_PAL = ['#804A87','#019748','#2E4A62','#BFA6D9','#A8CF5C','#92C8E0','#E2A6D4','#F39E94','#E65100','#7FD9A8','#5A2F63','#016033','#C62828','#9C7BB5','#6BA3C0'];
 function atcColor(name){ if(!name) return '#9C7BB5'; let h=0; for(let i=0;i<name.length;i++) h=(h*31+name.charCodeAt(i))>>>0; return ATC_PAL[h%ATC_PAL.length]; }
 function AtcDonut({ data, total, colorFn, onSlice, t }){ const R=58, CIRC=2*Math.PI*R; const tot=total||1; return <svg viewBox="0 0 160 160" style={{ width:150, height:150, flexShrink:0 }}><g transform="rotate(-90 80 80)">{data.map((d,i)=>{ const dash=(d.count/tot)*CIRC; const off=data.slice(0,i).reduce((a,x)=>a+(x.count/tot)*CIRC,0); const el=<circle key={i} cx="80" cy="80" r={R} fill="none" stroke={colorFn(d.name)} strokeWidth="20" strokeDasharray={dash+' '+(CIRC-dash)} strokeDashoffset={-off} style={{ cursor:'pointer' }} onClick={()=>onSlice(d.name)}><title>{d.name+': '+d.count}</title></circle>; return el; })}</g><text x="80" y="76" textAnchor="middle" style={{ fontSize:15, fontWeight:800, fill:t.accent }}>{total}</text><text x="80" y="93" textAnchor="middle" style={{ fontSize:9, fill:t.textL }}>효능군</text></svg>; }
+/* ═══ 통합 알림센터 (3종 경고 집약·데이터 비의존) ═══ */
+function AlertCenter({ drugs, onNav }) {
+  const { t, open360 } = useTheme();
+  const md = drugs.filter(d => MAIN_STATS.includes(d.status));
+  const eD = d => exD(d.expiry_date);
+  const exp = md.filter(d => { const x = eD(d); return x !== null && x <= 60 }).sort((a, b) => eD(a) - eD(b));
+  const expired = exp.filter(d => eD(d) <= 0), urgent = exp.filter(d => eD(d) > 0 && eD(d) <= 30), caution = exp.filter(d => eD(d) > 30 && eD(d) <= 60);
+  const low = md.filter(d => (d.safety_stock || 0) > 0 && (d.current_qty || 0) < d.safety_stock).sort((a, b) => (a.current_qty - a.safety_stock) - (b.current_qty - b.safety_stock));
+  const narc = md.filter(d => isN(d) && eD(d) !== null && eD(d) <= 90).sort((a, b) => eD(a) - eD(b));
+  const ddl = d => { const x = eD(d); return x === null ? '-' : 'D' + (x <= 0 ? x : '-' + x) };
+  const sec = (o) => <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, overflow: 'hidden', marginBottom: 14 }}>
+    <div onClick={o.deeplink} style={{ padding: '14px 18px', borderBottom: '1px solid ' + t.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: o.items.length ? o.color + '0D' : t.bg }}>
+      <span style={{ fontWeight: 700, fontSize: 14, color: t.text, display: 'flex', alignItems: 'center', gap: 8 }}>{o.icon} {o.title}{o.sub}</span>
+      <span style={{ fontWeight: 800, fontSize: 16, color: o.items.length ? o.color : t.textL }}>{o.items.length}건 ›</span>
+    </div>
+    {o.items.length ? <div style={{ maxHeight: 300, overflowY: 'auto' }}>{o.items.slice(0, 60).map((d, i) => <div key={i} onClick={() => open360 && open360(d)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 18px', borderBottom: '1px solid ' + t.border, cursor: 'pointer', fontSize: 12 }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}><span><span style={{ color: t.accent, fontWeight: 600 }}>{d.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code} · {d.category}</span></span>{o.render(d)}</div>)}</div> : <div style={{ padding: 18, textAlign: 'center', color: t.textL, fontSize: 12 }}>0건</div>}
+  </div>;
+  return <div style={{ padding: '20px 24px' }}>
+    <div style={{ fontSize: 18, fontWeight: 800, color: t.text, marginBottom: 4 }}>🔔 통합 알림센터</div>
+    <div style={{ fontSize: 11, color: t.textL, marginBottom: 16 }}>사용·휴면 약품 기준 · 중지(아카이브) 제외</div>
+    {sec({ icon: '📅', title: '유효기간 임박', color: t.red, items: exp, sub: <span style={{ fontSize: 11, fontWeight: 500, color: t.textM, marginLeft: 6 }}>(만료 {expired.length} · 긴급 {urgent.length} · 주의 {caution.length})</span>, deeplink: () => onNav({ menu: 'expiry', focus: 'urgent' }), render: d => <span style={{ fontSize: 11 }}><span style={exS(d.expiry_date, t)}>{d.expiry_date}</span> <b style={{ color: eD(d) <= 0 ? t.red : eD(d) <= 30 ? t.amber : t.blue }}>{ddl(d)}</b></span> })}
+    {sec({ icon: '📦', title: '재고 부족', color: t.amber, items: low, sub: null, deeplink: () => onNav({ menu: 'stock', filter: '부족' }), render: d => <span style={{ fontSize: 11, color: t.textM }}>현 <b style={{ color: t.red }}>{(d.current_qty || 0).toLocaleString()}</b> / 안전 {(d.safety_stock || 0).toLocaleString()}</span> })}
+    {sec({ icon: '💊', title: '향정·마약 유효기간 임박', color: t.purple, items: narc, sub: <span style={{ fontSize: 11, fontWeight: 500, color: t.textM, marginLeft: 6 }}>(≤90일)</span>, deeplink: () => onNav({ menu: 'narcotic' }), render: d => <span style={{ fontSize: 11 }}><Bd bg={getNT(d) === '마약' ? t.redL : t.purpleL} color={getNT(d) === '마약' ? t.red : t.purple}>{getNT(d)}</Bd> <b style={{ color: t.purple, marginLeft: 4 }}>{ddl(d)}</b></span> })}
+  </div>;
+}
+
 /* ═══ 대시보드 — Bento Grid ═══ */
 function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
   const { t } = useTheme(); const { hs, so, SI, TS } = useSort('drug_name')
@@ -2558,6 +2584,7 @@ export default function App() {
       <div style={{ minHeight: '100vh', background: t.bg }}>
         <Header menu={menu} setMenu={setMenu} />
         {menu === 'dashboard' && <Dashboard drugs={drugs} inv={inv} txns={txns} onNav={handleNav} onEdit={setEditDrug} />}
+        {menu === 'alerts' && <AlertCenter drugs={drugs} onNav={handleNav} />}
         {menu === 'druglist' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} />}
         {menu === 'nonins' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} />}
         {menu === 'archive' && <DrugList drugs={drugs} navFilter={{ status: ['중지'], archive: true }} onEdit={setEditDrug} />}
