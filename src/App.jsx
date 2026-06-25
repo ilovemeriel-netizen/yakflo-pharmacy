@@ -190,7 +190,7 @@ function Drug360Modal({ drug: dr, onClose }) {
   const stc = st === '재고없음' ? t.red : st === '부족' ? t.amber : st === '과잉' ? t.blue : t.green;
   const dday = exD(dr.expiry_date); const acc = atcColor(dr.atc_l1);
   const TABS = ['개요', '입출고', '재고', '유효기한', '향정'];
-  const chip = (v) => v ? <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: acc + '1A', color: acc, border: '1px solid ' + acc + '33', marginRight: 6, marginBottom: 4 }}>{v}</span> : null;
+  const chip = (v) => (v && String(v).trim()) ? <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: acc + '1A', color: acc, border: '1px solid ' + acc + '33', marginRight: 6, marginBottom: 4 }}>{v}</span> : null;
   const row = (label, val) => <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid ' + t.border, fontSize: 13 }}><span style={{ color: t.textM }}>{label}</span><span style={{ fontWeight: 600, color: t.text, textAlign: 'right' }}>{val}</span></div>;
   const dstr = (x) => x !== null ? 'D' + (x <= 0 ? x : '-' + x) : '-';
   return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
@@ -881,7 +881,7 @@ function DrugList({ drugs, navFilter: nf, onEdit }) {
     if (col.key === 'insurance_type') return isNonIns(d) ? <Bd bg={t.blueL} color={t.blue}>비보험</Bd> : <span style={{ fontSize: 10, color: t.textL }}>보험</span>
     if (col.key === 'expiry_date') return <span style={exS(d.expiry_date, t)}>{d.expiry_date || '-'}</span>
     if (col.key === 'status') return <SB s={d.status} />
-    if (col.key === 'atc_l1' || col.key === 'atc_l2' || col.key === 'atc_l3') { const v = d[col.key]; if (!v) return <span style={{ color: t.textL, fontSize: 10 }}>-</span>; const cc = atcColor(d.atc_l1); return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600, background: cc + '1A', color: cc, border: '1px solid '+cc+'33', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{v}</span>; }
+    if (col.key === 'atc_l1' || col.key === 'atc_l2' || col.key === 'atc_l3') { const v = d[col.key]; if (!v || !String(v).trim()) return <span style={{ color: t.textL, fontSize: 10 }}>-</span>; const cc = atcColor(d.atc_l1); return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600, background: cc + '1A', color: cc, border: '1px solid '+cc+'33', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{v}</span>; }
     return <span title={d[col.key] || ''} style={{ color: t.textM, fontSize: 11, maxWidth: 120, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{d[col.key] || '-'}</span>
   }
   return <div style={{ padding: '20px 24px' }}>
