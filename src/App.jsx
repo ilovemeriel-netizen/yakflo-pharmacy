@@ -655,7 +655,7 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 function Header({ menu: m, setMenu: sm }) {
   const { t, dark, toggle, user, profile, logout } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'archive', l: '🗄 아카이브' }]
+  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'ordering', l: '🧾 발주' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'archive', l: '🗄 아카이브' }]
   function nav(id) { sm(id); setMobileOpen(false) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
@@ -713,6 +713,62 @@ function AlertCenter({ drugs, onNav }) {
     {sec({ icon: '📅', title: '유효기간 임박', color: t.red, items: exp, sub: <span style={{ fontSize: 11, fontWeight: 500, color: t.textM, marginLeft: 6 }}>(만료 {expired.length} · 긴급 {urgent.length} · 주의 {caution.length})</span>, deeplink: () => onNav({ menu: 'expiry', focus: 'urgent' }), render: d => <span style={{ fontSize: 11 }}><span style={exS(d.expiry_date, t)}>{d.expiry_date}</span> <b style={{ color: eD(d) <= 0 ? t.red : eD(d) <= 30 ? t.amber : t.blue }}>{ddl(d)}</b></span> })}
     {sec({ icon: '📦', title: '재고 부족', color: t.amber, items: low, sub: null, deeplink: () => onNav({ menu: 'stock', filter: '부족' }), render: d => <span style={{ fontSize: 11, color: t.textM }}>현 <b style={{ color: t.red }}>{(d.current_qty || 0).toLocaleString()}</b> / 안전 {(d.safety_stock || 0).toLocaleString()}</span> })}
     {sec({ icon: '💊', title: '향정·마약 유효기간 임박', color: t.purple, items: narc, sub: <span style={{ fontSize: 11, fontWeight: 500, color: t.textM, marginLeft: 6 }}>(≤90일)</span>, deeplink: () => onNav({ menu: 'narcotic' }), render: d => <span style={{ fontSize: 11 }}><Bd bg={getNT(d) === '마약' ? t.redL : t.purpleL} color={getNT(d) === '마약' ? t.red : t.purple}>{getNT(d)}</Bd> <b style={{ color: t.purple, marginLeft: 4 }}>{ddl(d)}</b></span> })}
+  </div>;
+}
+
+/* ═══ 발주 관리 (현재고+safety 기반·사용량 비의존) ═══ */
+function Ordering({ drugs }) {
+  const { t, open360 } = useTheme();
+  const [suppliers, setSuppliers] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [tid, setTid] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [newSup, setNewSup] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function refresh() {
+    const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle();
+    setTid(tm?.tenant_id || null);
+    const { data: sup } = await supabase.from('suppliers').select('*').order('name'); setSuppliers(sup || []);
+    const { data: po } = await supabase.from('purchase_orders').select('*, suppliers(name)').order('created_at', { ascending: false }).limit(20); setOrders(po || []);
+  }
+  useEffect(() => { let on = true; (async () => { const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle(); if (!on) return; setTid(tm?.tenant_id || null); const { data: sup } = await supabase.from('suppliers').select('*').order('name'); if (on) setSuppliers(sup || []); const { data: po } = await supabase.from('purchase_orders').select('*, suppliers(name)').order('created_at', { ascending: false }).limit(20); if (on) setOrders(po || []) })(); return () => { on = false } }, []);
+  const cand = drugs.filter(d => MAIN_STATS.includes(d.status) && (d.safety_stock || 0) > 0 && (d.current_qty || 0) <= d.safety_stock);
+  const supName = id => (suppliers.find(s => s.id === id) || {}).name || '미지정 도매사';
+  const groups = {}; cand.forEach(d => { const k = d.supplier_id || '__none'; (groups[k] = groups[k] || []).push(d) });
+  async function addSupplier() { if (!newSup.trim() || !tid) return; const { error } = await supabase.from('suppliers').insert({ tenant_id: tid, name: newSup.trim() }); if (!error) { setNewSup(''); refresh() } else setMsg('도매사 추가 실패: ' + error.message) }
+  async function createPO(key, items) {
+    if (!tid) { setMsg('테넌트 확인 실패'); return } setBusy(true);
+    const supplier_id = key === '__none' ? null : key;
+    const { data: po, error } = await supabase.from('purchase_orders').insert({ tenant_id: tid, supplier_id, status: '작성중' }).select().single();
+    if (error || !po) { setMsg('발주서 생성 실패: ' + (error ? error.message : '')); setBusy(false); return }
+    const rows = items.map(d => ({ tenant_id: tid, order_id: po.id, drug_code: d.drug_code, drug_name: d.drug_name, order_qty: Math.max(0, (d.safety_stock || 0) - (d.current_qty || 0)), current_qty: d.current_qty || 0, safety_stock: d.safety_stock || 0 }));
+    const { error: e2 } = await supabase.from('order_items').insert(rows);
+    setBusy(false);
+    if (e2) { setMsg('발주항목 저장 실패: ' + e2.message); return }
+    setMsg('발주서 생성 완료 (' + rows.length + '품목)'); refresh(); setTimeout(() => setMsg(null), 3000);
+  }
+  return <div style={{ padding: '20px 24px' }}>
+    <div style={{ fontSize: 18, fontWeight: 800, color: t.text, marginBottom: 4 }}>🧾 발주 관리</div>
+    <div style={{ fontSize: 11, color: t.textL, marginBottom: 14 }}>현재고 ≤ 안전재고 후보 · 사용·휴면 기준 · 사용량 비의존(발주제안 = 안전 − 현재고)</div>
+    {msg && <div style={{ background: t.accentL, color: t.accent, padding: '8px 14px', borderRadius: 8, marginBottom: 12, fontSize: 12, fontWeight: 600 }}>{msg}</div>}
+    <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+      <input value={newSup} onChange={e => setNewSup(e.target.value)} placeholder='도매사 이름' style={{ padding: '7px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, background: t.bg, color: t.text }} />
+      <button onClick={addSupplier} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>+ 도매사 추가</button>
+      <span style={{ fontSize: 11, color: t.textL }}>등록 도매사 {suppliers.length}곳</span>
+    </div>
+    <div style={{ fontWeight: 700, fontSize: 14, color: t.text, marginBottom: 8 }}>발주점 미달 후보 {cand.length}품목 · 도매사별</div>
+    {!cand.length ? <div style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 24, textAlign: 'center', color: t.textL }}>발주점 미달 약품 없음 (0건)</div> :
+      Object.keys(groups).map(key => { const items = groups[key]; return <div key={key} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, marginBottom: 12, overflow: 'hidden', boxShadow: t.shadow }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid ' + t.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: t.accentL }}>
+          <span style={{ fontWeight: 700, color: t.accent }}>{key === '__none' ? '미지정 도매사' : supName(key)} <span style={{ fontWeight: 500, color: t.textM, fontSize: 12 }}>· {items.length}품목</span></span>
+          <button disabled={busy} onClick={() => createPO(key, items)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: busy ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, opacity: busy ? 0.6 : 1 }}>발주서 생성</button>
+        </div>
+        <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr>{['약품', '현재고', '안전재고', '발주제안'].map((h, hi) => <th key={h} style={{ textAlign: hi ? 'right' : 'left', padding: '8px 14px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11 }}>{h}</th>)}</tr></thead>
+        <tbody>{items.map((d, i) => <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '7px 14px' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, fontWeight: 600, cursor: 'pointer' }}>{d.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.red, fontWeight: 600 }}>{(d.current_qty || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.textM }}>{(d.safety_stock || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', fontWeight: 700, color: t.green }}>{Math.max(0, (d.safety_stock || 0) - (d.current_qty || 0)).toLocaleString()}</td></tr>)}</tbody></table></div>
+      </div> })}
+    <div style={{ fontWeight: 700, fontSize: 14, color: t.text, margin: '20px 0 8px' }}>최근 발주서 {orders.length}건</div>
+    {!orders.length ? <div style={{ color: t.textL, fontSize: 12, padding: 12 }}>발주서 없음</div> :
+      <div style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, overflow: 'hidden' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr>{['발주일', '도매사', '상태'].map(h => <th key={h} style={{ textAlign: 'left', padding: '8px 14px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11 }}>{h}</th>)}</tr></thead><tbody>{orders.map((o, i) => <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '7px 14px', color: t.textM }}>{o.order_date}</td><td style={{ padding: '7px 14px' }}>{(o.suppliers || {}).name || '미지정'}</td><td style={{ padding: '7px 14px' }}><Bd bg={t.amberL} color={t.amber}>{o.status}</Bd></td></tr>)}</tbody></table></div>}
   </div>;
 }
 
@@ -2585,6 +2641,7 @@ export default function App() {
         <Header menu={menu} setMenu={setMenu} />
         {menu === 'dashboard' && <Dashboard drugs={drugs} inv={inv} txns={txns} onNav={handleNav} onEdit={setEditDrug} />}
         {menu === 'alerts' && <AlertCenter drugs={drugs} onNav={handleNav} />}
+        {menu === 'ordering' && <Ordering drugs={drugs} />}
         {menu === 'druglist' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} />}
         {menu === 'nonins' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} />}
         {menu === 'archive' && <DrugList drugs={drugs} navFilter={{ status: ['중지'], archive: true }} onEdit={setEditDrug} />}
