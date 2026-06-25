@@ -214,7 +214,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   const canDelete = profile?.role === 'admin' || memberRole === 'owner' || memberRole === 'admin'
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [f, sF] = useState({ drug_code: oc, drug_name: dr.drug_name || '', category: dr.category || '', ingredient_en: dr.ingredient_en || '', ingredient_kr: dr.ingredient_kr || '', efficacy_class: dr.efficacy_class || '', efficacy: dr.efficacy || '', manufacturer: dr.manufacturer || '', specification: dr.specification || '', unit: dr.unit || '', price_unit: dr.price_unit || 0, insurance_price: dr.insurance_price || 0, purchase_price: dr.purchase_price ?? '', insurance_code: dr.insurance_code || '', current_qty: dr.current_qty || 0, expiry_date: dr.expiry_date || '', status: dr.status || '사용', narcotic_type: getNT(dr), safety_stock: dr.safety_stock || 0, max_stock: dr.max_stock || 0, lot_no: dr.lot_no || '', insurance_type: dr.insurance_type || '급여', storage_method: dr.storage_method || '실온', storage_location: dr.storage_location || '', notes: dr.notes || '' })
-  const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null); const [tab, setTab] = useState('basic'); const [apiLd, setApiLd] = useState(false)
+  const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null); const [apiLd, setApiLd] = useState(false)
   const [apiResults, setApiResults] = useState([])
   const [lookupInfo, setLookupInfo] = useState(null)
   const [pos, setPos] = useState({ x: 0, y: 0 }); const [dragging, setDragging] = useState(false); const dragRef = useRef(null)
@@ -254,7 +254,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
         const listRes2 = await searchDrugAPI(nm, 'easy')
         if (listRes2.ok && listRes2.data?.length) setApiResults(listRes2.data.slice(0, 8))
       }
-    } catch {}
+    } catch { /* 오류 무시 */ }
     let found = { permit: false, easy: false, identify: false, price: false, efficacy: false }
     let info = {}
     const tf = (url, ms=8000) => { const ctrl=new AbortController(); const tid=setTimeout(()=>ctrl.abort(),ms); return fetch(url,{signal:ctrl.signal}).finally(()=>clearTimeout(tid)) }
@@ -289,8 +289,8 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
               }))
               found.permit = true
             }
-          } catch {}
-        } catch {}
+          } catch { /* 오류 무시 */ }
+        } catch { /* 오류 무시 */ }
       }
       /* ── 보조①: e약은요 → 효능, 보관방법 ── */
       for (const n of names) {
@@ -306,8 +306,8 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
               sF(p => ({...p, efficacy: e.efcyQesitm||p.efficacy, storage_method: e.depositMethodQesitm?stdStorage(e.depositMethodQesitm):p.storage_method }))
               found.easy = true
             }
-          } catch {}
-        } catch {}
+          } catch { /* 오류 무시 */ }
+        } catch { /* 오류 무시 */ }
       }
       /* ── 보조②: 낱알식별 → 성상 ── */
       for (const n of names) {
@@ -321,8 +321,8 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
               info.drugAppearance = [d.DRUG_SHAPE,d.COLOR_CLASS1,d.MARK_CODE_FRONT].filter(Boolean).join(' / ')
               found.identify = true
             }
-          } catch {}
-        } catch {}
+          } catch { /* 오류 무시 */ }
+        } catch { /* 오류 무시 */ }
       }
       /* ── 보조③: 약가기준 → 단가, 급여구분, 성분명 ── */
       let gnlCd = ''
@@ -353,7 +353,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
             }))
             found.price = true
           }
-        } catch {}
+        } catch { /* 오류 무시 */ }
       }
       /* ── 보조④: 성분약효 → 약효분류 ── */
       if (gnlCd) {
@@ -371,7 +371,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
             sF(p => ({ ...p, efficacy_class: g('divNm') || p.efficacy_class, unit: p.unit||g('unit')||'' }))
             found.efficacy = true
           }
-        } catch {}
+        } catch { /* 오류 무시 */ }
       }
       const cnt = Object.values(found).filter(Boolean).length
       setMsg(cnt === 5 ? 'OK' : `${cnt}/5 API 조회 완료`)
@@ -1114,7 +1114,7 @@ function DrugRegister({onRefresh}) {
             if(a[0].efcyQesitm)info.efficacy=a[0].efcyQesitm
             if(a[0].depositMethodQesitm)info.storageMethod=a[0].depositMethodQesitm
           }
-        }catch{}
+        }catch{ /* 오류 무시 */ }
       }catch(e){console.log('e약은요:',e)}
     }
     /* ── 2차 소스①: 허가정보 → 보관방법보완, 성분, 단위, 보험코드 ── */
@@ -1146,7 +1146,7 @@ function DrugRegister({onRefresh}) {
             if(h.INJC_PTH_NM)info.route=h.INJC_PTH_NM
             info.permitFound=true
           }
-        }catch{}
+        }catch{ /* 오류 무시 */ }
       }catch(e){console.log('허가정보:',e)}
     }
     /* ── 2차 소스②: 낱알식별 → 모양, 색상 → 성상 정보 ── */
@@ -1166,7 +1166,7 @@ function DrugRegister({onRefresh}) {
             info.drugAppearance=[d.DRUG_SHAPE,d.COLOR_CLASS1,d.MARK_CODE_FRONT].filter(Boolean).join(' / ')||''
             info.identifyFound=true
           }
-        }catch{}
+        }catch{ /* 오류 무시 */ }
       }catch(e){console.log('낱알식별:',e)}
     }
     /* ── 보조: 약가기준정보 → EDI단가, 보험코드, 급여구분, 성분명 ── */
@@ -1653,7 +1653,7 @@ function TransactionForm({drugs,onReload}){
     setMsg(`${tab} 완료! ${selDrug.drug_name} ${q}개`);setSelDrug(null);setSearch('');setForm(p=>({...p,qty:'',note:'',lot_no:'',expiry_date:'',reason:'',supplier:''}));setSaving(false);onReload?.();loadTxns()
     setTimeout(()=>setMsg(null),3000)
   }
-  async function delTx(tx){
+  async function _delTx(tx){
     if(!confirm(`${tx.drug_name} ${tx.type} ${tx.quantity}개를 삭제하시겠습니까?`))return
     await supabase.from('transactions').delete().eq('id',tx.id)
     /* 삭제 역보정은 0015 AFTER DELETE 트리거(trg_revert_tx_from_inventory)가 drugs+inventory 동기 처리. */
@@ -2345,7 +2345,7 @@ function AdminUserEditModal({ row, currentUserId, onClose, onSaved }) {
 }
 
 /* ═══ 로그인 페이지 ═══ */
-function LoginPage({ onLogin }) {
+function LoginPage() {
   const [mode, setMode] = useState('login') // login | signup | reset
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
