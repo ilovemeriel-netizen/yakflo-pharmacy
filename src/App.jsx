@@ -193,7 +193,7 @@ function GlobalSearch({ onClose }) {
       if (term.length < 1) { if (on) { setRes([]); setTotal(0); setLoading(false) } return }
       if (on) setLoading(true);
       const esc = term.replace(/[%,()]/g, ' ');
-      const { data, count } = await supabase.from('drugs').select('*', { count: 'exact' }).or('drug_code.ilike.%' + esc + '%,drug_name.ilike.%' + esc + '%,ingredient_kr.ilike.%' + esc + '%,ingredient_en.ilike.%' + esc + '%').in('status', ['사용', '휴면', '중지']).limit(20);
+      const { data, count } = await supabase.from('drugs').select('*', { count: 'exact' }).or('drug_code.ilike.%' + esc + '%,drug_name.ilike.%' + esc + '%,ingredient_kr.ilike.%' + esc + '%,ingredient_en.ilike.%' + esc + '%').limit(20);
       if (!on) return;
       const rows = (data || []).sort((a, b) => { const sa = a.status === '중지' ? 1 : 0, sb = b.status === '중지' ? 1 : 0; return sa - sb || String(a.drug_name || '').localeCompare(String(b.drug_name || '')) });
       setRes(rows); setIdx(0); setTotal(count || rows.length); setLoading(false);
@@ -701,7 +701,7 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 function Header({ menu: m, setMenu: sm }) {
   const { t, dark, toggle, user, profile, logout, openSearch } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'ordering', l: '🧾 발주' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'archive', l: '🗄 아카이브' }]
+  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'ordering', l: '🧾 발주' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }]
   function nav(id) { sm(id); setMobileOpen(false) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
