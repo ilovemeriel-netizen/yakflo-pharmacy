@@ -193,7 +193,7 @@ function GlobalSearch({ onClose }) {
       if (term.length < 1) { if (on) { setRes([]); setTotal(0); setLoading(false) } return }
       if (on) setLoading(true);
       const esc = term.replace(/[%,()]/g, ' ');
-      const { data, count } = await supabase.from('drugs').select('*', { count: 'exact' }).or('drug_code.ilike.%' + esc + '%,drug_name.ilike.%' + esc + '%,ingredient_kr.ilike.%' + esc + '%,ingredient_en.ilike.%' + esc + '%').limit(20);
+      const { data, count } = await supabase.from('drugs').select('*', { count: 'exact' }).or('drug_code.ilike.%' + esc + '%,drug_name.ilike.%' + esc + '%,ingredient_kr.ilike.%' + esc + '%,ingredient_en.ilike.%' + esc + '%,manufacturer.ilike.%' + esc + '%').limit(20);
       if (!on) return;
       const rows = (data || []).sort((a, b) => { const sa = a.status === '중지' ? 1 : 0, sb = b.status === '중지' ? 1 : 0; return sa - sb || String(a.drug_name || '').localeCompare(String(b.drug_name || '')) });
       setRes(rows); setIdx(0); setTotal(count || rows.length); setLoading(false);
