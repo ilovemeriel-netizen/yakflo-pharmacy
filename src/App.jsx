@@ -183,19 +183,20 @@ function GlobalSearch({ onClose }) {
   const [res, setRes] = useState([]);
   const [idx, setIdx] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [total, setTotal] = useState(0);
   const inpRef = useRef(null);
   useEffect(() => { const id = setTimeout(() => { if (inpRef.current) inpRef.current.focus() }, 40); return () => clearTimeout(id) }, []);
   useEffect(() => {
     let on = true;
     const h = setTimeout(async () => {
       const term = q.trim();
-      if (term.length < 1) { if (on) { setRes([]); setLoading(false) } return }
+      if (term.length < 1) { if (on) { setRes([]); setTotal(0); setLoading(false) } return }
       if (on) setLoading(true);
       const esc = term.replace(/[%,()]/g, ' ');
-      const { data } = await supabase.from('drugs').select('*').or('drug_code.ilike.%' + esc + '%,drug_name.ilike.%' + esc + '%,ingredient_kr.ilike.%' + esc + '%,ingredient_en.ilike.%' + esc + '%').in('status', ['사용', '휴면', '중지']).limit(20);
+      const { data, count } = await supabase.from('drugs').select('*', { count: 'exact' }).or('drug_code.ilike.%' + esc + '%,drug_name.ilike.%' + esc + '%,ingredient_kr.ilike.%' + esc + '%,ingredient_en.ilike.%' + esc + '%').in('status', ['사용', '휴면', '중지']).limit(20);
       if (!on) return;
       const rows = (data || []).sort((a, b) => { const sa = a.status === '중지' ? 1 : 0, sb = b.status === '중지' ? 1 : 0; return sa - sb || String(a.drug_name || '').localeCompare(String(b.drug_name || '')) });
-      setRes(rows); setIdx(0); setLoading(false);
+      setRes(rows); setIdx(0); setTotal(count || rows.length); setLoading(false);
     }, 250);
     return () => { on = false; clearTimeout(h) };
   }, [q]);
@@ -216,7 +217,7 @@ function GlobalSearch({ onClose }) {
       <div style={{ maxHeight: '52vh', overflowY: 'auto' }}>
         {q.trim().length < 1 ? <div style={{ padding: 24, textAlign: 'center', color: t.textL, fontSize: 12 }}>약품코드·약품명·성분으로 검색 (사용·휴면 + 아카이브)</div> : loading && !res.length ? <div style={{ padding: 24, textAlign: 'center', color: t.textL, fontSize: 12 }}>검색 중…</div> : !res.length ? <div style={{ padding: 24, textAlign: 'center', color: t.textL, fontSize: 12 }}>결과 없음</div> : res.map((d, i) => <div key={d.drug_code} onClick={() => pick(d)} onMouseEnter={() => setIdx(i)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 18px', cursor: 'pointer', background: i === idx ? t.accentL : '', borderBottom: '1px solid ' + t.border }}><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600, color: t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_name}{d.status === '중지' ? <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: t.textL, background: t.bg, border: '1px solid ' + t.border, borderRadius: 6, padding: '1px 6px' }}>🗄 아카이브</span> : null}{d.status === '휴면' ? <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: t.amber, background: t.amberL, borderRadius: 6, padding: '1px 6px' }}>휴면</span> : null}</div><div style={{ fontSize: 10, color: t.textL, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_code} · {d.category || '-'}{d.ingredient_kr ? ' · ' + d.ingredient_kr : ''}</div></div>{d.atc_l1 && String(d.atc_l1).trim() ? <span style={{ flexShrink: 0, marginLeft: 8, fontSize: 10, fontWeight: 600, color: atcColor(d.atc_l1), background: atcColor(d.atc_l1) + '1A', border: '1px solid ' + atcColor(d.atc_l1) + '33', borderRadius: 10, padding: '2px 8px' }}>{d.atc_l1}</span> : null}</div>)}
       </div>
-      <div style={{ padding: '8px 18px', borderTop: '1px solid ' + t.border, fontSize: 10, color: t.textL, display: 'flex', gap: 14 }}><span>↑↓ 이동</span><span>Enter 360°</span><span>Esc 닫기</span></div>
+      {res.length > 0 && total > res.length ? <div style={{ padding: '6px 18px', background: t.amberL, color: t.amber, fontSize: 11, fontWeight: 600, textAlign: 'center' }}>총 {total}건 중 상위 {res.length}건 표시 · 검색어를 더 좁혀보세요</div> : null}<div style={{ padding: '8px 18px', borderTop: '1px solid ' + t.border, fontSize: 10, color: t.textL, display: 'flex', gap: 14 }}><span>↑↓ 이동</span><span>Enter 360°</span><span>Esc 닫기</span></div>
     </div>
   </div>;
 }
