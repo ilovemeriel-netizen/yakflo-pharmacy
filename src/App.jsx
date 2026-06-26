@@ -176,6 +176,51 @@ function ColToggle({ cols, visible, setVisible }) {
   </div>
 }
 
+/* ═══ 전역 통합 검색 오버레이 (Ctrl/⌘+K · GNB 버튼) ═══ */
+function GlobalSearch({ onClose }) {
+  const { t, open360 } = useTheme();
+  const [q, setQ] = useState('');
+  const [res, setRes] = useState([]);
+  const [idx, setIdx] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const inpRef = useRef(null);
+  useEffect(() => { const id = setTimeout(() => { if (inpRef.current) inpRef.current.focus() }, 40); return () => clearTimeout(id) }, []);
+  useEffect(() => {
+    let on = true;
+    const h = setTimeout(async () => {
+      const term = q.trim();
+      if (term.length < 1) { if (on) { setRes([]); setLoading(false) } return }
+      if (on) setLoading(true);
+      const esc = term.replace(/[%,()]/g, ' ');
+      const { data } = await supabase.from('drugs').select('*').or('drug_code.ilike.%' + esc + '%,drug_name.ilike.%' + esc + '%,ingredient_kr.ilike.%' + esc + '%,ingredient_en.ilike.%' + esc + '%').in('status', ['사용', '휴면', '중지']).limit(20);
+      if (!on) return;
+      const rows = (data || []).sort((a, b) => { const sa = a.status === '중지' ? 1 : 0, sb = b.status === '중지' ? 1 : 0; return sa - sb || String(a.drug_name || '').localeCompare(String(b.drug_name || '')) });
+      setRes(rows); setIdx(0); setLoading(false);
+    }, 250);
+    return () => { on = false; clearTimeout(h) };
+  }, [q]);
+  function pick(d) { if (!d) return; onClose(); if (open360) open360(d) }
+  function onKey(e) {
+    if (e.key === 'Escape') { onClose(); return }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setIdx(i => Math.min(i + 1, res.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setIdx(i => Math.max(i - 1, 0)) }
+    else if (e.key === 'Enter') { e.preventDefault(); pick(res[idx]) }
+  }
+  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '76px 16px' }}>
+    <div onClick={e => e.stopPropagation()} style={{ background: t.card, borderRadius: 14, width: '100%', maxWidth: 560, boxShadow: t.shadowH, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid ' + t.border }}>
+        <span style={{ fontSize: 16 }}>🔍</span>
+        <input ref={inpRef} value={q} onChange={e => setQ(e.target.value)} onKeyDown={onKey} placeholder="약품코드·약품명·성분(한/영) 검색…" style={{ flex: 1, border: 'none', outline: 'none', fontSize: 15, background: 'transparent', color: t.text }} />
+        <span style={{ fontSize: 10, color: t.textL, border: '1px solid ' + t.border, borderRadius: 5, padding: '2px 6px' }}>Esc</span>
+      </div>
+      <div style={{ maxHeight: '52vh', overflowY: 'auto' }}>
+        {q.trim().length < 1 ? <div style={{ padding: 24, textAlign: 'center', color: t.textL, fontSize: 12 }}>약품코드·약품명·성분으로 검색 (사용·휴면 + 아카이브)</div> : loading && !res.length ? <div style={{ padding: 24, textAlign: 'center', color: t.textL, fontSize: 12 }}>검색 중…</div> : !res.length ? <div style={{ padding: 24, textAlign: 'center', color: t.textL, fontSize: 12 }}>결과 없음</div> : res.map((d, i) => <div key={d.drug_code} onClick={() => pick(d)} onMouseEnter={() => setIdx(i)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 18px', cursor: 'pointer', background: i === idx ? t.accentL : '', borderBottom: '1px solid ' + t.border }}><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600, color: t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_name}{d.status === '중지' ? <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: t.textL, background: t.bg, border: '1px solid ' + t.border, borderRadius: 6, padding: '1px 6px' }}>🗄 아카이브</span> : null}{d.status === '휴면' ? <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: t.amber, background: t.amberL, borderRadius: 6, padding: '1px 6px' }}>휴면</span> : null}</div><div style={{ fontSize: 10, color: t.textL, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_code} · {d.category || '-'}{d.ingredient_kr ? ' · ' + d.ingredient_kr : ''}</div></div>{d.atc_l1 && String(d.atc_l1).trim() ? <span style={{ flexShrink: 0, marginLeft: 8, fontSize: 10, fontWeight: 600, color: atcColor(d.atc_l1), background: atcColor(d.atc_l1) + '1A', border: '1px solid ' + atcColor(d.atc_l1) + '33', borderRadius: 10, padding: '2px 8px' }}>{d.atc_l1}</span> : null}</div>)}
+      </div>
+      <div style={{ padding: '8px 18px', borderTop: '1px solid ' + t.border, fontSize: 10, color: t.textL, display: 'flex', gap: 14 }}><span>↑↓ 이동</span><span>Enter 360°</span><span>Esc 닫기</span></div>
+    </div>
+  </div>;
+}
+
 function Drug360Modal({ drug: dr, onClose }) {
   const { t } = useTheme();
   const [tab, setTab] = useState('개요');
@@ -653,7 +698,7 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 
 /* ═══ 헤더 — 반응형 (모바일 햄버거) ═══ */
 function Header({ menu: m, setMenu: sm }) {
-  const { t, dark, toggle, user, profile, logout } = useTheme()
+  const { t, dark, toggle, user, profile, logout, openSearch } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
   const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'ordering', l: '🧾 발주' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'archive', l: '🗄 아카이브' }]
   function nav(id) { sm(id); setMobileOpen(false) }
@@ -672,7 +717,7 @@ function Header({ menu: m, setMenu: sm }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
         <button onClick={() => nav('mypage')} title="마이페이지" className="cnc-date" style={{ padding: '4px 10px', borderRadius: 6, border: m === 'mypage' ? `1px solid ${t.navHi}60` : '1px solid rgba(255,255,255,0.10)', background: m === 'mypage' ? t.navHi + '22' : 'rgba(255,255,255,0.04)', color: m === 'mypage' ? t.navHi : 'rgba(255,255,255,0.65)', cursor: 'pointer', fontSize: 11, fontWeight: 500, transition: 'all .15s' }}>{displayName}</button>
         {isAdmin && <button onClick={() => nav('admin')} title="가입자 관리" style={{ padding: '4px 10px', borderRadius: 6, border: m === 'admin' ? `1px solid ${t.navHi}60` : '1px solid rgba(255,255,255,0.15)', background: m === 'admin' ? t.navHi + '22' : 'rgba(255,255,255,0.04)', color: m === 'admin' ? t.navHi : 'rgba(255,255,255,0.55)', cursor: 'pointer', fontSize: 10, fontWeight: 600 }}>관리</button>}
-        <button onClick={logout} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 10, fontWeight: 500 }}>로그아웃</button>
+        <button onClick={() => openSearch && openSearch()} title="통합 검색 (Ctrl+K)" style={{ padding: '4px 9px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: 13 }}>🔍</button><button onClick={logout} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 10, fontWeight: 500 }}>로그아웃</button>
         <button onClick={toggle} style={{ width: 38, height: 20, borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: dark ? t.navHi + '30' : 'rgba(255,255,255,0.08)', cursor: 'pointer', position: 'relative', padding: 0 }}><div style={{ width: 16, height: 16, borderRadius: 8, background: dark ? t.navHi : 'rgba(255,255,255,0.4)', position: 'absolute', top: 1, left: dark ? 19 : 1, transition: 'all .2s' }} /></button>
         <button className="cnc-hamburger" onClick={() => setMobileOpen(!mobileOpen)} style={{ display: 'none', width: 32, height: 32, borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: mobileOpen ? t.navHi + '20' : 'transparent', cursor: 'pointer', color: t.navText, fontSize: 18, alignItems: 'center', justifyContent: 'center' }}>{mobileOpen ? '✕' : '☰'}</button>
       </div>
@@ -778,7 +823,7 @@ function Ordering({ drugs }) {
 
 /* ═══ 대시보드 — Bento Grid ═══ */
 function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
-  const { t } = useTheme(); const { hs, so, SI, TS } = useSort('drug_name')
+  const { t, open360 } = useTheme(); const { hs, so, SI, TS } = useSort('drug_name')
   const today = new Date(), fmt = d => d.toISOString().split('T')[0], ym = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`, d30 = new Date(today), d90 = new Date(today); d30.setDate(d30.getDate() + 30); d90.setDate(d90.getDate() + 90)
   const active = drugs.filter(d => d.status === '사용'); const main = drugs.filter(d => MAIN_STATS.includes(d.status))
   const s = { total: main.length, active: active.length, stopped: drugs.filter(d => d.status === '중지').length, dormant: drugs.filter(d => d.status === '휴면').length, narc: drugs.filter(d => isN(d)).length, nonIns: drugs.filter(d => isNonIns(d) && MAIN_STATS.includes(d.status)).length, shortage: inv.filter(d => d.stock_status === '부족').length, e30: drugs.filter(d => d.expiry_date && d.expiry_date <= fmt(d30) && MAIN_STATS.includes(d.status)).length, e90: drugs.filter(d => d.expiry_date && d.expiry_date > fmt(d30) && d.expiry_date <= fmt(d90) && MAIN_STATS.includes(d.status)).length }
@@ -822,6 +867,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
       </div>
     </div>
     <div style={{ background: t.card, borderRadius: 14, border: '1px solid '+t.border, padding: '16px 20px', marginBottom: 18, boxShadow: t.shadow }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}><span style={{ fontWeight: 700, fontSize: 14, color: t.text, display: 'flex', alignItems: 'center', gap: 6 }}>💊 ATC 효능군 분포 <span style={{ fontSize: 11, color: t.textL, fontWeight: 500 }}>· 사용·휴면 기준</span></span><span style={{ fontSize: 12, fontWeight: 700, color: t.green, background: t.greenL, padding: '3px 10px', borderRadius: 10 }}>분류율 {main.length ? Math.round(atcClassified / main.length * 100) : 0}%</span></div><div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}><AtcDonut data={atcData} total={main.length} colorFn={atcColor} onSlice={name => onNav({ menu: 'druglist', atc: name })} t={t} /><div style={{ flex: 1, minWidth: 240, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: '3px 14px' }}>{atcData.map(d => <div key={d.name} onClick={() => onNav({ menu: 'druglist', atc: d.name })} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', padding: '3px 5px', borderRadius: 6 }} onMouseEnter={e => e.currentTarget.style.background = t.bg} onMouseLeave={e => e.currentTarget.style.background = ''}><span style={{ width: 10, height: 10, borderRadius: 3, background: atcColor(d.name), flexShrink: 0 }} /><span style={{ fontSize: 11, color: t.textM, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span><span style={{ fontSize: 11, fontWeight: 700, color: t.text }}>{d.count}</span></div>)}</div></div></div>
+    {drugs.filter(d => MAIN_STATS.includes(d.status)).length > 0 && (() => { const recentNew = drugs.filter(d => MAIN_STATS.includes(d.status)).slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).slice(0, 10); return <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, overflow: 'hidden', boxShadow: t.shadow, marginBottom: 18 }}><div style={{ padding: '14px 22px', borderBottom: '1px solid ' + t.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: t.accentL }}><span style={{ fontWeight: 700, fontSize: 14, color: t.accent }}>🆕 최근 신규 등록</span><span style={{ fontSize: 11, color: t.textM }}>최신 {recentNew.length}건 · 클릭 → 360°</span></div><div>{recentNew.map((d) => <div key={d.drug_code} onClick={() => open360 && open360(d)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 22px', borderBottom: '1px solid ' + t.border, cursor: 'pointer', fontSize: 12 }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span style={{ color: t.accent, fontWeight: 600 }}>{d.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code} · {d.category}{d.status === '휴면' ? ' · 휴면' : ''}</span></span><span style={{ fontSize: 10, color: t.textL, flexShrink: 0, marginLeft: 8 }}>{String(d.created_at || '').slice(0, 10)}</span></div>)}</div></div> })()}
     <div style={{ fontSize: 11, color: t.textL, margin: "2px 0 8px 2px" }}>구분별 현황 · <b>사용·휴면 기준</b></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 18 }}>
       {catData.map(c => { const cc = catC[c.cat] || t.accent; return <div key={c.cat} onClick={() => onNav({ menu: 'druglist', status: ['사용'] })} style={{ background: t.card, borderRadius: 14, padding: '18px 22px', border: `1px solid ${t.border}`, borderLeft: `4px solid ${cc}`, cursor: 'pointer', transition: 'all .15s', boxShadow: t.shadow }} onMouseEnter={hv} onMouseLeave={hx}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}><span style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{c.cat}</span><span style={{ fontSize: 14, fontWeight: 700, color: cc }}>{c.total}개</span></div><div style={{ display: 'flex', gap: 20, alignItems: 'baseline' }}>{c.expSoon > 0 && <div><div style={{ fontSize: 10, color: t.textL, marginBottom: 2 }}>유효기한 주의</div><div style={{ fontSize: 22, fontWeight: 800, color: t.amber }}>{c.expSoon}</div></div>}</div><div style={{ height: 4, background: t.border, borderRadius: 2, marginTop: 12 }}><div style={{ height: '100%', background: cc, borderRadius: 2, width: `${Math.min(c.total / Math.max(s.total, 1) * 100, 100)}%`, opacity: 0.5 }} /></div></div> })}
     </div>
@@ -2483,10 +2529,11 @@ export default function App() {
   const [adjustDrug, setAdjustDrug] = useState(null)
   const [lotDrug, setLotDrug] = useState(null)
   const [d360, setD360] = useState(null)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const t = dark ? themes.dark : themes.light
-  const themeVal = { t, open360: setD360, dark, toggle: () => setDark(d => !d), user, profile, memberRole, logout: async () => { await supabase.auth.signOut(); setUser(null); setProfile(null); setMemberRole(null); setMenu('dashboard') } }
+  const themeVal = { t, open360: setD360, openSearch: () => setSearchOpen(true), dark, toggle: () => setDark(d => !d), user, profile, memberRole, logout: async () => { await supabase.auth.signOut(); setUser(null); setProfile(null); setMemberRole(null); setMenu('dashboard') } }
 
   /* 인증 상태 확인 */
   useEffect(() => {
@@ -2536,6 +2583,7 @@ export default function App() {
   }
 
   useEffect(() => { if (user) load() }, [user])
+  useEffect(() => { function onK(e) { if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); setSearchOpen(true) } } window.addEventListener('keydown', onK); return () => window.removeEventListener('keydown', onK) }, [])
   /* Realtime: 거래/재고/약품 변경 즉시 반영(디바운스 — 대량 커밋 깜빡임·부하 방지). 구독 RLS 경유·cleanup */
   useEffect(() => {
     if (!user) return
@@ -2660,6 +2708,7 @@ export default function App() {
 
         {editDrug && <DrugEditModal drug={editDrug} onClose={() => setEditDrug(null)} onSaved={() => { setEditDrug(null); load() }} onLotManage={d => { setEditDrug(null); setLotDrug(d) }} />}
         {d360 && <Drug360Modal drug={d360} onClose={() => setD360(null)} />}
+        {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
         {adjustDrug && <AdjustModal drug={adjustDrug} onClose={() => setAdjustDrug(null)} onSaved={() => { setAdjustDrug(null); load() }} />}
         {lotDrug && <LotModal drug={lotDrug} onClose={() => setLotDrug(null)} onSaved={() => { setLotDrug(null); load() }} />}
       </div>
