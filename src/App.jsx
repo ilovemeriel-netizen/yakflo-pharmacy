@@ -255,6 +255,29 @@ function DashHeader() {
   </div>;
 }
 
+/* ═══ GNB 드롭다운 내비 (hover/click→수직 펼침·스크롤·Esc·외부클릭 닫힘) ═══ */
+function GnbNav({ ms, m, onFlat, navTo }) {
+  const { t } = useTheme();
+  const [dd, setDd] = useState(null);
+  const ref = useRef(null);
+  useEffect(() => {
+    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setDd(null) }
+    function onEsc(e) { if (e.key === 'Escape') setDd(null) }
+    document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) };
+  }, []);
+  const btnBase = (active) => ({ padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 400, background: active ? t.navHi + '22' : 'transparent', color: active ? t.navHi : 'rgba(255,255,255,0.55)', border: '1px solid ' + (active ? t.navHi + '40' : 'transparent'), transition: 'all .15s', whiteSpace: 'nowrap' });
+  return <div ref={ref} className="cnc-nav-desktop" style={{ display: 'flex', gap: 2, flex: '1 1 auto', justifyContent: 'center' }}>
+    {ms.map((x, i) => x.children ? <div key={i} style={{ position: 'relative' }} onMouseEnter={() => setDd(i)} onMouseLeave={() => setDd(null)}>
+        <button onClick={() => setDd(dd === i ? null : i)} style={btnBase(dd === i)}>{x.l} <span style={{ fontSize: 9 }}>▾</span></button>
+        {dd === i ? <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 170, maxHeight: 320, overflowY: 'auto', background: t.nav, border: '1px solid ' + t.navHi + '40', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.32)', zIndex: 950, padding: 4 }}>
+          {x.children.map((c, j) => <button key={j} onClick={() => { setDd(null); navTo(c.nav) }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'transparent', color: 'rgba(255,255,255,0.78)', cursor: 'pointer', fontSize: 12, borderRadius: 6, whiteSpace: 'nowrap' }} onMouseEnter={e => e.currentTarget.style.background = t.navHi + '22'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>{c.l}</button>)}
+        </div> : null}
+      </div>
+      : <button key={i} onClick={() => onFlat(x.id)} style={btnBase(m === x.id)}>{x.l}</button>)}
+  </div>;
+}
+
 function Drug360Modal({ drug: dr, onClose }) {
   const { t } = useTheme();
   const [tab, setTab] = useState('개요');
@@ -732,9 +755,13 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 
 /* ═══ 헤더 — 반응형 (모바일 햄버거) ═══ */
 function Header({ menu: m, setMenu: sm }) {
-  const { t, dark, toggle, user, profile, logout, openSearch } = useTheme()
+  const { t, dark, toggle, user, profile, logout, openSearch, navTo } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'ordering', l: '🧾 발주' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }]
+  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' },
+    { l: '약품관리', children: [{ l: '약품 목록', nav: { menu: 'druglist' } }, { l: '신규 등록', nav: { menu: 'register' } }, { l: '재고 현황', nav: { menu: 'stock' } }, { l: '유효기한', nav: { menu: 'expiry' } }, { l: '비보험', nav: { menu: 'nonins' } }, { l: '향정·마약', nav: { menu: 'narcotic' } }] },
+    { l: '구분', children: CATS.map(c => ({ l: c, nav: { menu: 'druglist', cats: [c] } })) },
+    { l: '상태', children: [{ l: '사용', nav: { menu: 'druglist', status: ['사용'] } }, { l: '휴면', nav: { menu: 'druglist', status: ['휴면'] } }, { l: '중지(아카이브)', nav: { menu: 'archive' } }] },
+    { id: 'ordering', l: '🧾 발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }]
   function nav(id) { sm(id); setMobileOpen(false) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
@@ -747,7 +774,7 @@ function Header({ menu: m, setMenu: sm }) {
           <div className="brand-sub" style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: 0.2, lineHeight: 1.2 }}>약품 통합 관리 솔루션</div>
         </div>
       </div>
-      <div className="cnc-nav-desktop" style={{ display: 'flex', gap: 2, flex: '1 1 auto', justifyContent: 'center' }}>{ms.map(x => <button key={x.id} onClick={() => nav(x.id)} style={{ padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: m === x.id ? 700 : 400, background: m === x.id ? t.navHi + '22' : 'transparent', color: m === x.id ? t.navHi : 'rgba(255,255,255,0.55)', border: m === x.id ? `1px solid ${t.navHi}40` : '1px solid transparent', transition: 'all .15s' }}>{x.l}</button>)}</div>
+      <GnbNav ms={ms} m={m} onFlat={nav} navTo={navTo} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
         <button onClick={() => nav('mypage')} title="마이페이지" className="cnc-date" style={{ padding: '4px 10px', borderRadius: 6, border: m === 'mypage' ? `1px solid ${t.navHi}60` : '1px solid rgba(255,255,255,0.10)', background: m === 'mypage' ? t.navHi + '22' : 'rgba(255,255,255,0.04)', color: m === 'mypage' ? t.navHi : 'rgba(255,255,255,0.65)', cursor: 'pointer', fontSize: 11, fontWeight: 500, transition: 'all .15s' }}>{displayName}</button>
         {isAdmin && <button onClick={() => nav('admin')} title="가입자 관리" style={{ padding: '4px 10px', borderRadius: 6, border: m === 'admin' ? `1px solid ${t.navHi}60` : '1px solid rgba(255,255,255,0.15)', background: m === 'admin' ? t.navHi + '22' : 'rgba(255,255,255,0.04)', color: m === 'admin' ? t.navHi : 'rgba(255,255,255,0.55)', cursor: 'pointer', fontSize: 10, fontWeight: 600 }}>관리</button>}
@@ -758,7 +785,7 @@ function Header({ menu: m, setMenu: sm }) {
     </div>
     {mobileOpen && <div className="cnc-nav-mobile no-print" style={{ position: 'fixed', top: 56, left: 0, right: 0, bottom: 0, zIndex: 899 }} onClick={() => setMobileOpen(false)}>
       <div style={{ background: t.nav, borderBottom: `2px solid ${t.navHi}40`, padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: 2 }} onClick={e => e.stopPropagation()}>
-        {ms.map(x => <button key={x.id} onClick={() => nav(x.id)} style={{ padding: '12px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: m === x.id ? 700 : 400, background: m === x.id ? t.navHi + '22' : 'transparent', color: m === x.id ? t.navHi : 'rgba(255,255,255,0.65)', border: 'none', textAlign: 'left' }}>{x.l}</button>)}
+        {ms.map((x, i) => x.children ? <div key={i}><div style={{ padding: '10px 16px 4px', fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 700 }}>{x.l}</div>{x.children.map((c, j) => <button key={j} onClick={() => { setMobileOpen(false); navTo(c.nav) }} style={{ padding: '10px 24px', borderRadius: 8, cursor: 'pointer', fontSize: 13, background: 'transparent', color: 'rgba(255,255,255,0.65)', border: 'none', textAlign: 'left', display: 'block', width: '100%' }}>{c.l}</button>)}</div> : <button key={i} onClick={() => nav(x.id)} style={{ padding: '12px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: m === x.id ? 700 : 400, background: m === x.id ? t.navHi + '22' : 'transparent', color: m === x.id ? t.navHi : 'rgba(255,255,255,0.65)', border: 'none', textAlign: 'left' }}>{x.l}</button>)}
         <button onClick={() => nav('register')} style={{ padding: '12px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: m === 'register' ? 700 : 400, background: m === 'register' ? t.navHi + '22' : 'transparent', color: t.navHi, border: `1px solid ${t.navHi}40`, textAlign: 'left', marginTop: 4 }}>+ 신규 등록</button>
       </div>
       <div style={{ flex: 1, background: 'rgba(0,0,0,0.4)' }} />
@@ -945,9 +972,9 @@ const DRUG_COLS = [
 
 function DrugList({ drugs, navFilter: nf, onEdit }) {
   const __pe = useTheme(); const canEditPrice = __pe.profile?.role === 'admin' || __pe.memberRole === 'owner' || __pe.memberRole === 'admin'; const [ediOv, setEdiOv] = useState({}); const [ediEdit, setEdiEdit] = useState(null); async function saveEdi(code, raw) { const v = Number(raw); if (raw === '' || Number.isNaN(v) || v < 0) { setEdiEdit(null); return } const { error } = await supabase.from('drugs').update({ purchase_price: v }).eq('drug_code', code); if (!error) setEdiOv(o => ({ ...o, [code]: v })); setEdiEdit(null) }
-  const { t, open360, profile, user } = useTheme(); const [search, setSearch] = useState(''); const [cats, setCats] = useState(CATS); const [stats, setStats] = useState(nf?.status || MAIN_STATS); const [narcOnly, setNarcOnly] = useState(false); const [insF, setInsF] = useState(nf?.insType || '전체'); const [page, setPage] = useState(1); const [visCols, setVisCols] = useState(() => { const sv = profile?.settings?.drugCols; return Array.isArray(sv) && sv.length ? sv.filter(k => DRUG_COLS.some(c => c.key === k)) : DRUG_COLS.filter(c => c.default).map(c => c.key) }); const [atcF, setAtcF] = useState(nf?.atc || null); const saveCols = (cols) => { setVisCols(cols); if (user?.id) supabase.from('profiles').update({ settings: { ...(profile?.settings || {}), drugCols: cols } }).eq('id', user.id).then(() => {}, () => {}) }
+  const { t, open360, profile, user } = useTheme(); const [search, setSearch] = useState(''); const [cats, setCats] = useState(nf?.cats || CATS); const [stats, setStats] = useState(nf?.status || MAIN_STATS); const [narcOnly, setNarcOnly] = useState(false); const [insF, setInsF] = useState(nf?.insType || '전체'); const [page, setPage] = useState(1); const [visCols, setVisCols] = useState(() => { const sv = profile?.settings?.drugCols; return Array.isArray(sv) && sv.length ? sv.filter(k => DRUG_COLS.some(c => c.key === k)) : DRUG_COLS.filter(c => c.default).map(c => c.key) }); const [atcF, setAtcF] = useState(nf?.atc || null); const saveCols = (cols) => { setVisCols(cols); if (user?.id) supabase.from('profiles').update({ settings: { ...(profile?.settings || {}), drugCols: cols } }).eq('id', user.id).then(() => {}, () => {}) }
   const { hs, so, SI, TS } = useSort('drug_name')
-  useEffect(() => { if (nf?.status) setStats(Array.isArray(nf.status) ? nf.status : [nf.status]); if (nf?.narcotic) setNarcOnly(true); else setNarcOnly(false); if (nf?.insType) setInsF(nf.insType); else setInsF('전체'); setPage(1) }, [nf])
+  useEffect(() => { if (nf?.cats) setCats(Array.isArray(nf.cats) ? nf.cats : [nf.cats]); else setCats(CATS); if (nf?.status) setStats(Array.isArray(nf.status) ? nf.status : [nf.status]); if (nf?.narcotic) setNarcOnly(true); else setNarcOnly(false); if (nf?.insType) setInsF(nf.insType); else setInsF('전체'); setPage(1) }, [nf])
   const filtered = so(drugs.filter(d => { if (narcOnly && !isN(d)) return false; if (atcF && d.atc_l1 !== atcF) return false; if (!stats.includes(d.status)) return false; if (!cats.includes(d.category)) return false; if (insF !== '전체') { const normalized = isNonIns(d) ? '비보험' : '보험'; if (normalized !== insF) return false } if (search.trim()) { const q = search.trim().toLowerCase(); return d.drug_name?.toLowerCase().includes(q) || d.drug_code?.toLowerCase().includes(q) || d.ingredient_kr?.toLowerCase().includes(q) || d.manufacturer?.toLowerCase().includes(q) }; return true }))
   const atcL1Options = ['전체'].concat(Array.from(new Set(drugs.map(d => d.atc_l1).filter(v => v && String(v).trim()))).sort())
   const tp = Math.ceil(filtered.length / PP), paged = filtered.slice((page - 1) * PP, page * PP); const activeCols = DRUG_COLS.filter(c => visCols.includes(c.key))
@@ -2575,7 +2602,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
 
   const t = dark ? themes.dark : themes.light
-  const themeVal = { t, open360: setD360, openSearch: () => setSearchOpen(true), dark, toggle: () => setDark(d => !d), user, profile, memberRole, logout: async () => { await supabase.auth.signOut(); setUser(null); setProfile(null); setMemberRole(null); setMenu('dashboard') } }
+  const themeVal = { t, open360: setD360, openSearch: () => setSearchOpen(true), navTo: handleNav, dark, toggle: () => setDark(d => !d), user, profile, memberRole, logout: async () => { await supabase.auth.signOut(); setUser(null); setProfile(null); setMemberRole(null); setMenu('dashboard') } }
 
   /* 인증 상태 확인 */
   useEffect(() => {
