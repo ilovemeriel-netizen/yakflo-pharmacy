@@ -222,6 +222,39 @@ function GlobalSearch({ onClose }) {
   </div>;
 }
 
+/* ═══ 트리형 필터(아코디언) — 부모 클릭→하위 수직 펼침·선택 (UI 표현만, 필터 로직 무변경) ═══ */
+function TreeFilter({ groups }) {
+  const { t } = useTheme();
+  const [open, setOpen] = useState({});
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    {groups.map(g => {
+      const isOpen = !!open[g.key];
+      const selCnt = g.mode === 'single' ? (g.selected && g.selected !== '전체' ? 1 : 0) : g.items.filter(it => g.selected.includes(it)).length;
+      return <div key={g.key} style={{ border: '1px solid ' + t.border, borderRadius: 8, overflow: 'hidden' }}>
+        <div onClick={() => setOpen(o => ({ ...o, [g.key]: !o[g.key] }))} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', cursor: 'pointer', background: isOpen ? g.color + '0D' : t.bg }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>{g.icon} {g.label}{selCnt > 0 ? <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: g.color, background: g.color + '1A', borderRadius: 8, padding: '1px 7px' }}>{g.mode === 'single' ? g.selected : selCnt}</span> : null}</span>
+          <span style={{ fontSize: 10, color: t.textL }}>{isOpen ? '▲' : '▼'}</span>
+        </div>
+        {isOpen ? <div style={{ padding: '8px 10px', display: 'flex', flexWrap: 'wrap', gap: 6, borderTop: '1px solid ' + t.border }}>
+          {g.items.length === 0 ? <span style={{ fontSize: 11, color: t.textL }}>항목 없음</span> : g.items.map(it => { const on = g.mode === 'single' ? g.selected === it : g.selected.includes(it); return <button key={it} onClick={() => g.onSelect(it)} style={{ padding: '4px 12px', borderRadius: 14, border: '1px solid ' + (on ? g.color : t.border), background: on ? g.color + '1A' : 'transparent', color: on ? g.color : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>{it}</button> })}
+        </div> : null}
+      </div>; })}
+  </div>;
+}
+
+/* ═══ 대시보드 헤더 바 (현 팔레트·로그인 상태 동적, 다크 미적용) ═══ */
+function DashHeader() {
+  const { t, user, profile, memberRole } = useTheme();
+  const [tenant, setTenant] = useState('');
+  useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, []);
+  const name = profile?.full_name || (user?.email ? user.email.split('@')[0] : '사용자');
+  const role = profile?.role || memberRole || 'user';
+  return <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: t.nav, borderRadius: 14, padding: '14px 20px', marginBottom: 16, boxShadow: t.shadow, flexWrap: 'wrap', gap: 8 }}>
+    <div><div style={{ fontSize: 17, fontWeight: 800, color: '#ffffff', letterSpacing: 0.3 }}>약플로 <span style={{ color: t.navHi }}>Yakflo</span></div><div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>약품 통합 관리 대시보드{tenant ? ' · ' + tenant : ''}</div></div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}><span style={{ width: 8, height: 8, borderRadius: 4, background: t.green, boxShadow: '0 0 6px ' + t.green }} /><span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff' }}>ONLINE</span><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>·</span><span style={{ fontSize: 12, fontWeight: 600, color: t.navHi }}>{name}@{role}</span></div>
+  </div>;
+}
+
 function Drug360Modal({ drug: dr, onClose }) {
   const { t } = useTheme();
   const [tab, setTab] = useState('개요');
@@ -842,6 +875,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
   const sT = (icon, title) => <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 12, paddingBottom: 8, borderBottom: `2px solid ${t.accent}`, display: 'flex', alignItems: 'center', gap: 6 }}><span>{icon}</span>{title}</div>
   const sR = (label, value, color, unit) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${t.border}` }}><span style={{ fontSize: 12, color: t.textM }}>{label}</span><span style={{ fontSize: 13, fontWeight: 700, color: color || t.text }}>{typeof value === 'number' ? value.toLocaleString() : value}{unit || ''}</span></div>
   return <div style={{ padding: '20px 24px' }}>
+    <DashHeader />
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 14 }}>
       {[{ l: '전체 약품', v: s.total, c: t.accent, nav: { menu: 'druglist', status: MAIN_STATS } }, { l: '사용', v: s.active, c: t.green, nav: { menu: 'druglist', status: ['사용'] } }, { l: '중지', v: s.stopped, c: t.textL, nav: { menu: 'archive' } }, { l: '향정마약', v: s.narc, c: t.purple, nav: { menu: 'narcotic' } }].map((c, i) => <div key={i} onClick={() => onNav(c.nav)} style={tc(c.c)} onMouseEnter={hv} onMouseLeave={hx}><div style={{ fontSize: 12, color: t.textM, fontWeight: 500, marginBottom: 8 }}>{c.l}</div><div style={{ fontSize: 34, fontWeight: 800, color: c.c, letterSpacing: -1 }}>{c.v}</div></div>)}
     </div>
@@ -915,6 +949,7 @@ function DrugList({ drugs, navFilter: nf, onEdit }) {
   const { hs, so, SI, TS } = useSort('drug_name')
   useEffect(() => { if (nf?.status) setStats(Array.isArray(nf.status) ? nf.status : [nf.status]); if (nf?.narcotic) setNarcOnly(true); else setNarcOnly(false); if (nf?.insType) setInsF(nf.insType); else setInsF('전체'); setPage(1) }, [nf])
   const filtered = so(drugs.filter(d => { if (narcOnly && !isN(d)) return false; if (atcF && d.atc_l1 !== atcF) return false; if (!stats.includes(d.status)) return false; if (!cats.includes(d.category)) return false; if (insF !== '전체') { const normalized = isNonIns(d) ? '비보험' : '보험'; if (normalized !== insF) return false } if (search.trim()) { const q = search.trim().toLowerCase(); return d.drug_name?.toLowerCase().includes(q) || d.drug_code?.toLowerCase().includes(q) || d.ingredient_kr?.toLowerCase().includes(q) || d.manufacturer?.toLowerCase().includes(q) }; return true }))
+  const atcL1Options = ['전체'].concat(Array.from(new Set(drugs.map(d => d.atc_l1).filter(v => v && String(v).trim()))).sort())
   const tp = Math.ceil(filtered.length / PP), paged = filtered.slice((page - 1) * PP, page * PP); const activeCols = DRUG_COLS.filter(c => visCols.includes(c.key))
   function dl() { const ws = XLSX.utils.json_to_sheet(filtered.map(d => { const o = {}; DRUG_COLS.forEach(c => { o[c.label] = d[c.key] || '' }); return o })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '약품'); XLSX.writeFile(wb, `약품목록_${new Date().toISOString().split('T')[0]}.xlsx`) }
   function cellVal(d, col) {
@@ -935,9 +970,15 @@ function DrugList({ drugs, navFilter: nf, onEdit }) {
     <div className="no-print" style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, padding: '16px 18px', marginBottom: 12, boxShadow: t.shadow }}>
       <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} placeholder="약품명, 코드, 성분명, 제조사 검색..." style={{ width: '100%', padding: '10px 14px', border: `1px solid ${t.border}`, borderRadius: 10, fontSize: 13, marginBottom: 12, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <MP items={CATS} selected={cats} onChange={v => { setCats(v); setPage(1) }} color={t.accent} label="구분" />
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}><MP items={STATS} selected={stats} onChange={v => { setStats(v); setPage(1) }} color={t.green} label="상태" /><div style={{ width: 1, height: 16, background: t.border }} /><button onClick={() => { setNarcOnly(!narcOnly); setPage(1) }} style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${narcOnly ? t.purple : t.border}`, cursor: 'pointer', fontSize: 11, fontWeight: 600, background: narcOnly ? t.purpleL : 'transparent', color: narcOnly ? t.purple : t.textM }}>향정마약</button></div>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}><span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>보험</span>{['전체', '보험', '비보험'].map(x => <button key={x} onClick={() => { setInsF(x); setPage(1) }} style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${insF === x ? t.blue : t.border}`, cursor: 'pointer', fontSize: 11, fontWeight: 600, background: insF === x ? t.blueL : 'transparent', color: insF === x ? t.blue : t.textM }}>{x}</button>)}<div style={{ flex: 1 }} /><ColToggle cols={DRUG_COLS} visible={visCols} setVisible={saveCols} /><button onClick={dl} style={{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${t.green}`, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600, marginLeft: 4 }}>엑셀 다운로드</button></div>
+        <TreeFilter groups={[
+          { key: 'cat', label: '구분', icon: '💊', color: t.accent, mode: 'multi', items: CATS, selected: cats, onSelect: (it) => { setCats(cats.includes(it) ? cats.filter(x => x !== it) : [...cats, it]); setPage(1) } },
+          { key: 'stat', label: '상태', icon: '🔖', color: t.green, mode: 'multi', items: STATS, selected: stats, onSelect: (it) => { setStats(stats.includes(it) ? stats.filter(x => x !== it) : [...stats, it]); setPage(1) } },
+          { key: 'reg', label: '규제', icon: '⚠', color: t.purple, mode: 'multi', items: ['향정마약'], selected: narcOnly ? ['향정마약'] : [], onSelect: () => { setNarcOnly(!narcOnly); setPage(1) } },
+          { key: 'ins', label: '급여', icon: '🏥', color: t.blue, mode: 'single', items: ['전체', '보험', '비보험'], selected: insF, onSelect: (it) => { setInsF(it); setPage(1) } },
+          { key: 'atc', label: 'ATC 대분류', icon: '🧬', color: t.lavender || '#BFA6D9', mode: 'single', items: atcL1Options, selected: atcF || '전체', onSelect: (it) => { setAtcF((it === '전체' || atcF === it) ? null : it); setPage(1) } },
+        ]} />
+        
+        <div style={{ display: 'flex', alignItems: 'center', marginTop: 2 }}><div style={{ flex: 1 }} /><ColToggle cols={DRUG_COLS} visible={visCols} setVisible={saveCols} /><button onClick={dl} style={{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${t.green}`, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600, marginLeft: 4 }}>엑셀 다운로드</button></div>
       </div>
     </div>
     <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, overflow: 'hidden', boxShadow: t.shadow }}>
