@@ -207,7 +207,7 @@ function GlobalSearch({ onClose }) {
     else if (e.key === 'ArrowUp') { e.preventDefault(); setIdx(i => Math.max(i - 1, 0)) }
     else if (e.key === 'Enter') { e.preventDefault(); pick(res[idx]) }
   }
-  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '76px 16px' }}>
+  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 10000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '76px 16px' }}>
     <div onClick={e => e.stopPropagation()} style={{ background: t.card, borderRadius: 14, width: '100%', maxWidth: 560, boxShadow: t.shadowH, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid ' + t.border }}>
         <span style={{ fontSize: 16 }}>🔍</span>
