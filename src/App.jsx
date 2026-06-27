@@ -1015,9 +1015,9 @@ function LDonut({ data, total, onSlice, onCenter, centerTop, centerBot, t }) {
     <text x="80" y="93" textAnchor="middle" style={{ fontSize: 9, fill: t.textL, pointerEvents: 'none' }}>{centerBot}</text>
   </svg>;
 }
-function AtcDonutsRow({ drugs, t, onPick, sel, onClear }) {
+function AtcDonutsRow({ drugs, t, onPick, sel, onClear, nonins }) {
   const [drill, setDrill] = useState(false);
-  const used = drugs.filter(d => d.status === '사용');
+  const used = drugs.filter(d => d.status === '사용' && (!nonins || isNonIns(d)));
   const agg = (key) => { const m = {}; used.forEach(d => { const v = (d[key] && String(d[key]).trim()) || '미분류'; m[v] = (m[v] || 0) + 1 }); return Object.entries(m).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count) };
   const total = used.length;
   const d1 = agg('atc_l1'), d2 = agg('atc_l2'), d3full = agg('atc_l3');
@@ -1037,7 +1037,7 @@ function AtcDonutsRow({ drugs, t, onPick, sel, onClear }) {
     {drill ? <div style={{ marginTop: 8 }}><button onClick={() => setDrill(false)} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>◂ 기타 닫기</button></div> : null}
   </div>;
 }
-function DrugList({ drugs, navFilter: nf, onEdit }) {
+function DrugList({ drugs, navFilter: nf, onEdit, nonins }) {
   const { t, open360 } = useTheme(); const [search, setSearch] = useState(''); const [cats, setCats] = useState(nf?.cats || CATS); const [stats, setStats] = useState(nf?.status || ['사용']); const [narcOnly, setNarcOnly] = useState(false); const [hanoeOnly, setHanoeOnly] = useState(false); const [insF, setInsF] = useState(nf?.insType || '전체'); const [page, setPage] = useState(1); const [atcF, setAtcF] = useState(nf?.atc || null); const [rxF, setRxF] = useState(null); const [donutF, setDonutF] = useState(null); const [cmpHF, setCmpHF] = useState(null); const [stoHF, setStoHF] = useState(null); const [locHF, setLocHF] = useState(null); const [locOpts, setLocOpts] = useState([])
   const { hs, so, SI, TS } = useSort('drug_name')
   useEffect(() => { if (nf?.cats) setCats(Array.isArray(nf.cats) ? nf.cats : [nf.cats]); else setCats(CATS); if (nf?.status) setStats(Array.isArray(nf.status) ? nf.status : [nf.status]); if (nf?.narcotic) setNarcOnly(true); else setNarcOnly(false); if (nf?.insType) setInsF(nf.insType); else setInsF('전체'); setPage(1) }, [nf])
@@ -1058,7 +1058,7 @@ function DrugList({ drugs, navFilter: nf, onEdit }) {
         
       </div>
     </div>
-    <AtcDonutsRow drugs={drugs} t={t} sel={donutF} onPick={(level, value) => { setDonutF({ level, value }); setPage(1) }} onClear={() => { setDonutF(null); setPage(1) }} />
+    <AtcDonutsRow drugs={drugs} t={t} nonins={nonins} sel={donutF} onPick={(level, value) => { setDonutF({ level, value }); setPage(1) }} onClear={() => { setDonutF(null); setPage(1) }} />
     <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, overflow: 'hidden', boxShadow: t.shadow }}>
       <div style={{ padding: '10px 18px', borderBottom: `1px solid ${t.border}`, fontSize: 12, color: t.textM, display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}><span>전체 {drugs.length}개 · 결과 <strong style={{ color: t.accent }}>{filtered.length}개</strong>{atcF && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: atcColor(atcF) + '1A', color: atcColor(atcF), fontSize: 10, fontWeight: 700, border: '1px solid '+atcColor(atcF)+'40' }}>효능군: {atcF}<span onClick={() => setAtcF(null)} style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span>}{rxF && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: t.purpleL, color: t.purple, fontSize: 10, fontWeight: 700, border: '1px solid ' + t.purple + '40' }}>분류: {rxF}<span onClick={() => setRxF(null)} style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span>}</span><span style={{ fontSize: 10, color: t.textL }}>약품명 클릭 → 수정</span></div>
       <HScroll><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -2858,7 +2858,7 @@ export default function App() {
         {menu === 'alerts' && <AlertCenter drugs={drugs} onNav={handleNav} />}
         {menu === 'ordering' && <Ordering drugs={drugs} />}
         {menu === 'druglist' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} />}
-        {menu === 'nonins' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} />}
+        {menu === 'nonins' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} nonins />}
         {menu === 'archive' && <DrugList drugs={drugs} navFilter={{ status: ['중지'], archive: true }} onEdit={setEditDrug} />}
         {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} />}
         {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} />}
