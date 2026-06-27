@@ -904,10 +904,12 @@ function HScroll({ children }) {
   const by = (dir) => { const el = ref.current; if (el) el.scrollBy({ left: dir * Math.max(240, el.clientWidth * 0.85), behavior: 'smooth' }) };
   const bst = { width: 26, height: 24, borderRadius: 6, border: '1px solid ' + t.border, background: t.card, color: t.accent, cursor: 'pointer', fontSize: 14, fontWeight: 800, lineHeight: 1, padding: 0, flexShrink: 0 };
   return <div>
-    <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 10px' }}>
-      <button onClick={() => by(-1)} title="왼쪽으로 스크롤" style={bst}>‹</button>
-      <span style={{ fontSize: 10, color: t.textL }}>‹ 좌우 스크롤 ›</span>
-      <button onClick={() => by(1)} title="오른쪽으로 스크롤" style={bst}>›</button>
+    <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, padding: '4px 10px' }}>
+      <span style={{ fontSize: 10, color: t.textL }}>좌우 스크롤</span>
+      <div style={{ display: 'inline-flex', gap: 4 }}>
+        <button onClick={() => by(-1)} title="왼쪽으로 스크롤" style={bst}>‹</button>
+        <button onClick={() => by(1)} title="오른쪽으로 스크롤" style={bst}>›</button>
+      </div>
     </div>
     <div ref={ref} style={{ overflowX: 'auto' }}>{children}</div>
   </div>;
