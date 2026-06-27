@@ -984,10 +984,6 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
         </tr> })}</tbody>
       </table></div>
     </div><Ft />
-    <div className="no-print" style={{ position: 'fixed', right: 18, bottom: 18, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 880 }}>
-      <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} title="맨 위로" style={{ width: 46, height: 46, borderRadius: 23, border: '1px solid ' + t.border, background: t.card, color: t.accent, boxShadow: t.shadowH, cursor: 'pointer', fontSize: 12, fontWeight: 800 }}>TOP</button>
-      <button onClick={() => { onNav({ menu: 'dashboard' }); window.scrollTo({ top: 0, behavior: 'smooth' }) }} title="대시보드 홈" style={{ width: 46, height: 46, borderRadius: 23, border: '1px solid ' + t.accent, background: t.accent, color: '#ffffff', boxShadow: t.shadowH, cursor: 'pointer', fontSize: 11, fontWeight: 800 }}>HOME</button>
-    </div>
   </div>
 }
 
@@ -2848,6 +2844,10 @@ export default function App() {
         {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
         {adjustDrug && <AdjustModal drug={adjustDrug} onClose={() => setAdjustDrug(null)} onSaved={() => { setAdjustDrug(null); load() }} />}
         {lotDrug && <LotModal drug={lotDrug} onClose={() => setLotDrug(null)} onSaved={() => { setLotDrug(null); load() }} />}
+        <div className="no-print" style={{ position: 'fixed', right: 18, bottom: 18, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 880 }}>
+          <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} title="맨 위로" style={{ width: 46, height: 46, borderRadius: 23, border: '1px solid ' + t.border, background: t.card, color: t.accent, boxShadow: t.shadowH, cursor: 'pointer', fontSize: 12, fontWeight: 800 }}>TOP</button>
+          <button onClick={() => { setMenu('dashboard'); window.scrollTo({ top: 0, behavior: 'smooth' }) }} title="대시보드 홈" style={{ width: 46, height: 46, borderRadius: 23, border: '1px solid ' + t.accent, background: t.accent, color: '#ffffff', boxShadow: t.shadowH, cursor: 'pointer', fontSize: 11, fontWeight: 800 }}>HOME</button>
+        </div>
       </div>
     </ThemeCtx.Provider>
   )
