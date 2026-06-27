@@ -155,31 +155,6 @@ function MP({ items, selected, onChange, color, label }) {
   </div>
 }
 
-function FilterDropdown({ label, items, selected, onChange, color }) {
-  const { t } = useTheme();
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-  useEffect(() => {
-    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    function onEsc(e) { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc);
-    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) };
-  }, []);
-  const allSel = selected.length === items.length;
-  function tog(item) { const n = selected.includes(item) ? selected.filter(x => x !== item) : [...selected, item]; onChange(n.length ? n : [...items]) }
-  const summary = allSel ? '전체' : selected.length === 1 ? selected[0] : selected.length + '개 선택';
-  const active = !allSel;
-  return <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
-    <button onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (open || active ? color : t.border), background: active ? color + '14' : 'transparent', color: active ? color : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600, transition: 'all .15s' }}>
-      <span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>{label}</span><span>{summary}</span><span style={{ fontSize: 9 }}>▾</span>
-    </button>
-    {open && <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 168, background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 8px 24px rgba(46,74,98,0.14)', zIndex: 950, padding: 6 }}>
-      <button onClick={() => onChange([...items])} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: allSel ? color + '14' : 'transparent', color: allSel ? color : t.text, cursor: 'pointer', fontSize: 12, fontWeight: allSel ? 700 : 500, borderRadius: 6 }}>전체</button>
-      {items.map(it => { const on = active && selected.includes(it); return <button key={it} onClick={() => tog(it)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: on ? color + '14' : 'transparent', color: on ? color : t.text, cursor: 'pointer', fontSize: 12, fontWeight: on ? 700 : 500, borderRadius: 6 }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{it}{on ? <span style={{ fontSize: 10 }}>✓</span> : null}</button> })}
-    </div>}
-  </div>;
-}
-
 /* ★ ColToggle — position:fixed로 부모 overflow 무시 */
 function ColToggle({ cols, visible, setVisible }) {
   const { t } = useTheme(); const [open, setOpen] = useState(false); const btnRef = useRef(); const [pos, setPos] = useState({ top: 0, right: 0 })
@@ -961,9 +936,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
 const DRUG_COLS = [
   { key: 'drug_code', label: '약품코드', default: true, align: 'left' }, { key: 'drug_name', label: '약품명', default: true, align: 'left' },
   { key: 'category', label: '구분', default: true, align: 'left' },
-  { key: 'atc', label: 'ATC 1·2·3', default: true, align: 'left' },
-  { key: 'storage_location', label: '보관위치', default: false, align: 'left' },
-  { key: 'atc_l1', label: '효능군', default: false, align: 'left' },
+  { key: 'atc_l1', label: '효능군', default: true, align: 'left' },
   { key: 'atc_l2', label: 'ATC중', default: false, align: 'left' },
   { key: 'atc_l3', label: 'ATC소', default: false, align: 'left' },
   { key: 'ingredient_en', label: '성분명(영문)', default: true, align: 'left' },
@@ -993,7 +966,7 @@ function DrugList({ drugs, navFilter: nf, onEdit }) {
   useEffect(() => { if (nf?.cats) setCats(Array.isArray(nf.cats) ? nf.cats : [nf.cats]); else setCats(CATS); if (nf?.status) setStats(Array.isArray(nf.status) ? nf.status : [nf.status]); if (nf?.narcotic) setNarcOnly(true); else setNarcOnly(false); if (nf?.insType) setInsF(nf.insType); else setInsF('전체'); setPage(1) }, [nf])
   const filtered = so(drugs.filter(d => passesDrugFilters(d, { cats, stats, narcOnly, insF, atcF, search })))
   const tp = Math.ceil(filtered.length / PP), paged = filtered.slice((page - 1) * PP, page * PP); const activeCols = DRUG_COLS.filter(c => visCols.includes(c.key))
-  function dl() { const ws = XLSX.utils.json_to_sheet(filtered.map(d => { const o = {}; DRUG_COLS.forEach(c => { o[c.label] = c.key === 'atc' ? [d.atc_l1, d.atc_l2, d.atc_l3].filter(Boolean).join(' ') : (d[c.key] || '') }); return o })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '약품'); XLSX.writeFile(wb, `약품목록_${new Date().toISOString().split('T')[0]}.xlsx`) }
+  function dl() { const ws = XLSX.utils.json_to_sheet(filtered.map(d => { const o = {}; DRUG_COLS.forEach(c => { o[c.label] = d[c.key] || '' }); return o })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '약품'); XLSX.writeFile(wb, `약품목록_${new Date().toISOString().split('T')[0]}.xlsx`) }
   function cellVal(d, col) {
     if (col.key === 'drug_code') return <><span onClick={() => open360 && open360(d)} title="360° 상세 보기" style={{ fontSize: 10, color: t.accent, cursor: 'pointer', borderBottom: '1px dotted ' + t.textL }}>{d.drug_code}</span><NT d={d} /></>
     if (col.key === 'drug_name') return <CN drug={d} onEdit={onEdit} />
@@ -1005,9 +978,6 @@ function DrugList({ drugs, navFilter: nf, onEdit }) {
     if (col.key === 'insurance_type') return isNonIns(d) ? <Bd bg={t.blueL} color={t.blue}>비보험</Bd> : <span style={{ fontSize: 10, color: t.textL }}>보험</span>
     if (col.key === 'expiry_date') return <span style={exS(d.expiry_date, t)}>{d.expiry_date || '-'}</span>
     if (col.key === 'status') return <SB s={d.status} />
-    if (col.key === 'atc') { const cc = atcColor(d.atc_l1); const chips = [d.atc_l1, d.atc_l2, d.atc_l3].filter(v => v && String(v).trim()); if (!chips.length) return <span style={{ color: t.textL, fontSize: 10 }}>-</span>; return <span style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap', verticalAlign: 'middle' }}>{chips.map((v, i) => <span key={i} style={{ display: 'inline-block', padding: '2px 7px', borderRadius: 8, fontSize: 9, fontWeight: 700, background: cc + (i === 0 ? '22' : '12'), color: cc, border: '1px solid ' + cc + '33', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>)}</span> }
-    if (col.key === 'storage_method') { const v = d.storage_method; if (!v) return <span style={{ color: t.textL, fontSize: 10 }}>-</span>; const cold = v.includes('냉장'); const shade = v.includes('차광'); const bg = cold ? t.blueL : shade ? t.amberL : t.bg; const fg = cold ? t.blue : shade ? t.amber : t.textM; return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 8, fontSize: 10, fontWeight: 600, background: bg, color: fg, border: '1px solid ' + fg + '33', whiteSpace: 'nowrap' }}>{v}</span> }
-    if (col.key === 'storage_location') { const v = d.storage_location; if (!v) return <span style={{ color: t.textL, fontSize: 10 }}>-</span>; return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 8, fontSize: 10, fontWeight: 600, background: t.accentL, color: t.accent, border: '1px solid ' + t.accent + '33', whiteSpace: 'nowrap' }}>{v}</span> }
     if (col.key === 'atc_l1' || col.key === 'atc_l2' || col.key === 'atc_l3') { const v = d[col.key]; if (!v || !String(v).trim()) return <span style={{ color: t.textL, fontSize: 10 }}>-</span>; const cc = atcColor(d.atc_l1); return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600, background: cc + '1A', color: cc, border: '1px solid '+cc+'33', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{v}</span>; }
     return <span title={d[col.key] || ''} style={{ color: t.textM, fontSize: 11, maxWidth: 120, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{d[col.key] || '-'}</span>
   }
@@ -1015,14 +985,9 @@ function DrugList({ drugs, navFilter: nf, onEdit }) {
     <div className="no-print" style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, padding: '16px 18px', marginBottom: 12, boxShadow: t.shadow }}>
       <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} placeholder="약품명, 코드, 성분명, 제조사 검색..." style={{ width: '100%', padding: '10px 14px', border: `1px solid ${t.border}`, borderRadius: 10, fontSize: 13, marginBottom: 12, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <FilterDropdown label="구분" items={CATS} selected={cats} onChange={v => { setCats(v); setPage(1) }} color={t.accent} />
-          <FilterDropdown label="상태" items={STATS} selected={stats} onChange={v => { setStats(v); setPage(1) }} color={t.green} />
-          <div style={{ width: 1, height: 18, background: t.border, margin: '0 2px' }} />
-          <button onClick={() => { setNarcOnly(!narcOnly); setPage(1) }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (narcOnly ? t.purple : t.border), cursor: 'pointer', fontSize: 11, fontWeight: 600, background: narcOnly ? t.purpleL : 'transparent', color: narcOnly ? t.purple : t.textM, transition: 'all .15s' }}>향정마약</button>
-          <div style={{ width: 1, height: 18, background: t.border, margin: '0 2px' }} />
-          <span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>보험</span>{['전체', '보험', '비보험'].map(x => <button key={x} onClick={() => { setInsF(x); setPage(1) }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (insF === x ? t.blue : t.border), cursor: 'pointer', fontSize: 11, fontWeight: 600, background: insF === x ? t.blueL : 'transparent', color: insF === x ? t.blue : t.textM, transition: 'all .15s' }}>{x}</button>)}
-        </div>
+        <MP items={CATS} selected={cats} onChange={v => { setCats(v); setPage(1) }} color={t.accent} label="구분" />
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}><MP items={STATS} selected={stats} onChange={v => { setStats(v); setPage(1) }} color={t.green} label="상태" /><div style={{ width: 1, height: 16, background: t.border }} /><button onClick={() => { setNarcOnly(!narcOnly); setPage(1) }} style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${narcOnly ? t.purple : t.border}`, cursor: 'pointer', fontSize: 11, fontWeight: 600, background: narcOnly ? t.purpleL : 'transparent', color: narcOnly ? t.purple : t.textM }}>향정마약</button></div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>보험</span>{['전체', '보험', '비보험'].map(x => <button key={x} onClick={() => { setInsF(x); setPage(1) }} style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${insF === x ? t.blue : t.border}`, cursor: 'pointer', fontSize: 11, fontWeight: 600, background: insF === x ? t.blueL : 'transparent', color: insF === x ? t.blue : t.textM }}>{x}</button>)}</div>
         
         <div style={{ display: 'flex', alignItems: 'center', marginTop: 2 }}><div style={{ flex: 1 }} /><ColToggle cols={DRUG_COLS} visible={visCols} setVisible={saveCols} /><button onClick={dl} style={{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${t.green}`, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600, marginLeft: 4 }}>엑셀 다운로드</button></div>
       </div>
@@ -1030,9 +995,9 @@ function DrugList({ drugs, navFilter: nf, onEdit }) {
     <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, overflow: 'hidden', boxShadow: t.shadow }}>
       <div style={{ padding: '10px 18px', borderBottom: `1px solid ${t.border}`, fontSize: 12, color: t.textM, display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}><span>전체 {drugs.length}개 · 결과 <strong style={{ color: t.accent }}>{filtered.length}개</strong>{atcF && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: atcColor(atcF) + '1A', color: atcColor(atcF), fontSize: 10, fontWeight: 700, border: '1px solid '+atcColor(atcF)+'40' }}>효능군: {atcF}<span onClick={() => setAtcF(null)} style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span>}</span><span style={{ fontSize: 10, color: t.textL }}>약품명 클릭 → 수정</span></div>
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead><tr>{activeCols.map(c => <th key={c.key} style={{ ...TS(c.key), textAlign: c.align, background: t.bg }} onClick={() => hs(c.key)}>{c.label}<SI col={c.key} /></th>)}</tr></thead>
+        <thead><tr>{activeCols.map(c => <th key={c.key} style={{ ...TS(c.key), textAlign: c.align }} onClick={() => hs(c.key)}>{c.label}<SI col={c.key} /></th>)}</tr></thead>
         <tbody>{!paged.length ? <tr><td colSpan={activeCols.length} style={{ padding: 40, textAlign: 'center', color: t.textL }}>검색 결과 없음</td></tr>
-          : paged.map((d, i) => <tr key={i} style={{ borderBottom: '1px solid ' + t.border, background: i % 2 ? t.bg : '' }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = i % 2 ? t.bg : ''}>
+          : paged.map((d, i) => <tr key={i} style={{ borderBottom: `1px solid ${t.border}` }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
             {activeCols.map(c => c.key === 'drug_name' ? <CN key={c.key} drug={d} onEdit={onEdit} /> : <td key={c.key} style={{ padding: '8px 12px', textAlign: c.align, color: t.textM, fontSize: c.key === 'drug_code' ? 10 : 11 }}>{cellVal(d, c)}</td>)}
           </tr>)}</tbody>
       </table></div>
