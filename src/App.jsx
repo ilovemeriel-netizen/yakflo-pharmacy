@@ -923,7 +923,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
   const hv = e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = t.shadowH }
   const hx = e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = t.shadow }
   const sT = (icon, title) => <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 12, paddingBottom: 8, borderBottom: `2px solid ${t.accent}`, display: 'flex', alignItems: 'center', gap: 6 }}><span>{icon}</span>{title}</div>
-  const sR = (label, value, color, unit) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${t.border}` }}><span style={{ fontSize: 12, color: t.textM }}>{label}</span><span style={{ fontSize: 13, fontWeight: 700, color: color || t.text }}>{typeof value === 'number' ? value.toLocaleString() : value}{unit || ''}</span></div>
+  const sR = (label, value, color, unit) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${t.border}` }}><span style={{ fontSize: 12, color: t.textM }}>{label}</span><span style={{ fontSize: 13, fontWeight: 700, color: color || t.text }}>{typeof value === 'number' ? Math.round(value).toLocaleString() : value}{unit || ''}</span></div>
   return <div style={{ padding: '20px 24px' }}>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 14 }}>
       {[{ l: '전체 약품', v: s.total, c: t.accent, nav: { menu: 'druglist', status: MAIN_STATS } }, { l: '사용', v: s.active, c: t.green, nav: { menu: 'druglist', status: ['사용'] } }, { l: '중지', v: s.stopped, c: t.textL, nav: { menu: 'archive' } }, { l: '향정마약', v: s.narc, c: t.purple, nav: { menu: 'narcotic', narcStatus: ['사용'] } }].map((c, i) => <div key={i} onClick={() => onNav(c.nav)} style={tc(c.c)} onMouseEnter={hv} onMouseLeave={hx}><div style={{ fontSize: 12, color: t.textM, fontWeight: 500, marginBottom: 8 }}>{c.l}</div><div style={{ fontSize: 34, fontWeight: 800, color: c.c, letterSpacing: -1 }}>{c.v}</div></div>)}
@@ -938,10 +938,10 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
         {sT('▶◀', '당월 입출고')}
         {sR('입고 건수', txS.inC, t.green, '건')}{sR('입고 금액', txS.inA, t.green, '원')}{sR('출고 건수', txS.outC, t.blue, '건')}{sR('출고 금액', txS.outA, t.blue, '원')}{sR('순 입출고', txS.inA - txS.outA, txS.inA >= txS.outA ? t.green : t.red, '원')}
       </div>
-      <div onClick={() => onNav({ menu: 'report' })} style={{ background: t.card, borderRadius: 14, padding: '18px 22px', border: `1px solid ${t.border}`, boxShadow: t.shadow, cursor: 'pointer', transition: 'all .15s' }} onMouseEnter={hv} onMouseLeave={hx}>
+      <div onClick={() => onNav({ menu: 'transaction' })} title="입출고관리(반품·폐기)로 이동" style={{ background: t.card, borderRadius: 14, padding: '18px 22px', border: `1px solid ${t.border}`, boxShadow: t.shadow, cursor: 'pointer', transition: 'all .15s' }} onMouseEnter={hv} onMouseLeave={hx}>
         {sT('▲', '반품/폐기 현황')}
         {sR('반품 건수', txS.retC, t.amber, '건')}{sR('반품 금액', txS.retA, t.amber, '원')}{sR('폐기 건수', txS.dspC, t.red, '건')}{sR('폐기 금액', txS.dspA, t.red, '원')}{sR('폐기 수량', txS.dspQ, t.red, '개')}
-        <div style={{ marginTop: 8, padding: '8px 12px', background: t.redL, borderRadius: 8, display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 12, fontWeight: 700, color: t.red }}>손실 합계</span><span style={{ fontSize: 14, fontWeight: 800, color: t.red }}>{txS.lossT}건 / ₩{txS.lossA.toLocaleString()}</span></div>
+        <div style={{ marginTop: 8, padding: '8px 12px', background: t.redL, borderRadius: 8, display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 12, fontWeight: 700, color: t.red }}>손실 합계</span><span style={{ fontSize: 14, fontWeight: 800, color: t.red }}>{txS.lossT}건 / ₩{Math.round(txS.lossA).toLocaleString()}</span></div>
       </div>
       <div onClick={() => onNav({ menu: 'stock' })} style={{ background: t.card, borderRadius: 14, padding: '18px 22px', border: `1px solid ${t.border}`, boxShadow: t.shadow, cursor: 'pointer', transition: 'all .15s' }} onMouseEnter={hv} onMouseLeave={hx}>
         {sT('■', '재고 총괄')}
@@ -984,6 +984,10 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
         </tr> })}</tbody>
       </table></div>
     </div><Ft />
+    <div className="no-print" style={{ position: 'fixed', right: 18, bottom: 18, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 880 }}>
+      <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} title="맨 위로" style={{ width: 46, height: 46, borderRadius: 23, border: '1px solid ' + t.border, background: t.card, color: t.accent, boxShadow: t.shadowH, cursor: 'pointer', fontSize: 12, fontWeight: 800 }}>TOP</button>
+      <button onClick={() => { onNav({ menu: 'dashboard' }); window.scrollTo({ top: 0, behavior: 'smooth' }) }} title="대시보드 홈" style={{ width: 46, height: 46, borderRadius: 23, border: '1px solid ' + t.accent, background: t.accent, color: '#ffffff', boxShadow: t.shadowH, cursor: 'pointer', fontSize: 11, fontWeight: 800 }}>HOME</button>
+    </div>
   </div>
 }
 
