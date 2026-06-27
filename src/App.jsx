@@ -987,33 +987,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
   </div>
 }
 
-/* ═══ 약품목록 — 컬럼 가시성 토글 ═══ */
-const DRUG_COLS = [
-  { key: 'drug_code', label: '약품코드', default: true, align: 'left' }, { key: 'drug_name', label: '약품명', default: true, align: 'left' },
-  { key: 'category', label: '구분', default: true, align: 'left' },
-  { key: 'atc_l1', label: '효능군', default: true, align: 'left' },
-  { key: 'atc_l2', label: 'ATC중', default: false, align: 'left' },
-  { key: 'atc_l3', label: 'ATC소', default: false, align: 'left' },
-  { key: 'ingredient_en', label: '성분명(영문)', default: true, align: 'left' },
-  { key: 'ingredient_kr', label: '성분명(한글)', default: true, align: 'left' },
-  { key: 'efficacy_class', label: '약효분류', default: false, align: 'left' },
-  { key: 'efficacy', label: '효능', default: false, align: 'left' },
-  { key: 'manufacturer', label: '제조사', default: true, align: 'left' },
-  { key: 'unit', label: '단위', default: false, align: 'center' },
-  { key: 'specification', label: '규격', default: false, align: 'center' },
-  { key: 'purchase_price', label: '단가', default: true, align: 'right' },
-  { key: 'price_unit', label: '통당단가', default: false, align: 'right' },
-  { key: 'insurance_price', label: 'EDI단가', default: false, align: 'right' },
-  { key: 'current_qty', label: '현재고', default: true, align: 'right' },
-  { key: 'insurance_type', label: '급여구분', default: true, align: 'center' },
-  { key: 'insurance_code', label: '보험코드', default: false, align: 'left' },
-  { key: 'expiry_date', label: '유효기한', default: true, align: 'left' },
-  { key: 'lot_no', label: 'LOT번호', default: false, align: 'left' },
-  { key: 'storage_method', label: '보관', default: false, align: 'center' },
-  { key: 'status', label: '상태', default: true, align: 'center' },
-  { key: 'narcotic_type', label: '향정', default: false, align: 'center' },
-  { key: 'prescription_type', label: '분류', default: false, align: 'left' },
-]
+
 
 /* ═══ 약품목록 전용 ATC 도넛(대시보드 AtcDonut 미수정·드릴다운 위해 중앙클릭 지원 추가) ═══ */
 function LDonut({ data, total, onSlice, onCenter, centerTop, centerBot, t }) {
@@ -1048,27 +1022,13 @@ function AtcDonutsRow({ drugs, t, onPick, sel, onClear }) {
   </div>;
 }
 function DrugList({ drugs, navFilter: nf, onEdit }) {
-  const __pe = useTheme(); const canEditPrice = __pe.profile?.role === 'admin' || __pe.memberRole === 'owner' || __pe.memberRole === 'admin'; const [ediOv, setEdiOv] = useState({}); const [ediEdit, setEdiEdit] = useState(null); async function saveEdi(code, raw) { const v = Number(raw); if (raw === '' || Number.isNaN(v) || v < 0) { setEdiEdit(null); return } const { error } = await supabase.from('drugs').update({ purchase_price: v }).eq('drug_code', code); if (!error) setEdiOv(o => ({ ...o, [code]: v })); setEdiEdit(null) }
-  const { t, open360, profile, user } = useTheme(); const [search, setSearch] = useState(''); const [cats, setCats] = useState(nf?.cats || CATS); const [stats, setStats] = useState(nf?.status || ['사용']); const [narcOnly, setNarcOnly] = useState(false); const [hanoeOnly, setHanoeOnly] = useState(false); const [insF, setInsF] = useState(nf?.insType || '전체'); const [page, setPage] = useState(1); const [visCols, setVisCols] = useState(() => { const sv = profile?.settings?.drugCols; return Array.isArray(sv) && sv.length ? sv.filter(k => DRUG_COLS.some(c => c.key === k)) : DRUG_COLS.filter(c => c.default).map(c => c.key) }); const [atcF, setAtcF] = useState(nf?.atc || null); const [rxF, setRxF] = useState(null); const [donutF, setDonutF] = useState(null); const saveCols = (cols) => { setVisCols(cols); if (user?.id) supabase.from('profiles').update({ settings: { ...(profile?.settings || {}), drugCols: cols } }).eq('id', user.id).then(() => {}, () => {}) }
+  const { t, open360 } = useTheme(); const [search, setSearch] = useState(''); const [cats, setCats] = useState(nf?.cats || CATS); const [stats, setStats] = useState(nf?.status || ['사용']); const [narcOnly, setNarcOnly] = useState(false); const [hanoeOnly, setHanoeOnly] = useState(false); const [insF, setInsF] = useState(nf?.insType || '전체'); const [page, setPage] = useState(1); const [atcF, setAtcF] = useState(nf?.atc || null); const [rxF, setRxF] = useState(null); const [donutF, setDonutF] = useState(null); const [cmpHF, setCmpHF] = useState(null); const [stoHF, setStoHF] = useState(null); const [locHF, setLocHF] = useState(null)
   const { hs, so, SI, TS } = useSort('drug_name')
   useEffect(() => { if (nf?.cats) setCats(Array.isArray(nf.cats) ? nf.cats : [nf.cats]); else setCats(CATS); if (nf?.status) setStats(Array.isArray(nf.status) ? nf.status : [nf.status]); if (nf?.narcotic) setNarcOnly(true); else setNarcOnly(false); if (nf?.insType) setInsF(nf.insType); else setInsF('전체'); setPage(1) }, [nf])
-  const filtered = so(drugs.filter(d => passesDrugFilters(d, { cats, stats, narcOnly, insF, atcF, search }) && (!rxF || d.prescription_type === rxF) && (!hanoeOnly || d.narcotic_type === '한외마약') && (!donutF || (d[donutF.level] || '') === donutF.value)))
-  const tp = Math.ceil(filtered.length / PP), paged = filtered.slice((page - 1) * PP, page * PP); const activeCols = DRUG_COLS.filter(c => visCols.includes(c.key))
-  function dl() { const ws = XLSX.utils.json_to_sheet(filtered.map(d => { const o = {}; DRUG_COLS.forEach(c => { o[c.label] = d[c.key] || '' }); return o })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '약품'); XLSX.writeFile(wb, `약품목록_${new Date().toISOString().split('T')[0]}.xlsx`) }
-  function cellVal(d, col) {
-    if (col.key === 'drug_code') return <><span onClick={() => open360 && open360(d)} title="360° 상세 보기" style={{ fontSize: 10, color: t.accent, cursor: 'pointer', borderBottom: '1px dotted ' + t.textL }}>{d.drug_code}</span><NT d={d} /></>
-    if (col.key === 'drug_name') return <CN drug={d} onEdit={onEdit} />
-    if (col.key === 'ingredient_kr') return <span title={d.ingredient_kr || ''} style={{ color: t.textM, fontSize: 11, maxWidth: 140, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{d.ingredient_kr || '-'}</span>
-    if (col.key === 'ingredient_en') return <span title={d.ingredient_en || ''} style={{ color: t.textL, fontSize: 10, maxWidth: 140, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle', fontStyle: 'italic' }}>{d.ingredient_en || '-'}</span>
-    if (col.key === 'current_qty') return <span style={{ fontWeight: 600, color: d.current_qty === 0 ? t.red : t.text }}>{d.current_qty?.toLocaleString()}</span>
-    if (col.key === 'purchase_price') { const cur = ediOv[d.drug_code] ?? d.purchase_price; if (ediEdit === d.drug_code) return <input autoFocus type="number" min="0" defaultValue={cur || ''} onKeyDown={e => { if (e.key === 'Enter') saveEdi(d.drug_code, e.target.value); if (e.key === 'Escape') setEdiEdit(null) }} onBlur={e => saveEdi(d.drug_code, e.target.value)} style={{ width: 72, padding: '2px 4px', border: `1px solid ${t.accent}`, borderRadius: 4, fontSize: 11, textAlign: 'right' }} />; const disp = cur ? Number(cur).toLocaleString() + '원' : '-'; return canEditPrice ? <span onClick={() => setEdiEdit(d.drug_code)} title="클릭하여 구입단가 수정 (owner/admin)" style={{ cursor: 'pointer', borderBottom: `1px dashed ${t.textL}` }}>{disp}</span> : disp }
-    if (col.key === 'price_unit') return d.price_unit ? d.price_unit.toLocaleString() + '원' : '-'
-    if (col.key === 'insurance_type') return isNonIns(d) ? <Bd bg={t.blueL} color={t.blue}>비보험</Bd> : <span style={{ fontSize: 10, color: t.textL }}>보험</span>
-    if (col.key === 'expiry_date') return <span style={exS(d.expiry_date, t)}>{d.expiry_date || '-'}</span>
-    if (col.key === 'status') return <SB s={d.status} />
-    if (col.key === 'atc_l1' || col.key === 'atc_l2' || col.key === 'atc_l3') { const v = d[col.key]; if (!v || !String(v).trim()) return <span style={{ color: t.textL, fontSize: 10 }}>-</span>; const cc = atcColor(d.atc_l1); return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600, background: cc + '1A', color: cc, border: '1px solid '+cc+'33', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{v}</span>; }
-    return <span title={d[col.key] || ''} style={{ color: t.textM, fontSize: 11, maxWidth: 120, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{d[col.key] || '-'}</span>
-  }
+  const filtered = so(drugs.filter(d => passesDrugFilters(d, { cats, stats, narcOnly, insF, atcF, search }) && (!rxF || d.prescription_type === rxF) && (!hanoeOnly || d.narcotic_type === '한외마약') && (!donutF || (d[donutF.level] || '') === donutF.value) && (!cmpHF || d.compound_type === cmpHF) && (!stoHF || d.storage_method === stoHF) && (!locHF || (d.storage_location || '') === locHF)))
+  const tp = Math.ceil(filtered.length / PP), paged = filtered.slice((page - 1) * PP, page * PP)
+  const COLS = [['drug_code', '약품코드'], ['drug_name', '약품명'], ['category', '구분'], ['ingredient_en', '성분(EN)'], ['ingredient_kr', '성분(KR)'], ['atc_l1', 'ATC'], ['compound_type', '복합/단일'], ['manufacturer', '제조사'], ['current_qty', '현재고'], ['insurance_type', '급여'], ['storage_method', '보관'], ['storage_location', '위치'], ['expiry_date', '유효기한'], ['status', '상태']]
+  const hf = { category: { items: CATS, value: cats.length === 1 ? cats[0] : null, on: v => { setCats(v ? [v] : CATS); setPage(1) }, color: t.accent }, atc_l1: { items: [...new Set(drugs.map(d => (d.atc_l1 || '').trim()).filter(Boolean))].sort(), value: (donutF && donutF.level === 'atc_l1') ? donutF.value : null, on: v => { setDonutF(v ? { level: 'atc_l1', value: v } : null); setPage(1) }, color: t.accent }, compound_type: { items: ['단일제', '복합제'], value: cmpHF, on: v => { setCmpHF(v); setPage(1) }, color: t.purple }, insurance_type: { items: ['보험', '비보험'], value: insF === '전체' ? null : insF, on: v => { setInsF(v || '전체'); setPage(1) }, color: t.blue }, storage_method: { items: STORAGE_OPTS, value: stoHF, on: v => { setStoHF(v); setPage(1) }, color: t.blue }, storage_location: { items: [...new Set(drugs.map(d => (d.storage_location || '').trim()).filter(Boolean))].sort(), value: locHF, on: v => { setLocHF(v); setPage(1) }, color: t.accent } }
   return <div style={{ padding: '20px 24px' }}>
     <div className="no-print" style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, padding: '16px 18px', marginBottom: 12, boxShadow: t.shadow }}>
       <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} placeholder="약품명, 코드, 성분명, 제조사 검색..." style={{ width: '100%', padding: '10px 14px', border: `1px solid ${t.border}`, borderRadius: 10, fontSize: 13, marginBottom: 12, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
@@ -1078,18 +1038,30 @@ function DrugList({ drugs, navFilter: nf, onEdit }) {
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>보험</span>{['전체', '보험', '비보험'].map(x => <button key={x} onClick={() => { setInsF(x); setPage(1) }} style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${insF === x ? t.blue : t.border}`, cursor: 'pointer', fontSize: 11, fontWeight: 600, background: insF === x ? t.blueL : 'transparent', color: insF === x ? t.blue : t.textM }}>{x}</button>)}</div>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>분류</span>{['전체', '전문의약품', '일반의약품', '건강기능식품', '원료의약품', '전문의약품(희귀)'].map(x => { const on = (x === '전체' && !rxF) || x === rxF; return <button key={x} onClick={() => { setRxF(x === '전체' ? null : x); setPage(1) }} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + (on ? t.purple : t.border), cursor: 'pointer', fontSize: 11, fontWeight: 600, background: on ? t.purpleL : 'transparent', color: on ? t.purple : t.textM }}>{x}</button> })}<button onClick={() => { setRxF(rxF === '확인필요' ? null : '확인필요'); setPage(1) }} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + (rxF === '확인필요' ? t.purple : t.border), cursor: 'pointer', fontSize: 11, fontWeight: 600, background: rxF === '확인필요' ? t.purpleL : 'transparent', color: rxF === '확인필요' ? t.purple : t.textM }}>미분류</button></div>
         
-        <div style={{ display: 'flex', alignItems: 'center', marginTop: 2 }}><div style={{ flex: 1 }} /><ColToggle cols={DRUG_COLS} visible={visCols} setVisible={saveCols} /><button onClick={dl} style={{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${t.green}`, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600, marginLeft: 4 }}>엑셀 다운로드</button></div>
+        
       </div>
     </div>
     <AtcDonutsRow drugs={drugs} t={t} sel={donutF} onPick={(level, value) => { setDonutF({ level, value }); setPage(1) }} onClear={() => { setDonutF(null); setPage(1) }} />
     <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, overflow: 'hidden', boxShadow: t.shadow }}>
       <div style={{ padding: '10px 18px', borderBottom: `1px solid ${t.border}`, fontSize: 12, color: t.textM, display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}><span>전체 {drugs.length}개 · 결과 <strong style={{ color: t.accent }}>{filtered.length}개</strong>{atcF && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: atcColor(atcF) + '1A', color: atcColor(atcF), fontSize: 10, fontWeight: 700, border: '1px solid '+atcColor(atcF)+'40' }}>효능군: {atcF}<span onClick={() => setAtcF(null)} style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span>}{rxF && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: t.purpleL, color: t.purple, fontSize: 10, fontWeight: 700, border: '1px solid ' + t.purple + '40' }}>분류: {rxF}<span onClick={() => setRxF(null)} style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span>}</span><span style={{ fontSize: 10, color: t.textL }}>약품명 클릭 → 수정</span></div>
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead><tr>{activeCols.map(c => <th key={c.key} style={{ ...TS(c.key), textAlign: c.align }} onClick={() => hs(c.key)}>{c.label}<SI col={c.key} /></th>)}</tr></thead>
-        <tbody>{!paged.length ? <tr><td colSpan={activeCols.length} style={{ padding: 40, textAlign: 'center', color: t.textL }}>검색 결과 없음</td></tr>
-          : paged.map((d, i) => <tr key={i} style={{ borderBottom: `1px solid ${t.border}` }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
-            {activeCols.map(c => c.key === 'drug_name' ? <CN key={c.key} drug={d} onEdit={onEdit} /> : <td key={c.key} style={{ padding: '8px 12px', textAlign: c.align, color: t.textM, fontSize: c.key === 'drug_code' ? 10 : 11 }}>{cellVal(d, c)}</td>)}
-          </tr>)}</tbody>
+        <thead><tr>{COLS.map(([k, h]) => <th key={k} style={{ ...TS(k), background: t.bg, whiteSpace: 'nowrap', textAlign: k === 'current_qty' ? 'right' : 'left', minWidth: k === 'drug_name' ? 220 : undefined }}><span onClick={() => hs(k)} style={{ cursor: 'pointer' }}>{h}<SI col={k} /></span>{hf[k] ? <HeaderFilter items={hf[k].items} value={hf[k].value} onChange={hf[k].on} color={hf[k].color} /> : null}</th>)}</tr></thead>
+        <tbody>{!paged.length ? <tr><td colSpan={14} style={{ padding: 40, textAlign: 'center', color: t.textL }}>검색 결과 없음</td></tr> : paged.map((d, i) => { const acc = atcColor(d.atc_l1); const atcChips = [d.atc_l1, d.atc_l2, d.atc_l3].filter(v => v && String(v).trim()); const sm = d.storage_method || ''; const cold = sm.includes('냉장'); const shade = sm.includes('차광'); const smBg = cold ? t.blueL : shade ? t.amberL : t.bg; const smFg = cold ? t.blue : shade ? t.amber : t.textM; const cmp = d.compound_type || ''; return <tr key={i} style={{ borderBottom: '1px solid ' + t.border, background: i % 2 ? t.bg : '' }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = i % 2 ? t.bg : ''}>
+          <td style={{ padding: '9px 12px', fontSize: 10, color: t.textM, textAlign: 'left', whiteSpace: 'nowrap' }}><span onClick={() => open360 && open360(d)} title="360° 상세 보기" style={{ color: t.accent, cursor: 'pointer', borderBottom: '1px dotted ' + t.textL }}>{d.drug_code}</span><NT d={d} /></td>
+          <td style={{ padding: '8px 12px', fontWeight: 600, textAlign: 'left', color: t.accent, cursor: 'pointer', minWidth: 220, maxWidth: 280 }} onClick={() => onEdit(d)} onMouseEnter={e => { e.currentTarget.style.color = t.purple }} onMouseLeave={e => { e.currentTarget.style.color = t.accent }} title={d.drug_name || ''}><span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.3 }}>{d.drug_name}</span></td>
+          <td style={{ padding: '9px 12px', textAlign: 'left', color: t.textM, fontSize: 11, whiteSpace: 'nowrap' }}>{d.category || '-'}</td>
+          <td style={{ padding: '9px 12px', textAlign: 'left', color: t.textL, fontSize: 10, fontStyle: 'italic', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.ingredient_en || ''}>{d.ingredient_en || '-'}</td>
+          <td style={{ padding: '9px 12px', textAlign: 'left', color: t.textM, fontSize: 11, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.ingredient_kr || ''}>{d.ingredient_kr || '-'}</td>
+          <td style={{ padding: '9px 12px', textAlign: 'left' }}>{atcChips.length ? <span style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }}>{atcChips.map((v, j) => <span key={j} style={{ display: 'inline-block', padding: '2px 7px', borderRadius: 8, fontSize: 9, fontWeight: 700, background: acc + (j === 0 ? '22' : '12'), color: acc, border: '1px solid ' + acc + '33', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>)}</span> : <span style={{ color: t.textL, fontSize: 10 }}>-</span>}</td>
+          <td style={{ padding: '9px 12px', textAlign: 'left' }}>{cmp ? <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 8, fontSize: 10, fontWeight: 600, background: cmp === '복합제' ? t.purpleL : t.bg, color: cmp === '복합제' ? t.purple : t.textM, border: '1px solid ' + (cmp === '복합제' ? t.purple : t.textL) + '33', whiteSpace: 'nowrap' }}>{cmp}</span> : <span style={{ color: t.textL, fontSize: 10 }}>-</span>}</td>
+          <td style={{ padding: '9px 12px', textAlign: 'left', color: t.textM, fontSize: 11, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.manufacturer || ''}>{d.manufacturer || '-'}</td>
+          <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: d.current_qty === 0 ? t.red : t.text }}>{d.current_qty?.toLocaleString()}</td>
+          <td style={{ padding: '9px 12px', textAlign: 'left' }}>{isNonIns(d) ? <Bd bg={t.blueL} color={t.blue}>비보험</Bd> : <span style={{ fontSize: 10, color: t.textL }}>보험</span>}</td>
+          <td style={{ padding: '9px 12px', textAlign: 'left', whiteSpace: 'nowrap' }}>{sm ? <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 8, fontSize: 10, fontWeight: 600, background: smBg, color: smFg, border: '1px solid ' + smFg + '33' }}>{sm}</span> : <span style={{ color: t.textL, fontSize: 10 }}>-</span>}</td>
+          <td style={{ padding: '9px 12px', textAlign: 'left', fontSize: 11, color: d.storage_location ? t.text : t.textL }} title={d.storage_location ? '' : '보관위치 미입력'}>{d.storage_location || '—'}</td>
+          <td style={{ padding: '9px 12px', fontSize: 11, ...exS(d.expiry_date, t) }}>{d.expiry_date || '-'}</td>
+          <td style={{ padding: '9px 12px' }}><SB s={d.status} /></td>
+        </tr> })}</tbody>
       </table></div>
       <Pg page={page} setPage={setPage} tp={tp} fl={filtered} pp={PP} />
     </div><Ft />
@@ -1602,7 +1574,7 @@ function DrugRegister({onRefresh}) {
       ['NEWDRUG001','신규약품정1mg','경구제','ingredient','성분명','소화기계질환','해열 진통 효능','제조사명','정','100',1000,1000,100,'급여','64XXXXXX','2028-12-31','LOT001','실온','사용','일반'],
       ['','','','','','','','','','','','','','','','','','','','← 필수: 약품코드, 약품명만 입력하면 등록 가능'],
     ])
-    ws['!cols']=DRUG_COLS.map(()=>({wch:16}))
+    ws['!cols']=Array(20).fill({wch:16})
     const wb2=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb2,ws,'기초정보등록')
     XLSX.writeFile(wb2,'기초정보_업로드_양식.xlsx')
   }
