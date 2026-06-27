@@ -64,7 +64,7 @@ const C = {
 /* ── Helpers ── */
 function exS(d, t) { if (!d) return {}; const x = Math.floor((new Date(d) - new Date()) / 864e5); if (x <= 0) return { color: t.red, fontWeight: 700 }; if (x <= 30) return { color: t.red, fontWeight: 600 }; if (x <= 90) return { color: t.amber, fontWeight: 600 }; return { color: t.textM } }
 function exD(d) { if (!d) return null; return Math.floor((new Date(d) - new Date()) / 864e5) }
-function getNT(d) { if (d.narcotic_type === '향정' || d.narcotic_type === '마약') return d.narcotic_type; if (d.is_narcotic === true || d.is_narcotic === 'true') return '향정'; return '일반' }
+function getNT(d) { if (d.narcotic_type === '한외마약') return '일반'; if (d.narcotic_type === '향정' || d.narcotic_type === '마약') return d.narcotic_type; if (d.is_narcotic === true || d.is_narcotic === 'true') return '향정'; return '일반' }
 function isN(d) { return getNT(d) !== '일반' }
 /* 보험구분 정규화: 입력폼은 '급여'/'비급여', 일부 데이터는 '보험'/'비보험', 또는 NULL.
    모두 일관되게 '비보험' 그룹 여부로 판정. */
@@ -303,7 +303,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   const { t, profile, memberRole } = useTheme(); const oc = dr.drug_code || ''
   const canDelete = profile?.role === 'admin' || memberRole === 'owner' || memberRole === 'admin'
   const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [f, sF] = useState({ drug_code: oc, drug_name: dr.drug_name || '', category: dr.category || '', ingredient_en: dr.ingredient_en || '', ingredient_kr: dr.ingredient_kr || '', efficacy_class: dr.efficacy_class || '', efficacy: dr.efficacy || '', manufacturer: dr.manufacturer || '', specification: dr.specification || '', unit: dr.unit || '', price_unit: dr.price_unit || 0, insurance_price: dr.insurance_price || 0, purchase_price: dr.purchase_price ?? '', insurance_code: dr.insurance_code || '', current_qty: dr.current_qty || 0, expiry_date: dr.expiry_date || '', status: dr.status || '사용', narcotic_type: getNT(dr), safety_stock: dr.safety_stock || 0, max_stock: dr.max_stock || 0, lot_no: dr.lot_no || '', insurance_type: dr.insurance_type || '급여', storage_method: dr.storage_method || '실온', storage_location: dr.storage_location || '', notes: dr.notes || '' })
+  const [f, sF] = useState({ drug_code: oc, drug_name: dr.drug_name || '', category: dr.category || '', ingredient_en: dr.ingredient_en || '', ingredient_kr: dr.ingredient_kr || '', efficacy_class: dr.efficacy_class || '', efficacy: dr.efficacy || '', manufacturer: dr.manufacturer || '', specification: dr.specification || '', unit: dr.unit || '', price_unit: dr.price_unit || 0, insurance_price: dr.insurance_price || 0, purchase_price: dr.purchase_price ?? '', insurance_code: dr.insurance_code || '', current_qty: dr.current_qty || 0, expiry_date: dr.expiry_date || '', status: dr.status || '사용', narcotic_type: (dr.narcotic_type === '한외마약' ? '한외마약' : getNT(dr)), safety_stock: dr.safety_stock || 0, max_stock: dr.max_stock || 0, lot_no: dr.lot_no || '', insurance_type: dr.insurance_type || '급여', storage_method: dr.storage_method || '실온', storage_location: dr.storage_location || '', notes: dr.notes || '' })
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null); const [apiLd, setApiLd] = useState(false)
   const [apiResults, setApiResults] = useState([])
   const [lookupInfo, setLookupInfo] = useState(null)
@@ -494,7 +494,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   async function save() {
     if (!f.drug_name.trim()) { setMsg('약품명 필수'); return }
     setSaving(true); setMsg(null)
-    const ud = { drug_name: f.drug_name, category: f.category, ingredient_kr: f.ingredient_kr, manufacturer: f.manufacturer, price_unit: Number(f.price_unit) || 0, purchase_price: (f.purchase_price === '' || f.purchase_price == null) ? null : Number(f.purchase_price), expiry_date: f.expiry_date || null, status: f.status, is_narcotic: f.narcotic_type !== '일반' }
+    const ud = { drug_name: f.drug_name, category: f.category, ingredient_kr: f.ingredient_kr, manufacturer: f.manufacturer, price_unit: Number(f.price_unit) || 0, purchase_price: (f.purchase_price === '' || f.purchase_price == null) ? null : Number(f.purchase_price), expiry_date: f.expiry_date || null, status: f.status, is_narcotic: f.narcotic_type === '향정' || f.narcotic_type === '마약' }
     if (f.drug_code.trim() !== oc) ud.drug_code = f.drug_code.trim()
     const ts = (k, v) => { ud[k] = v }
     ;['narcotic_type', 'lot_no', 'insurance_type', 'insurance_code', 'ingredient_en', 'efficacy', 'efficacy_class', 'specification', 'unit', 'storage_method', 'storage_location', 'notes'].forEach(k => ts(k, f[k]))
@@ -563,7 +563,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>유효기한 (대표)</label><input type="date" value={f.expiry_date} onChange={e => set('expiry_date', e.target.value)} style={ip} /></div><div><label style={lb}>LOT번호 · 다중 유효기한</label><div style={{ display: 'flex', gap: 4 }}><input value={f.lot_no} onChange={e => set('lot_no', e.target.value)} placeholder="대표 LOT" style={{ ...ip, flex: 1 }} /><button onClick={() => onLotManage?.(dr)} style={{ padding: '0 14px', borderRadius: 6, border: `1px solid ${t.purple}`, background: t.purpleL, color: t.purple, cursor: 'pointer', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>LOT관리 →</button></div></div></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>보관방법</label><select value={f.storage_method} onChange={e => set('storage_method', e.target.value)} style={ip}>{STORAGE_OPTS.map(s=><option key={s}>{s}</option>)}</select></div><div><label style={lb}>보관위치</label><input value={f.storage_location} onChange={e => set('storage_location', e.target.value)} style={ip} /></div></div>
           <div style={{ marginBottom: 10 }}><label style={lb}>비고</label><textarea value={f.notes} onChange={e => set('notes', e.target.value)} rows={2} style={{ ...ip, resize: 'vertical' }} /></div>
-          <div><label style={lb}>향정·마약</label><div style={{ display: 'flex', gap: 4 }}>{['일반', '향정', '마약'].map(x => { const a = f.narcotic_type === x, cl = x === '일반' ? t.green : x === '향정' ? t.purple : t.red; return <button key={x} onClick={() => set('narcotic_type', x)} style={{ flex: 1, padding: '8px', borderRadius: 6, border: `1px solid ${a ? cl : t.border}`, cursor: 'pointer', fontSize: 12, fontWeight: 600, background: a ? cl + '18' : 'transparent', color: a ? cl : t.textL }}>{x}</button> })}</div></div>
+          <div><label style={lb}>향정·마약</label><div style={{ display: 'flex', gap: 4 }}>{['일반', '향정', '마약', '한외마약'].map(x => { const a = f.narcotic_type === x, cl = x === '일반' ? t.green : x === '향정' ? t.purple : x === '마약' ? t.red : t.blue; return <button key={x} onClick={() => set('narcotic_type', x)} style={{ flex: 1, padding: '8px', borderRadius: 6, border: `1px solid ${a ? cl : t.border}`, cursor: 'pointer', fontSize: 12, fontWeight: 600, background: a ? cl + '18' : 'transparent', color: a ? cl : t.textL }}>{x}</button> })}</div></div>
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}><button onClick={onClose} style={{ flex: 1, padding: 11, borderRadius: 8, border: `1px solid ${t.border}`, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13, fontWeight: 600 }}>취소</button><button onClick={save} disabled={saving} style={{ flex: 2, padding: 11, borderRadius: 8, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', background: saving ? t.textL : t.accent, color: '#fff', fontSize: 13, fontWeight: 700 }}>{saving ? '저장 중...' : '저장'}</button></div>
         {/* 관리자(profiles.role=admin) 또는 테넌트 owner/admin 전용 — 절제된 텍스트 버튼 */}
         {canDelete && <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${t.border}`, textAlign: 'right' }}>
@@ -1476,7 +1476,7 @@ function DrugRegister({onRefresh}) {
       lot_no:form.lot_no||null,
       storage_method:form.storage_method||null,
       status:form.status,
-      is_narcotic:form.narcotic_type!=='해당없음',
+      is_narcotic:form.narcotic_type==='향정'||form.narcotic_type==='마약',
       narcotic_type:form.narcotic_type==='해당없음'?null:form.narcotic_type,
     }
     /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) */
@@ -1531,7 +1531,7 @@ function DrugRegister({onRefresh}) {
             storage_method:String(r['보관']||r['보관방법']||r['storage_method']||'').trim(),
             status:String(r['상태']||r['status']||'사용').trim(),
             is_narcotic:nt==='향정신성'||nt==='향정'||nt==='마약'||nt==='Y',
-            narcotic_type:nt==='Y'?'향정':(nt==='마약'?'마약':(nt==='향정'?'향정':null)),
+            narcotic_type:nt==='Y'?'향정':(nt==='마약'?'마약':(nt==='향정'?'향정':(nt==='한외마약'?'한외마약':null))),
             valid:!!code&&!!(String(r['약품명']||r['약품명(필수)']||r['drug_name']||'').trim())
           }
         })
@@ -1693,7 +1693,7 @@ function DrugRegister({onRefresh}) {
             <div style={{marginBottom:12}}><label style={lbl}>보관방법</label><select value={form.storage_method} onChange={e=>set('storage_method',e.target.value)} style={{...inp,background:'#fff'}}>{STORAGE_OPTS.map(s=><option key={s}>{s}</option>)}</select></div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
               <div><label style={lbl}>상태</label><select value={form.status} onChange={e=>set('status',e.target.value)} style={{...inp,background:'#fff'}}>{['사용','휴면','중지'].map(s=><option key={s}>{s}</option>)}</select></div>
-              <div><label style={lbl}>향정마약</label><select value={form.narcotic_type} onChange={e=>set('narcotic_type',e.target.value)} style={{...inp,background:'#fff'}}>{['해당없음','향정','마약'].map(s=><option key={s}>{s}</option>)}</select></div>
+              <div><label style={lbl}>향정마약</label><select value={form.narcotic_type} onChange={e=>set('narcotic_type',e.target.value)} style={{...inp,background:'#fff'}}>{['해당없음','향정','마약','한외마약'].map(s=><option key={s}>{s}</option>)}</select></div>
             </div>
             <button onClick={submit} disabled={saving} style={{width:'100%',padding:12,borderRadius:10,border:'none',cursor:saving?'not-allowed':'pointer',background:saving?C.grayB:C.purple,color:'#fff',fontSize:14,fontWeight:700}}>
               {saving?'등록 중...':'약품 등록'}
@@ -2760,6 +2760,7 @@ export default function App() {
         @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');
         * { font-family: 'Roboto', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; }
         body { margin: 0; -webkit-tap-highlight-color: transparent; }
+        html { scrollbar-gutter: stable; }
         input, select, textarea, button { font-family: inherit; }
         /* ═══ 브랜드 영역 (로고 + 타이틀 + 부제) — 글씨 깨짐 방지 ═══ */
         .brand-area { display: flex; align-items: center; gap: 10px; min-width: 0; }
