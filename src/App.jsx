@@ -872,26 +872,29 @@ function Ordering({ drugs }) {
   </div>;
 }
 
-/* ═══ 대시보드 '사용 중인 약품' 표 전용 단일선택 드롭다운(외부클릭/Esc·통제어휘 로드) ═══ */
-function TFilter({ label, items, value, onChange, color }) {
+/* ═══ 대시보드 '사용 중인 약품' 표 전용 컬럼헤더 필터(엑셀식 ▾·position:fixed로 표 overflow 회피·외부클릭/Esc) ═══ */
+function HeaderFilter({ items, value, onChange, color }) {
   const { t } = useTheme();
   const c = color || t.accent;
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const btnRef = useRef(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
   useEffect(() => {
-    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     function onEsc(e) { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc);
-    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) };
+    document.addEventListener('keydown', onEsc);
+    return () => document.removeEventListener('keydown', onEsc);
   }, []);
-  const cur = value || '전체';
+  function toggle(e) { e.stopPropagation(); if (!open && btnRef.current) { const r = btnRef.current.getBoundingClientRect(); setPos({ top: r.bottom + 4, left: Math.max(8, r.left - 6) }) } setOpen(o => !o) }
   const active = !!value;
-  return <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
-    <button onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 11px', borderRadius: 8, border: '1px solid ' + (open || active ? c : t.border), background: active ? c + '14' : t.card, color: active ? c : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600, transition: 'all .15s' }}><span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>{label}</span><span>{cur}</span><span style={{ fontSize: 9 }}>▾</span></button>
-    {open && <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 150, maxHeight: 280, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 8px 24px rgba(46,74,98,0.14)', zIndex: 950, padding: 6 }}>
-      {['전체', ...items].map(it => { const on = (it === '전체' && !value) || it === value; return <button key={it} onClick={() => { onChange(it === '전체' ? null : it); setOpen(false) }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: on ? c + '14' : 'transparent', color: on ? c : t.text, cursor: 'pointer', fontSize: 12, fontWeight: on ? 700 : 500, borderRadius: 6 }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{it}{on ? <span style={{ fontSize: 10 }}>✓</span> : null}</button> })}
-    </div>}
-  </div>;
+  return <span style={{ display: 'inline-block', marginLeft: 4, verticalAlign: 'middle', fontWeight: 400 }}>
+    <span ref={btnRef} onClick={toggle} title="필터" style={{ cursor: 'pointer', fontSize: 9, padding: '1px 4px', borderRadius: 4, color: active ? '#fff' : t.textL, background: active ? c : 'transparent', border: '1px solid ' + (active || open ? c : 'transparent'), fontWeight: 700 }}>▾</span>
+    {open && <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={e => { e.stopPropagation(); setOpen(false) }} />
+      <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, minWidth: 140, maxHeight: 280, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', padding: 6, textAlign: 'left' }}>
+        {['전체', ...items].map(it => { const on = (it === '전체' && !value) || it === value; return <button key={it} onClick={e => { e.stopPropagation(); onChange(it === '전체' ? null : it); setOpen(false) }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '6px 9px', border: 'none', background: on ? c + '14' : 'transparent', color: on ? c : t.text, cursor: 'pointer', fontSize: 11, fontWeight: on ? 700 : 500, borderRadius: 6, whiteSpace: 'nowrap' }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{it}{on ? <span style={{ fontSize: 9 }}>✓</span> : null}</button> })}
+      </div>
+    </>}
+  </span>;
 }
 
 /* ═══ 대시보드 — Bento Grid ═══ */
@@ -914,6 +917,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
   const luMatch = d => (catF ? d.category === catF : true) && (cmpF ? d.compound_type === cmpF : true) && (stoF ? d.storage_method === stoF : true) && (locF ? d.storage_location === locF : true) && (insF2 ? (insF2 === '비보험' ? isNonIns(d) : !isNonIns(d)) : true) && (!luq || (d.drug_name || '').toLowerCase().includes(luq) || (d.drug_code || '').toLowerCase().includes(luq) || (d.ingredient_kr || '').toLowerCase().includes(luq) || (d.ingredient_en || '').toLowerCase().includes(luq) || (d.manufacturer || '').toLowerCase().includes(luq))
   const luFiltered = active.filter(luMatch)
   const sorted = so(luActive ? luFiltered : active.slice(0, 15)).slice(0, 15)
+  const hf = { category: { items: CATS, value: catF, on: setCatF, color: t.accent }, compound_type: { items: ['단일제', '복합제'], value: cmpF, on: setCmpF, color: t.purple }, storage_method: { items: STORAGE_OPTS, value: stoF, on: setStoF, color: t.blue }, storage_location: { items: locOpts, value: locF, on: setLocF, color: t.accent }, insurance_type: { items: ['보험', '비보험'], value: insF2, on: setInsF2, color: t.green } }
   const tc = bc => ({ background: t.card, borderRadius: 14, padding: '20px', border: `1px solid ${t.border}`, borderTop: `3px solid ${bc}`, cursor: 'pointer', transition: 'all .2s', boxShadow: t.shadow })
   const hv = e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = t.shadowH }
   const hx = e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = t.shadow }
@@ -954,22 +958,19 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
       <div onClick={() => onNav({ menu: 'druglist' })} title="약품목록으로 이동" style={{ padding: '14px 22px', borderBottom: `1px solid ${t.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: t.accentL, cursor: 'pointer', transition: 'background .15s' }} onMouseEnter={e => e.currentTarget.style.background = t.accent + '22'} onMouseLeave={e => e.currentTarget.style.background = t.accentL}><span style={{ fontWeight: 700, fontSize: 14, color: t.accent, display: 'flex', alignItems: 'center', gap: 6 }}>💊 사용 중인 약품 <span style={{ fontSize: 11, fontWeight: 500, color: t.textM }}>→ 약품목록</span></span><span style={{ fontSize: 13, fontWeight: 700, color: t.accent }}>{s.active}개</span></div>
       <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '12px 18px', borderBottom: '1px solid ' + t.border }}>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="grep 약품명·코드·성분·제조사…" style={{ flex: '1 1 240px', minWidth: 180, padding: '8px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
-        <TFilter label="구분" items={CATS} value={catF} onChange={setCatF} color={t.accent} />
-        <TFilter label="복합/단일" items={['단일제', '복합제']} value={cmpF} onChange={setCmpF} color={t.purple} />
-        <TFilter label="보관" items={STORAGE_OPTS} value={stoF} onChange={setStoF} color={t.blue} />
-        <TFilter label="위치" items={locOpts} value={locF} onChange={setLocF} color={t.accent} />
-        <TFilter label="급여" items={['보험', '비보험']} value={insF2} onChange={setInsF2} color={t.green} />
+        <span style={{ fontSize: 11, color: t.textL }}>↓ 컬럼 헤더의 ▾ 로 필터</span>
         {luActive ? <span style={{ fontSize: 11, color: t.textM, fontWeight: 600 }}>매칭 <strong style={{ color: t.accent }}>{luFiltered.length}</strong>건{luFiltered.length > 15 ? ' · 상위 15 표시' : ''}</span> : null}
         {luActive ? <button onClick={() => { setQ(''); setCatF(null); setCmpF(null); setStoF(null); setLocF(null); setInsF2(null) }} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>초기화</button> : null}
       </div>
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead><tr>{[['drug_code', '약품코드'], ['drug_name', '약품명'], ['category', '구분'], ['ingredient_en', '성분(EN)'], ['ingredient_kr', '성분(KR)'], ['compound_type', '복합/단일'], ['manufacturer', '제조사'], ['current_qty', '현재고'], ['insurance_type', '급여'], ['storage_method', '보관'], ['storage_location', '위치'], ['expiry_date', '유효기한'], ['status', '상태']].map(([k, h]) => <th key={k} style={{ ...TS(k), background: t.bg, whiteSpace: 'nowrap', textAlign: k === 'current_qty' ? 'right' : 'left' }} onClick={() => hs(k)}>{h}<SI col={k} /></th>)}</tr></thead>
-        <tbody>{!sorted.length ? <tr><td colSpan={13} style={{ padding: 32, textAlign: 'center', color: t.textL, fontSize: 12 }}>검색 결과 없음</td></tr> : sorted.map((d, i) => { const sm = d.storage_method || ''; const cold = sm.includes('냉장'); const shade = sm.includes('차광'); const smBg = cold ? t.blueL : shade ? t.amberL : t.bg; const smFg = cold ? t.blue : shade ? t.amber : t.textM; const cmp = d.compound_type || ''; return <tr key={i} style={{ borderBottom: '1px solid ' + t.border, background: i % 2 ? t.bg : '' }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = i % 2 ? t.bg : ''}>
+        <thead><tr>{[['drug_code', '약품코드'], ['drug_name', '약품명'], ['category', '구분'], ['ingredient_en', '성분(EN)'], ['ingredient_kr', '성분(KR)'], ['atc_l1', 'ATC'], ['compound_type', '복합/단일'], ['manufacturer', '제조사'], ['current_qty', '현재고'], ['insurance_type', '급여'], ['storage_method', '보관'], ['storage_location', '위치'], ['expiry_date', '유효기한'], ['status', '상태']].map(([k, h]) => <th key={k} style={{ ...TS(k), background: t.bg, whiteSpace: 'nowrap', textAlign: k === 'current_qty' ? 'right' : 'left', minWidth: k === 'drug_name' ? 220 : undefined }}><span onClick={() => hs(k)} style={{ cursor: 'pointer' }}>{h}<SI col={k} /></span>{hf[k] ? <HeaderFilter items={hf[k].items} value={hf[k].value} onChange={hf[k].on} color={hf[k].color} /> : null}</th>)}</tr></thead>
+        <tbody>{!sorted.length ? <tr><td colSpan={14} style={{ padding: 32, textAlign: 'center', color: t.textL, fontSize: 12 }}>검색 결과 없음</td></tr> : sorted.map((d, i) => { const sm = d.storage_method || ''; const cold = sm.includes('냉장'); const shade = sm.includes('차광'); const smBg = cold ? t.blueL : shade ? t.amberL : t.bg; const smFg = cold ? t.blue : shade ? t.amber : t.textM; const cmp = d.compound_type || ''; const acc = atcColor(d.atc_l1); const atcChips = [d.atc_l1, d.atc_l2, d.atc_l3].filter(v => v && String(v).trim()); return <tr key={i} style={{ borderBottom: '1px solid ' + t.border, background: i % 2 ? t.bg : '' }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = i % 2 ? t.bg : ''}>
           <td style={{ padding: '9px 12px', fontSize: 10, color: t.textM, textAlign: 'left', whiteSpace: 'nowrap' }}>{d.drug_code}<NT d={d} /></td>
-          <CN drug={d} onEdit={onEdit} />
+          <td style={{ padding: '8px 12px', fontWeight: 600, textAlign: 'left', color: t.accent, cursor: 'pointer', minWidth: 220, maxWidth: 280 }} onClick={() => onEdit(d)} onMouseEnter={e => { e.currentTarget.style.color = t.purple }} onMouseLeave={e => { e.currentTarget.style.color = t.accent }} title={d.drug_name || ''}><span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.3 }}>{d.drug_name}</span></td>
           <td style={{ padding: '9px 12px', textAlign: 'left', color: t.textM, fontSize: 11, whiteSpace: 'nowrap' }}>{d.category || '-'}</td>
           <td style={{ padding: '9px 12px', textAlign: 'left', color: t.textL, fontSize: 10, fontStyle: 'italic', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.ingredient_en || ''}>{d.ingredient_en || '-'}</td>
           <td style={{ padding: '9px 12px', textAlign: 'left', color: t.textM, fontSize: 11, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.ingredient_kr || ''}>{d.ingredient_kr || '-'}</td>
+          <td style={{ padding: '9px 12px', textAlign: 'left' }}>{atcChips.length ? <span style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }}>{atcChips.map((v, j) => <span key={j} style={{ display: 'inline-block', padding: '2px 7px', borderRadius: 8, fontSize: 9, fontWeight: 700, background: acc + (j === 0 ? '22' : '12'), color: acc, border: '1px solid ' + acc + '33', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>)}</span> : <span style={{ color: t.textL, fontSize: 10 }}>-</span>}</td>
           <td style={{ padding: '9px 12px', textAlign: 'left' }}>{cmp ? <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 8, fontSize: 10, fontWeight: 600, background: cmp === '복합제' ? t.purpleL : t.bg, color: cmp === '복합제' ? t.purple : t.textM, border: '1px solid ' + (cmp === '복합제' ? t.purple : t.textL) + '33', whiteSpace: 'nowrap' }}>{cmp}</span> : <span style={{ color: t.textL, fontSize: 10 }}>-</span>}</td>
           <td style={{ padding: '9px 12px', textAlign: 'left', color: t.textM, fontSize: 11, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.manufacturer || ''}>{d.manufacturer || '-'}</td>
           <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: d.current_qty === 0 ? t.red : t.text }}>{d.current_qty?.toLocaleString()}</td>
