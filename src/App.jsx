@@ -243,19 +243,6 @@ function TreeFilter({ groups }) {
   </div>;
 }
 
-/* ═══ 대시보드 헤더 바 (현 팔레트·로그인 상태 동적, 다크 미적용) ═══ */
-function DashHeader() {
-  const { t, user, profile, memberRole } = useTheme();
-  const [tenant, setTenant] = useState('');
-  useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, []);
-  const name = profile?.full_name || (user?.email ? user.email.split('@')[0] : '사용자');
-  const role = profile?.role || memberRole || 'user';
-  return <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: t.nav, borderRadius: 14, padding: '14px 20px', marginBottom: 16, boxShadow: t.shadow, flexWrap: 'wrap', gap: 8 }}>
-    <div><div style={{ fontSize: 17, fontWeight: 800, color: '#ffffff', letterSpacing: 0.3 }}>약플로 <span style={{ color: t.navHi }}>Yakflo</span></div><div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>약품 통합 관리 대시보드{tenant ? ' · ' + tenant : ''}</div></div>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}><span style={{ width: 8, height: 8, borderRadius: 4, background: t.green, boxShadow: '0 0 6px ' + t.green }} /><span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff' }}>ONLINE</span><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>·</span><span style={{ fontSize: 12, fontWeight: 600, color: t.navHi }}>{name}@{role}</span></div>
-  </div>;
-}
-
 /* ═══ GNB 드롭다운 내비 (hover/click→수직 펼침·스크롤·Esc·외부클릭 닫힘) ═══ */
 function GnbNav({ ms, m, onFlat, navTo }) {
   const { t } = useTheme();
@@ -758,6 +745,8 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 function Header({ menu: m, setMenu: sm }) {
   const { t, dark, toggle, user, profile, logout, openSearch } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [tenant, setTenant] = useState('')
+  useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, [])
   const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'ordering', l: '🧾 발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }]
   function nav(id) { sm(id); setMobileOpen(false) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
@@ -771,8 +760,8 @@ function Header({ menu: m, setMenu: sm }) {
           <div className="brand-sub" style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: 0.2, lineHeight: 1.2 }}>약품 통합 관리 솔루션</div>
         </div>
       </div>
-      <div className="cnc-nav-desktop" style={{ display: 'flex', gap: 3, flex: '1 1 auto', justifyContent: 'center' }}>{ms.map(x => { const on = m === x.id; return <button key={x.id} onClick={() => nav(x.id)} style={{ padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: on ? 700 : 500, background: on ? t.navHi + '2E' : 'transparent', color: on ? '#ffffff' : 'rgba(255,255,255,0.6)', border: '1px solid ' + (on ? t.navHi + '66' : 'transparent'), transition: 'all .15s', whiteSpace: 'nowrap' }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{x.l}</button> })}</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}><div style={{ width: 1, height: 22, background: 'rgba(255,255,255,0.16)', margin: '0 2px', flexShrink: 0 }} />
+      <div className="cnc-nav-desktop" style={{ display: 'flex', gap: 3, flex: '1 1 auto', justifyContent: 'center' }}>{ms.map(x => { const on = m === x.id; return <button key={x.id} onClick={() => nav(x.id)} style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: on ? 700 : 500, background: on ? t.navHi + '38' : 'transparent', color: on ? '#ffffff' : 'rgba(255,255,255,0.6)', border: '1px solid ' + (on ? t.navHi + '7A' : 'transparent'), transition: 'all .15s', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', lineHeight: 1.1 }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{x.l}</button> })}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}><div className="cnc-date" style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 2 }}><span style={{ width: 7, height: 7, borderRadius: 4, background: t.green, boxShadow: '0 0 6px ' + t.green, flexShrink: 0 }} /><span style={{ fontSize: 11, fontWeight: 700, color: '#ffffff' }}>ONLINE</span>{tenant && <span style={{ fontSize: 11, fontWeight: 600, color: t.navHi, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tenant}>· {tenant}</span>}</div><div style={{ width: 1, height: 22, background: 'rgba(255,255,255,0.16)', margin: '0 2px', flexShrink: 0 }} />
         <button onClick={() => nav('mypage')} title="마이페이지" className="cnc-date" style={{ padding: '4px 10px', borderRadius: 6, border: m === 'mypage' ? `1px solid ${t.navHi}60` : '1px solid rgba(255,255,255,0.10)', background: m === 'mypage' ? t.navHi + '22' : 'rgba(255,255,255,0.04)', color: m === 'mypage' ? t.navHi : 'rgba(255,255,255,0.65)', cursor: 'pointer', fontSize: 11, fontWeight: 500, transition: 'all .15s' }}>{displayName}</button>
         {isAdmin && <button onClick={() => nav('admin')} title="가입자 관리" style={{ padding: '4px 10px', borderRadius: 6, border: m === 'admin' ? `1px solid ${t.navHi}60` : '1px solid rgba(255,255,255,0.15)', background: m === 'admin' ? t.navHi + '22' : 'rgba(255,255,255,0.04)', color: m === 'admin' ? t.navHi : 'rgba(255,255,255,0.55)', cursor: 'pointer', fontSize: 10, fontWeight: 600 }}>관리</button>}
         <button onClick={() => openSearch && openSearch()} title="통합 검색 (Ctrl+K)" style={{ padding: '4px 9px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: 13 }}>🔍</button><button onClick={logout} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 10, fontWeight: 500 }}>로그아웃</button>
@@ -899,14 +888,13 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
   const sT = (icon, title) => <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 12, paddingBottom: 8, borderBottom: `2px solid ${t.accent}`, display: 'flex', alignItems: 'center', gap: 6 }}><span>{icon}</span>{title}</div>
   const sR = (label, value, color, unit) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${t.border}` }}><span style={{ fontSize: 12, color: t.textM }}>{label}</span><span style={{ fontSize: 13, fontWeight: 700, color: color || t.text }}>{typeof value === 'number' ? value.toLocaleString() : value}{unit || ''}</span></div>
   return <div style={{ padding: '20px 24px' }}>
-    <DashHeader />
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 14 }}>
-      {[{ l: '전체 약품', v: s.total, c: t.accent, nav: { menu: 'druglist', status: MAIN_STATS } }, { l: '사용', v: s.active, c: t.green, nav: { menu: 'druglist', status: ['사용'] } }, { l: '중지', v: s.stopped, c: t.textL, nav: { menu: 'archive' } }, { l: '향정마약', v: s.narc, c: t.purple, nav: { menu: 'narcotic' } }].map((c, i) => <div key={i} onClick={() => onNav(c.nav)} style={tc(c.c)} onMouseEnter={hv} onMouseLeave={hx}><div style={{ fontSize: 12, color: t.textM, fontWeight: 500, marginBottom: 8 }}>{c.l}</div><div style={{ fontSize: 34, fontWeight: 800, color: c.c, letterSpacing: -1 }}>{c.v}</div></div>)}
+      {[{ l: '전체 약품', v: s.total, c: t.accent, nav: { menu: 'druglist', status: MAIN_STATS } }, { l: '사용', v: s.active, c: t.green, nav: { menu: 'druglist', status: ['사용'] } }, { l: '중지', v: s.stopped, c: t.textL, nav: { menu: 'archive' } }, { l: '향정마약', v: s.narc, c: t.purple, nav: { menu: 'narcotic', narcStatus: ['사용'] } }].map((c, i) => <div key={i} onClick={() => onNav(c.nav)} style={tc(c.c)} onMouseEnter={hv} onMouseLeave={hx}><div style={{ fontSize: 12, color: t.textM, fontWeight: 500, marginBottom: 8 }}>{c.l}</div><div style={{ fontSize: 34, fontWeight: 800, color: c.c, letterSpacing: -1 }}>{c.v}</div></div>)}
     </div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
       {[{ l: '비보험', v: s.nonIns, c: t.blue, nav: { menu: 'nonins' } }, { l: '재고부족', v: s.shortage, c: t.red, nav: { menu: 'stock', filter: '부족' } }, { l: '유효기한 ≤30일', v: s.e30, c: t.red, nav: { menu: 'expiry', focus: 'urgent' } }, { l: '유효기한 ≤90일', v: s.e90, c: t.amber, nav: { menu: 'expiry', focus: 'warning' } }].map((c, i) => <div key={i} onClick={() => c.nav && onNav(c.nav)} style={{ background: t.card, borderRadius: 12, padding: '14px 18px', border: `1px solid ${t.border}`, cursor: c.nav ? 'pointer' : 'default', transition: 'all .15s', boxShadow: t.shadow }} onMouseEnter={hv} onMouseLeave={hx}><div style={{ fontSize: 11, color: t.textM }}>{c.l}</div><div style={{ fontSize: 26, fontWeight: 700, color: c.c, marginTop: 4 }}>{c.v}</div></div>)}
     </div>
-    {(() => { const eN = main.filter(d => { const x = exD(d.expiry_date); return x !== null && x <= 60 }).length; const lN = main.filter(d => (d.safety_stock || 0) > 0 && (d.current_qty || 0) < d.safety_stock).length; const nN = main.filter(d => { if (!isN(d)) return false; const x = exD(d.expiry_date); return x !== null && x <= 90 }).length; if (eN + lN + nN === 0) return null; const seg = (label, n, navObj, color) => n > 0 ? <span onClick={ev => { ev.stopPropagation(); onNav(navObj) }} style={{ cursor: 'pointer', textDecoration: 'underline', color, fontWeight: 700 }}>{label} {n}</span> : null; return <div onClick={() => onNav({ menu: 'alerts' })} style={{ background: t.redL, border: '1px solid ' + t.red + '30', borderRadius: 12, padding: '12px 18px', marginBottom: 14, color: t.red, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: t.shadow, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}><span>⚠</span>{seg('유효기한 임박', eN, { menu: 'expiry', focus: 'urgent' }, t.red)}{seg('재고부족', lN, { menu: 'stock', filter: '부족' }, t.amber)}{seg('향정 임박', nN, { menu: 'alerts' }, t.purple)}<span style={{ marginLeft: 'auto', fontSize: 11, color: t.textM, fontWeight: 500 }}>클릭 → 알림센터</span></div>; })()}
+    {(() => { const eN = main.filter(d => { const x = exD(d.expiry_date); return x !== null && x <= 60 }).length; const lN = main.filter(d => (d.safety_stock || 0) > 0 && (d.current_qty || 0) < d.safety_stock).length; const nN = main.filter(d => { if (!isN(d)) return false; const x = exD(d.expiry_date); return x !== null && x <= 90 }).length; if (eN + lN + nN === 0) return null; const seg = (label, n, navObj, color) => n > 0 ? <span onClick={ev => { ev.stopPropagation(); onNav(navObj) }} style={{ cursor: 'pointer', textDecoration: 'underline', color, fontWeight: 700 }}>{label} {n}</span> : null; const content = k => <span key={k} style={{ display: 'inline-flex', gap: 18, alignItems: 'center', paddingRight: 56 }}><span aria-hidden="true">⚠</span>{seg('유효기한 임박', eN, { menu: 'expiry', focus: 'urgent' }, t.red)}{seg('재고부족', lN, { menu: 'stock', filter: '부족' }, t.amber)}{seg('향정 임박', nN, { menu: 'alerts' }, t.purple)}<span style={{ fontSize: 11, color: t.textM, fontWeight: 500 }}>클릭 → 알림센터</span></span>; return <div onClick={() => onNav({ menu: 'alerts' })} className="cnc-alert-banner" role="status" style={{ background: t.redL, border: '1px solid ' + t.red + '30', borderRadius: 12, padding: '12px 0', marginBottom: 14, color: t.red, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: t.shadow, overflow: 'hidden', position: 'relative' }}><div className="cnc-marquee-track" style={{ display: 'inline-flex', whiteSpace: 'nowrap', willChange: 'transform' }}>{content('a')}{content('b')}</div></div>; })()}
     {/* ★ 3-Column: 입출고 + 반품/폐기 + 재고총괄 — 클릭 → 해당 페이지 이동 */}
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
       <div onClick={() => onNav({ menu: 'transaction' })} style={{ background: t.card, borderRadius: 14, padding: '18px 22px', border: `1px solid ${t.border}`, boxShadow: t.shadow, cursor: 'pointer', transition: 'all .15s' }} onMouseEnter={hv} onMouseLeave={hx}>
@@ -1142,8 +1130,8 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
 }
 
 /* ═══ 향정마약 전용 — ★ 카드 클릭 필터링 ═══ */
-function NarcoticMgmt({drugs,onEdit,onAdjust}){
-  const{t}=useTheme();const[stats,setStats]=useState(STATS);const narcs=drugs.filter(d=>isN(d)&&stats.includes(d.status));const{hs,so,SI,TS}=useSort('drug_name')
+function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
+  const{t}=useTheme();const[stats,setStats]=useState(navFilter?.narcStatus||STATS);const narcs=drugs.filter(d=>isN(d)&&stats.includes(d.status));const{hs,so,SI,TS}=useSort('drug_name')
   const[filter,setFilter]=useState('전체')
   const byType={향정:narcs.filter(d=>getNT(d)==='향정'),마약:narcs.filter(d=>getNT(d)==='마약')};const expiring=narcs.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180})
   const display=filter==='전체'?narcs:filter==='향정'?byType['향정']:filter==='마약'?byType['마약']:expiring
@@ -2711,6 +2699,16 @@ export default function App() {
           table { font-size: 9px !important; }
           th, td { padding: 4px 6px !important; }
         }
+        /* ═══ 알림 전광판(marquee+pulse) — 접근성: 점멸<3Hz, reduced-motion 정지 ═══ */
+        @keyframes cncMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+        @keyframes cncPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } }
+        .cnc-marquee-track { animation: cncMarquee 22s linear infinite; }
+        .cnc-alert-banner { animation: cncPulse 2.6s ease-in-out infinite; }
+        .cnc-alert-banner:hover .cnc-marquee-track { animation-play-state: paused; }
+        @media (prefers-reduced-motion: reduce) {
+          .cnc-marquee-track { animation: none !important; transform: none !important; }
+          .cnc-alert-banner { animation: none !important; }
+        }
         /* ═══ 반응형: 태블릿 (≤1024px) — PC 메뉴 유지, gap만 축소 ═══ */
         @media (max-width: 1024px) {
           .cnc-nav-desktop { gap: 1px !important; }
@@ -2760,7 +2758,7 @@ export default function App() {
         {menu === 'archive' && <DrugList drugs={drugs} navFilter={{ status: ['중지'], archive: true }} onEdit={setEditDrug} />}
         {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} />}
         {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} />}
-        {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} />}
+        {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} />}
         {menu === 'report' && <Report drugs={drugs} txns={txns} onNav={handleNav} />}
         {menu === 'register' && <DrugRegister onRefresh={load} />}
