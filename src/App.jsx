@@ -2639,6 +2639,7 @@ export default function App() {
   const [d360, setD360] = useState(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const isPopRef = useRef(false); const isFirstRef = useRef(true)
 
   const t = dark ? themes.dark : themes.light
   const themeVal = { t, open360: setD360, openSearch: () => setSearchOpen(true), navTo: handleNav, dark, toggle: () => setDark(d => !d), user, profile, memberRole, logout: async () => { await supabase.auth.signOut(); setUser(null); setProfile(null); setMemberRole(null); setMenu('dashboard') } }
@@ -2652,6 +2653,20 @@ export default function App() {
     })
     return () => subscription.unsubscribe()
   }, [])
+
+  /* SPA 뒤로가기: menu 전환을 브라우저 히스토리에 동기화(라우터 미도입·최소 침습).
+     popstate→직전 약플로 화면 복원. URL 미변경(새로고침=대시보드, 기존 동작 유지). */
+  useEffect(() => {
+    window.history.replaceState({ ykMenu: 'dashboard' }, '')
+    function onPop(e) { isPopRef.current = true; setMenu((e.state && e.state.ykMenu) || 'dashboard') }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+  useEffect(() => {
+    if (isFirstRef.current) { isFirstRef.current = false; return }
+    if (isPopRef.current) { isPopRef.current = false; return }
+    window.history.pushState({ ykMenu: menu }, '')
+  }, [menu])
 
   /* 비보험 메뉴 진입 시 navFilter 자동 적용 (헤더 클릭/대시보드 카드 클릭 모두 처리) */
   useEffect(() => { if (menu === 'nonins') setNf({ insType: '비보험' }) }, [menu])
