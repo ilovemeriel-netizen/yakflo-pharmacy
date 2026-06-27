@@ -6,6 +6,7 @@
 /** 향정/마약 여부 — App.jsx getNT/isN과 동치 */
 export function isNarcotic(d) {
   if (!d) return false
+  if (d.narcotic_type === '한외마약') return false
   if (d.narcotic_type === '향정' || d.narcotic_type === '마약') return true
   if (d.is_narcotic === true || d.is_narcotic === 'true') return true
   return false
