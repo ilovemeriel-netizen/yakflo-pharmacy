@@ -872,9 +872,33 @@ function Ordering({ drugs }) {
   </div>;
 }
 
+/* ═══ 대시보드 '사용 중인 약품' 표 전용 구분 드롭다운(단일선택·외부클릭/Esc) ═══ */
+function CatDropdown({ value, onChange }) {
+  const { t } = useTheme();
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    function onEsc(e) { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) };
+  }, []);
+  const items = ['전체', ...CATS];
+  const cur = value || '전체';
+  const active = !!value;
+  return <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+    <button onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: '1px solid ' + (open || active ? t.accent : t.border), background: active ? t.accentL : t.card, color: active ? t.accent : t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 600, transition: 'all .15s' }}><span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>구분</span><span>{cur}</span><span style={{ fontSize: 9 }}>▾</span></button>
+    {open && <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 150, background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 8px 24px rgba(46,74,98,0.14)', zIndex: 950, padding: 6 }}>
+      {items.map(it => { const on = (it === '전체' && !value) || it === value; return <button key={it} onClick={() => { onChange(it === '전체' ? null : it); setOpen(false) }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: on ? t.accentL : 'transparent', color: on ? t.accent : t.text, cursor: 'pointer', fontSize: 12, fontWeight: on ? 700 : 500, borderRadius: 6 }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{it}{on ? <span style={{ fontSize: 10 }}>✓</span> : null}</button> })}
+    </div>}
+  </div>;
+}
+
 /* ═══ 대시보드 — Bento Grid ═══ */
 function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
   const { t, open360 } = useTheme(); const { hs, so, SI, TS } = useSort('drug_name')
+  const [q, setQ] = useState(''); const [dq, setDq] = useState(''); const [catF, setCatF] = useState(null)
+  useEffect(() => { const h = setTimeout(() => setDq(q), 250); return () => clearTimeout(h) }, [q])
   const today = new Date(), fmt = d => d.toISOString().split('T')[0], ym = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`, d30 = new Date(today), d90 = new Date(today); d30.setDate(d30.getDate() + 30); d90.setDate(d90.getDate() + 90)
   const active = drugs.filter(d => d.status === '사용'); const main = drugs.filter(d => MAIN_STATS.includes(d.status))
   const s = { total: main.length, active: active.length, stopped: drugs.filter(d => d.status === '중지').length, dormant: drugs.filter(d => d.status === '휴면').length, narc: drugs.filter(d => isN(d) && d.status === '사용').length, nonIns: drugs.filter(d => isNonIns(d) && MAIN_STATS.includes(d.status)).length, shortage: inv.filter(d => d.stock_status === '부족').length, e30: drugs.filter(d => d.expiry_date && d.expiry_date <= fmt(d30) && MAIN_STATS.includes(d.status)).length, e90: drugs.filter(d => d.expiry_date && d.expiry_date > fmt(d30) && d.expiry_date <= fmt(d90) && MAIN_STATS.includes(d.status)).length }
@@ -885,7 +909,10 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
   const catData = CATS.map(cat => { const items = main.filter(d => d.category === cat); return { cat, total: items.length, qty: items.reduce((a, d) => a + (d.current_qty || 0), 0), expSoon: items.filter(d => { const x = exD(d.expiry_date); return x !== null && x <= 90 }).length } }).filter(c => c.total > 0)
   const atcMap = {}; main.forEach(d => { const k = (d.atc_l1 && d.atc_l1.trim()) || '미분류'; atcMap[k] = (atcMap[k] || 0) + 1 }); const atcData = Object.entries(atcMap).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count); const atcClassified = main.filter(d => d.atc_l1 && d.atc_l1.trim() && d.atc_l1 !== '확인필요').length;
   const catC = { '경구제': t.accent, '주사제': t.green, '외용제': t.blue, '수액제': t.mint || '#92C8E0', '영양제': '#A8CF5C', '의약외품': t.coral || t.amber }
-  const sorted = so(main.slice(0, 15))
+  const luq = dq.trim().toLowerCase(); const luActive = !!(luq || catF)
+  const luMatch = d => (catF ? d.category === catF : true) && (!luq || (d.drug_name || '').toLowerCase().includes(luq) || (d.drug_code || '').toLowerCase().includes(luq) || (d.ingredient_kr || '').toLowerCase().includes(luq) || (d.ingredient_en || '').toLowerCase().includes(luq) || (d.manufacturer || '').toLowerCase().includes(luq))
+  const luFiltered = main.filter(luMatch)
+  const sorted = so(luActive ? luFiltered : main.slice(0, 15)).slice(0, 15)
   const tc = bc => ({ background: t.card, borderRadius: 14, padding: '20px', border: `1px solid ${t.border}`, borderTop: `3px solid ${bc}`, cursor: 'pointer', transition: 'all .2s', boxShadow: t.shadow })
   const hv = e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = t.shadowH }
   const hx = e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = t.shadow }
@@ -924,9 +951,28 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
     <div style={{ background: t.card, borderRadius: 14, border: '1px solid '+t.border, padding: '16px 20px', marginBottom: 18, boxShadow: t.shadow }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}><span style={{ fontWeight: 700, fontSize: 14, color: t.text, display: 'flex', alignItems: 'center', gap: 6 }}>💊 ATC 효능군 분포 <span style={{ fontSize: 11, color: t.textL, fontWeight: 500 }}>· 사용·휴면 기준</span></span><span style={{ fontSize: 12, fontWeight: 700, color: t.green, background: t.greenL, padding: '3px 10px', borderRadius: 10 }}>분류율 {main.length ? Math.round(atcClassified / main.length * 100) : 0}%</span></div><div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}><AtcDonut data={atcData} total={main.length} colorFn={atcColor} onSlice={name => onNav({ menu: 'druglist', atc: name })} t={t} /><div style={{ flex: 1, minWidth: 240, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: '3px 14px' }}>{atcData.map(d => <div key={d.name} onClick={() => onNav({ menu: 'druglist', atc: d.name })} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', padding: '3px 5px', borderRadius: 6 }} onMouseEnter={e => e.currentTarget.style.background = t.bg} onMouseLeave={e => e.currentTarget.style.background = ''}><span style={{ width: 10, height: 10, borderRadius: 3, background: atcColor(d.name), flexShrink: 0 }} /><span style={{ fontSize: 11, color: t.textM, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span><span style={{ fontSize: 11, fontWeight: 700, color: t.text }}>{d.count}</span></div>)}</div></div></div>
     <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, overflow: 'hidden', boxShadow: t.shadow }}>
       <div onClick={() => onNav({ menu: 'druglist' })} title="약품목록으로 이동" style={{ padding: '14px 22px', borderBottom: `1px solid ${t.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: t.accentL, cursor: 'pointer', transition: 'background .15s' }} onMouseEnter={e => e.currentTarget.style.background = t.accent + '22'} onMouseLeave={e => e.currentTarget.style.background = t.accentL}><span style={{ fontWeight: 700, fontSize: 14, color: t.accent, display: 'flex', alignItems: 'center', gap: 6 }}>💊 사용 중인 약품 <span style={{ fontSize: 11, fontWeight: 500, color: t.textM }}>→ 약품목록</span></span><span style={{ fontSize: 13, fontWeight: 700, color: t.accent }}>{s.total}개</span></div>
+      <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '12px 18px', borderBottom: '1px solid ' + t.border }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="grep 약품명·코드·성분·제조사…" style={{ flex: '1 1 240px', minWidth: 180, padding: '8px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
+        <CatDropdown value={catF} onChange={setCatF} />
+        {luActive ? <span style={{ fontSize: 11, color: t.textM, fontWeight: 600 }}>매칭 <strong style={{ color: t.accent }}>{luFiltered.length}</strong>건{luFiltered.length > 15 ? ' · 상위 15 표시' : ''}</span> : null}
+        {luActive ? <button onClick={() => { setQ(''); setCatF(null) }} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>초기화</button> : null}
+      </div>
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead><tr>{[['drug_code', '약품코드'], ['drug_name', '약품명'], ['category', '구분'], ['current_qty', '현재고'], ['expiry_date', '유효기한'], ['status', '상태']].map(([k, h]) => <th key={k} style={TS(k)} onClick={() => hs(k)}>{h}<SI col={k} /></th>)}</tr></thead>
-        <tbody>{sorted.map((d, i) => <tr key={i} style={{ borderBottom: `1px solid ${t.border}` }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}><td style={{ padding: '9px 12px', fontSize: 10, color: t.textM, textAlign: 'left' }}>{d.drug_code}<NT d={d} /></td><CN drug={d} onEdit={onEdit} /><td style={{ padding: '9px 12px', color: t.textM, fontSize: 11 }}>{d.category}</td><td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: d.current_qty === 0 ? t.red : t.text }}>{d.current_qty?.toLocaleString()}</td><td style={{ padding: '9px 12px', fontSize: 11, ...exS(d.expiry_date, t) }}>{d.expiry_date || '-'}</td><td style={{ padding: '9px 12px' }}><SB s={d.status} /></td></tr>)}</tbody>
+        <thead><tr>{[['drug_code', '약품코드'], ['drug_name', '약품명'], ['ingredient_en', '성분(EN)'], ['ingredient_kr', '성분(KR)'], ['atc_l1', 'ATC 1·2·3'], ['specification', '제제구분'], ['manufacturer', '제조사'], ['current_qty', '현재고'], ['insurance_type', '급여'], ['storage_method', '위치/보관'], ['expiry_date', '유효기한'], ['status', '상태']].map(([k, h]) => <th key={k} style={{ ...TS(k), background: t.bg, whiteSpace: 'nowrap' }} onClick={() => hs(k)}>{h}<SI col={k} /></th>)}</tr></thead>
+        <tbody>{!sorted.length ? <tr><td colSpan={12} style={{ padding: 32, textAlign: 'center', color: t.textL, fontSize: 12 }}>검색 결과 없음</td></tr> : sorted.map((d, i) => { const acc = atcColor(d.atc_l1); const atcChips = [d.atc_l1, d.atc_l2, d.atc_l3].filter(v => v && String(v).trim()); const sm = d.storage_method || ''; const cold = sm.includes('냉장'); const shade = sm.includes('차광'); const smBg = cold ? t.blueL : shade ? t.amberL : t.bg; const smFg = cold ? t.blue : shade ? t.amber : t.textM; return <tr key={i} style={{ borderBottom: '1px solid ' + t.border, background: i % 2 ? t.bg : '' }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = i % 2 ? t.bg : ''}>
+          <td style={{ padding: '9px 12px', fontSize: 10, color: t.textM, textAlign: 'left', whiteSpace: 'nowrap' }}>{d.drug_code}<NT d={d} /></td>
+          <CN drug={d} onEdit={onEdit} />
+          <td style={{ padding: '9px 12px', color: t.textL, fontSize: 10, fontStyle: 'italic', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.ingredient_en || ''}>{d.ingredient_en || '-'}</td>
+          <td style={{ padding: '9px 12px', color: t.textM, fontSize: 11, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.ingredient_kr || ''}>{d.ingredient_kr || '-'}</td>
+          <td style={{ padding: '9px 12px' }}>{atcChips.length ? <span style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }}>{atcChips.map((v, j) => <span key={j} style={{ display: 'inline-block', padding: '2px 7px', borderRadius: 8, fontSize: 9, fontWeight: 700, background: acc + (j === 0 ? '22' : '12'), color: acc, border: '1px solid ' + acc + '33', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>)}</span> : <span style={{ color: t.textL, fontSize: 10 }}>-</span>}</td>
+          <td style={{ padding: '9px 12px', color: t.textM, fontSize: 11, whiteSpace: 'nowrap' }}>{d.specification || '-'}</td>
+          <td style={{ padding: '9px 12px', color: t.textM, fontSize: 11, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.manufacturer || ''}>{d.manufacturer || '-'}</td>
+          <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: d.current_qty === 0 ? t.red : t.text }}>{d.current_qty?.toLocaleString()}</td>
+          <td style={{ padding: '9px 12px', textAlign: 'center' }}>{isNonIns(d) ? <Bd bg={t.blueL} color={t.blue}>비보험</Bd> : <span style={{ fontSize: 10, color: t.textL }}>보험</span>}</td>
+          <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{sm ? <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 8, fontSize: 10, fontWeight: 600, background: smBg, color: smFg, border: '1px solid ' + smFg + '33' }}>{sm}</span> : <span style={{ color: t.textL, fontSize: 10 }}>-</span>}<span style={{ marginLeft: 6, fontSize: 10, color: t.textL }} title="보관위치 미입력">—</span></td>
+          <td style={{ padding: '9px 12px', fontSize: 11, ...exS(d.expiry_date, t) }}>{d.expiry_date || '-'}</td>
+          <td style={{ padding: '9px 12px' }}><SB s={d.status} /></td>
+        </tr> })}</tbody>
       </table></div>
     </div><Ft />
   </div>
