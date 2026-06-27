@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, createContext, useContext } from 'react'
 import { supabase } from './lib/supabase'
+import { passesDrugFilters } from './lib/drugFilter'
 /* XLSX는 동적 import로 별도 청크 분리(초기 번들 축소). 모든 사용은 사용자 액션 핸들러 내부뿐 → 로드 시점 안전 */
 let XLSX; import('xlsx').then(m => { XLSX = m })
 
@@ -975,7 +976,7 @@ function DrugList({ drugs, navFilter: nf, onEdit }) {
   const { t, open360, profile, user } = useTheme(); const [search, setSearch] = useState(''); const [cats, setCats] = useState(nf?.cats || CATS); const [stats, setStats] = useState(nf?.status || MAIN_STATS); const [narcOnly, setNarcOnly] = useState(false); const [insF, setInsF] = useState(nf?.insType || '전체'); const [page, setPage] = useState(1); const [visCols, setVisCols] = useState(() => { const sv = profile?.settings?.drugCols; return Array.isArray(sv) && sv.length ? sv.filter(k => DRUG_COLS.some(c => c.key === k)) : DRUG_COLS.filter(c => c.default).map(c => c.key) }); const [atcF, setAtcF] = useState(nf?.atc || null); const saveCols = (cols) => { setVisCols(cols); if (user?.id) supabase.from('profiles').update({ settings: { ...(profile?.settings || {}), drugCols: cols } }).eq('id', user.id).then(() => {}, () => {}) }
   const { hs, so, SI, TS } = useSort('drug_name')
   useEffect(() => { if (nf?.cats) setCats(Array.isArray(nf.cats) ? nf.cats : [nf.cats]); else setCats(CATS); if (nf?.status) setStats(Array.isArray(nf.status) ? nf.status : [nf.status]); if (nf?.narcotic) setNarcOnly(true); else setNarcOnly(false); if (nf?.insType) setInsF(nf.insType); else setInsF('전체'); setPage(1) }, [nf])
-  const filtered = so(drugs.filter(d => { if (narcOnly && !isN(d)) return false; if (atcF && d.atc_l1 !== atcF) return false; if (!stats.includes(d.status)) return false; if (!cats.includes(d.category)) return false; if (insF !== '전체') { const normalized = isNonIns(d) ? '비보험' : '보험'; if (normalized !== insF) return false } if (search.trim()) { const q = search.trim().toLowerCase(); return d.drug_name?.toLowerCase().includes(q) || d.drug_code?.toLowerCase().includes(q) || d.ingredient_kr?.toLowerCase().includes(q) || d.manufacturer?.toLowerCase().includes(q) }; return true }))
+  const filtered = so(drugs.filter(d => passesDrugFilters(d, { cats, stats, narcOnly, insF, atcF, search })))
   const atcL1Options = ['전체'].concat(Array.from(new Set(drugs.map(d => d.atc_l1).filter(v => v && String(v).trim()))).sort())
   const tp = Math.ceil(filtered.length / PP), paged = filtered.slice((page - 1) * PP, page * PP); const activeCols = DRUG_COLS.filter(c => visCols.includes(c.key))
   function dl() { const ws = XLSX.utils.json_to_sheet(filtered.map(d => { const o = {}; DRUG_COLS.forEach(c => { o[c.label] = d[c.key] || '' }); return o })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '약품'); XLSX.writeFile(wb, `약품목록_${new Date().toISOString().split('T')[0]}.xlsx`) }
