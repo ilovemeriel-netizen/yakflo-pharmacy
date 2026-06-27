@@ -1215,7 +1215,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
 
 /* ═══ 향정마약 전용 — ★ 카드 클릭 필터링 ═══ */
 function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
-  const{t}=useTheme();const[stats,setStats]=useState(navFilter?.narcStatus||STATS);const narcs=drugs.filter(d=>isN(d)&&stats.includes(d.status));const{hs,so,SI,TS}=useSort('drug_name')
+  const{t}=useTheme();const[stats,setStats]=useState(navFilter?.narcStatus||['사용']);const narcs=drugs.filter(d=>isN(d)&&stats.includes(d.status));const{hs,so,SI,TS}=useSort('drug_name')
   const[filter,setFilter]=useState('전체')
   const byType={향정:narcs.filter(d=>getNT(d)==='향정'),마약:narcs.filter(d=>getNT(d)==='마약')};const expiring=narcs.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180})
   const display=filter==='전체'?narcs:filter==='향정'?byType['향정']:filter==='마약'?byType['마약']:expiring
