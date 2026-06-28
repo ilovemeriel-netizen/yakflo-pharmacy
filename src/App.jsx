@@ -1086,6 +1086,12 @@ function DrugList({ drugs, navFilter: nf, onEdit, nonins }) {
   </div>
 }
 /* ═══ 유효기한 — 칩 클릭 라우팅 ═══ */
+/* 날짜 입력 셀: 로컬 state로 격리 → 상위 재렌더 중에도 달력 선택값 유지(텍스트·년/월/일 클릭 모두 지원) */
+function DateCell({ value, onChange }) {
+  const { t } = useTheme();
+  const [v, setV] = useState(value || '');
+  return <input type="date" value={v} onChange={e => { setV(e.target.value); onChange(e.target.value) }} style={{ padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 10, outline: 'none', background: t.bg, color: t.text, width: 105 }} />;
+}
 function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
   const{t}=useTheme();const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
   const[editRow,setEditRow]=useState(null);const[editVal,setEditVal]=useState({})
@@ -1133,7 +1139,7 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
         <td style={{padding:'5px 8px',textAlign:'right',fontWeight:700,fontSize:11,color}}>{days}</td>
         <td style={{padding:'5px 4px',textAlign:'center'}}>{a.text&&<span style={{background:a.bg||'transparent',color:a.c,fontWeight:700,padding:'2px 6px',borderRadius:4,fontSize:9,whiteSpace:'nowrap'}}>{a.text}</span>}</td>
         <td style={{padding:'5px 6px',fontSize:10}}>{isEd?<select value={editVal.last_used_dept??''} onChange={e=>setEditVal(p=>({...p,last_used_dept:e.target.value}))} style={{...ip2,width:85}}><option value="">선택</option><option>가정의학과</option><option>재활의학과1</option><option>신경과</option><option>기타</option></select>:<span style={{color:t.textM,cursor:'pointer'}} onClick={()=>startEdit(d)}>{d.last_used_dept?<span style={{background:t.accentL,color:t.accent,padding:'1px 6px',borderRadius:4,fontSize:9,fontWeight:600}}>{d.last_used_dept}</span>:<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
-        <td style={{padding:'5px 6px',fontSize:10}}>{isEd?<input type="date" value={editVal.last_used_date??''} onChange={e=>setEditVal(p=>({...p,last_used_date:e.target.value}))} style={{...ip2,width:105}}/>:<span style={{color:t.textM,cursor:'pointer',fontSize:10}} onClick={()=>startEdit(d)}>{d.last_used_date||<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
+        <td style={{padding:'5px 6px',fontSize:10}}>{isEd?<DateCell key={d.drug_code} value={editVal.last_used_date??''} onChange={v=>setEditVal(p=>({...p,last_used_date:v}))}/>:<span style={{color:t.textM,cursor:'pointer',fontSize:10}} onClick={()=>startEdit(d)}>{d.last_used_date||<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
         <td style={{padding:'5px 8px',textAlign:'right',fontSize:10,color:t.textM}}>{uDays!==null?uDays:''}</td>
         <td style={{padding:'5px 4px',textAlign:'center'}}>{uDays!==null&&uDays>365?<span style={{background:t.red,color:'#fff',padding:'2px 6px',borderRadius:4,fontSize:9,fontWeight:700,whiteSpace:'nowrap'}}>■미사용■</span>:''}</td>
         <td style={{padding:'5px 6px',fontSize:10}}>{isEd?<select value={editVal.recommended_action??''} onChange={e=>setEditVal(p=>({...p,recommended_action:e.target.value}))} style={{...ip2,width:80}}>{REC_ACTIONS.map(a=><option key={a} value={a}>{a||'선택'}</option>)}</select>:<span style={{cursor:'pointer',fontSize:10}} onClick={()=>startEdit(d)}>{d.recommended_action?<span style={{background:t.amberL,color:t.amber,padding:'1px 6px',borderRadius:4,fontSize:9,fontWeight:600}}>{d.recommended_action}</span>:<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
