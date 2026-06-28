@@ -1263,7 +1263,7 @@ function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
 function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
   const{t}=useTheme();
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
-  const[uMsg,setUMsg]=useState(null);const uRef=useRef()
+  const[uMsg,setUMsg]=useState(null);const uRef=useRef();const[uRep,setURep]=useState(null)
   useEffect(()=>{if(nf?.filter){setFilter(nf.filter);setPage(1)}},[nf])
   const im={};inv.forEach(i=>{im[i.drug_code]=i});const merged=drugs.filter(d=>stats.includes(d.status)).map(d=>{const iv=im[d.drug_code]||{};const q=d.current_qty||0,sf=iv.safety_stock||d.safety_stock||0,mx=iv.max_stock||d.max_stock||0;let st='정상';if(q===0)st='재고없음';else if(sf>0&&q<sf)st='부족';else if(mx>0&&q>mx)st='과잉';return{...d,safety_stock:sf,max_stock:mx,monthly_avg:iv.monthly_avg||d.monthly_avg||0,stockStatus:st}})
   const sg={전체:merged.length,부족:merged.filter(d=>d.stockStatus==='부족').length,재고없음:merged.filter(d=>d.stockStatus==='재고없음').length,정상:merged.filter(d=>d.stockStatus==='정상').length,과잉:merged.filter(d=>d.stockStatus==='과잉').length}
@@ -1273,26 +1273,66 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
   const _u=arr=>[...new Set(arr.filter(v=>v!=null&&String(v).trim()!==''))]
   const hf={category:{items:_u(merged.map(d=>d.category)).sort(),value:cats.length===1?cats[0]:null,on:v=>{setCats(v?[v]:CATS);setPage(1)}},status:{items:_u(drugs.map(d=>d.status)),value:stats.length===1?stats[0]:null,on:v=>{setStats(v?[v]:MAIN_STATS);setPage(1)}},stockStatus:{items:_u(merged.map(d=>d.stockStatus)),value:filter==='전체'?null:filter,on:v=>{setFilter(v||'전체');setPage(1)}}}
   function dl(){const ws=XLSX.utils.json_to_sheet(filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,현재고:d.current_qty,안전재고:d.safety_stock,최대재고:d.max_stock,월평균:d.monthly_avg,사용상태:d.status,재고상태:d.stockStatus})));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'재고');XLSX.writeFile(wb,`재고_${new Date().toISOString().split('T')[0]}.xlsx`)}
+  /* 대량등록: 파싱→검증(숫자·매칭)→검토(미반영)→확정 시 RLS 일괄 UPDATE. 연쇄계산은 saveUsage와 동일. */
   async function uploadUsage(e){
-    const file=e.target.files[0];if(!file)return;setUMsg('업로드 중...')
-    const reader=new FileReader();reader.onload=async ev=>{
-      try{const wb=XLSX.read(ev.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:false})
-      let ok=0,fail=0
-      for(const r of rows){
-        const code=String(r['약품코드']||r['drug_code']||'').trim();if(!code)continue
-        const ud={};const py=Number(r['전년사용량']||r['전년도사용량']||r['prev_year_usage']||0);const r3=Number(r['최근3개월사용량']||r['최근3개월']||r['recent_3m_usage']||0);const sf=Number(r['안전재고']||r['safety_stock']||0);const mx=Number(r['최대재고']||r['max_stock']||0)
-        if(py)ud.prev_year_usage=py;if(r3)ud.recent_3m_usage=r3;if(sf)ud.safety_stock=sf;if(mx)ud.max_stock=mx
-        if(py||r3)ud.monthly_avg=Math.round((r3||py/4)/3)
-        if(Object.keys(ud).length){const{error}=await supabase.from('drugs').update(ud).eq('drug_code',code);if(error)fail++;else ok++}
-      }
-      setUMsg(`완료! ${ok}건 업데이트, ${fail}건 실패`);onReload?.();setTimeout(()=>setUMsg(null),4000)
-      }catch(err){setUMsg('오류: '+err.message)}
+    const file=e.target.files[0];if(!file)return;setURep(null)
+    const reader=new FileReader();reader.onload=ev=>{
+      try{
+        const wb=XLSX.read(ev.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:false})
+        const codes=new Set(drugs.map(d=>d.drug_code))
+        const num=v=>{const x=String(v).trim();if(x==='')return undefined;const n=Number(x.replace(/,/g,''));return (Number.isFinite(n)&&n>=0)?n:NaN}
+        const updates=[],unmatched=[],invalid=[]
+        rows.forEach((r,i)=>{
+          const ln=i+2
+          const code=String(r['약품코드']??r['drug_code']??'').trim();if(!code)return
+          const pyRaw=r['전년사용량']??r['전년도사용량']??r['prev_year_usage']??''
+          const r3Raw=r['최근3개월사용량']??r['최근3개월']??r['recent_3m_usage']??''
+          const py=num(pyRaw),r3=num(r3Raw)
+          if(Number.isNaN(py)){invalid.push({ln,code,col:'전년사용량',val:String(pyRaw)});return}
+          if(Number.isNaN(r3)){invalid.push({ln,code,col:'최근3개월사용량',val:String(r3Raw)});return}
+          if(py===undefined&&r3===undefined)return
+          if(!codes.has(code)){unmatched.push(code);return}
+          const pv=py===undefined?null:py,rv=r3===undefined?null:r3
+          let m=null;if(rv!=null)m=Math.round(rv/3);else if(pv!=null)m=Math.round(pv/12)
+          updates.push({code,upd:{prev_year_usage:pv,recent_3m_usage:rv,monthly_avg:m,safety_stock:m!=null?Math.round(m*1.5):null,max_stock:m!=null?Math.round(m*3):null}})
+        })
+        setURep({phase:'review',updates,unmatched,invalid})
+      }catch(err){setURep({phase:'error',msg:err.message,updates:[],unmatched:[],invalid:[]})}
     };reader.readAsArrayBuffer(file);e.target.value=''
   }
-  function dlUsageTemplate(){const ws=XLSX.utils.aoa_to_sheet([['약품코드','약품명(참고용)','전년사용량','최근3개월사용량','안전재고','최대재고'],['SGBRONNC10','가바로닌캡슐100mg',1592,974,488,975],['GRD2','게리드정2밀리그램',330,105,71,141]]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'사용량');XLSX.writeFile(wb,'사용량_업로드_양식.xlsx')}
+  async function applyUsage(){
+    if(!uRep||!uRep.updates.length)return
+    setURep({...uRep,phase:'applying'})
+    let ok=0;const failed=[]
+    for(const u of uRep.updates){const{error}=await supabase.from('drugs').update(u.upd).eq('drug_code',u.code);if(error)failed.push(u.code);else ok++}
+    onReload?.()
+    setURep({phase:'done',ok,failed,unmatched:uRep.unmatched,invalid:uRep.invalid,updates:uRep.updates})
+  }
+  function dlUsageTemplate(){const ws=XLSX.utils.aoa_to_sheet([['약품코드','약품명(참고용)','전년사용량','최근3개월사용량'],['SGBRONNC10','가바로닌캡슐100mg',1592,974],['GRD2','게리드정2밀리그램',330,105]]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'사용량');XLSX.writeFile(wb,'사용량_업로드_양식.xlsx')}
   return<div style={{padding:'20px 24px'}}>
     <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,marginBottom:14}}>{[{k:'전체',c:t.text},{k:'부족',c:t.amber},{k:'재고없음',c:t.red},{k:'정상',c:t.green},{k:'과잉',c:t.blue}].map(f2=><div key={f2.k} onClick={()=>{setFilter(f2.k);setPage(1)}} style={{background:filter===f2.k?f2.c+'15':t.card,borderRadius:12,padding:'12px 16px',border:`1px solid ${filter===f2.k?f2.c:t.border}`,cursor:'pointer',backdropFilter:'blur(12px)'}}><div style={{fontSize:10,color:t.textM}}>{f2.k}</div><div style={{fontSize:24,fontWeight:700,color:f2.c}}>{sg[f2.k]}</div></div>)}</div>
     {uMsg&&<div style={{background:uMsg.includes('완료')?t.greenL:uMsg.includes('오류')?t.redL:t.blueL,border:`1px solid ${uMsg.includes('완료')?t.green:uMsg.includes('오류')?t.red:t.blue}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:uMsg.includes('완료')?t.green:uMsg.includes('오류')?t.red:t.blue,fontSize:12,fontWeight:600}}>{uMsg}</div>}
+    {uRep&&<div className="no-print" style={{background:t.card,border:'1px solid '+t.border,borderRadius:12,padding:'12px 16px',marginBottom:12,fontSize:12,backdropFilter:'blur(12px)'}}>
+      {uRep.phase==='error'?<div style={{color:t.red,fontWeight:600}}>업로드 오류: {uRep.msg}</div>
+      :uRep.phase==='applying'?<div style={{color:t.blue,fontWeight:600}}>반영 중...</div>
+      :uRep.phase==='done'?<div>
+        <div style={{fontWeight:700,color:t.green,marginBottom:6}}>업로드 완료</div>
+        <div style={{color:t.text}}>성공 {uRep.ok}건{uRep.failed.length?(' · 저장실패 '+uRep.failed.length+'건 ('+uRep.failed.join(', ')+')'):''}</div>
+        {uRep.unmatched.length?<div style={{color:t.amber,marginTop:4}}>매칭실패 {uRep.unmatched.length}건(미반영): {uRep.unmatched.join(', ')}</div>:null}
+        {uRep.invalid.length?<div style={{color:t.red,marginTop:4}}>형식오류 {uRep.invalid.length}건(미반영): {uRep.invalid.map(x=>'행'+x.ln+' '+x.col+':"'+x.val+'"').join(', ')}</div>:null}
+        <button onClick={()=>setURep(null)} style={{marginTop:8,padding:'6px 14px',borderRadius:8,border:'1px solid '+t.border,background:t.bg,color:t.text,cursor:'pointer',fontSize:11,fontWeight:600}}>닫기</button>
+      </div>
+      :<div>
+        <div style={{fontWeight:700,color:t.text,marginBottom:6}}>업로드 검토 — 확정 전 미반영</div>
+        <div style={{color:t.text}}>반영 대상 <b style={{color:t.green}}>{uRep.updates.length}</b>건 · 매칭실패 <b style={{color:t.amber}}>{uRep.unmatched.length}</b>건 · 형식오류 <b style={{color:t.red}}>{uRep.invalid.length}</b>건</div>
+        {uRep.unmatched.length?<div style={{color:t.amber,marginTop:4}}>매칭실패 코드: {uRep.unmatched.join(', ')}</div>:null}
+        {uRep.invalid.length?<div style={{color:t.red,marginTop:4}}>형식오류: {uRep.invalid.map(x=>'행'+x.ln+' '+x.col+':"'+x.val+'"').join(', ')}</div>:null}
+        <div style={{display:'flex',gap:8,marginTop:10}}>
+          <button onClick={applyUsage} disabled={!uRep.updates.length} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+(uRep.updates.length?t.green:t.border),background:uRep.updates.length?t.greenL:t.bg,color:uRep.updates.length?t.green:t.textL,cursor:uRep.updates.length?'pointer':'default',fontSize:11,fontWeight:600}}>반영 {uRep.updates.length}건</button>
+          <button onClick={()=>setURep(null)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:11,fontWeight:600}}>취소</button>
+        </div>
+      </div>}
+    </div>}
     <div className="no-print" style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'12px 16px',marginBottom:12,display:'flex',flexDirection:'column',gap:8,backdropFilter:'blur(12px)'}}>
       <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
         <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} placeholder="검색..." style={{flex:1,minWidth:120,padding:'8px 12px',border:`1px solid ${t.border}`,borderRadius:8,fontSize:12,outline:'none',background:t.bg,color:t.text}}/>
