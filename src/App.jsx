@@ -1118,7 +1118,7 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
     const withCalc=items.map(d=>{const rd=exD(d.expiry_date);const ud=unusedDays(d);return{...d,_remainDays:rd,_unusedDays:ud}})
     const sorted=so(withCalc);if(!sorted.length)return<div style={{padding:16,textAlign:'center',color:t.textL,fontSize:12}}>해당 없음</div>
     const cols=[['drug_code','코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['expiry_date','유효기한'],['_remainDays','남은일수'],['_remainDays','알림상태'],['last_used_dept','최종사용과'],['last_used_date','최종사용일'],['_unusedDays','미사용기간(일)'],['_unusedDays','미사용알림'],['recommended_action','권장조치'],['expiry_notes','비고'],['status','사용상태']]
-    return<div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr>{cols.map(([k,h])=><th key={h} style={k?{...TS(k),fontSize:10,whiteSpace:'nowrap'}:{padding:'8px 6px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:10,whiteSpace:'nowrap'}} onClick={()=>k&&hs(k)}>{h}{k&&<SI col={k}/>}</th>)}</tr></thead>
+    return<HScroll><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr>{cols.map(([k,h])=><th key={h} style={k?{...TS(k),fontSize:10,whiteSpace:'nowrap'}:{padding:'8px 6px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:10,whiteSpace:'nowrap'}} onClick={()=>k&&hs(k)}>{h}{k&&<SI col={k}/>}</th>)}</tr></thead>
     <tbody>{sorted.map((d,i)=>{const days=exD(d.expiry_date);const a=alertSt(days);const uDays=unusedDays(d);const isEd=editRow===d.drug_code;const uu=isUnused(d)
       return<tr key={i} style={{borderBottom:`1px solid ${t.border}`,background:uu?t.redL+'60':''}} onMouseEnter={e=>{if(!uu)e.currentTarget.style.background=t.glass}} onMouseLeave={e=>{if(!uu)e.currentTarget.style.background=''}}>
         <td style={{padding:'5px 8px',fontSize:10,color:t.textM,textAlign:'left'}}>{d.drug_code}<NT d={d}/></td>
@@ -1135,8 +1135,8 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
         <td style={{padding:'5px 6px',fontSize:10}}>{isEd?<select value={editVal.recommended_action??''} onChange={e=>setEditVal(p=>({...p,recommended_action:e.target.value}))} style={{...ip2,width:80}}>{REC_ACTIONS.map(a=><option key={a} value={a}>{a||'선택'}</option>)}</select>:<span style={{cursor:'pointer',fontSize:10}} onClick={()=>startEdit(d)}>{d.recommended_action?<span style={{background:t.amberL,color:t.amber,padding:'1px 6px',borderRadius:4,fontSize:9,fontWeight:600}}>{d.recommended_action}</span>:<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
         <td style={{padding:'5px 6px'}}><input defaultValue={d.expiry_notes||''} onBlur={e=>saveNote(d,e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.target.blur()}} placeholder="입력" style={{...ip2,width:80,fontSize:9}}/></td>
         <td style={{padding:'5px 6px'}}><SB s={d.status}/></td>
-        {isEd&&<td style={{padding:'5px 4px'}}><button onClick={()=>saveRow(d)} style={{padding:'2px 8px',borderRadius:4,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:600}}>저장</button></td>}
-      </tr>})}</tbody></table></div>}
+        {isEd&&<td style={{padding:'5px 4px',whiteSpace:'nowrap'}}><button onClick={()=>saveRow(d)} style={{padding:'2px 8px',borderRadius:4,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>저장</button></td>}
+      </tr>})}</tbody></table></HScroll>}
   const show=aLv?lvs.filter(l=>l.k===aLv):lvs.filter(l=>l.k!=='unused'||g.unused.length>0)
   return<div style={{padding:'20px 24px'}}>
     <div className="no-print" style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'10px 16px',marginBottom:12,display:'flex',alignItems:'center',flexWrap:'wrap',gap:6}}>
