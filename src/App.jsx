@@ -1089,8 +1089,7 @@ function DrugList({ drugs, navFilter: nf, onEdit, nonins }) {
 /* 날짜 입력 셀: 로컬 state로 격리 → 상위 재렌더 중에도 달력 선택값 유지(텍스트·년/월/일 클릭 모두 지원) */
 function DateCell({ value, onChange }) {
   const { t } = useTheme();
-  const [v, setV] = useState(value || '');
-  return <input type="date" value={v} onChange={e => { setV(e.target.value); onChange(e.target.value) }} style={{ padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 10, outline: 'none', background: t.bg, color: t.text, width: 105 }} />;
+  return <input type="date" defaultValue={value || ''} onChange={e => onChange(e.target.value)} style={{ padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 10, outline: 'none', background: t.bg, color: t.text, width: 105 }} />;
 }
 function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
   const{t}=useTheme();const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
