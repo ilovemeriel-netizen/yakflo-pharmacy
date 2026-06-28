@@ -127,7 +127,7 @@ async function searchDrugAPI(keyword, apiType = 'easy') {
 /* ── Sort Hook ── */
 function useSort(ik = '', id = 'asc') {
   const [sk, s1] = useState(ik); const [sd, s2] = useState(id)
-  return { sk, sd,
+  return { sk, sd, setSort(k, d) { s1(k); s2(d) },
     hs(k) { if (sk === k) { if (sd === 'asc') s2('desc'); else { s1(''); s2('asc') } } else { s1(k); s2('asc') } },
     so(a) { if (!sk) return a; return [...a].sort((x, y) => { let va = x[sk] ?? '', vb = y[sk] ?? ''; if (typeof va === 'number' && typeof vb === 'number') return sd === 'asc' ? va - vb : vb - va; return sd === 'asc' ? String(va).localeCompare(String(vb), 'ko') : String(vb).localeCompare(String(va), 'ko') }) },
     SI({ col: c }) { const { t } = useTheme(); if (sk !== c) return <span style={{ color: t.textL, fontSize: 9, marginLeft: 3 }}>⇅</span>; return <span style={{ color: t.accent, fontSize: 9, marginLeft: 3 }}>{sd === 'asc' ? '▲' : '▼'}</span> },
@@ -1220,9 +1220,46 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
 }
 
 /* ═══ 재고현황 — ★ 사용량 엑셀 업로드 추가 ═══ */
+/* 정렬+필터 통합 헤더 메뉴(엑셀식 ▾). StockStatus 전용. 공유 SI/HeaderFilter 미사용. */
+function ColMenu({ colKey, sk, sd, setSort, filter }) {
+  const { t } = useTheme();
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const ref = useRef(null), btnRef = useRef(null);
+  function rect() { const el = btnRef.current; if (!el) return null; const r = el.getBoundingClientRect(); return { top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 190)) } }
+  function toggle(e) { e.stopPropagation(); if (!open) { const pp = rect(); if (pp) setPos(pp) } setOpen(o => !o) }
+  useEffect(() => {
+    if (!open) return;
+    function place() { const el = btnRef.current; if (!el) return; const r = el.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) { setOpen(false); return } setPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 190)) }) }
+    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    function onEsc(e) { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('scroll', place, true); window.addEventListener('resize', place);
+    document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc);
+    return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) };
+  }, [open]);
+  const active = sk === colKey;
+  const fActive = !!(filter && filter.value);
+  const item = (onClick, label, on) => <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '6px 9px', border: 'none', background: on ? t.accent + '14' : 'transparent', color: on ? t.accent : t.text, cursor: 'pointer', fontSize: 11, fontWeight: on ? 700 : 500, borderRadius: 6, whiteSpace: 'nowrap' }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{label}{on ? <span style={{ fontSize: 9 }}>✓</span> : null}</button>;
+  return <span ref={ref} style={{ display: 'inline-block', marginLeft: 3, verticalAlign: 'middle', fontWeight: 400 }}>
+    <span ref={btnRef} onClick={toggle} title="정렬·필터" style={{ cursor: 'pointer', fontSize: 10, fontWeight: 800, padding: '0 3px', borderRadius: 4, color: (active || fActive) ? t.accent : t.textL }}>▾</span>
+    {open && <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={e => { e.stopPropagation(); setOpen(false) }} />
+      <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, minWidth: 150, maxHeight: 300, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', padding: 6, textAlign: 'left' }}>
+        <div style={{ fontSize: 9, color: t.textL, fontWeight: 700, padding: '2px 9px 4px' }}>정렬</div>
+        {item(() => { setSort(colKey, 'asc'); setOpen(false) }, '오름차순 ▲', active && sd === 'asc')}
+        {item(() => { setSort(colKey, 'desc'); setOpen(false) }, '내림차순 ▼', active && sd === 'desc')}
+        {active ? item(() => { setSort('', 'asc'); setOpen(false) }, '정렬 해제', false) : null}
+        {filter ? <div style={{ borderTop: '1px solid ' + t.border, margin: '5px 0' }} /> : null}
+        {filter ? <div style={{ fontSize: 9, color: t.textL, fontWeight: 700, padding: '2px 9px 4px' }}>필터</div> : null}
+        {filter ? item(() => { filter.on(null); setOpen(false) }, '전체', !filter.value) : null}
+        {filter ? filter.items.map(v => item(() => { filter.on(v); setOpen(false) }, v, filter.value === v)) : null}
+      </div>
+    </>}
+  </span>;
+}
 function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
   const{t}=useTheme();
-  const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{hs,so,SI,TS}=useSort('drug_name');
+  const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
   const[uMsg,setUMsg]=useState(null);const uRef=useRef()
   useEffect(()=>{if(nf?.filter){setFilter(nf.filter);setPage(1)}},[nf])
   const im={};inv.forEach(i=>{im[i.drug_code]=i});const merged=drugs.filter(d=>stats.includes(d.status)).map(d=>{const iv=im[d.drug_code]||{};const q=d.current_qty||0,sf=iv.safety_stock||d.safety_stock||0,mx=iv.max_stock||d.max_stock||0;let st='정상';if(q===0)st='재고없음';else if(sf>0&&q<sf)st='부족';else if(mx>0&&q>mx)st='과잉';return{...d,safety_stock:sf,max_stock:mx,monthly_avg:iv.monthly_avg||d.monthly_avg||0,stockStatus:st}})
@@ -1268,7 +1305,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
     </div>
     <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',backdropFilter:'blur(12px)'}}>
       <HScroll><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-        <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['safety_stock','안전재고'],['max_stock','최대재고'],['monthly_avg','월평균'],['status','사용상태'],['stockStatus','재고상태'],['expiry_date','유효기한'],['','보정']].map(([k,h])=><th key={h} style={k?{...TS(k),...(k==='drug_code'?{position:'sticky',left:0,zIndex:6,background:t.bg,minWidth:128,maxWidth:128,width:128,borderRight:'1px solid '+t.border}:k==='drug_name'?{position:'sticky',left:128,zIndex:6,background:t.bg,borderRight:'1px solid '+t.border}:{})}:{padding:'8px 10px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:11}} ><span onClick={()=>k&&hs(k)} style={{cursor:k?'pointer':'default'}}>{h}{k&&<SI col={k}/>}</span>{hf[k]?<HeaderFilter items={hf[k].items} value={hf[k].value} onChange={hf[k].on} color={t.accent}/>:null}</th>)}</tr></thead>
+        <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['safety_stock','안전재고'],['max_stock','최대재고'],['monthly_avg','월평균'],['status','사용상태'],['stockStatus','재고상태'],['expiry_date','유효기한'],['','보정']].map(([k,h])=><th key={h} style={k?{...TS(k),background:t.bg,...(k==='drug_code'?{position:'sticky',left:0,zIndex:6,minWidth:128,maxWidth:128,width:128,borderRight:'1px solid '+t.border}:k==='drug_name'?{position:'sticky',left:128,zIndex:6,borderRight:'1px solid '+t.border}:{})}:{padding:'8px 10px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:11,background:t.bg}} ><span style={{cursor:'default'}}>{h}</span>{k?<ColMenu colKey={k} sk={sk} sd={sd} setSort={setSort} filter={hf[k]||null}/>:null}</th>)}</tr></thead>
         <tbody>{!paged.length?<tr><td colSpan={10} style={{padding:40,textAlign:'center',color:t.textL}}>없음</td></tr>:paged.map((d,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
           <td style={{padding:'8px 12px',fontSize:10,color:t.textM,textAlign:'left',position:'sticky',left:0,zIndex:2,background:t.card,minWidth:128,maxWidth:128,width:128,overflow:'hidden',borderRight:'1px solid '+t.border}}>{d.drug_code}<NT d={d}/></td><td style={{padding:'8px 12px',fontWeight:600,textAlign:'left',color:t.accent,cursor:'pointer',position:'sticky',left:128,zIndex:2,background:t.card,borderRight:'1px solid '+t.border,minWidth:160,maxWidth:240}} onClick={()=>onEdit(d)} onMouseEnter={e=>{e.currentTarget.style.textDecoration='underline';e.currentTarget.style.color=t.purple}} onMouseLeave={e=>{e.currentTarget.style.textDecoration='none';e.currentTarget.style.color=t.accent}}>{d.drug_name}</td><td style={{padding:'8px 10px',color:t.textM,fontSize:11}}>{d.category}</td>
           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:d.stockStatus==='재고없음'?t.red:d.stockStatus==='부족'?t.amber:t.text}}>{d.current_qty?.toLocaleString()}</td>
