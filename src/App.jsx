@@ -1221,44 +1221,35 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
 }
 
 /* ═══ 재고현황 — ★ 사용량 엑셀 업로드 추가 ═══ */
-/* 정렬+필터 통합 헤더 메뉴(엑셀식 ▾). StockStatus 전용. 공유 SI/HeaderFilter 미사용. */
-/* 정렬·필터 분리 헤더 메뉴. StockStatus 전용. 텍스트클릭=필터 / ▾클릭=정렬. 공유 SI/HeaderFilter 미사용. */
+/* 헤더 메뉴: 텍스트클릭=필터 드롭다운 / 아이콘클릭=정렬 즉시토글(오름→내림→해제, ▲ 1개 회전). StockStatus 전용. 공유 SI/HeaderFilter 미사용. */
 function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
   const { t } = useTheme();
-  const [mode, setMode] = useState(null); // 'filter' | 'sort'
+  const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
-  const ref = useRef(null), txtRef = useRef(null), arrRef = useRef(null), curRef = useRef(null);
+  const ref = useRef(null), txtRef = useRef(null), curRef = useRef(null);
   function calc(el) { const r = el.getBoundingClientRect(); return { top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 190)) } }
-  function openAs(e, m, el) { e.stopPropagation(); if (!el) return; if (mode === m) { setMode(null); return } curRef.current = el; setPos(calc(el)); setMode(m) }
+  function openFilter(e) { e.stopPropagation(); const el = txtRef.current; if (!el) return; if (open) { setOpen(false); return } curRef.current = el; setPos(calc(el)); setOpen(true) }
+  function cycleSort(e) { e.stopPropagation(); if (sk !== colKey) setSort(colKey, 'asc'); else if (sd === 'asc') setSort(colKey, 'desc'); else setSort('', 'asc') }
   useEffect(() => {
-    if (!mode) return;
-    function place() { const el = curRef.current; if (!el) return; const r = el.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) { setMode(null); return } setPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 190)) }) }
-    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setMode(null) }
-    function onEsc(e) { if (e.key === 'Escape') setMode(null) }
+    if (!open) return;
+    function place() { const el = curRef.current; if (!el) return; const r = el.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) { setOpen(false); return } setPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 190)) }) }
+    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    function onEsc(e) { if (e.key === 'Escape') setOpen(false) }
     window.addEventListener('scroll', place, true); window.addEventListener('resize', place);
     document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc);
     return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) };
-  }, [mode]);
+  }, [open]);
   const active = sk === colKey;
   const fActive = !!(filter && filter.value);
   const item = (onClick, lbl, on) => <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '6px 9px', border: 'none', background: on ? t.accent + '14' : 'transparent', color: on ? t.accent : t.text, cursor: 'pointer', fontSize: 11, fontWeight: on ? 700 : 500, borderRadius: 6, whiteSpace: 'nowrap' }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{lbl}{on ? <span style={{ fontSize: 9 }}>✓</span> : null}</button>;
-  return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontWeight: 400, verticalAlign: 'middle' }}>
-    <span ref={txtRef} onClick={filter ? e => openAs(e, 'filter', txtRef.current) : undefined} title={filter ? '필터' : undefined} style={{ cursor: filter ? 'pointer' : 'default', whiteSpace: 'nowrap', color: fActive ? t.accent : 'inherit', fontWeight: fActive ? 700 : 'inherit' }}>{label}</span>
-    <span ref={arrRef} onClick={e => openAs(e, 'sort', arrRef.current)} title="정렬" style={{ cursor: 'pointer', fontSize: 10, fontWeight: 800, padding: '0 3px', borderRadius: 4, color: active ? t.accent : t.textL }}>▾</span>
-    {mode && createPortal(<>
-      <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={e => { e.stopPropagation(); setMode(null) }} />
+  return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: 700, verticalAlign: 'middle' }}>
+    <span ref={txtRef} onClick={filter ? openFilter : undefined} title={filter ? '필터' : undefined} style={{ cursor: filter ? 'pointer' : 'default', whiteSpace: 'nowrap', fontWeight: 700, color: fActive ? t.accent : 'inherit' }}>{label}</span>
+    <span onClick={cycleSort} title="정렬(오름→내림→해제)" style={{ cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '0 2px', color: active ? t.accent : t.textL, display: 'inline-block', transform: active && sd === 'desc' ? 'rotate(180deg)' : 'none', transition: 'transform .12s' }}>▲</span>
+    {open && createPortal(<>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={e => { e.stopPropagation(); setOpen(false) }} />
       <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, minWidth: 150, maxHeight: 300, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', padding: 6, textAlign: 'left' }}>
-        {mode === 'sort' && <>
-          <div style={{ fontSize: 9, color: t.textL, fontWeight: 700, padding: '2px 9px 4px' }}>정렬</div>
-          {item(() => { setSort(colKey, 'asc'); setMode(null) }, '오름차순 ▲', active && sd === 'asc')}
-          {item(() => { setSort(colKey, 'desc'); setMode(null) }, '내림차순 ▼', active && sd === 'desc')}
-          {active ? item(() => { setSort('', 'asc'); setMode(null) }, '정렬 해제', false) : null}
-        </>}
-        {mode === 'filter' && filter ? <>
-          <div style={{ fontSize: 9, color: t.textL, fontWeight: 700, padding: '2px 9px 4px' }}>필터</div>
-          {item(() => { filter.on(null); setMode(null) }, '전체', !filter.value)}
-          {filter.items.map(v => item(() => { filter.on(v); setMode(null) }, v, filter.value === v))}
-        </> : null}
+        {filter ? item(() => { filter.on(null); setOpen(false) }, '전체', !filter.value) : null}
+        {filter ? filter.items.map(v => item(() => { filter.on(v); setOpen(false) }, v, filter.value === v)) : null}
       </div>
     </>, document.body)}
   </span>;
@@ -1311,9 +1302,9 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
     </div>
     <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',backdropFilter:'blur(12px)'}}>
       <HScroll><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-        <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['safety_stock','안전재고'],['max_stock','최대재고'],['monthly_avg','월평균'],['status','사용상태'],['stockStatus','재고상태'],['expiry_date','유효기한'],['','보정']].map(([k,h])=><th key={h} style={k?{...TS(k),background:t.bg,...(k==='drug_code'?{position:'sticky',left:0,zIndex:6,minWidth:128,maxWidth:128,width:128,borderRight:'1px solid '+t.border}:k==='drug_name'?{position:'sticky',left:128,zIndex:6,borderRight:'1px solid '+t.border}:{})}:{padding:'8px 10px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:11,background:t.bg}} >{k?<ColMenu colKey={k} label={h} sk={sk} sd={sd} setSort={setSort} filter={hf[k]||null}/>:<span style={{cursor:'default',whiteSpace:'nowrap'}}>{h}</span>}</th>)}</tr></thead>
+        <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['safety_stock','안전재고'],['max_stock','최대재고'],['monthly_avg','월평균'],['status','사용상태'],['stockStatus','재고상태'],['expiry_date','유효기한'],['','보정']].map(([k,h])=><th key={h} style={k?{...TS(k),background:t.bg,...(k==='drug_code'?{position:'sticky',left:0,zIndex:6,minWidth:100,maxWidth:100,width:100,borderRight:'1px solid '+t.border}:k==='drug_name'?{position:'sticky',left:100,zIndex:6,borderRight:'1px solid '+t.border}:{})}:{padding:'8px 10px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:11,background:t.bg}} >{k?<ColMenu colKey={k} label={h} sk={sk} sd={sd} setSort={setSort} filter={hf[k]||null}/>:<span style={{cursor:'default',whiteSpace:'nowrap',fontWeight:700}}>{h}</span>}</th>)}</tr></thead>
         <tbody>{!paged.length?<tr><td colSpan={10} style={{padding:40,textAlign:'center',color:t.textL}}>없음</td></tr>:paged.map((d,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
-          <td style={{padding:'8px 12px',fontSize:10,color:t.textM,textAlign:'left',position:'sticky',left:0,zIndex:2,background:t.card,minWidth:128,maxWidth:128,width:128,overflow:'hidden',borderRight:'1px solid '+t.border}}>{d.drug_code}<NT d={d}/></td><td style={{padding:'8px 12px',fontWeight:600,textAlign:'left',color:t.accent,cursor:'pointer',position:'sticky',left:128,zIndex:2,background:t.card,borderRight:'1px solid '+t.border,minWidth:160,maxWidth:240}} onClick={()=>onEdit(d)} onMouseEnter={e=>{e.currentTarget.style.textDecoration='underline';e.currentTarget.style.color=t.purple}} onMouseLeave={e=>{e.currentTarget.style.textDecoration='none';e.currentTarget.style.color=t.accent}}>{d.drug_name}</td><td style={{padding:'8px 10px',color:t.textM,fontSize:11}}>{d.category}</td>
+          <td style={{padding:'8px 12px',fontSize:10,color:t.textM,textAlign:'left',position:'sticky',left:0,zIndex:2,background:t.card,minWidth:100,maxWidth:100,width:100,overflow:'hidden',borderRight:'1px solid '+t.border}}>{d.drug_code}<NT d={d}/></td><td style={{padding:'8px 12px',fontWeight:600,textAlign:'left',color:t.accent,cursor:'pointer',position:'sticky',left:100,zIndex:2,background:t.card,borderRight:'1px solid '+t.border,minWidth:160,maxWidth:240}} onClick={()=>onEdit(d)} onMouseEnter={e=>{e.currentTarget.style.textDecoration='underline';e.currentTarget.style.color=t.purple}} onMouseLeave={e=>{e.currentTarget.style.textDecoration='none';e.currentTarget.style.color=t.accent}}>{d.drug_name}</td><td style={{padding:'8px 10px',color:t.textM,fontSize:11}}>{d.category}</td>
           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:d.stockStatus==='재고없음'?t.red:d.stockStatus==='부족'?t.amber:t.text}}>{d.current_qty?.toLocaleString()}</td>
           <td style={{padding:'8px 10px',textAlign:'right',color:t.textM}}>{d.safety_stock||'-'}</td><td style={{padding:'8px 10px',textAlign:'right',color:t.textM}}>{d.max_stock||'-'}</td><td style={{padding:'8px 10px',textAlign:'right',color:t.textM}}>{d.monthly_avg||'-'}</td>
           <td style={{padding:'8px 10px'}}><SB s={d.status}/></td>
