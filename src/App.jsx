@@ -1114,6 +1114,13 @@ function DateCell({ value, onChange }) {
     document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc);
     return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) };
   }, []);
+  useEffect(() => {
+    if (!open) return;
+    function reposition() { const el = inpRef.current; if (!el) return; const r = el.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth) { setOpen(false); return } setPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 248)) }) }
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => { window.removeEventListener('scroll', reposition, true); window.removeEventListener('resize', reposition) };
+  }, [open]);
   function openCal() { if (inpRef.current) { const r = inpRef.current.getBoundingClientRect(); setPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 248)) }) } const pp = _parseYMD(text); if (pp) setView({ y: pp.y, m: pp.m }); setOpen(true) }
   function commit() { const raw = text.trim(); if (raw === '') { onChange(''); return } const pp = _parseYMD(raw); if (pp) { const s2 = _ymdStr(pp.y, pp.m, pp.d); setText(s2); onChange(s2) } else { setText(value || '') } }
   function pick(d) { const s2 = _ymdStr(view.y, view.m, d); setText(s2); onChange(s2); setOpen(false) }
@@ -1125,7 +1132,7 @@ function DateCell({ value, onChange }) {
   const navBtn = { border: 'none', background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 13, fontWeight: 800, padding: '2px 5px', borderRadius: 4, lineHeight: 1 };
   const miniBtn = { border: '1px solid ' + t.border, background: 'transparent', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 6 };
   return <span ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
-    <input ref={inpRef} type="text" inputMode="numeric" placeholder="YYYY-MM-DD" value={text} onChange={e => setText(e.target.value)} onFocus={openCal} onClick={openCal} onKeyDown={e => { if (e.key === 'Enter') { commit(); setOpen(false) } }} onBlur={commit} style={{ padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 10, outline: 'none', background: t.bg, color: t.text, width: 105 }} />
+    <input ref={inpRef} type="text" inputMode="numeric" placeholder="YYYY-MM-DD" value={text} onChange={e => setText(e.target.value)} onFocus={openCal} onClick={openCal} onKeyDown={e => { if (e.key === 'Enter') { commit(); setOpen(false) } }} onBlur={commit} style={{ padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 10, outline: 'none', background: t.bg, color: t.text, width: 96 }} />
     {open && <div onMouseDown={e => e.preventDefault()} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, width: 236, background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', padding: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <span><button onClick={() => nav(-1, 0)} title="이전 해" style={navBtn}>«</button><button onClick={() => nav(0, -1)} title="이전 달" style={navBtn}>‹</button></span>
@@ -1191,7 +1198,7 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
         <td style={{padding:'5px 8px',textAlign:'right',fontWeight:700,fontSize:11,color}}>{days}</td>
         <td style={{padding:'5px 4px',textAlign:'center'}}>{a.text&&<span style={{background:a.bg||'transparent',color:a.c,fontWeight:700,padding:'2px 6px',borderRadius:4,fontSize:9,whiteSpace:'nowrap'}}>{a.text}</span>}</td>
         <td style={{padding:'5px 6px',fontSize:10}}>{isEd?<select value={editVal.last_used_dept??''} onChange={e=>setEditVal(p=>({...p,last_used_dept:e.target.value}))} style={{...ip2,width:85}}><option value="">선택</option><option>가정의학과</option><option>재활의학과1</option><option>신경과</option><option>기타</option></select>:<span style={{color:t.textM,cursor:'pointer'}} onClick={()=>startEdit(d)}>{d.last_used_dept?<span style={{background:t.accentL,color:t.accent,padding:'1px 6px',borderRadius:4,fontSize:9,fontWeight:600}}>{d.last_used_dept}</span>:<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
-        <td style={{padding:'5px 6px',fontSize:10}}>{isEd?<DateCell key={d.drug_code} value={editVal.last_used_date??''} onChange={v=>setEditVal(p=>({...p,last_used_date:v}))}/>:<span style={{color:t.textM,cursor:'pointer',fontSize:10}} onClick={()=>startEdit(d)}>{d.last_used_date||<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
+        <td style={{padding:'5px 6px',fontSize:10,textAlign:'center',width:100}}>{isEd?<DateCell key={d.drug_code} value={editVal.last_used_date??''} onChange={v=>setEditVal(p=>({...p,last_used_date:v}))}/>:<span style={{color:t.textM,cursor:'pointer',fontSize:10}} onClick={()=>startEdit(d)}>{d.last_used_date||<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
         <td style={{padding:'5px 8px',textAlign:'right',fontSize:10,color:t.textM}}>{uDays!==null?uDays:''}</td>
         <td style={{padding:'5px 4px',textAlign:'center'}}>{uDays!==null&&uDays>365?<span style={{background:t.red,color:'#fff',padding:'2px 6px',borderRadius:4,fontSize:9,fontWeight:700,whiteSpace:'nowrap'}}>■미사용■</span>:''}</td>
         <td style={{padding:'5px 6px',fontSize:10}}>{isEd?<select value={editVal.recommended_action??''} onChange={e=>setEditVal(p=>({...p,recommended_action:e.target.value}))} style={{...ip2,width:80}}>{REC_ACTIONS.map(a=><option key={a} value={a}>{a||'선택'}</option>)}</select>:<span style={{cursor:'pointer',fontSize:10}} onClick={()=>startEdit(d)}>{d.recommended_action?<span style={{background:t.amberL,color:t.amber,padding:'1px 6px',borderRadius:4,fontSize:9,fontWeight:600}}>{d.recommended_action}</span>:<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
