@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, createContext, useContext } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from './lib/supabase'
 import { passesDrugFilters } from './lib/drugFilter'
 /* XLSX는 동적 import로 별도 청크 분리(초기 번들 축소). 모든 사용은 사용자 액션 핸들러 내부뿐 → 로드 시점 안전 */
@@ -1244,7 +1245,7 @@ function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
   return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontWeight: 400, verticalAlign: 'middle' }}>
     <span ref={txtRef} onClick={filter ? e => openAs(e, 'filter', txtRef.current) : undefined} title={filter ? '필터' : undefined} style={{ cursor: filter ? 'pointer' : 'default', whiteSpace: 'nowrap', color: fActive ? t.accent : 'inherit', fontWeight: fActive ? 700 : 'inherit' }}>{label}</span>
     <span ref={arrRef} onClick={e => openAs(e, 'sort', arrRef.current)} title="정렬" style={{ cursor: 'pointer', fontSize: 10, fontWeight: 800, padding: '0 3px', borderRadius: 4, color: active ? t.accent : t.textL }}>▾</span>
-    {mode && <>
+    {mode && createPortal(<>
       <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={e => { e.stopPropagation(); setMode(null) }} />
       <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, minWidth: 150, maxHeight: 300, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', padding: 6, textAlign: 'left' }}>
         {mode === 'sort' && <>
@@ -1259,7 +1260,7 @@ function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
           {filter.items.map(v => item(() => { filter.on(v); setMode(null) }, v, filter.value === v))}
         </> : null}
       </div>
-    </>}
+    </>, document.body)}
   </span>;
 }
 function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
