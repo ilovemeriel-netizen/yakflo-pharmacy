@@ -2646,6 +2646,9 @@ function RecoveryPage({ onDone }) {
 }
 
 /* ═══ 메인 App ═══ */
+/* SPA 라우트: 화면 식별자 ↔ URL 해시(#menu). 새로고침/직접진입 복원·뒤로가기 동기화와 일관. */
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'register', 'mypage', 'admin', 'archive'];
+function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); return ROUTES.includes(h) ? h : 'dashboard'; }
 export default function App() {
   const [dark, setDark] = useState(false)
   const [user, setUser] = useState(null)
@@ -2653,7 +2656,7 @@ export default function App() {
   const [memberRole, setMemberRole] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [recovery, setRecovery] = useState(false)
-  const [menu, setMenu] = useState('dashboard')
+  const [menu, setMenu] = useState(routeFromHash)
   const [drugs, setDrugs] = useState([])
   const [inv, setInv] = useState([])
   const [txns, setTxns] = useState([])
@@ -2682,15 +2685,16 @@ export default function App() {
   /* SPA 뒤로가기: menu 전환을 브라우저 히스토리에 동기화(라우터 미도입·최소 침습).
      popstate→직전 약플로 화면 복원. URL 미변경(새로고침=대시보드, 기존 동작 유지). */
   useEffect(() => {
-    window.history.replaceState({ ykMenu: 'dashboard' }, '')
-    function onPop(e) { isPopRef.current = true; setMenu((e.state && e.state.ykMenu) || 'dashboard') }
+    const init = routeFromHash()
+    window.history.replaceState({ ykMenu: init }, '', '#' + init)
+    function onPop(e) { isPopRef.current = true; setMenu((e.state && e.state.ykMenu) || routeFromHash()) }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
   useEffect(() => {
     if (isFirstRef.current) { isFirstRef.current = false; return }
     if (isPopRef.current) { isPopRef.current = false; return }
-    window.history.pushState({ ykMenu: menu }, '')
+    window.history.pushState({ ykMenu: menu }, '', '#' + menu)
   }, [menu])
 
   /* 비보험 메뉴 진입 시 navFilter 자동 적용 (헤더 클릭/대시보드 카드 클릭 모두 처리) */
