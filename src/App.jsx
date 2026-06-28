@@ -1430,6 +1430,7 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
     manufacturer:{items:_u(base.map(d=>d.manufacturer)),value:hfV.manufacturer??null,on:v=>setHF('manufacturer',v)},
     packaging:{items:_u(base.map(d=>d.packaging)),value:hfV.packaging??null,on:v=>setHF('packaging',v)},
     insurance_type:{items:_u(base.map(d=>d.insurance_type)),value:hfV.insurance_type??null,on:v=>setHF('insurance_type',v)},
+    storage_method:{items:_u(base.map(d=>d.storage_method)),value:hfV.storage_method??null,on:v=>setHF('storage_method',v)},
     status:{items:_u(base.map(d=>d.status)),value:hfV.status??null,on:v=>setHF('status',v)},
   };
   const pass=d=>{
