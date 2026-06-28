@@ -1226,14 +1226,14 @@ function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
   const { t } = useTheme();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
-  const ref = useRef(null), txtRef = useRef(null), curRef = useRef(null);
+  const ref = useRef(null), txtRef = useRef(null), curRef = useRef(null), menuRef = useRef(null);
   function calc(el) { const r = el.getBoundingClientRect(); return { top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 190)) } }
   function openFilter(e) { e.stopPropagation(); const el = txtRef.current; if (!el) return; if (open) { setOpen(false); return } curRef.current = el; setPos(calc(el)); setOpen(true) }
   function cycleSort(e) { e.stopPropagation(); if (sk !== colKey) setSort(colKey, 'asc'); else if (sd === 'asc') setSort(colKey, 'desc'); else setSort('', 'asc') }
   useEffect(() => {
     if (!open) return;
     function place() { const el = curRef.current; if (!el) return; const r = el.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) { setOpen(false); return } setPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 190)) }) }
-    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    function onDoc(e) { if ((ref.current && ref.current.contains(e.target)) || (menuRef.current && menuRef.current.contains(e.target))) return; setOpen(false) }
     function onEsc(e) { if (e.key === 'Escape') setOpen(false) }
     window.addEventListener('scroll', place, true); window.addEventListener('resize', place);
     document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc);
@@ -1247,7 +1247,7 @@ function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
     <span onClick={cycleSort} title="정렬(오름→내림→해제)" style={{ cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '0 2px', color: active ? t.accent : t.textL, display: 'inline-block', transform: active && sd === 'desc' ? 'rotate(180deg)' : 'none', transition: 'transform .12s' }}>▲</span>
     {open && createPortal(<>
       <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={e => { e.stopPropagation(); setOpen(false) }} />
-      <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, minWidth: 150, maxHeight: 300, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', padding: 6, textAlign: 'left' }}>
+      <div ref={menuRef} onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, minWidth: 150, maxHeight: 300, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', padding: 6, textAlign: 'left' }}>
         {filter ? item(() => { filter.on(null); setOpen(false) }, '전체', !filter.value) : null}
         {filter ? filter.items.map(v => item(() => { filter.on(v); setOpen(false) }, v, filter.value === v)) : null}
       </div>
@@ -1301,16 +1301,16 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
       </div>
     </div>
     <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',backdropFilter:'blur(12px)'}}>
-      <HScroll><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-        <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['safety_stock','안전재고'],['max_stock','최대재고'],['monthly_avg','월평균'],['status','사용상태'],['stockStatus','재고상태'],['expiry_date','유효기한'],['','보정']].map(([k,h])=><th key={h} style={k?{...TS(k),background:t.bg,...(k==='drug_code'?{position:'sticky',left:0,zIndex:6,minWidth:100,maxWidth:100,width:100,borderRight:'1px solid '+t.border}:k==='drug_name'?{position:'sticky',left:100,zIndex:6,borderRight:'1px solid '+t.border}:{})}:{padding:'8px 10px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:11,background:t.bg}} >{k?<ColMenu colKey={k} label={h} sk={sk} sd={sd} setSort={setSort} filter={hf[k]||null}/>:<span style={{cursor:'default',whiteSpace:'nowrap',fontWeight:700}}>{h}</span>}</th>)}</tr></thead>
+      <HScroll><table style={{borderCollapse:'collapse',fontSize:12,tableLayout:'fixed',width:'100%',minWidth:1070}}><colgroup>{[100,200,90,80,80,80,80,90,90,100,80].map((w,ci)=><col key={ci} style={{width:w}}/>)}</colgroup>
+        <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['safety_stock','안전재고'],['max_stock','최대재고'],['monthly_avg','월평균'],['status','사용상태'],['stockStatus','재고상태'],['expiry_date','유효기한'],['','보정']].map(([k,h])=><th key={h} style={k?{...TS(k),background:t.bg,borderRight:'1px solid '+t.border,...(k==='drug_code'?{position:'sticky',left:0,zIndex:6,minWidth:100,maxWidth:100,width:100,borderRight:'1px solid '+t.border}:k==='drug_name'?{position:'sticky',left:100,zIndex:6,borderRight:'1px solid '+t.border}:{})}:{padding:'8px 10px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:11,background:t.bg,borderRight:'1px solid '+t.border}} >{k?<ColMenu colKey={k} label={h} sk={sk} sd={sd} setSort={setSort} filter={hf[k]||null}/>:<span style={{cursor:'default',whiteSpace:'nowrap',fontWeight:700}}>{h}</span>}</th>)}</tr></thead>
         <tbody>{!paged.length?<tr><td colSpan={10} style={{padding:40,textAlign:'center',color:t.textL}}>없음</td></tr>:paged.map((d,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
-          <td style={{padding:'8px 12px',fontSize:10,color:t.textM,textAlign:'left',position:'sticky',left:0,zIndex:2,background:t.card,minWidth:100,maxWidth:100,width:100,overflow:'hidden',borderRight:'1px solid '+t.border}}>{d.drug_code}<NT d={d}/></td><td style={{padding:'8px 12px',fontWeight:600,textAlign:'left',color:t.accent,cursor:'pointer',position:'sticky',left:100,zIndex:2,background:t.card,borderRight:'1px solid '+t.border,minWidth:160,maxWidth:240}} onClick={()=>onEdit(d)} onMouseEnter={e=>{e.currentTarget.style.textDecoration='underline';e.currentTarget.style.color=t.purple}} onMouseLeave={e=>{e.currentTarget.style.textDecoration='none';e.currentTarget.style.color=t.accent}}>{d.drug_name}</td><td style={{padding:'8px 10px',color:t.textM,fontSize:11}}>{d.category}</td>
-          <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:d.stockStatus==='재고없음'?t.red:d.stockStatus==='부족'?t.amber:t.text}}>{d.current_qty?.toLocaleString()}</td>
-          <td style={{padding:'8px 10px',textAlign:'right',color:t.textM}}>{d.safety_stock||'-'}</td><td style={{padding:'8px 10px',textAlign:'right',color:t.textM}}>{d.max_stock||'-'}</td><td style={{padding:'8px 10px',textAlign:'right',color:t.textM}}>{d.monthly_avg||'-'}</td>
-          <td style={{padding:'8px 10px'}}><SB s={d.status}/></td>
-          <td style={{padding:'8px 10px'}}><Bd bg={sc(d.stockStatus)+'18'} color={sc(d.stockStatus)}>{d.stockStatus}</Bd></td>
-          <td style={{padding:'8px 10',fontSize:11,...exS(d.expiry_date,t)}}>{d.expiry_date||'-'}</td>
-          <td style={{padding:'8px 6px',textAlign:'center'}}>{d.last_adjusted_date&&<div style={{fontSize:8,color:t.amber,fontWeight:600,marginBottom:2}}>{d.last_adjusted_date}</div>}<button onClick={()=>onAdjust(d)} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.amber}`,background:d.last_adjusted_date?t.amberL:'transparent',color:t.amber,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>보정</button></td>
+          <td style={{padding:'8px 12px',fontSize:10,color:t.textM,textAlign:'left',position:'sticky',left:0,zIndex:2,background:t.card,minWidth:100,maxWidth:100,width:100,overflow:'hidden',borderRight:'1px solid '+t.border}}>{d.drug_code}<NT d={d}/></td><td style={{padding:'8px 12px',fontWeight:600,textAlign:'left',color:t.accent,cursor:'pointer',position:'sticky',left:100,zIndex:2,background:t.card,borderRight:'1px solid '+t.border,minWidth:160,maxWidth:240}} onClick={()=>onEdit(d)} onMouseEnter={e=>{e.currentTarget.style.textDecoration='underline';e.currentTarget.style.color=t.purple}} onMouseLeave={e=>{e.currentTarget.style.textDecoration='none';e.currentTarget.style.color=t.accent}}>{d.drug_name}</td><td style={{padding:'8px 10px',color:t.textM,fontSize:11,borderRight:'1px solid '+t.border}}>{d.category}</td>
+          <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:d.stockStatus==='재고없음'?t.red:d.stockStatus==='부족'?t.amber:t.text,borderRight:'1px solid '+t.border}}>{d.current_qty?.toLocaleString()}</td>
+          <td style={{padding:'8px 10px',textAlign:'right',color:t.textM,borderRight:'1px solid '+t.border}}>{d.safety_stock||'-'}</td><td style={{padding:'8px 10px',textAlign:'right',color:t.textM,borderRight:'1px solid '+t.border}}>{d.max_stock||'-'}</td><td style={{padding:'8px 10px',textAlign:'right',color:t.textM,borderRight:'1px solid '+t.border}}>{d.monthly_avg||'-'}</td>
+          <td style={{padding:'8px 10px',borderRight:'1px solid '+t.border}}><SB s={d.status}/></td>
+          <td style={{padding:'8px 10px',borderRight:'1px solid '+t.border}}><Bd bg={sc(d.stockStatus)+'18'} color={sc(d.stockStatus)}>{d.stockStatus}</Bd></td>
+          <td style={{padding:'8px 10',fontSize:11,...exS(d.expiry_date,t),borderRight:'1px solid '+t.border}}>{d.expiry_date||'-'}</td>
+          <td style={{padding:'8px 6px',textAlign:'center',borderRight:'1px solid '+t.border}}>{d.last_adjusted_date&&<div style={{fontSize:8,color:t.amber,fontWeight:600,marginBottom:2}}>{d.last_adjusted_date}</div>}<button onClick={()=>onAdjust(d)} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.amber}`,background:d.last_adjusted_date?t.amberL:'transparent',color:t.amber,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>보정</button></td>
         </tr>)}</tbody>
       </table></HScroll>
       <Pg page={page} setPage={setPage} tp={tp} fl={filtered} pp={PP}/>
