@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>약플로 · 데이터 스튜디오</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    /* 팔레트 — 기존 유지 */
+    --bg:#F4F5FA;--card:#fff;--line:#ECE7F2;--line2:#F2EEF7;
+    --purple:#804A87;--pd:#5E3563;--lav:#BFA6D9;--lavl:#F2ECF8;
+    --green:#019748;--greenl:#E3F4EA;--navy:#2E4A62;--ink:#2E3440;--muted:#6B6477;
+    --rose:#C42B5A;--rosel:#FBEAF1;--amber:#C8841C;--amberl:#FBF1DE;--teal:#2C8FB0;
+    --soft:0 2px 4px rgba(46,33,55,.04),0 14px 36px rgba(96,53,99,.07);
+    --mono:ui-monospace,SFMono-Regular,'JetBrains Mono',Menlo,Consolas,monospace;
+    /* A5 — 간격 토큰 표준화 */
+    --r:18px;--r-sm:12px;--sp-card:18px;--sp-gap:14px;--sp-tight:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:radial-gradient(900px 420px at 85% -8%,rgba(191,166,217,.26),transparent 60%),var(--bg);
+    color:var(--ink);font-family:'Pretendard',sans-serif;font-size:14px;line-height:1.6;min-height:100vh;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 22px 64px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--soft);padding:var(--sp-card);margin-bottom:var(--sp-gap)}
+  .sec-t{font-size:11px;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.5px;margin-bottom:11px;font-family:var(--mono)}
+
+  header{display:flex;align-items:center;gap:13px;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:18px}
+  .logo{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;flex:none;background:linear-gradient(140deg,var(--purple),var(--pd))}
+  .logo svg{width:26px;height:18px}
+  header h1{font-size:18px;font-weight:800;color:var(--navy);letter-spacing:-.3px}
+  header .sub{font-size:11.5px;color:var(--muted);font-family:var(--mono)}
+  .secure{margin-left:auto;font-size:10.5px;color:var(--green);text-align:right;line-height:1.5}
+
+  /* 탭 내비 (A1·A2) */
+  .tabs{display:flex;gap:8px;margin-bottom:var(--sp-gap);flex-wrap:wrap}
+  .tab{flex:1;min-width:150px;border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 14px;background:#fff;cursor:pointer;
+    transition:all .2s ease;display:flex;gap:10px;align-items:center}
+  .tab:hover{border-color:var(--lav)}
+  .tab.on{border-color:var(--purple);background:var(--lavl);box-shadow:0 4px 14px rgba(128,74,135,.12)}
+  .tab .ic{width:28px;height:28px;border-radius:9px;background:var(--lavl);display:grid;place-items:center;font-size:15px;flex:none}
+  .tab.on .ic{background:var(--purple)}
+  .tab .t{font-size:13px;font-weight:700;color:var(--navy)}.tab .d{font-size:10px;color:var(--muted)}
+
+  .panel{display:none}.panel.on{display:block}
+
+  /* 드롭존 */
+  .drop{border:2px dashed var(--lav);border-radius:14px;background:#FBFAFD;cursor:pointer;padding:22px;text-align:center;transition:all .2s ease}
+  .drop:hover,.drop.over{border-color:var(--purple);background:var(--lavl)}
+  .drop.set{border-style:solid;border-color:var(--green);background:var(--greenl)}
+  .drop .ic{font-size:24px}.drop .t{font-weight:700;color:var(--pd);font-size:13.5px;margin-top:4px}
+  .drop .d{font-size:11px;color:var(--muted)}.drop .m{font-size:11.5px;color:var(--green);font-weight:600;margin-top:5px;min-height:14px;font-family:var(--mono)}
+  .drops2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .refs{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .ref{border:1px solid var(--line);border-radius:11px;padding:11px;background:#FBFAFD;cursor:pointer;transition:all .2s ease}
+  .ref:hover{border-color:var(--lav);background:var(--lavl)}.ref.set{border-color:var(--green);background:var(--greenl)}
+  .ref .rt{font-size:12.5px;font-weight:700;color:var(--navy)}.ref .rd{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .ref .rs{font-size:10.5px;color:var(--green);font-weight:700;margin-top:4px;min-height:13px;font-family:var(--mono)}
+
+  .btn{font-weight:700;font-size:13.5px;border:none;border-radius:11px;padding:12px 24px;cursor:pointer;font-family:inherit;transition:all .2s ease}
+  .btn.run{background:linear-gradient(135deg,var(--purple),var(--pd));color:#fff;box-shadow:0 6px 18px rgba(128,74,135,.28)}
+  .btn.run:hover:not(:disabled){transform:translateY(-1px)}
+  .btn.run:disabled{background:var(--lav);opacity:.7;cursor:not-allowed}
+  .btn.up{background:var(--green);color:#fff;box-shadow:0 6px 18px rgba(1,151,72,.25)}
+  .btn.up:hover{transform:translateY(-1px)}
+  .btn.dl{background:#fff;color:var(--navy);border:1px solid var(--line)}
+  .btnrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:var(--sp-gap)}
+  .status{font-size:12px;color:var(--muted);font-family:var(--mono)}
+
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:var(--sp-gap)}
+  .kpis.five{grid-template-columns:repeat(5,1fr)}
+  .kpi{border:1px solid var(--line);border-radius:var(--r-sm);padding:13px;text-align:center;background:#fff;transition:all .2s ease}
+  .kpi:hover{border-color:var(--lav)}
+  .kpi .n{font-size:21px;font-weight:800;font-family:var(--mono)}.kpi .l{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .kpi.t .n{color:var(--navy)}.kpi.o .n{color:var(--green)}.kpi.x .n{color:var(--rose)}.kpi.m .n{color:var(--amber)}.kpi.e .n{color:var(--teal)}
+
+  /* A3 — 데이터 그리드 표준 (CSS grid + mono) */
+  .grid-tbl{border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;font-family:var(--mono)}
+  .ghead,.grow{display:grid;grid-template-columns:var(--gtc,1fr);align-items:center}
+  .ghead{background:#FAF8FC;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+  .ghead span{padding:10px 12px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .gbody{max-height:380px;overflow:auto}
+  .grow{border-bottom:1px solid var(--line2);transition:all .2s ease}.grow:hover{background:#FBFAFD}
+  .grow>div{padding:9px 12px;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .grow .nm{font-family:'Pretendard',sans-serif;font-weight:600;color:var(--ink)}
+  .arr{color:var(--lav);text-align:center;font-weight:700}
+  .badge{display:inline-block;padding:2px 9px;border-radius:7px;font-size:11.5px;font-weight:700;font-family:var(--mono);transition:all .2s ease}
+  .b-red{background:var(--rosel);color:var(--rose)}.b-grn{background:var(--greenl);color:var(--green)}
+  .b-code{background:var(--lavl);color:var(--pd)}.b-new{background:var(--lavl);color:var(--pd)}.b-chg{background:var(--amberl);color:var(--amber)}
+  .b-amber{background:var(--amberl);color:var(--amber)}.b-gray{background:#EEF1F6;color:#5A6B7B}
+
+  /* 채움률 바 (배치) */
+  .cov{display:flex;flex-direction:column;gap:9px}
+  .cov .row{display:grid;grid-template-columns:92px 1fr 44px;align-items:center;gap:10px;font-size:12px}
+  .cov .lbl{color:var(--muted);font-weight:600}.cov .track{height:9px;background:var(--line2);border-radius:6px;overflow:hidden}
+  .cov .bar2{height:100%;background:linear-gradient(90deg,var(--green),#3bb56f);border-radius:6px;transition:all .2s ease}
+  .cov .v{text-align:right;font-weight:700;color:var(--navy);font-family:var(--mono)}
+
+  #toast{position:fixed;bottom:26px;left:50%;transform:translate(-50%,120px);z-index:99;
+    background:var(--green);color:#fff;padding:14px 22px;border-radius:12px;font-weight:700;font-size:13.5px;
+    box-shadow:0 12px 32px rgba(1,151,72,.35);display:flex;align-items:center;gap:10px;opacity:0;
+    transition:transform .35s cubic-bezier(.2,.9,.3,1),opacity .35s}
+  #toast.show{transform:translate(-50%,0);opacity:1}
+  #toast .ck{width:22px;height:22px;border-radius:50%;background:#fff;color:var(--green);display:grid;place-items:center;font-weight:900}
+
+  .note{font-size:11.5px;color:#8a6a1e;border-left:3px solid var(--amber);background:var(--amberl);border-radius:0 9px 9px 0;padding:10px 14px;line-height:1.6}
+  .note b{color:var(--amber)}
+  .hidden{display:none}
+  @media(max-width:680px){.drops2,.refs,.kpis,.kpis.five{grid-template-columns:1fr 1fr}.tab{min-width:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><svg viewBox="0 0 80 56"><path d="M12 16 C32 16,32 28,52 28 S70 40,74 40" stroke="#fff" stroke-width="6.5" stroke-linecap="round" fill="none"/><circle cx="52" cy="28" r="6" fill="none" stroke="#BFA6D9" stroke-width="3"/></svg></div>
+    <div><h1>약플로 데이터 스튜디오</h1><div class="sub">보완 배치 · ATC 대조 · 코드 매핑 — 통합 콘솔</div></div>
+    <div class="secure"><div><span style="color:var(--green)">●</span> 클라이언트 처리</div><div>API 키·민감정보 없음</div></div>
+  </header>
+
+  <!-- 공유: 주 데이터 파일 (파일명 무관 · 시트 내용으로 식별) -->
+  <section class="card">
+    <div class="sec-t">공유 · 주 데이터 파일</div>
+    <div class="drop" id="dropMain">
+      <div class="ic">📘</div><div class="t">약품 마스터 통합문서(.xlsx)를 끌어다 놓으세요</div>
+      <div class="d">DB·통합본 시트를 자동 인식 · 세 탭이 함께 사용 · 파일명 무관</div>
+      <div class="m" id="mMain"></div><input type="file" id="fMain" accept=".xlsx,.xls" class="hidden">
+    </div>
+  </section>
+
+  <!-- 탭 -->
+  <div class="tabs">
+    <div class="tab on" data-tab="batch"><div class="ic">🧩</div><div><div class="t">보완 배치</div><div class="d">DB 빈칸 공공데이터 채움</div></div></div>
+    <div class="tab" data-tab="atc"><div class="ic">🧬</div><div><div class="t">ATC 대조</div><div class="d">통합본 ↔ HIRA 갱신</div></div></div>
+    <div class="tab" data-tab="code"><div class="ic">💉</div><div><div class="t">코드 매핑</div><div class="d">수가코드 → 보험코드</div></div></div>
+  </div>
+
+  <!-- ===== 탭1: 보완 배치 ===== -->
+  <div class="panel on" id="p-batch">
+    <section class="card">
+      <div class="sec-t">참조 파일 (슬롯에 드롭 · 파일명 무관, 헤더로 식별)</div>
+      <div class="refs">
+        <div class="ref" data-ref="price"><div class="rt">💰 약가마스터</div><div class="rd">급여·보험약가·제조사</div><div class="rs" id="rs-price"></div></div>
+        <div class="ref" data-ref="atc"><div class="rt">🧬 ATC 매핑</div><div class="rd">ATC → 대/중/소</div><div class="rs" id="rs-atc"></div></div>
+        <div class="ref" data-ref="perm"><div class="rt">🏷️ 허가정보</div><div class="rd">표준코드·성분·제조사</div><div class="rs" id="rs-perm"></div></div>
+        <div class="ref" data-ref="narc"><div class="rt">⚠️ 마약류</div><div class="rd">향정/마약(성분 기준)</div><div class="rs" id="rs-narc"></div></div>
+      </div>
+      <div class="btnrow" style="margin-top:12px;margin-bottom:0">
+        <button class="btn run" id="b-run" disabled>▸ 보완 실행</button>
+        <span class="status" id="b-status">주 데이터 + 참조 1개 이상 필요</span>
+      </div>
+    </section>
+    <section class="card hidden" id="b-result">
+      <div class="kpis five">
+        <div class="kpi t"><div class="n" id="b-total">0</div><div class="l">처리 행</div></div>
+        <div class="kpi o"><div class="n" id="b-atc">0%</div><div class="l">ATC 분류율</div></div>
+        <div class="kpi m"><div class="n" id="b-narc">0</div><div class="l">향정·마약</div></div>
+        <div class="kpi e"><div class="n" id="b-src">0</div><div class="l">평균 출처수</div></div>
+        <div class="kpi x"><div class="n" id="b-rev">0</div><div class="l">검토 필요</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:18px">
+        <div><div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:10px">필드별 채움률</div><div class="cov" id="b-cov"></div></div>
+        <div><div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:10px">계통 분포 (ATC 대분류)</div><div style="height:190px"><canvas id="b-donut"></canvas></div></div>
+      </div>
+      <div class="sec-t" style="color:var(--amber);margin-top:16px">검토 큐 — 자동 채우지 않음</div>
+      <div class="grid-tbl" id="b-qwrap"><div class="ghead" id="b-qhead"></div><div class="gbody" id="b-qbody"></div></div>
+      <div class="btnrow" style="margin-top:12px;margin-bottom:0"><button class="btn dl" id="b-dl">⤓ 보완본 다운로드</button></div>
+    </section>
+  </div>
+
+  <!-- ===== 탭2: ATC 대조 ===== -->
+  <div class="panel" id="p-atc">
+    <section class="card">
+      <div class="sec-t">기준 파일</div>
+      <div class="drop" id="dropHira">
+        <div class="ic">📗</div><div class="t">HIRA ATC 매핑(.xlsx/.csv)</div>
+        <div class="d">제품명·ATC코드·제품코드 헤더로 자동 식별 · 파일명 무관</div>
+        <div class="m" id="mHira"></div><input type="file" id="fHira" accept=".xlsx,.xls,.csv" class="hidden">
+      </div>
+      <div class="btnrow" style="margin-top:12px;margin-bottom:0">
+        <button class="btn run" id="a-run" disabled>▸ ATC 대조</button>
+        <span class="status" id="a-status">주 데이터(통합본 시트) + HIRA 필요</span>
+      </div>
+    </section>
+    <section class="card hidden" id="a-result">
+      <div class="kpis">
+        <div class="kpi t"><div class="n" id="a-cmp">0</div><div class="l">비교 대상</div></div>
+        <div class="kpi o"><div class="n" id="a-ok">0</div><div class="l">일치</div></div>
+        <div class="kpi x"><div class="n" id="a-mis">0</div><div class="l">불일치</div></div>
+        <div class="kpi m"><div class="n" id="a-nf">0</div><div class="l">HIRA 미발견</div></div>
+      </div>
+      <div class="btnrow"><button class="btn up" id="a-apply">✓ 기준값으로 일괄 업데이트</button><button class="btn dl" id="a-dl">⤓ 갱신본 다운로드</button></div>
+      <div class="sec-t" style="color:var(--rose)">불일치 항목 <span id="a-more" style="color:var(--muted);text-transform:none;font-weight:500;font-family:'Pretendard'"></span></div>
+      <div class="grid-tbl" id="a-wrap"><div class="ghead" id="a-head"></div><div class="gbody" id="a-body"></div></div>
+    </section>
+  </div>
+
+  <!-- ===== 탭3: 코드 매핑 ===== -->
+  <div class="panel" id="p-code">
+    <section class="card">
+      <div class="sec-t">기준 파일</div>
+      <div class="drop" id="dropTuyak">
+        <div class="ic">💉</div><div class="t">투약 사용가능 목록(.xlsx/.csv)</div>
+        <div class="d">수가코드·표준코드 헤더로 자동 식별 · 파일명 무관</div>
+        <div class="m" id="mTuyak"></div><input type="file" id="fTuyak" accept=".xlsx,.xls,.csv" class="hidden">
+      </div>
+      <div class="btnrow" style="margin-top:12px;margin-bottom:0">
+        <button class="btn run" id="c-run" disabled>▸ 코드 정밀 대조</button>
+        <span class="status" id="c-status">주 데이터(DB 시트) + 투약 목록 필요</span>
+      </div>
+    </section>
+    <section class="card hidden" id="c-result">
+      <div class="kpis">
+        <div class="kpi t"><div class="n" id="c-cand">0</div><div class="l">코드 보유</div></div>
+        <div class="kpi o"><div class="n" id="c-match">0</div><div class="l">매칭 성공</div></div>
+        <div class="kpi x"><div class="n" id="c-chg">0</div><div class="l">마이그레이션</div></div>
+        <div class="kpi m"><div class="n" id="c-nf">0</div><div class="l">수가코드 미발견</div></div>
+      </div>
+      <div class="btnrow"><button class="btn up" id="c-apply">✓ 표준코드 → 보험코드 적용</button><button class="btn dl" id="c-dl">⤓ 갱신본 다운로드</button></div>
+      <div class="sec-t">마이그레이션 대상 <span id="c-more" style="color:var(--muted);text-transform:none;font-weight:500;font-family:'Pretendard'"></span></div>
+      <div class="grid-tbl" id="c-wrap"><div class="ghead" id="c-head"></div><div class="gbody" id="c-body"></div></div>
+    </section>
+  </div>
+
+  <section class="card" style="background:none;border:none;box-shadow:none;padding:0">
+    <div class="note"><b>공통 원칙 ·</b> 모든 처리는 브라우저 안에서만 일어나며 <b>API 키·민감정보가 없습니다.</b> 빈 칸만 채우고 기존값·서식·다른 시트는 보존하며, 미매칭·충돌은 추측으로 채우지 않고 검토 대상으로 분리합니다. 보험약가/보험코드는 9자리 텍스트로 처리합니다. 세 탭의 변경은 같은 통합문서에 누적되어 한 번에 다운로드됩니다.</div>
+  </section>
+</div>
+
+<div id="toast"><span class="ck">✓</span><span id="toastMsg">완료</span></div>
+
+<script>
+/* ===== 공유 상태 ===== */
+let WB=null, OUTNAME='yakflo_data_갱신.xlsx';
+let DB={ws:null,aoa:null,hdr:-1,col:{}}, UB={ws:null,aoa:null}; // DB시트 / 통합본시트
+let PRICE=new Map(),ATCM=new Map(),PERM=new Map(),NARC=new Map();
+let HIRA=new Map(), TUYAK=new Map();
+const $=s=>document.querySelector(s);
+
+/* 공유 헬퍼 */
+const normN=s=>(s||'').toString().replace(/^\s*\d+\.\s*/,'').replace(/\d+(\.\d+)?\s*(mg|밀리그램|g|ml|밀리리터|iu|mcg|㎍|㎎|％|%)/ig,'').replace(/\(.*?\)/g,'').replace(/[()\[\]/]/g,'').replace(/\s+/g,'').trim().toLowerCase();
+const normA=s=>(s||'').toString().trim().toUpperCase();
+const normIng=s=>(s||'').toString().toLowerCase().replace(/\s|\(.*?\)|나트륨|염산염|타르타르산염|sodium|hcl/g,'').trim();
+const splitIng=s=>(s||'').toString().split(/[;/\n，,]/).map(x=>x.trim()).filter(Boolean);
+const ck=s=>(s==null?'':String(s)).trim().toUpperCase();
+const ins9=s=>{const d=(s==null?'':String(s)).replace(/[^0-9]/g,'');return d?d.padStart(9,'0'):'';};
+function toast(m){const t=$('#toast');$('#toastMsg').textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),3200);}
+
+const L1={A:'소화관 및 대사',B:'혈액 및 조혈기관',C:'심혈관계',D:'피부과용약',G:'비뇨생식기계 및 성호르몬',H:'전신 호르몬제',J:'전신 작용 항감염제',L:'항종양·면역조절제',M:'근골격계',N:'신경계',P:'구충·살충·기피제',R:'호흡기계',S:'감각기관',V:'기타'};
+const L2={A02:'위산관련 질환',A10:'당뇨병약',A11:'비타민',A12:'무기질',B01:'항혈전제',C08:'칼슘채널차단제',C09:'레닌-안지오텐신계',C10:'지질조절제',J07:'백신',M01:'항염·항류마티스',N02:'진통제',N03:'항전간제',N05:'정신신경용제',N06:'정신활성제',R03:'기도질환약',R06:'항히스타민제'};
+function deriveATC(a){a=normA(a);if(!a)return['','',''];return[L1[a[0]]||a[0],a.length>=3?(L2[a.slice(0,3)]||a.slice(0,3)):'',a.length>=5?a.slice(0,5):a.slice(0,4)];}
+
+/* ===== 공유 그리드 렌더 (A3 표준) ===== */
+function renderGrid(wrap,head,body,cols,rows,cap){
+  wrap.style.setProperty('--gtc',cols.map(c=>c.w).join(' '));
+  head.innerHTML=cols.map(c=>`<span>${c.label}</span>`).join('');
+  body.innerHTML=(rows.slice(0,cap||400)).map(r=>'<div class="grow">'+cols.map(c=>`<div class="${c.cls||''}">${c.cell(r)}</div>`).join('')+'</div>').join('');
+}
+
+/* ===== 주 데이터 로드 (파일명 무관 · 시트 내용 식별) ===== */
+function readMain(file){const fr=new FileReader();fr.onload=e=>{try{
+  WB=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellFormula:true,cellStyles:true});
+  OUTNAME=file.name.replace(/\.xlsx?$/i,'')+'_갱신.xlsx';
+  // DB 시트: 약품명+코드(선택)/보험코드 헤더 보유 시트
+  DB={ws:null,aoa:null,hdr:-1,col:{}};UB={ws:null,aoa:null};
+  for(const sn of WB.SheetNames){
+    const ws=WB.Sheets[sn];const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null});
+    const hr=aoa.findIndex(r=>Array.isArray(r)&&r.some(c=>String(c).trim()==='약품명'));
+    if(hr<0)continue;
+    const h=(aoa[hr]||[]).map(x=>String(x||'').replace(/\s/g,''));
+    if(!DB.ws&&h.some(x=>x.includes('보험코드'))&&h.some(x=>/^코드/.test(x))){
+      DB.ws=ws;DB.aoa=aoa;DB.hdr=hr;DB.sn=sn;
+      const f=p=>h.findIndex(p);
+      DB.col={code:f(x=>/^코드/.test(x)),name:f(x=>x==='약품명'),en:f(x=>x.includes('성분명')&&x.includes('영문')),kr:f(x=>x.includes('성분명')&&x.includes('한글')),
+        type:f(x=>x.includes('단일')||x.includes('제제')||x.includes('복합')),atc:f(x=>x.toUpperCase().includes('ATC')&&!/대|중|소/.test(x)),
+        kp1:f(x=>/대분류/.test(x)),kp2:f(x=>/중분류/.test(x)),kp3:f(x=>/소분류/.test(x)),eff:f(x=>x==='효능'),mfr:f(x=>x.includes('제조')),
+        pay:f(x=>x.includes('급여')),price:f(x=>x.includes('보험약가')||x.includes('상한금액')),narc:f(x=>x.includes('향정')||x.includes('마약')),
+        ins:f(x=>x.includes('보험코드'))};
+    }
+    // 통합본 시트: 약품명 1행 + ATC코드 열
+    if(!UB.ws&&hr===0&&h.some(x=>x.toUpperCase().includes('ATC'))){UB.ws=ws;UB.aoa=aoa;UB.sn=sn;}
+  }
+  const got=[];if(DB.ws)got.push(`DB='${DB.sn}'`);if(UB.ws)got.push(`통합본='${UB.sn}'`);
+  $('#mMain').textContent=got.length?`✓ ${got.join(' · ')}`:'⚠ 약품명 시트를 찾지 못함';
+  $('#dropMain').classList.add('set');gates();
+}catch(err){$('#mMain').textContent='✕ '+err.message;}};fr.readAsArrayBuffer(file);}
+
+/* 참조/기준 CSV·XLSX 통합 파서 */
+function readSheet(file,cb){const ext=file.name.toLowerCase();const fr=new FileReader();
+  if(ext.endsWith('.csv')){fr.onload=e=>cb(e.target.result.split(/\r?\n/).filter(Boolean).map(r=>r.split(',').map(x=>x.replace(/^"|"$/g,'').trim())));fr.readAsText(file,'utf-8');}
+  else{fr.onload=e=>{const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});cb(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:null}));};fr.readAsArrayBuffer(file);}}
+const cidx=(h,...k)=>h.findIndex(x=>k.some(w=>x.replace(/\s/g,'').includes(w)));
+
+/* ensureCol / setCell (DB 시트용) */
+function ensureCol(idx,header){if(idx>=0)return idx;const rng=XLSX.utils.decode_range(DB.ws['!ref']);const c=rng.e.c+1;
+  DB.ws[XLSX.utils.encode_cell({r:DB.hdr,c})]={t:'s',v:header};rng.e.c=c;DB.ws['!ref']=XLSX.utils.encode_range(rng);return c;}
+function setCell(ws,r,c,v){if(c<0||v===''||v==null)return false;const a=XLSX.utils.encode_cell({r,c});const cur=ws[a];
+  if(cur&&cur.v!=null&&String(cur.v).trim()!=='')return false;ws[a]={t:'s',v:String(v)};return true;}
+
+function download(){const out=XLSX.write(WB,{type:'array',bookType:'xlsx'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([out]));a.download=OUTNAME;a.click();URL.revokeObjectURL(a.href);}
+
+/* ===== 게이트 ===== */
+function gates(){
+  $('#b-run').disabled=!(DB.ws&&(PRICE.size||ATCM.size||PERM.size||NARC.size));
+  $('#a-run').disabled=!(UB.ws&&HIRA.size);
+  $('#c-run').disabled=!(DB.ws&&TUYAK.size);
+}
+
+/* ===== 탭1: 보완 배치 ===== */
+function loadRef(type,file,el){readSheet(file,rows=>{const h=(rows[0]||[]).map(x=>String(x||'').replace(/\s/g,''));let n=0;
+  if(type==='price'){const ni=cidx(h,'제품명','품목명'),pi=cidx(h,'상한금액','약가'),ei=cidx(h,'업체','제조');
+    PRICE.clear();for(let i=1;i<rows.length;i++){const k=normN(rows[i][ni]);if(k){PRICE.set(k,{price:pi>=0?rows[i][pi]:'',entp:ei>=0?rows[i][ei]:''});n++;}}}
+  else if(type==='atc'){const ni=cidx(h,'제품명','품목명'),ci=cidx(h,'ATC');
+    ATCM.clear();for(let i=1;i<rows.length;i++){const k=normN(rows[i][ni]),c=ci>=0?rows[i][ci]:'';if(k&&c&&!/atc/i.test(c)){ATCM.set(k,normA(c));n++;}}}
+  else if(type==='perm'){const ni=cidx(h,'제품명','품목명','품목'),ii=cidx(h,'주성분','성분'),ei=cidx(h,'업체','제조'),si=cidx(h,'품목기준','표준코드','코드');
+    PERM.clear();for(let i=1;i<rows.length;i++){const k=normN(rows[i][ni]);if(k){PERM.set(k,{ing:ii>=0?rows[i][ii]:'',entp:ei>=0?rows[i][ei]:'',std:si>=0?rows[i][si]:''});n++;}}}
+  else if(type==='narc'){const ni=cidx(h,'한글명','성분','약물명','품목'),ci=cidx(h,'분류','구분');
+    NARC.clear();for(let i=1;i<rows.length;i++){const k=normIng(rows[i][ni]),cl=ci>=0?rows[i][ci]:'';if(k){NARC.set(k,/마약/.test(cl)&&!/향정/.test(cl)?'마약':'향정');n++;}}}
+  el.classList.add('set');el.querySelector('.rs').textContent=`✓ ${n}건`;gates();});}
+
+let bDonut=null;
+function runBatch(){
+  const C=DB.col,aoa=DB.aoa;
+  C.atc=ensureCol(C.atc,'ATC코드');C.kp1=ensureCol(C.kp1,'대분류');C.kp2=ensureCol(C.kp2,'중분류');C.kp3=ensureCol(C.kp3,'소분류');
+  C.type=ensureCol(C.type,'제제구분');C.pay=ensureCol(C.pay,'급여/비급여');C.price=ensureCol(C.price,'보험약가');C.narc=ensureCol(C.narc,'향정·마약');C.std=ensureCol(C.std,'표준코드');
+  const cov={성분:0,ATC:0,제조사:0,급여:0,보험약가:0,향정마약:0};const dist={};const queue=[];let proc=0,atcOK=0,narcN=0,srcSum=0;
+  for(let i=DB.hdr+1;i<aoa.length;i++){const row=aoa[i]||[];const name=row[C.name];if(!name||!String(name).trim())continue;proc++;
+    let src=0;const reasons=[];
+    const perm=PERM.get(normN(name));if(perm){src++;if(perm.std)setCell(DB.ws,i,C.std,perm.std);if(perm.ing&&setCell(DB.ws,i,C.kr,perm.ing));if(perm.entp&&setCell(DB.ws,i,C.mfr,perm.entp)&&cov.제조사++);}
+    const ingSrc=(C.kr>=0?row[C.kr]:'')||(perm&&perm.ing)||'';if(ingSrc){const p=splitIng(ingSrc);if(p.length){setCell(DB.ws,i,C.type,p.length===1?'단일':'복합');cov.성분++;}}else reasons.push(['b-amber','성분 미확보']);
+    const csv=ATCM.get(normN(name));if(csv)src++;
+    const eff=(C.atc>=0&&row[C.atc]&&String(row[C.atc]).trim())?normA(row[C.atc]):csv;
+    if(eff){setCell(DB.ws,i,C.atc,eff);const[d1,d2,d3]=deriveATC(eff);setCell(DB.ws,i,C.kp1,d1);setCell(DB.ws,i,C.kp2,d2);setCell(DB.ws,i,C.kp3,d3);cov.ATC++;atcOK++;dist[d1]=(dist[d1]||0)+1;}
+    else reasons.push(['b-amber','ATC 미확보']);
+    const pinfo=PRICE.get(normN(name));if(pinfo){src++;if(pinfo.entp)setCell(DB.ws,i,C.mfr,pinfo.entp);if(setCell(DB.ws,i,C.pay,'급여'))cov.급여++;if(pinfo.price&&setCell(DB.ws,i,C.price,ins9(pinfo.price)?pinfo.price:pinfo.price))cov.보험약가++;}
+    else if(PRICE.size){setCell(DB.ws,i,C.pay,'비급여');}
+    if(NARC.size){let nv='';for(const g of splitIng((row[C.kr]||'')+'/'+(row[C.en]||''))){const hit=NARC.get(normIng(g));if(hit){nv=hit;break;}}setCell(DB.ws,i,C.narc,nv||'일반');if(nv){cov.향정마약++;narcN++;}src++;}
+    srcSum+=src;
+    const conf=src>=3?'hi':(src>=1&&eff?'md':'lo');
+    if(conf==='lo'||reasons.length)queue.push({row:i+1,name:String(name).slice(0,28),conf,reasons:reasons.length?reasons:[['b-amber','출처 부족']]});
+  }
+  $('#b-result').classList.remove('hidden');
+  $('#b-total').textContent=proc;$('#b-atc').textContent=proc?Math.round(atcOK/proc*100)+'%':'0%';
+  $('#b-narc').textContent=narcN;$('#b-src').textContent=(srcSum/(proc||1)).toFixed(1);$('#b-rev').textContent=queue.length;
+  const t=proc||1;const order=[['성분',cov.성분],['ATC',cov.ATC],['제조사',cov.제조사],['급여',cov.급여],['보험약가',cov.보험약가],['향정마약',cov.향정마약]];
+  $('#b-cov').innerHTML=order.map(([k,v])=>{const p=Math.min(100,Math.round(v/t*100));return `<div class="row"><span class="lbl">${k}</span><div class="track"><div class="bar2" style="width:${p}%"></div></div><span class="v">${p}%</span></div>`;}).join('');
+  const labels=Object.keys(dist),data=Object.values(dist);const pal=['#804A87','#019748','#BFA6D9','#2C8FB0','#C8841C','#C42B5A','#2E4A62','#5E3563','#7FB89C','#9080a0','#3bb56f','#d08fb0'];
+  if(bDonut)bDonut.destroy();if(labels.length)bDonut=new Chart($('#b-donut'),{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:pal,borderWidth:2,borderColor:'#fff'}]},options:{cutout:'60%',plugins:{legend:{position:'right',labels:{font:{family:'Pretendard',size:10},boxWidth:9,padding:5,color:'#6B6477'}}},maintainAspectRatio:false}});
+  renderGrid($('#b-qwrap'),$('#b-qhead'),$('#b-qbody'),[
+    {label:'행',w:'56px',cell:r=>r.row},{label:'약품명',w:'1fr',cls:'nm',cell:r=>r.name},
+    {label:'신뢰도',w:'80px',cell:r=>`<span class="badge ${r.conf==='hi'?'b-grn':r.conf==='md'?'b-code':'b-amber'}">${r.conf==='hi'?'높음':r.conf==='md'?'보통':'낮음'}</span>`},
+    {label:'검토 사유',w:'1.4fr',cell:r=>r.reasons.map(([c,m])=>`<span class="badge ${c}">${m}</span>`).join(' ')}],queue);
+  $('#b-status').textContent=`완료 · ${proc}건 · ATC ${Math.round(atcOK/t*100)}% · 검토 ${queue.length}`;
+  toast(`✓ 보완 ${proc}건 처리`);
+}
+
+/* ===== 탭2: ATC 대조 ===== */
+function loadHira(file,el){readSheet(file,rows=>{const h=(rows[0]||[]).map(x=>String(x||'').replace(/\s/g,''));
+  const ni=cidx(h,'제품명','약품명'),fi=h.findIndex(x=>x.toUpperCase().includes('ATC')&&!x.includes('명칭')),ci=cidx(h,'제품코드','보험');
+  HIRA.clear();let n=0;for(let i=1;i<rows.length;i++){const k=normN(rows[i][ni]);if(k){HIRA.set(k,{atc:normA(rows[i][fi]),code:ci>=0?rows[i][ci]:''});n++;}}
+  el.classList.add('set');$('#mHira').textContent=`✓ 기준 ${n}건`;gates();});}
+let A_MIS=[];
+function runAtc(){
+  const aoa=UB.aoa;const h=(aoa[0]||[]).map(x=>String(x||'').replace(/\s/g,''));
+  const cN=h.findIndex(x=>x==='약품명'||x==='제품명'),cA=h.findIndex(x=>x.toUpperCase().includes('ATC'));
+  const nameC=cN<0?1:cN, atcC=cA<0?25:cA; let insC=h.findIndex(x=>x.includes('보험코드'));
+  A_MIS=[];let cmp=0,ok=0,nf=0;
+  for(let i=1;i<aoa.length;i++){const row=aoa[i]||[];const name=row[nameC];if(!name||!String(name).trim())continue;
+    const ref=HIRA.get(normN(name));if(!ref){nf++;continue;}cmp++;const cur=normA(row[atcC]);
+    if(ref.atc&&cur!==ref.atc)A_MIS.push({r:i,name:String(name),cur:row[atcC]||'',ref:ref.atc,ins:ins9(ref.code)});else ok++;}
+  A_MIS._atcC=atcC;A_MIS._insC=insC;
+  $('#a-result').classList.remove('hidden');
+  $('#a-cmp').textContent=cmp;$('#a-ok').textContent=ok;$('#a-mis').textContent=A_MIS.length;$('#a-nf').textContent=nf;
+  $('#a-more').textContent=A_MIS.length>400?`(상위 400 표시 / 전체 ${A_MIS.length} 적용)`:`· ${A_MIS.length}건`;
+  renderGrid($('#a-wrap'),$('#a-head'),$('#a-body'),[
+    {label:'행',w:'56px',cell:m=>m.r+1},{label:'약품명',w:'1fr',cls:'nm',cell:m=>m.name.slice(0,30)},
+    {label:'현재 ATC',w:'118px',cell:m=>m.cur?`<span class="badge b-red">${m.cur}</span>`:`<span class="badge b-red">(비어있음)</span>`},
+    {label:'',w:'26px',cls:'arr',cell:()=>'→'},{label:'기준 ATC',w:'118px',cell:m=>`<span class="badge b-grn">${m.ref}</span>`},
+    {label:'보험코드',w:'118px',cell:m=>m.ins?`<span class="badge b-code">${m.ins}</span>`:'-'}],A_MIS);
+  $('#a-status').textContent=`대조 완료 · 불일치 ${A_MIS.length}건`;
+}
+function applyAtc(){if(!A_MIS.length){toast('업데이트할 불일치가 없습니다');return;}
+  let insC=A_MIS._insC;if(insC<0){const rng=XLSX.utils.decode_range(UB.ws['!ref']);insC=rng.e.c+1;UB.ws[XLSX.utils.encode_cell({r:0,c:insC})]={t:'s',v:'보험코드'};rng.e.c=insC;UB.ws['!ref']=XLSX.utils.encode_range(rng);}
+  A_MIS.forEach(m=>{UB.ws[XLSX.utils.encode_cell({r:m.r,c:A_MIS._atcC})]={t:'s',v:m.ref};if(m.ins)UB.ws[XLSX.utils.encode_cell({r:m.r,c:insC})]={t:'s',v:m.ins};});
+  toast(`✓ ${A_MIS.length}건 ATC 업데이트 완료`);}
+
+/* ===== 탭3: 코드 매핑 ===== */
+function loadTuyak(file,el){readSheet(file,rows=>{const h=(rows[0]||[]).map(x=>String(x||'').replace(/\s/g,''));
+  const si=cidx(h,'수가코드'),di=cidx(h,'표준코드'),ni=cidx(h,'한글명','약품명','제품명');
+  TUYAK.clear();let n=0;for(let i=1;i<rows.length;i++){const k=ck(rows[i][si]);if(k){TUYAK.set(k,{std:ins9(rows[i][di]),name:ni>=0?rows[i][ni]:''});n++;}}
+  $('#mTuyak').textContent=`✓ 기준 ${n}건`;el.classList.add('set');gates();});}
+let C_MIG=[];
+function runCode(){
+  const C=DB.col,aoa=DB.aoa;C_MIG=[];let cand=0,match=0,same=0,nf=0;
+  for(let i=DB.hdr+1;i<aoa.length;i++){const row=aoa[i]||[];const code=ck(row[C.code]);if(!code)continue;cand++;
+    const ref=TUYAK.get(code);if(!ref){nf++;continue;}match++;const cur=ins9(row[C.ins]);
+    if(ref.std&&cur===ref.std){same++;continue;}C_MIG.push({r:i,code:row[C.code],name:row[C.name]||ref.name||'',cur:row[C.ins]||'',std:ref.std,isNew:!cur});}
+  $('#c-result').classList.remove('hidden');
+  $('#c-cand').textContent=cand;$('#c-match').textContent=match;$('#c-chg').textContent=C_MIG.length;$('#c-nf').textContent=nf;
+  $('#c-more').textContent=C_MIG.length>400?`(상위 400 표시 / 전체 ${C_MIG.length} 적용)`:`· ${C_MIG.length}건`;
+  renderGrid($('#c-wrap'),$('#c-head'),$('#c-body'),[
+    {label:'수가코드',w:'120px',cell:m=>m.code},{label:'약품명',w:'1fr',cls:'nm',cell:m=>m.name},
+    {label:'현재 보험코드',w:'118px',cell:m=>m.cur?`<span class="badge b-red">${m.cur}</span>`:`<span class="badge b-red">(비어있음)</span>`},
+    {label:'',w:'26px',cls:'arr',cell:()=>'→'},{label:'표준코드',w:'118px',cell:m=>`<span class="badge b-grn">${m.std}</span>`},
+    {label:'상태',w:'78px',cell:m=>`<span class="badge ${m.isNew?'b-new':'b-chg'}">${m.isNew?'신규':'변경'}</span>`}],C_MIG);
+  $('#c-status').textContent=`대조 완료 · 매칭 ${match} · 이미정확 ${same} · 마이그레이션 ${C_MIG.length}`;
+}
+function applyCode(){if(!C_MIG.length){toast('마이그레이션할 항목이 없습니다');return;}
+  C_MIG.forEach(m=>{DB.ws[XLSX.utils.encode_cell({r:m.r,c:DB.col.ins})]={t:'s',v:m.std};});
+  toast(`✓ ${C_MIG.length}건 보험코드 마이그레이션 완료`);}
+
+/* ===== 와이어링 ===== */
+function dz(id,inp,h){const d=$('#'+id),f=$('#'+inp);d.addEventListener('click',()=>f.click());
+  f.addEventListener('change',e=>{if(e.target.files[0])h(e.target.files[0]);});
+  ['dragover','dragenter'].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();d.classList.add('over');}));
+  ['dragleave','drop'].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();d.classList.remove('over');}));
+  d.addEventListener('drop',e=>{const file=e.dataTransfer.files[0];if(file)h(file);});}
+dz('dropMain','fMain',readMain);
+dz('dropHira','fHira',f=>loadHira(f,$('#dropHira')));
+dz('dropTuyak','fTuyak',f=>loadTuyak(f,$('#dropTuyak')));
+document.querySelectorAll('.ref').forEach(el=>el.addEventListener('click',()=>{const i=document.createElement('input');i.type='file';i.accept='.csv,.xlsx,.xls';i.onchange=e=>{if(e.target.files[0])loadRef(el.dataset.ref,e.target.files[0],el);};i.click();}));
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  $('#p-'+t.dataset.tab).classList.add('on');}));
+$('#b-run').addEventListener('click',runBatch);$('#b-dl').addEventListener('click',download);
+$('#a-run').addEventListener('click',runAtc);$('#a-apply').addEventListener('click',applyAtc);$('#a-dl').addEventListener('click',download);
+$('#c-run').addEventListener('click',runCode);$('#c-apply').addEventListener('click',applyCode);$('#c-dl').addEventListener('click',download);
+</script>
+</body>
+</html>
