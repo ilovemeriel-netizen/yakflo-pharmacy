@@ -1221,38 +1221,43 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
 
 /* ═══ 재고현황 — ★ 사용량 엑셀 업로드 추가 ═══ */
 /* 정렬+필터 통합 헤더 메뉴(엑셀식 ▾). StockStatus 전용. 공유 SI/HeaderFilter 미사용. */
-function ColMenu({ colKey, sk, sd, setSort, filter }) {
+/* 정렬·필터 분리 헤더 메뉴. StockStatus 전용. 텍스트클릭=필터 / ▾클릭=정렬. 공유 SI/HeaderFilter 미사용. */
+function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
   const { t } = useTheme();
-  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState(null); // 'filter' | 'sort'
   const [pos, setPos] = useState({ top: 0, left: 0 });
-  const ref = useRef(null), btnRef = useRef(null);
-  function rect() { const el = btnRef.current; if (!el) return null; const r = el.getBoundingClientRect(); return { top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 190)) } }
-  function toggle(e) { e.stopPropagation(); if (!open) { const pp = rect(); if (pp) setPos(pp) } setOpen(o => !o) }
+  const ref = useRef(null), txtRef = useRef(null), arrRef = useRef(null), curRef = useRef(null);
+  function calc(el) { const r = el.getBoundingClientRect(); return { top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 190)) } }
+  function openAs(e, m, el) { e.stopPropagation(); if (!el) return; if (mode === m) { setMode(null); return } curRef.current = el; setPos(calc(el)); setMode(m) }
   useEffect(() => {
-    if (!open) return;
-    function place() { const el = btnRef.current; if (!el) return; const r = el.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) { setOpen(false); return } setPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 190)) }) }
-    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    function onEsc(e) { if (e.key === 'Escape') setOpen(false) }
+    if (!mode) return;
+    function place() { const el = curRef.current; if (!el) return; const r = el.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) { setMode(null); return } setPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 190)) }) }
+    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setMode(null) }
+    function onEsc(e) { if (e.key === 'Escape') setMode(null) }
     window.addEventListener('scroll', place, true); window.addEventListener('resize', place);
     document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc);
     return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) };
-  }, [open]);
+  }, [mode]);
   const active = sk === colKey;
   const fActive = !!(filter && filter.value);
-  const item = (onClick, label, on) => <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '6px 9px', border: 'none', background: on ? t.accent + '14' : 'transparent', color: on ? t.accent : t.text, cursor: 'pointer', fontSize: 11, fontWeight: on ? 700 : 500, borderRadius: 6, whiteSpace: 'nowrap' }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{label}{on ? <span style={{ fontSize: 9 }}>✓</span> : null}</button>;
-  return <span ref={ref} style={{ display: 'inline-block', marginLeft: 3, verticalAlign: 'middle', fontWeight: 400 }}>
-    <span ref={btnRef} onClick={toggle} title="정렬·필터" style={{ cursor: 'pointer', fontSize: 10, fontWeight: 800, padding: '0 3px', borderRadius: 4, color: (active || fActive) ? t.accent : t.textL }}>▾</span>
-    {open && <>
-      <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={e => { e.stopPropagation(); setOpen(false) }} />
+  const item = (onClick, lbl, on) => <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '6px 9px', border: 'none', background: on ? t.accent + '14' : 'transparent', color: on ? t.accent : t.text, cursor: 'pointer', fontSize: 11, fontWeight: on ? 700 : 500, borderRadius: 6, whiteSpace: 'nowrap' }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{lbl}{on ? <span style={{ fontSize: 9 }}>✓</span> : null}</button>;
+  return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontWeight: 400, verticalAlign: 'middle' }}>
+    <span ref={txtRef} onClick={filter ? e => openAs(e, 'filter', txtRef.current) : undefined} title={filter ? '필터' : undefined} style={{ cursor: filter ? 'pointer' : 'default', whiteSpace: 'nowrap', color: fActive ? t.accent : 'inherit', fontWeight: fActive ? 700 : 'inherit' }}>{label}</span>
+    <span ref={arrRef} onClick={e => openAs(e, 'sort', arrRef.current)} title="정렬" style={{ cursor: 'pointer', fontSize: 10, fontWeight: 800, padding: '0 3px', borderRadius: 4, color: active ? t.accent : t.textL }}>▾</span>
+    {mode && <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={e => { e.stopPropagation(); setMode(null) }} />
       <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, minWidth: 150, maxHeight: 300, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', padding: 6, textAlign: 'left' }}>
-        <div style={{ fontSize: 9, color: t.textL, fontWeight: 700, padding: '2px 9px 4px' }}>정렬</div>
-        {item(() => { setSort(colKey, 'asc'); setOpen(false) }, '오름차순 ▲', active && sd === 'asc')}
-        {item(() => { setSort(colKey, 'desc'); setOpen(false) }, '내림차순 ▼', active && sd === 'desc')}
-        {active ? item(() => { setSort('', 'asc'); setOpen(false) }, '정렬 해제', false) : null}
-        {filter ? <div style={{ borderTop: '1px solid ' + t.border, margin: '5px 0' }} /> : null}
-        {filter ? <div style={{ fontSize: 9, color: t.textL, fontWeight: 700, padding: '2px 9px 4px' }}>필터</div> : null}
-        {filter ? item(() => { filter.on(null); setOpen(false) }, '전체', !filter.value) : null}
-        {filter ? filter.items.map(v => item(() => { filter.on(v); setOpen(false) }, v, filter.value === v)) : null}
+        {mode === 'sort' && <>
+          <div style={{ fontSize: 9, color: t.textL, fontWeight: 700, padding: '2px 9px 4px' }}>정렬</div>
+          {item(() => { setSort(colKey, 'asc'); setMode(null) }, '오름차순 ▲', active && sd === 'asc')}
+          {item(() => { setSort(colKey, 'desc'); setMode(null) }, '내림차순 ▼', active && sd === 'desc')}
+          {active ? item(() => { setSort('', 'asc'); setMode(null) }, '정렬 해제', false) : null}
+        </>}
+        {mode === 'filter' && filter ? <>
+          <div style={{ fontSize: 9, color: t.textL, fontWeight: 700, padding: '2px 9px 4px' }}>필터</div>
+          {item(() => { filter.on(null); setMode(null) }, '전체', !filter.value)}
+          {filter.items.map(v => item(() => { filter.on(v); setMode(null) }, v, filter.value === v))}
+        </> : null}
       </div>
     </>}
   </span>;
@@ -1305,7 +1310,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
     </div>
     <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',backdropFilter:'blur(12px)'}}>
       <HScroll><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-        <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['safety_stock','안전재고'],['max_stock','최대재고'],['monthly_avg','월평균'],['status','사용상태'],['stockStatus','재고상태'],['expiry_date','유효기한'],['','보정']].map(([k,h])=><th key={h} style={k?{...TS(k),background:t.bg,...(k==='drug_code'?{position:'sticky',left:0,zIndex:6,minWidth:128,maxWidth:128,width:128,borderRight:'1px solid '+t.border}:k==='drug_name'?{position:'sticky',left:128,zIndex:6,borderRight:'1px solid '+t.border}:{})}:{padding:'8px 10px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:11,background:t.bg}} ><span style={{cursor:'default'}}>{h}</span>{k?<ColMenu colKey={k} sk={sk} sd={sd} setSort={setSort} filter={hf[k]||null}/>:null}</th>)}</tr></thead>
+        <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['safety_stock','안전재고'],['max_stock','최대재고'],['monthly_avg','월평균'],['status','사용상태'],['stockStatus','재고상태'],['expiry_date','유효기한'],['','보정']].map(([k,h])=><th key={h} style={k?{...TS(k),background:t.bg,...(k==='drug_code'?{position:'sticky',left:0,zIndex:6,minWidth:128,maxWidth:128,width:128,borderRight:'1px solid '+t.border}:k==='drug_name'?{position:'sticky',left:128,zIndex:6,borderRight:'1px solid '+t.border}:{})}:{padding:'8px 10px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:11,background:t.bg}} >{k?<ColMenu colKey={k} label={h} sk={sk} sd={sd} setSort={setSort} filter={hf[k]||null}/>:<span style={{cursor:'default',whiteSpace:'nowrap'}}>{h}</span>}</th>)}</tr></thead>
         <tbody>{!paged.length?<tr><td colSpan={10} style={{padding:40,textAlign:'center',color:t.textL}}>없음</td></tr>:paged.map((d,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
           <td style={{padding:'8px 12px',fontSize:10,color:t.textM,textAlign:'left',position:'sticky',left:0,zIndex:2,background:t.card,minWidth:128,maxWidth:128,width:128,overflow:'hidden',borderRight:'1px solid '+t.border}}>{d.drug_code}<NT d={d}/></td><td style={{padding:'8px 12px',fontWeight:600,textAlign:'left',color:t.accent,cursor:'pointer',position:'sticky',left:128,zIndex:2,background:t.card,borderRight:'1px solid '+t.border,minWidth:160,maxWidth:240}} onClick={()=>onEdit(d)} onMouseEnter={e=>{e.currentTarget.style.textDecoration='underline';e.currentTarget.style.color=t.purple}} onMouseLeave={e=>{e.currentTarget.style.textDecoration='none';e.currentTarget.style.color=t.accent}}>{d.drug_name}</td><td style={{padding:'8px 10px',color:t.textM,fontSize:11}}>{d.category}</td>
           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:d.stockStatus==='재고없음'?t.red:d.stockStatus==='부족'?t.amber:t.text}}>{d.current_qty?.toLocaleString()}</td>
@@ -1313,7 +1318,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
           <td style={{padding:'8px 10px'}}><SB s={d.status}/></td>
           <td style={{padding:'8px 10px'}}><Bd bg={sc(d.stockStatus)+'18'} color={sc(d.stockStatus)}>{d.stockStatus}</Bd></td>
           <td style={{padding:'8px 10',fontSize:11,...exS(d.expiry_date,t)}}>{d.expiry_date||'-'}</td>
-          <td style={{padding:'8px 6px',textAlign:'center'}}>{d.last_adjusted_date&&<div style={{fontSize:8,color:t.amber,fontWeight:600,marginBottom:2}}>{d.last_adjusted_date}</div>}<button onClick={()=>onAdjust(d)} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.amber}`,background:d.last_adjusted_date?t.amberL:'transparent',color:t.amber,cursor:'pointer',fontSize:9,fontWeight:600}}>보정</button></td>
+          <td style={{padding:'8px 6px',textAlign:'center'}}>{d.last_adjusted_date&&<div style={{fontSize:8,color:t.amber,fontWeight:600,marginBottom:2}}>{d.last_adjusted_date}</div>}<button onClick={()=>onAdjust(d)} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.amber}`,background:d.last_adjusted_date?t.amberL:'transparent',color:t.amber,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>보정</button></td>
         </tr>)}</tbody>
       </table></HScroll>
       <Pg page={page} setPage={setPage} tp={tp} fl={filtered} pp={PP}/>
