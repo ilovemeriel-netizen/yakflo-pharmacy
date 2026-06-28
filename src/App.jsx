@@ -1121,8 +1121,8 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
     return<div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr>{cols.map(([k,h])=><th key={h} style={k?{...TS(k),fontSize:10,whiteSpace:'nowrap'}:{padding:'8px 6px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:10,whiteSpace:'nowrap'}} onClick={()=>k&&hs(k)}>{h}{k&&<SI col={k}/>}</th>)}</tr></thead>
     <tbody>{sorted.map((d,i)=>{const days=exD(d.expiry_date);const a=alertSt(days);const uDays=unusedDays(d);const isEd=editRow===d.drug_code;const uu=isUnused(d)
       return<tr key={i} style={{borderBottom:`1px solid ${t.border}`,background:uu?t.redL+'60':''}} onMouseEnter={e=>{if(!uu)e.currentTarget.style.background=t.glass}} onMouseLeave={e=>{if(!uu)e.currentTarget.style.background=''}}>
-        <td style={{padding:'5px 8px',fontSize:10,color:t.textM}}>{d.drug_code}<NT d={d}/></td>
-        <CN drug={d} onEdit={onEdit}/>
+        <td style={{padding:'5px 8px',fontSize:10,color:t.textM,textAlign:'left'}}>{d.drug_code}<NT d={d}/></td>
+        <td style={{ padding: '8px 12px', fontWeight: 600, textAlign: 'left', color: t.accent, cursor: 'pointer', minWidth: 200, maxWidth: 260 }} onClick={() => onEdit(d)} onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.color = t.purple }} onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none'; e.currentTarget.style.color = t.accent }} title={d.drug_name || ''}><span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.3 }}>{d.drug_name}</span></td>
         <td style={{padding:'5px 8px',color:t.textM,fontSize:10}}>{d.category}</td>
         <td style={{padding:'5px 8px',textAlign:'right',fontWeight:600,fontSize:11}}>{d.current_qty?.toLocaleString()}</td>
         <td style={{padding:'5px 8px',color,fontWeight:600,fontSize:10}}>{d.expiry_date}</td>
