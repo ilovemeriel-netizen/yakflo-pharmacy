@@ -1086,10 +1086,63 @@ function DrugList({ drugs, navFilter: nf, onEdit, nonins }) {
   </div>
 }
 /* ═══ 유효기한 — 칩 클릭 라우팅 ═══ */
-/* 날짜 입력 셀: 로컬 state로 격리 → 상위 재렌더 중에도 달력 선택값 유지(텍스트·년/월/일 클릭 모두 지원) */
+/* 날짜 파서/포맷 — 로컬 YYYY-MM-DD(타임존 하루 밀림 방지). 'YYYY-MM-DD' 또는 'YYYYMMDD' 허용 */
+function _pad2(n) { return String(n).padStart(2, '0') }
+function _ymdStr(y, m, d) { return y + '-' + _pad2(m) + '-' + _pad2(d) }
+function _parseYMD(str) {
+  if (!str) return null;
+  const s = String(str).trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/) || s.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (!m) return null;
+  const y = +m[1], mo = +m[2], d = +m[3];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  if (d > new Date(y, mo, 0).getDate()) return null;
+  return { y, m: mo, d };
+}
+/* 날짜 입력 셀: 커스텀 달력(브랜드 토큰·인라인 스타일 전용, 외부 라이브러리·전역CSS 없음). 유효기한 최종사용일 전용. */
 function DateCell({ value, onChange }) {
   const { t } = useTheme();
-  return <input type="date" defaultValue={value || ''} onChange={e => onChange(e.target.value)} style={{ padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 10, outline: 'none', background: t.bg, color: t.text, width: 105 }} />;
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(value || '');
+  const _init = _parseYMD(value) || { y: new Date().getFullYear(), m: new Date().getMonth() + 1 };
+  const [view, setView] = useState({ y: _init.y, m: _init.m });
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const ref = useRef(null), inpRef = useRef(null);
+  useEffect(() => {
+    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    function onEsc(e) { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) };
+  }, []);
+  function openCal() { if (inpRef.current) { const r = inpRef.current.getBoundingClientRect(); setPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 248)) }) } const pp = _parseYMD(text); if (pp) setView({ y: pp.y, m: pp.m }); setOpen(true) }
+  function commit() { const raw = text.trim(); if (raw === '') { onChange(''); return } const pp = _parseYMD(raw); if (pp) { const s2 = _ymdStr(pp.y, pp.m, pp.d); setText(s2); onChange(s2) } else { setText(value || '') } }
+  function pick(d) { const s2 = _ymdStr(view.y, view.m, d); setText(s2); onChange(s2); setOpen(false) }
+  function nav(dy, dm) { let y = view.y + dy, m = view.m + dm; if (m < 1) { m = 12; y-- } if (m > 12) { m = 1; y++ } setView({ y, m }) }
+  const sel = _parseYMD(text);
+  const today = new Date(), tY = today.getFullYear(), tM = today.getMonth() + 1, tD = today.getDate();
+  const first = new Date(view.y, view.m - 1, 1).getDay();
+  const dim = new Date(view.y, view.m, 0).getDate();
+  const navBtn = { border: 'none', background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 13, fontWeight: 800, padding: '2px 5px', borderRadius: 4, lineHeight: 1 };
+  const miniBtn = { border: '1px solid ' + t.border, background: 'transparent', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 6 };
+  return <span ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+    <input ref={inpRef} type="text" inputMode="numeric" placeholder="YYYY-MM-DD" value={text} onChange={e => setText(e.target.value)} onFocus={openCal} onClick={openCal} onKeyDown={e => { if (e.key === 'Enter') { commit(); setOpen(false) } }} onBlur={commit} style={{ padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 10, outline: 'none', background: t.bg, color: t.text, width: 105 }} />
+    {open && <div onMouseDown={e => e.preventDefault()} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, width: 236, background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', padding: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <span><button onClick={() => nav(-1, 0)} title="이전 해" style={navBtn}>«</button><button onClick={() => nav(0, -1)} title="이전 달" style={navBtn}>‹</button></span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: t.accent }}>{view.y}년 {view.m}월</span>
+        <span><button onClick={() => nav(0, 1)} title="다음 달" style={navBtn}>›</button><button onClick={() => nav(1, 0)} title="다음 해" style={navBtn}>»</button></span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, marginBottom: 2 }}>{['일', '월', '화', '수', '목', '금', '토'].map((w, i) => <div key={w} style={{ textAlign: 'center', fontSize: 9, fontWeight: 600, color: i === 0 ? t.red : i === 6 ? t.blue : t.textL, padding: '2px 0' }}>{w}</div>)}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2 }}>
+        {Array.from({ length: first }).map((_, i) => <div key={'e' + i} />)}
+        {Array.from({ length: dim }).map((_, i) => { const d = i + 1; const isSel = sel && sel.y === view.y && sel.m === view.m && sel.d === d; const isToday = tY === view.y && tM === view.m && tD === d; return <button key={d} onClick={() => pick(d)} style={{ padding: '5px 0', fontSize: 11, borderRadius: 6, cursor: 'pointer', border: '1px solid ' + (isToday && !isSel ? t.accent + '66' : 'transparent'), background: isSel ? t.accent : 'transparent', color: isSel ? '#fff' : t.text, fontWeight: isSel ? 700 : 500 }} onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = 'transparent' }}>{d}</button> })}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, borderTop: '1px solid ' + t.border, paddingTop: 8 }}>
+        <button onClick={() => { setText(''); onChange(''); setOpen(false) }} style={{ ...miniBtn, color: t.textM }}>지우기</button>
+        <button onClick={() => setOpen(false)} style={{ ...miniBtn, color: t.accent, borderColor: t.accent }}>닫기</button>
+      </div>
+    </div>}
+  </span>;
 }
 function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
   const{t}=useTheme();const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
