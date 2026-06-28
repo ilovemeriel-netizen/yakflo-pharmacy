@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>약플로 · 원내 의약품 DB 매칭·통계</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+  tailwind.config={theme:{extend:{
+    fontFamily:{sans:['Inter','-apple-system','sans-serif']},
+    colors:{brand:{purple:'#804A87',pd:'#5E3563',green:'#019748',lav:'#BFA6D9',navy:'#2E4A62',
+      bg:'#F4F5FA',amber:'#C8841C',rose:'#B23A6B',teal:'#2C8FB0'}},
+    boxShadow:{soft:'0 2px 4px rgba(46,33,55,.04),0 14px 36px rgba(96,53,99,.07)',
+      softin:'inset 0 1px 2px rgba(46,33,55,.05)'}}}};
+</script>
+<style>
+  body{background:#F4F5FA;color:#2E3440;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased}
+  .card{background:#fff;border:1px solid #ECE7F2;border-radius:18px;box-shadow:0 2px 4px rgba(46,33,55,.04),0 14px 36px rgba(96,53,99,.07)}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;font-size:12.5px;font-weight:600;
+    border:1px solid #E7E0EE;color:#6B6477;background:#fff;cursor:pointer;transition:.15s;white-space:nowrap}
+  .chip:hover{border-color:#BFA6D9}
+  .chip.on{background:#804A87;color:#fff;border-color:#804A87}
+  .badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:7px;font-size:11px;font-weight:700;white-space:nowrap}
+  .b-ins{background:#E3F4EA;color:#019748}.b-non{background:#F1EEF5;color:#6B6477}
+  .b-use{background:#E3F4EA;color:#019748}.b-stop{background:#FBEAF1;color:#B23A6B}
+  .b-gen{background:#EEF1F6;color:#5A6B7B}.b-narc{background:#FBF1DE;color:#C8841C}.b-drug{background:#FBEAF1;color:#B23A6B}
+  .b-exp{background:#FBF1DE;color:#C8841C}.b-expd{background:#FBEAF1;color:#B23A6B}
+  .atc{display:inline-flex;border-radius:7px;overflow:hidden;border:1px solid #BFA6D9;font-size:10.5px;font-weight:700}
+  .atc span{padding:2px 7px}.atc .l1{background:#804A87;color:#fff}.atc .l2{background:#F2ECF8;color:#5E3563}.atc .l3{background:#FAF8FC;color:#9080a0}
+  .atc.none{border-color:#E7E0EE}.atc.none span{background:#F7F5F9;color:#B6AEC2}
+  table{width:100%;border-collapse:separate;border-spacing:0}
+  th{font-size:10.5px;font-weight:700;letter-spacing:.4px;color:#6B6477;text-transform:uppercase;text-align:left;
+    padding:11px 12px;background:#FAF8FC;position:sticky;top:0;border-bottom:1px solid #ECE7F2;white-space:nowrap}
+  td{padding:10px 12px;border-bottom:1px solid #F2EEF7;font-size:13px;white-space:nowrap;vertical-align:middle}
+  tr:hover td{background:#FBFAFD}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  select.cv{border:1px solid #E7E0EE;border-radius:8px;padding:4px 8px;font-size:12px;color:#2E3440;background:#fff;font-family:inherit;outline:none}
+  select.cv:focus{border-color:#804A87}
+  .drop{border:2px dashed #BFA6D9;border-radius:16px;background:#FBFAFD;transition:.18s;cursor:pointer}
+  .drop:hover,.drop.over{border-color:#804A87;background:#F5EEF6}
+  .kpi-ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:18px}
+  ::-webkit-scrollbar{height:9px;width:9px}::-webkit-scrollbar-thumb{background:#DCD3E6;border-radius:6px}
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- 헤더 -->
+<header class="bg-white border-b border-[#ECE7F2]">
+  <div class="max-w-[1200px] mx-auto px-6 py-4 flex items-center justify-between flex-wrap gap-3">
+    <div class="flex items-center gap-3">
+      <div class="w-11 h-11 rounded-2xl grid place-items-center" style="background:linear-gradient(135deg,#804A87,#5E3563)">
+        <svg viewBox="0 0 80 56" class="w-7 h-5"><path d="M12 16 C32 16,32 28,52 28 S70 40,74 40" stroke="#fff" stroke-width="6.5" stroke-linecap="round" fill="none"/><circle cx="52" cy="28" r="6" fill="none" stroke="#BFA6D9" stroke-width="3"/></svg>
+      </div>
+      <div>
+        <div class="font-extrabold text-[17px] text-brand-navy tracking-tight">약플로 <span class="text-brand-purple">·</span> 원내 의약품 DB</div>
+        <div class="text-[11.5px] text-slate-400">매칭 · ATC 자동분류 · 재고 통계 · 23 표준헤더 정규화</div>
+      </div>
+    </div>
+    <div class="text-[11px] text-slate-400 text-right leading-relaxed">
+      <div><span class="text-brand-green">●</span> 클라이언트 처리 · 데이터 외부 전송 없음</div>
+      <div>실데이터 연동 시 키는 서버(프록시) 전용 · 프론트 노출 금지</div>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-[1200px] mx-auto px-6 py-7 space-y-6">
+
+  <!-- 업로드 -->
+  <section class="card p-6">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <h2 class="font-bold text-[15px] text-brand-navy">① 데이터 매칭 엔진</h2>
+      <button id="schemaBtn" class="chip">📋 23 표준헤더 보기</button>
+    </div>
+    <div id="drop" class="drop p-8 text-center">
+      <div class="text-3xl mb-2">📤</div>
+      <div class="font-bold text-brand-pd text-[15px] mb-1">CSV 또는 Excel 파일을 끌어다 놓으세요</div>
+      <div class="text-[12.5px] text-slate-400">업로드 컬럼을 23개 표준헤더에 자동 매칭 · 약품코드 텍스트 고정 · 날짜·단위 정규화</div>
+      <div id="filemeta" class="text-[12.5px] text-brand-green font-semibold mt-2"></div>
+      <input type="file" id="file" accept=".csv,.xlsx,.xls" class="hidden">
+    </div>
+    <div id="mapPanel" class="hidden mt-4 p-4 rounded-xl bg-[#FAF8FC] border border-[#ECE7F2]">
+      <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-3">표준헤더 매칭 결과</div>
+      <div id="mapGrid" class="grid grid-cols-2 md:grid-cols-3 gap-x-5 gap-y-1.5 text-[12px]"></div>
+    </div>
+  </section>
+
+  <!-- KPI -->
+  <section class="grid grid-cols-2 md:grid-cols-5 gap-4">
+    <div class="card p-5"><div class="kpi-ic" style="background:#F2ECF8;color:#804A87">💊</div><div id="k-total" class="text-2xl font-extrabold text-brand-navy mt-3">0</div><div class="text-[11.5px] text-slate-400 font-medium">총 약품</div></div>
+    <div class="card p-5"><div class="kpi-ic" style="background:#E3F4EA;color:#019748">🔗</div><div id="k-match" class="text-2xl font-extrabold text-brand-navy mt-3">0%</div><div class="text-[11.5px] text-slate-400 font-medium">ATC 분류율</div></div>
+    <div class="card p-5"><div class="kpi-ic" style="background:#FBF1DE;color:#C8841C">⚠️</div><div id="k-narc" class="text-2xl font-extrabold text-brand-navy mt-3">0</div><div class="text-[11.5px] text-slate-400 font-medium">향정·마약</div></div>
+    <div class="card p-5"><div class="kpi-ic" style="background:#FBF1DE;color:#C8841C">📅</div><div id="k-exp" class="text-2xl font-extrabold text-brand-navy mt-3">0</div><div class="text-[11.5px] text-slate-400 font-medium">유효기한 임박</div></div>
+    <div class="card p-5"><div class="kpi-ic" style="background:#FBEAF1;color:#B23A6B">📦</div><div id="k-zero" class="text-2xl font-extrabold text-brand-navy mt-3">0</div><div class="text-[11.5px] text-slate-400 font-medium">재고 소진</div></div>
+  </section>
+
+  <!-- 차트 -->
+  <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="card p-6"><h3 class="font-bold text-[14px] text-brand-navy mb-1">계통별 성분 비치 현황</h3><p class="text-[11.5px] text-slate-400 mb-3">ATC 대분류 기준</p><div class="h-[230px]"><canvas id="chartAtc"></canvas></div></div>
+    <div class="card p-6"><h3 class="font-bold text-[14px] text-brand-navy mb-1">제형 분포</h3><p class="text-[11.5px] text-slate-400 mb-3">구분 기준</p><div class="h-[230px]"><canvas id="chartForm"></canvas></div></div>
+    <div class="card p-6"><h3 class="font-bold text-[14px] text-brand-navy mb-1">규제 구분</h3><p class="text-[11.5px] text-slate-400 mb-3">일반·향정·마약</p><div class="h-[230px]"><canvas id="chartReg"></canvas></div></div>
+  </section>
+
+  <!-- 필터 + 그리드 -->
+  <section class="card p-6">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+      <h2 class="font-bold text-[15px] text-brand-navy">② 통합 데이터 그리드 <span id="rowcount" class="text-slate-400 font-medium text-[13px]"></span></h2>
+      <input id="q" placeholder="🔍 약품명·코드·성분 검색" class="text-[13px] px-3.5 py-2 rounded-xl border border-[#E7E0EE] outline-none focus:border-brand-purple w-[260px]">
+    </div>
+    <div class="flex gap-2 flex-wrap mb-4" id="filters">
+      <span class="chip on" data-f="cls" data-v="ALL">전체 제형</span>
+      <span class="chip" data-f="cls" data-v="경구제">경구</span>
+      <span class="chip" data-f="cls" data-v="주사제">주사</span>
+      <span class="chip" data-f="cls" data-v="외용제">외용</span>
+      <span class="w-px bg-[#ECE7F2] mx-1"></span>
+      <span class="chip on" data-f="reg" data-v="ALL">규제 전체</span>
+      <span class="chip" data-f="reg" data-v="향정">향정</span>
+      <span class="chip" data-f="reg" data-v="마약">마약</span>
+      <span class="w-px bg-[#ECE7F2] mx-1"></span>
+      <span class="chip" data-f="exp" data-v="임박">⏰ 유효기한 임박</span>
+    </div>
+    <div class="overflow-x-auto -mx-2 px-2">
+      <table id="grid"><thead><tr id="head"></tr></thead><tbody id="body"></tbody></table>
+    </div>
+  </section>
+</main>
+
+<!-- 23 표준헤더 모달 -->
+<div id="modal" class="hidden fixed inset-0 bg-black/30 z-50 grid place-items-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="card p-6 max-w-2xl w-full max-h-[80vh] overflow-auto">
+    <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-brand-navy">23 표준헤더 스키마</h3><button onclick="document.getElementById('modal').classList.add('hidden')" class="text-slate-400 hover:text-brand-rose text-xl">✕</button></div>
+    <div id="schemaList" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12.5px]"></div>
+  </div>
+</div>
+
+<script>
+/* ════════ 23 표준헤더 + 동의어(매칭) + 정규화 규칙 ════════ */
+const STD=[
+ {k:"code",  t:"약품코드", req:1, syn:["약품코드","코드","코드선택","품목코드","kd코드"], type:"text"},
+ {k:"name",  t:"약품명",   req:1, syn:["약품명","제품명","품목명"]},
+ {k:"cls",   t:"구분",     req:1, syn:["구분","제형","제형구분"], cv:"cls"},
+ {k:"unit",  t:"단위",     req:1, syn:["단위"], cv:"unit"},
+ {k:"spec",  t:"규격",     req:1, syn:["규격","용량"]},
+ {k:"en",    t:"성분명(영문)", syn:["성분명영문","영문성분","주성분영문"]},
+ {k:"kr",    t:"성분명(한글)", syn:["성분명한글","한글성분","주성분","성분"]},
+ {k:"form",  t:"제제구분", syn:["제제구분","단일복합","단일/복합","분류1"], cv:"form"},
+ {k:"atc",   t:"ATC코드",  syn:["atc","atc코드"]},
+ {k:"atc1",  t:"ATC대분류",syn:["atc대분류","대분류"], derive:1},
+ {k:"atc2",  t:"ATC중분류",syn:["atc중분류","중분류"], derive:1},
+ {k:"atc3",  t:"ATC소분류",syn:["atc소분류","소분류"], derive:1},
+ {k:"ind",   t:"적응증",   syn:["적응증","효능","효능효과"]},
+ {k:"reg",   t:"규제구분", syn:["규제구분","향정마약","향정&마약","향정","마약"], cv:"reg"},
+ {k:"mfr",   t:"제조·판매사",req:1, syn:["제조판매사","제조사","제조/판매사","업체명","업소명"]},
+ {k:"ins",   t:"급여구분", req:1, syn:["급여구분","급여"], cv:"ins"},
+ {k:"edi",   t:"보험코드", syn:["보험코드","edi","edi코드"]},
+ {k:"insp",  t:"보험약가", syn:["보험약가","상한금액","edi단가"], type:"num"},
+ {k:"buyp",  t:"구입단가", syn:["구입단가","개당단가","단가"], type:"num"},
+ {k:"stock", t:"현재고",   req:1, syn:["현재고","재고","현재고수량"], type:"num"},
+ {k:"exp",   t:"유효기한", req:1, syn:["유효기한","유효기간"], type:"date"},
+ {k:"loc",   t:"보관위치", syn:["보관위치","위치","보관위치정보"]},
+ {k:"st",    t:"사용상태", req:1, syn:["사용상태","상태"], cv:"st"},
+];
+const CV={
+ cls:["경구제","주사제","외용제","기타"],
+ unit:["정","캡슐","병","바이알","앰플","관","개","포","튜브","mL","기타"],
+ form:["단일","복합"],
+ reg:["일반","향정","마약"],
+ ins:["급여","비급여"],
+ st:["사용","중지"],
+};
+const CV_MAP={ // 변형 → 통제어휘
+ cls:{경구:"경구제",내복:"경구제",주사:"주사제",외용:"외용제",점안:"외용제"},
+ unit:{tab:"정",cap:"캡슐",vial:"바이알",amp:"앰플"},
+ form:{단일제:"단일",복합제:"복합"},
+ reg:{"":"일반",향정약:"향정",향정신성:"향정",마약류:"마약"},
+};
+
+/* ════════ ATC 대/중분류 한글 (확정), 소분류는 코드 ════════ */
+const L1={A:'소화관 및 대사',B:'혈액 및 조혈기관',C:'심혈관계',D:'피부과용약',G:'비뇨생식기계 및 성호르몬',H:'전신 호르몬제',J:'전신 작용 항감염제',L:'항종양·면역조절제',M:'근골격계',N:'신경계',P:'구충·살충·기피제',R:'호흡기계',S:'감각기관',V:'기타'};
+const L2={A02:'위산관련 질환 치료제',A05:'담도·간 치료제',A10:'당뇨병 치료제',A11:'비타민',A12:'무기질 보충제',B01:'항혈전제',C08:'칼슘채널 차단제',C09:'레닌-안지오텐신계',C10:'지질조절제',J07:'백신',M01:'항염·항류마티스제',M03:'근이완제',N02:'진통제',N03:'항전간제',N05:'정신신경용제',N06:'정신활성제',R03:'폐쇄성기도질환 치료제',R06:'항히스타민제'};
+function deriveATC(atc){atc=(atc||'').toString().trim().toUpperCase();if(!atc)return['','',''];
+  return [L1[atc[0]]||atc[0], atc.length>=3?(L2[atc.slice(0,3)]||atc.slice(0,3)):'', atc.length>=5?atc.slice(0,5):atc.slice(0,4)];}
+
+/* 약품명/성분 → ATC 시드 사전 (업로드에 ATC 없을 때 데모용. 실제는 약가파일/참조 조인) */
+const SEED={가바펜틴:'N02BF01',글리메피리드:'A10BB12',오로트산카르니틴:'A05BA',아스코르브산:'A11GA01',탄산칼슘:'A12AX',란소프라졸:'A02BC03',암로디핀:'C08CA01',졸피뎀:'N05CF02',와파린:'B01AA03',디클로페낙:'M01AB05',gabapentin:'N02BF01',glimepiride:'A10BB12',ascorbicacid:'A11GA01',lansoprazole:'A02BC03',amlodipine:'C08CA01',zolpidem:'N05CF02',warfarin:'B01AA03',diclofenac:'M01AB05'};
+const normIng=s=>(s||'').toString().toLowerCase().replace(/\s|\(.*?\)|나트륨|타르타르산염|염산염|sodium|tartrate/g,'').trim();
+
+/* ════════ 기본(데모) 데이터 — 업로드 시 대체 ════════ */
+let ROWS=[
+ row("SGBRONNC10","가바로닌캡슐100mg","경구제","캡슐","100mg","Gabapentin","가바펜틴","단일","N02BF01","뇌전증·신경병성 통증","일반","알리코제약","급여","",198,1200,"2028-01-13","조제실 A-3","사용"),
+ row("GRD2","게리드정2mg","경구제","정","2mg","Glimepiride","글리메피리드","단일","A10BB12","제2형 당뇨병","일반","한국파비스제약","급여","",75,860,"2028-03-03","조제실 B-1","사용"),
+ row("GODEXCP","고덱스캡슐","경구제","캡슐","","Carnitine Orotate 외","오로트산카르니틴 외","복합","A05BA","간기능 개선","일반","셀트리온제약","급여","",320,540,"2027-10-29","조제실 C-2","사용"),
+ row("KOREAEUNDAN","고려은단비타민씨정","경구제","정","","Ascorbic Acid","아스코르브산","단일","A11GA01","비타민C 보급","일반","고려은단","비급여","",41,0,"2027-09-22","비품 D-4","사용"),
+ row("GOCALD","고칼디정","경구제","정","","Calcium Carbonate/Cholecalciferol","탄산칼슘/콜레칼시페롤","복합","A12AX","칼슘·비타민D 보급","일반","대화제약","비급여","",81,540,"2028-03-15","조제실 B-3","사용"),
+ row("LANS15","란스톤캡슐15mg","경구제","캡슐","15mg","Lansoprazole","란소프라졸","단일","A02BC03","위·십이지장 궤양, 역류성식도염","일반","제일약품","급여","",160,720,"2028-05-10","조제실 A-5","사용"),
+ row("NORV5","노바스크정5mg","경구제","정","5mg","Amlodipine","암로디핀","단일","C08CA01","고혈압, 협심증","일반","한국화이자제약","급여","",130,980,"2028-08-01","조제실 C-1","사용"),
+ row("ZOLP10","스틸녹스정10mg","경구제","정","10mg","Zolpidem Tartrate","졸피뎀타르타르산염","단일","N05CF02","불면증 단기 치료","향정","한독","급여","",210,300,"2027-06-30","향정금고 S-1","사용"),
+ row("SGRX1","싱그릭스주","주사제","바이알","","Recombinant VZV gE","재조합 대상포진 항원","단일","J07BK03","대상포진 예방","일반","글락소스미스클라인","급여","",170000,5,"2027-09-30","냉장고 R-2","사용"),
+ row("PRVN131","프리베나13주","주사제","바이알","","Pneumococcal conjugate","폐렴구균 단백결합 백신","복합","J07AL02","폐렴구균 질환 예방","일반","한국화이자제약","비급여","",98000,8,"2027-12-01","냉장고 R-1","사용"),
+ row("WARF2","쿠마딘정2mg","경구제","정","2mg","Warfarin Sodium","와파린나트륨","단일","B01AA03","혈전색전증 예방·치료","일반","제일약품","급여","",90,140,"2026-07-25","조제실 A-2","사용"),
+ row("DICLO","디크놀주","주사제","앰플","","Diclofenac Sodium","디클로페낙나트륨","단일","M01AB05","염증·통증 완화","일반","명문제약","급여","",420,60,"2026-06-30","주사제 J-1","중지"),
+];
+function row(code,name,cls,unit,spec,en,kr,form,atc,ind,reg,mfr,ins,edi,buyp,stock,exp,loc,st){
+  return {code:String(code),name,cls,unit,spec,en,kr,form,atc,ind,reg,mfr,ins,edi,insp:"",buyp,stock,exp,loc,st,
+    atc1:"",atc2:"",atc3:""};
+}
+
+/* ════════ 정규화 + ATC 파생 ════════ */
+const today=new Date('2026-06-20');
+function normDate(v){
+  if(v==null||v==="")return"";
+  if(v instanceof Date)return v.toISOString().slice(0,10);
+  let s=String(v).trim().replace(/[.\/]/g,'-').replace(/\s.*$/,'');
+  const m=s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  return m?`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`:s;
+}
+function cv(field,val){
+  val=(val==null?"":String(val)).trim();
+  const map=CV_MAP[field]||{}; if(map[val])return map[val];
+  for(const key in map)if(key&&val.includes(key))return map[key];
+  if(field==='reg'&&!val)return'일반';
+  return val||(field==='reg'?'일반':'');
+}
+function normalizeAll(){
+  ROWS.forEach(r=>{
+    r.code=String(r.code??"").trim();                  // PK 텍스트 고정
+    r.cls=cv('cls',r.cls); r.unit=cv('unit',r.unit);
+    r.form=cv('form',r.form); r.reg=cv('reg',r.reg);
+    r.exp=normDate(r.exp);
+    r.stock=Number(String(r.stock??0).replace(/[^\d.-]/g,''))||0;
+    // ATC: 있으면 사용, 없으면 시드 사전(성분/약품명)
+    if(!r.atc){const key=normIng(r.kr)||normIng(r.en); r.atc=SEED[key]||SEED[normIng(r.name)]||"";}
+    const [a1,a2,a3]=deriveATC(r.atc); r.atc1=a1;r.atc2=a2;r.atc3=a3;
+  });
+}
+function daysLeft(exp){if(!exp)return null;const d=(new Date(exp)-today)/864e5;return isNaN(d)?null:Math.floor(d);}
+
+/* ════════ 업로드(CSV=PapaParse / Excel=SheetJS) → 표준헤더 매칭 ════════ */
+function synMatch(header){
+  const h=String(header||'').toLowerCase().replace(/[\s()/_·&-]/g,'');
+  for(const s of STD){ if(s.syn.some(x=>h===x||h.includes(x)||x.includes(h)&&h.length>1)) return s.k; }
+  return null;
+}
+function ingest(aoa){
+  // 헤더행 탐지(약품명/제품명 포함 행)
+  let hi=aoa.findIndex(r=>Array.isArray(r)&&r.some(c=>/약품명|제품명|품목명/.test(String(c))));
+  if(hi<0)hi=0;
+  const headers=aoa[hi]||[];
+  const map={}; headers.forEach((h,ci)=>{const k=synMatch(h);if(k&&!(k in map))map[k]=ci;});
+  const out=[];
+  for(let i=hi+1;i<aoa.length;i++){
+    const r=aoa[i]||[]; if(!r.some(c=>c!=null&&String(c).trim()))continue;
+    const o={}; STD.forEach(s=>{o[s.k]=(s.k in map)?(r[map[s.k]]??""):"";});
+    if(!String(o.name).trim())continue;
+    o.atc1=o.atc2=o.atc3=""; out.push(o);
+  }
+  if(out.length){ROWS=out;}
+  showMapping(map);
+  refresh();
+}
+function showMapping(map){
+  $("#mapPanel").classList.remove('hidden');
+  $("#mapGrid").innerHTML=STD.map(s=>{
+    const ok=s.k in map; const der=s.derive?'<span class="text-brand-purple">↳파생</span>':'';
+    return `<div class="flex items-center gap-2"><span class="${ok?'text-brand-green':'text-slate-300'}">${ok?'●':'○'}</span>
+      <span class="text-slate-600">${s.t}</span> ${ok?'':der||'<span class="text-slate-300 text-[11px]">미매칭</span>'}</div>`;
+  }).join('');
+}
+function parseFile(file){
+  $("#filemeta").textContent=`처리 중… ${file.name}`;
+  const ext=file.name.toLowerCase();
+  if(ext.endsWith('.csv')){
+    Papa.parse(file,{skipEmptyLines:true,complete:res=>{$("#filemeta").textContent=`✓ ${file.name} · ${res.data.length}행`;ingest(res.data);}});
+  }else{
+    const fr=new FileReader();
+    fr.onload=e=>{const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
+      const ws=wb.Sheets[wb.SheetNames[0]];const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null});
+      $("#filemeta").textContent=`✓ ${file.name} · ${aoa.length}행`;ingest(aoa);};
+    fr.readAsArrayBuffer(file);
+  }
+}
+
+/* ════════ 통계 + 차트 ════════ */
+const PALETTE=['#804A87','#019748','#BFA6D9','#2C8FB0','#C8841C','#B23A6B','#2E4A62','#5E3563','#7FB89C','#9080a0'];
+let charts={};
+function donut(id,labels,data){
+  if(charts[id])charts[id].destroy();
+  charts[id]=new Chart($("#"+id),{type:'doughnut',
+    data:{labels,datasets:[{data,backgroundColor:PALETTE,borderWidth:2,borderColor:'#fff'}]},
+    options:{cutout:'62%',plugins:{legend:{position:'right',labels:{font:{family:'Inter',size:11},boxWidth:10,padding:8,color:'#6B6477'}}},
+      responsive:true,maintainAspectRatio:false}});
+}
+function tally(key,labelFn){const m={};ROWS.forEach(r=>{const v=(labelFn?labelFn(r):r[key])||'미분류';m[v]=(m[v]||0)+1;});return m;}
+function renderStats(){
+  const a=tally(null,r=>r.atc1); donut('chartAtc',Object.keys(a),Object.values(a));
+  const f=tally('cls');         donut('chartForm',Object.keys(f),Object.values(f));
+  const g=tally('reg');         donut('chartReg',Object.keys(g),Object.values(g));
+  const n=ROWS.length;
+  $("#k-total").textContent=n;
+  $("#k-match").textContent=n?Math.round(ROWS.filter(r=>r.atc).length/n*100)+'%':'0%';
+  $("#k-narc").textContent=ROWS.filter(r=>r.reg==='향정'||r.reg==='마약').length;
+  $("#k-exp").textContent=ROWS.filter(r=>{const d=daysLeft(r.exp);return d!=null&&d>=0&&d<=90;}).length;
+  $("#k-zero").textContent=ROWS.filter(r=>r.stock===0).length;
+}
+
+/* ════════ 그리드 ════════ */
+const $=s=>document.querySelector(s);
+let FILT={cls:"ALL",reg:"ALL",exp:false},Q="";
+const GRIDCOLS=[["code","약품코드"],["name","약품명"],["cls","구분"],["kr","성분(한글)"],["atc","ATC 1·2·3"],["form","제제"],["ind","적응증"],["mfr","제조사"],["reg","규제"],["ins","급여"],["stock","현재고"],["exp","유효기한"],["loc","위치"],["st","상태"]];
+function atcCell(r){if(!r.atc)return`<span class="atc none"><span>미분류</span></span>`;
+  const c=r.atc.toUpperCase();return`<span class="atc" title="${r.atc1} / ${r.atc2}"><span class="l1">${c[0]}</span><span class="l2">${c.slice(0,3)}</span><span class="l3">${c.length>=5?c.slice(0,5):c.slice(0,4)}</span></span>`;}
+function regBadge(v){const m={일반:'b-gen',향정:'b-narc',마약:'b-drug'};return`<span class="badge ${m[v]||'b-gen'}">${v||'일반'}</span>`;}
+function cvSel(field,val,i){return`<select class="cv" data-cv="${field}" data-i="${i}">`+CV[field].map(o=>`<option ${o===val?'selected':''}>${o}</option>`).join('')+`</select>`;}
+function expCell(r){const d=daysLeft(r.exp);let b='';if(d!=null&&d<0)b=`<span class="badge b-expd">만료</span>`;else if(d!=null&&d<=90)b=`<span class="badge b-exp">D-${d}</span>`;
+  return`<div class="flex items-center gap-1.5">${r.exp||'-'} ${b}</div>`;}
+function render(){
+  $("#head").innerHTML=GRIDCOLS.map(c=>`<th>${c[1]}</th>`).join('');
+  const list=ROWS.map((r,i)=>({r,i})).filter(({r})=>{
+    if(FILT.cls!=="ALL"&&r.cls!==FILT.cls)return false;
+    if(FILT.reg!=="ALL"&&r.reg!==FILT.reg)return false;
+    if(FILT.exp){const d=daysLeft(r.exp);if(!(d!=null&&d<=90))return false;}
+    if(Q){const h=(r.code+r.name+r.en+r.kr).toLowerCase();if(!h.includes(Q))return false;}
+    return true;});
+  $("#body").innerHTML=list.map(({r,i})=>`<tr>
+    <td class="font-semibold text-brand-pd font-mono text-[12px]">${r.code}</td>
+    <td class="font-semibold">${r.name}</td>
+    <td>${cvSel('cls',r.cls,i)}</td>
+    <td class="text-slate-500">${r.kr||'-'}</td>
+    <td>${atcCell(r)}</td>
+    <td><span class="badge ${r.form==='복합'?'b-narc':'b-gen'}">${r.form||'-'}</span></td>
+    <td class="text-slate-500 max-w-[200px] truncate" title="${r.ind||''}">${r.ind||'-'}</td>
+    <td class="text-slate-500">${r.mfr||'-'}</td>
+    <td>${regBadge(r.reg)}</td>
+    <td><span class="badge ${r.ins==='급여'?'b-ins':'b-non'}">${r.ins||'-'}</span></td>
+    <td class="num ${r.stock===0?'text-brand-rose font-bold':''}">${(r.stock||0).toLocaleString()}</td>
+    <td>${expCell(r)}</td>
+    <td class="text-slate-500 text-[12px]">${r.loc||'-'}</td>
+    <td><span class="badge ${r.st==='사용'?'b-use':'b-stop'}">${r.st||'-'}</span></td>
+  </tr>`).join('');
+  $("#rowcount").textContent=`· ${list.length}/${ROWS.length}건`;
+}
+function refresh(){normalizeAll();renderStats();render();}
+
+/* ════════ 이벤트 ════════ */
+const drop=$("#drop");
+drop.addEventListener('click',()=>$("#file").click());
+$("#file").addEventListener('change',e=>{if(e.target.files[0])parseFile(e.target.files[0]);});
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)parseFile(f);});
+$("#filters").addEventListener('click',e=>{const c=e.target.closest('.chip');if(!c)return;
+  const f=c.dataset.f,v=c.dataset.v;
+  if(f==='exp'){FILT.exp=!FILT.exp;c.classList.toggle('on',FILT.exp);}
+  else{FILT[f]=v;document.querySelectorAll(`.chip[data-f="${f}"]`).forEach(x=>x.classList.toggle('on',x===c));}
+  render();});
+$("#q").addEventListener('input',e=>{Q=e.target.value.trim().toLowerCase();render();});
+$("#body").addEventListener('change',e=>{const sel=e.target.closest('select[data-cv]');if(sel){ROWS[+sel.dataset.i][sel.dataset.cv]=sel.value;refresh();}});
+$("#schemaBtn").addEventListener('click',()=>{
+  $("#schemaList").innerHTML=STD.map((s,i)=>`<div class="flex items-center gap-2 p-2 rounded-lg ${s.req?'bg-[#F5EEF6]':'bg-[#FAF8FC]'}">
+    <span class="text-[11px] font-mono text-slate-400">${String(i+1).padStart(2,'0')}</span>
+    <span class="font-semibold text-brand-navy">${s.t}</span>
+    ${s.req?'<span class="badge b-narc ml-auto">필수</span>':s.derive?'<span class="badge b-gen ml-auto">파생</span>':'<span class="badge b-gen ml-auto">선택</span>'}</div>`).join('');
+  $("#modal").classList.remove('hidden');});
+
+refresh();
+</script>
+</body>
+</html>
