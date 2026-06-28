@@ -2685,8 +2685,8 @@ export default function App() {
   /* SPA 뒤로가기: menu 전환을 브라우저 히스토리에 동기화(라우터 미도입·최소 침습).
      popstate→직전 약플로 화면 복원. URL 미변경(새로고침=대시보드, 기존 동작 유지). */
   useEffect(() => {
-    const init = routeFromHash()
-    window.history.replaceState({ ykMenu: init }, '', '#' + init)
+    const raw = (window.location.hash || '') + (window.location.search || '')
+    if (!/access_token|refresh_token|provider_token|type=recovery|[?&]code=|error=/.test(raw)) { const init = routeFromHash(); window.history.replaceState({ ykMenu: init }, '', '#' + init) }
     function onPop(e) { isPopRef.current = true; setMenu((e.state && e.state.ykMenu) || routeFromHash()) }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
