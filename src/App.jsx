@@ -899,14 +899,14 @@ function HeaderFilter({ items, value, onChange, color }) {
 }
 
 /* ═══ 대시보드 — Bento Grid ═══ */
-function HScroll({ children }) {
+function HScroll({ children, noLabel }) {
   const { t } = useTheme();
   const ref = useRef(null);
   const by = (dir) => { const el = ref.current; if (el) el.scrollBy({ left: dir * Math.max(240, el.clientWidth * 0.85), behavior: 'smooth' }) };
   const bst = { width: 26, height: 24, borderRadius: 6, border: '1px solid ' + t.border, background: t.card, color: t.accent, cursor: 'pointer', fontSize: 14, fontWeight: 800, lineHeight: 1, padding: 0, flexShrink: 0 };
   return <div>
     <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, padding: '4px 10px' }}>
-      <span style={{ fontSize: 10, color: t.textL }}>좌우 스크롤</span>
+      {!noLabel && <span style={{ fontSize: 10, color: t.textL }}>좌우 스크롤</span>}
       <div style={{ display: 'inline-flex', gap: 4 }}>
         <button onClick={() => by(-1)} title="왼쪽으로 스크롤" style={bst}>‹</button>
         <button onClick={() => by(1)} title="오른쪽으로 스크롤" style={bst}>›</button>
@@ -1221,6 +1221,12 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
 }
 
 /* ═══ 재고현황 — ★ 사용량 엑셀 업로드 추가 ═══ */
+/* 사용량 수기입력 셀(전년/최근3개월). effect 없음 → lint 안전. 행 reorder는 key=drug_code로 대응. StockStatus 전용. */
+function UsageCell({ value, onSave }) {
+  const { t } = useTheme();
+  const [v, setV] = useState(value == null ? '' : String(value));
+  return <input value={v} inputMode="numeric" onChange={e => setV(e.target.value)} onBlur={() => onSave(v)} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }} style={{ width: '100%', padding: '4px 6px', textAlign: 'right', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 11, background: t.bg, color: t.text, outline: 'none', boxSizing: 'border-box' }} />;
+}
 /* 헤더 메뉴: 텍스트클릭=필터 드롭다운 / 아이콘클릭=정렬 즉시토글(오름→내림→해제, ▲ 1개 회전). StockStatus 전용. 공유 SI/HeaderFilter 미사용. */
 function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
   const { t } = useTheme();
@@ -1263,6 +1269,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
   const sg={전체:merged.length,부족:merged.filter(d=>d.stockStatus==='부족').length,재고없음:merged.filter(d=>d.stockStatus==='재고없음').length,정상:merged.filter(d=>d.stockStatus==='정상').length,과잉:merged.filter(d=>d.stockStatus==='과잉').length}
   const filtered=so(merged.filter(d=>{if(filter!=='전체'&&d.stockStatus!==filter)return false;if(!cats.includes(d.category))return false;if(search.trim()){const q=search.trim().toLowerCase();return d.drug_name?.toLowerCase().includes(q)||d.drug_code?.toLowerCase().includes(q)};return true}));const tp=Math.ceil(filtered.length/PP),paged=filtered.slice((page-1)*PP,page*PP)
   const sc=s=>s==='재고없음'?t.red:s==='부족'?t.amber:s==='과잉'?t.blue:t.green
+  async function saveUsage(d,field,raw){const x=String(raw).trim();const n=x===''?null:Number(x);if(n!=null&&!Number.isFinite(n))return;if((d[field]??null)===(n??null))return;const py=field==='prev_year_usage'?n:(d.prev_year_usage??null);const r3=field==='recent_3m_usage'?n:(d.recent_3m_usage??null);let m=null;if(r3!=null)m=Math.round(r3/3);else if(py!=null)m=Math.round(py/12);const upd={[field]:n,monthly_avg:m,safety_stock:m!=null?Math.round(m*1.5):null,max_stock:m!=null?Math.round(m*3):null};const{error}=await supabase.from('drugs').update(upd).eq('drug_code',d.drug_code);if(!error)onReload?.();else setUMsg('저장 오류: '+error.message)}
   const _u=arr=>[...new Set(arr.filter(v=>v!=null&&String(v).trim()!==''))]
   const hf={category:{items:_u(merged.map(d=>d.category)).sort(),value:cats.length===1?cats[0]:null,on:v=>{setCats(v?[v]:CATS);setPage(1)}},status:{items:_u(drugs.map(d=>d.status)),value:stats.length===1?stats[0]:null,on:v=>{setStats(v?[v]:MAIN_STATS);setPage(1)}},stockStatus:{items:_u(merged.map(d=>d.stockStatus)),value:filter==='전체'?null:filter,on:v=>{setFilter(v||'전체');setPage(1)}}}
   function dl(){const ws=XLSX.utils.json_to_sheet(filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,현재고:d.current_qty,안전재고:d.safety_stock,최대재고:d.max_stock,월평균:d.monthly_avg,사용상태:d.status,재고상태:d.stockStatus})));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'재고');XLSX.writeFile(wb,`재고_${new Date().toISOString().split('T')[0]}.xlsx`)}
@@ -1301,12 +1308,12 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
       </div>
     </div>
     <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',backdropFilter:'blur(12px)'}}>
-      <HScroll><table style={{borderCollapse:'collapse',fontSize:12,tableLayout:'fixed',width:'100%',minWidth:1070}}><colgroup>{[100,200,90,80,80,80,80,90,90,100,80].map((w,ci)=><col key={ci} style={{width:w}}/>)}</colgroup>
-        <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['safety_stock','안전재고'],['max_stock','최대재고'],['monthly_avg','월평균'],['status','사용상태'],['stockStatus','재고상태'],['expiry_date','유효기한'],['','보정']].map(([k,h])=><th key={h} style={k?{...TS(k),background:t.bg,borderRight:'1px solid '+t.border,...(k==='drug_code'?{position:'sticky',left:0,zIndex:6,minWidth:100,maxWidth:100,width:100,borderRight:'1px solid '+t.border}:k==='drug_name'?{position:'sticky',left:100,zIndex:6,borderRight:'1px solid '+t.border}:{})}:{padding:'8px 10px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:11,background:t.bg,borderRight:'1px solid '+t.border}} >{k?<ColMenu colKey={k} label={h} sk={sk} sd={sd} setSort={setSort} filter={hf[k]||null}/>:<span style={{cursor:'default',whiteSpace:'nowrap',fontWeight:700}}>{h}</span>}</th>)}</tr></thead>
-        <tbody>{!paged.length?<tr><td colSpan={10} style={{padding:40,textAlign:'center',color:t.textL}}>없음</td></tr>:paged.map((d,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
+      <HScroll noLabel><table style={{borderCollapse:'collapse',fontSize:12,tableLayout:'fixed',width:'100%',minWidth:1282}}><colgroup>{[100,200,90,80,80,80,92,120,80,90,90,100,80].map((w,ci)=><col key={ci} style={{width:w}}/>)}</colgroup>
+        <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['safety_stock','안전재고'],['max_stock','최대재고'],['prev_year_usage','전년사용량'],['recent_3m_usage','최근3개월사용량'],['monthly_avg','월평균'],['status','사용상태'],['stockStatus','재고상태'],['expiry_date','유효기한'],['','보정']].map(([k,h])=><th key={h} style={k?{...TS(k),background:t.bg,borderRight:'1px solid '+t.border,...(k==='drug_code'?{position:'sticky',left:0,zIndex:6,minWidth:100,maxWidth:100,width:100,borderRight:'1px solid '+t.border}:k==='drug_name'?{position:'sticky',left:100,zIndex:6,borderRight:'1px solid '+t.border}:{})}:{padding:'8px 10px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:11,background:t.bg,borderRight:'1px solid '+t.border}} >{k?<ColMenu colKey={k} label={h} sk={sk} sd={sd} setSort={setSort} filter={hf[k]||null}/>:<span style={{cursor:'default',whiteSpace:'nowrap',fontWeight:700}}>{h}</span>}</th>)}</tr></thead>
+        <tbody>{!paged.length?<tr><td colSpan={13} style={{padding:40,textAlign:'center',color:t.textL}}>없음</td></tr>:paged.map((d,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
           <td style={{padding:'8px 12px',fontSize:10,color:t.textM,textAlign:'left',position:'sticky',left:0,zIndex:2,background:t.card,minWidth:100,maxWidth:100,width:100,overflow:'hidden',borderRight:'1px solid '+t.border}}>{d.drug_code}<NT d={d}/></td><td style={{padding:'8px 12px',fontWeight:600,textAlign:'left',color:t.accent,cursor:'pointer',position:'sticky',left:100,zIndex:2,background:t.card,borderRight:'1px solid '+t.border,minWidth:160,maxWidth:240}} onClick={()=>onEdit(d)} onMouseEnter={e=>{e.currentTarget.style.textDecoration='underline';e.currentTarget.style.color=t.purple}} onMouseLeave={e=>{e.currentTarget.style.textDecoration='none';e.currentTarget.style.color=t.accent}}>{d.drug_name}</td><td style={{padding:'8px 10px',color:t.textM,fontSize:11,borderRight:'1px solid '+t.border}}>{d.category}</td>
           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:d.stockStatus==='재고없음'?t.red:d.stockStatus==='부족'?t.amber:t.text,borderRight:'1px solid '+t.border}}>{d.current_qty?.toLocaleString()}</td>
-          <td style={{padding:'8px 10px',textAlign:'right',color:t.textM,borderRight:'1px solid '+t.border}}>{d.safety_stock||'-'}</td><td style={{padding:'8px 10px',textAlign:'right',color:t.textM,borderRight:'1px solid '+t.border}}>{d.max_stock||'-'}</td><td style={{padding:'8px 10px',textAlign:'right',color:t.textM,borderRight:'1px solid '+t.border}}>{d.monthly_avg||'-'}</td>
+          <td style={{padding:'8px 10px',textAlign:'right',color:t.textM,borderRight:'1px solid '+t.border}}>{d.safety_stock||'-'}</td><td style={{padding:'8px 10px',textAlign:'right',color:t.textM,borderRight:'1px solid '+t.border}}>{d.max_stock||'-'}</td><td style={{padding:'5px 6px',borderRight:'1px solid '+t.border}}><UsageCell key={'py'+d.drug_code} value={d.prev_year_usage} onSave={v=>saveUsage(d,'prev_year_usage',v)}/></td><td style={{padding:'5px 6px',borderRight:'1px solid '+t.border}}><UsageCell key={'r3'+d.drug_code} value={d.recent_3m_usage} onSave={v=>saveUsage(d,'recent_3m_usage',v)}/></td><td style={{padding:'8px 10px',textAlign:'right',color:t.textM,borderRight:'1px solid '+t.border}}>{d.monthly_avg||'-'}</td>
           <td style={{padding:'8px 10px',borderRight:'1px solid '+t.border}}><SB s={d.status}/></td>
           <td style={{padding:'8px 10px',borderRight:'1px solid '+t.border}}><Bd bg={sc(d.stockStatus)+'18'} color={sc(d.stockStatus)}>{d.stockStatus}</Bd></td>
           <td style={{padding:'8px 10',fontSize:11,...exS(d.expiry_date,t),borderRight:'1px solid '+t.border}}>{d.expiry_date||'-'}</td>
