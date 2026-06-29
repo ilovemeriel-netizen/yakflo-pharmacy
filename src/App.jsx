@@ -986,8 +986,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
         {atcSel ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 12, background: atcColor(atcSel.value) + '1A', color: atcColor(atcSel.value), fontSize: 11, fontWeight: 700, border: '1px solid ' + atcColor(atcSel.value) + '40' }}>ATC: {atcSel.value}<span onClick={() => setAtcSel(null)} title="ATC 필터 해제" style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span> : null}
         {_showReset ? <button onClick={_resetF} title='필터 초기화' style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent + '12', color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>필터 초기화{_af > 0 ? ' (' + _af + ')' : ''}</button> : null}
       </div>
-      <HScroll noLabel ends><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead><tr>{[['drug_code', '약품코드'], ['drug_name', '약품명'], ['category', '구분'], ['ingredient_en', '성분(EN)'], ['ingredient_kr', '성분(KR)'], ['atc_l1', 'ATC'], ['compound_type', '복합/단일'], ['manufacturer', '제조사'], ['current_qty', '현재고'], ['insurance_type', '급여'], ['storage_method', '보관'], ['storage_location', '위치'], ['expiry_date', '유효기한'], ['status', '상태']].map(([k, h]) => <th key={k} style={{ ...TS(k), background: t.bg, whiteSpace: 'nowrap', textAlign: k === 'current_qty' ? 'right' : 'left', minWidth: k === 'drug_name' ? 220 : undefined, ...(k === 'drug_code' ? { position: 'sticky', left: 0, zIndex: 6, minWidth: 128, maxWidth: 128, width: 128 } : k === 'drug_name' ? { position: 'sticky', left: 128, zIndex: 6 } : {}) }}><ColMenu colKey={k} label={h} sk={sk} sd={sd} setSort={setSort} filter={hf[k] || null} /></th>)}</tr></thead>
+      <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={setSort} hf={hf} hscroll={{noLabel:true,ends:true}} cols={[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['ingredient_en','성분(EN)'],['ingredient_kr','성분(KR)'],['atc_l1','ATC'],['compound_type','복합/단일'],['manufacturer','제조사'],['current_qty','현재고'],['insurance_type','급여'],['storage_method','보관'],['storage_location','위치'],['expiry_date','유효기한'],['status','상태']].map(([k,h])=>({k,h,th:{whiteSpace:'nowrap',textAlign:k==='current_qty'?'right':'left',...(k==='drug_name'?{minWidth:220}:{})},...(k==='drug_code'?{sticky:{left:0,w:128}}:k==='drug_name'?{sticky:{left:128}}:{})}))}>
         <tbody>{!sorted.length ? <tr><td colSpan={14} style={{ padding: 32, textAlign: 'center', color: t.textL, fontSize: 12 }}>검색 결과 없음</td></tr> : sorted.map((d, i) => { const sm = d.storage_method || ''; const cold = sm.includes('냉장'); const shade = sm.includes('차광'); const smBg = cold ? t.blueL : shade ? t.amberL : t.bg; const smFg = cold ? t.blue : shade ? t.amber : t.textM; const cmp = d.compound_type || ''; const acc = atcColor(d.atc_l1); const atcChips = [d.atc_l1, d.atc_l2, d.atc_l3].filter(v => v && String(v).trim()); return <tr key={i} style={{ borderBottom: '1px solid ' + t.border, background: i % 2 ? t.bg : '' }} onMouseEnter={e => { const r = e.currentTarget; r.style.background = t.glass; const c = r.children; if (c[0]) c[0].style.background = t.glass; if (c[1]) c[1].style.background = t.glass }} onMouseLeave={e => { const r = e.currentTarget; const z = i % 2 ? t.bg : ''; const sz = i % 2 ? t.bg : t.card; r.style.background = z; const c = r.children; if (c[0]) c[0].style.background = sz; if (c[1]) c[1].style.background = sz }}>
           <td style={{ padding: '9px 12px', fontSize: 10, color: t.textM, textAlign: 'left', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, minWidth: 128, maxWidth: 128, width: 128, overflow: 'hidden', background: i % 2 ? t.bg : t.card }}>{d.drug_code}<NT d={d} /></td>
           <td style={{ padding: '8px 12px', fontWeight: 600, textAlign: 'left', color: t.accent, cursor: 'pointer', minWidth: 220, maxWidth: 280, position: 'sticky', left: 128, zIndex: 2, background: i % 2 ? t.bg : t.card }} onClick={() => onEdit(d)} onMouseEnter={e => { e.currentTarget.style.color = t.purple }} onMouseLeave={e => { e.currentTarget.style.color = t.accent }} title={d.drug_name || ''}><span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.3 }}>{d.drug_name}</span></td>
@@ -1004,7 +1003,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
           <td style={{ padding: '9px 12px', fontSize: 11, ...exS(d.expiry_date, t) }}>{d.expiry_date || '-'}</td>
           <td style={{ padding: '9px 12px' }}><SB s={d.status} /></td>
         </tr> })}</tbody>
-      </table></HScroll>
+      </StandardTable>
     </div><Ft />
   </div>
 }
@@ -1264,6 +1263,25 @@ function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
     </>, document.body)}
   </span>;
 }
+/* 표준 표 셸(공통 추출): HScroll+table+colgroup+thead(ColMenu). tbody는 children으로 받음(화면별 bespoke 무변경). 순수 추출·동작/외형 무변경. */
+function StandardTable({ cols, TS, sk, sd, setSort, hf, t, grid, layout, colWidths, minWidth, headerBg, hscroll, children }) {
+  const bg = headerBg || t.bg;
+  const br = grid ? { borderRight: '1px solid ' + t.border } : {};
+  const tableStyle = layout === 'fixed'
+    ? { borderCollapse: 'collapse', fontSize: 12, tableLayout: 'fixed', width: '100%', minWidth: minWidth }
+    : { width: '100%', borderCollapse: 'collapse', fontSize: 12 };
+  return <HScroll {...(hscroll || {})}><table style={tableStyle}>
+    {colWidths ? <colgroup>{colWidths.map((w, ci) => <col key={ci} style={{ width: w }} />)}</colgroup> : null}
+    <thead><tr>{cols.map(c => {
+      const k = c.k;
+      const th = c.plain
+        ? { padding: '8px 10px', textAlign: 'center', color: t.textM, fontWeight: 600, borderBottom: '1px solid ' + t.border, fontSize: 11, background: bg, ...br, ...(c.th || {}) }
+        : { ...TS(k), background: bg, ...br, ...(c.sticky ? { position: 'sticky', left: c.sticky.left, zIndex: 6, ...(c.sticky.w ? { minWidth: c.sticky.w, maxWidth: c.sticky.w, width: c.sticky.w } : {}), ...br } : {}), ...(c.th || {}) };
+      return <th key={c.h} style={th}>{k ? <ColMenu colKey={k} label={c.h} sk={sk} sd={sd} setSort={setSort} filter={hf[k] || null} /> : <span style={{ cursor: 'default', whiteSpace: 'nowrap', fontWeight: 700 }}>{c.h}</span>}</th>;
+    })}</tr></thead>
+    {children}
+  </table></HScroll>;
+}
 function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
   const{t}=useTheme();
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
@@ -1356,8 +1374,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
       </div>
     </div>
     <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',backdropFilter:'blur(12px)'}}>
-      <HScroll noLabel ends><table style={{borderCollapse:'collapse',fontSize:12,tableLayout:'fixed',width:'100%',minWidth:1306}}><colgroup>{[100,200,90,80,80,80,92,120,104,90,90,100,80].map((w,ci)=><col key={ci} style={{width:w}}/>)}</colgroup>
-        <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['safety_stock','안전재고'],['max_stock','최대재고'],['prev_year_usage','전년사용량'],['recent_3m_usage','최근3개월사용량'],['monthly_avg','월평균'],['status','사용상태'],['stockStatus','재고상태'],['expiry_date','유효기한'],['','보정']].map(([k,h])=><th key={h} style={k?{...TS(k),background:t.bg,borderRight:'1px solid '+t.border,...(k==='drug_code'?{position:'sticky',left:0,zIndex:6,minWidth:100,maxWidth:100,width:100,borderRight:'1px solid '+t.border}:k==='drug_name'?{position:'sticky',left:100,zIndex:6,borderRight:'1px solid '+t.border}:{})}:{padding:'8px 10px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:11,background:t.bg,borderRight:'1px solid '+t.border}} >{k?<ColMenu colKey={k} label={h} sk={sk} sd={sd} setSort={(k,sdv)=>{setSort(k,sdv);setPage(1)}} filter={hf[k]||null}/>:<span style={{cursor:'default',whiteSpace:'nowrap',fontWeight:700}}>{h}</span>}</th>)}</tr></thead>
+      <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={(k,sdv)=>{setSort(k,sdv);setPage(1)}} hf={hf} grid layout="fixed" minWidth={1306} colWidths={[100,200,90,80,80,80,92,120,104,90,90,100,80]} hscroll={{noLabel:true,ends:true}} cols={[{k:'drug_code',h:'약품코드',sticky:{left:0,w:100}},{k:'drug_name',h:'약품명',sticky:{left:100}},{k:'category',h:'구분'},{k:'current_qty',h:'현재고'},{k:'safety_stock',h:'안전재고'},{k:'max_stock',h:'최대재고'},{k:'prev_year_usage',h:'전년사용량'},{k:'recent_3m_usage',h:'최근3개월사용량'},{k:'monthly_avg',h:'월평균'},{k:'status',h:'사용상태'},{k:'stockStatus',h:'재고상태'},{k:'expiry_date',h:'유효기한'},{k:'',h:'보정',plain:true}]}>
         <tbody>{!paged.length?<tr><td colSpan={13} style={{padding:40,textAlign:'center',color:t.textL}}>없음</td></tr>:paged.map((d,i)=>{const dr=drafts[d.drug_code];const dirty=!!dr;const pyV=dirty?dr.py:origStr(d.prev_year_usage);const r3V=dirty?dr.r3:origStr(d.recent_3m_usage);let pM=d.monthly_avg,pSf=d.safety_stock,pMx=d.max_stock,pSt=d.stockStatus;if(dirty){const pv=pNum(dr.py),rv=pNum(dr.r3);const pvN=typeof pv==='number'?pv:null,rvN=typeof rv==='number'?rv:null;let m=null;if(rvN!=null)m=Math.round(rvN/3);else if(pvN!=null)m=Math.round(pvN/12);pM=m;pSf=m!=null?Math.round(m*1.5):null;pMx=m!=null?Math.round(m*3):null;const q=d.current_qty||0;pSt=q===0?'재고없음':(pSf>0&&q<pSf)?'부족':(pMx>0&&q>pMx)?'과잉':'정상'}const unused=!d.prev_year_usage&&!d.recent_3m_usage;return <tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
           <td style={{padding:'8px 12px',fontSize:10,color:t.textM,textAlign:'left',position:'sticky',left:0,zIndex:2,background:t.card,minWidth:100,maxWidth:100,width:100,overflow:'hidden',borderRight:'1px solid '+t.border}}>{d.drug_code}<NT d={d}/></td><td style={{padding:'8px 12px',fontWeight:600,textAlign:'left',color:t.accent,cursor:'pointer',position:'sticky',left:100,zIndex:2,background:t.card,borderRight:'1px solid '+t.border,minWidth:160,maxWidth:240}} onClick={()=>onEdit(d)} onMouseEnter={e=>{e.currentTarget.style.textDecoration='underline';e.currentTarget.style.color=t.purple}} onMouseLeave={e=>{e.currentTarget.style.textDecoration='none';e.currentTarget.style.color=t.accent}}>{d.drug_name}</td><td style={{padding:'8px 10px',color:t.textM,fontSize:11,borderRight:'1px solid '+t.border}}>{d.category}</td>
           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:d.stockStatus==='재고없음'?t.red:d.stockStatus==='부족'?t.amber:t.text,borderRight:'1px solid '+t.border}}>{d.current_qty?.toLocaleString()}</td>
@@ -1367,7 +1384,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
           <td style={{padding:'8px 10',fontSize:11,...exS(d.expiry_date,t),borderRight:'1px solid '+t.border}}>{d.expiry_date||'-'}</td>
           <td style={{padding:'8px 6px',textAlign:'center',borderRight:'1px solid '+t.border}}>{d.last_adjusted_date&&<div style={{fontSize:8,color:t.amber,fontWeight:600,marginBottom:2}}>{d.last_adjusted_date}</div>}<button onClick={()=>onAdjust(d)} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.amber}`,background:d.last_adjusted_date?t.amberL:'transparent',color:t.amber,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>보정</button></td>
         </tr>})}</tbody>
-      </table></HScroll>
+      </StandardTable>
       <Pg page={page} setPage={setPage} tp={tp} fl={filtered} pp={PP} ends/>
     </div><Ft/>
   </div>
@@ -1469,8 +1486,7 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
     <NarcDonuts key={resetN} used={used} t={t} donutF={donutF} onPick={(level,value)=>{setDonutF({level,value});setPage(1)}} onClear={()=>{setDonutF(null);setPage(1)}}/>
     <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',backdropFilter:'blur(12px)'}}>
       <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.purple,display:'flex',justifyContent:'space-between'}}><span>{cardF==='전체'?'향정·마약 전체':cardF} 목록</span><span style={{display:'flex',alignItems:'center',gap:10}}><span style={{color:t.textM,fontWeight:500}}>{filtered.length}개</span>{showReset?<button onClick={resetFilters} title="처음 상태로 초기화" style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accent+'12',color:t.accent,cursor:'pointer',fontSize:11,fontWeight:700,whiteSpace:'nowrap'}}>필터 초기화{fcount>0?' ('+fcount+')':''}</button>:null}</span></div>
-      <HScroll noLabel ends><table style={{borderCollapse:'collapse',fontSize:12,tableLayout:'fixed',width:'100%',minWidth:1860}}><colgroup>{CW.map((w,ci)=><col key={ci} style={{width:w}}/>)}</colgroup>
-        <thead><tr>{COLS.map(([k,h])=><th key={h} style={k?{...TS(k),background:t.bg,borderRight:'1px solid '+t.border,...(k==='drug_code'?{position:'sticky',left:0,zIndex:6,minWidth:96,maxWidth:96,width:96}:k==='drug_name'?{position:'sticky',left:96,zIndex:6}:{})}:{padding:'8px 10px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:11,background:t.bg,borderRight:'1px solid '+t.border}} >{k?<ColMenu colKey={k} label={h} sk={sk} sd={sd} setSort={(kk,dd)=>{setSort(kk,dd);setPage(1)}} filter={hf[k]||null}/>:<span style={{cursor:'default',whiteSpace:'nowrap',fontWeight:700}}>{h}</span>}</th>)}</tr></thead>
+      <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={(kk,dd)=>{setSort(kk,dd);setPage(1)}} hf={hf} grid layout="fixed" minWidth={1860} colWidths={CW} hscroll={{noLabel:true,ends:true}} cols={COLS.map(([k,h])=>({k,h,plain:!k,...(k==='drug_code'?{sticky:{left:0,w:96}}:k==='drug_name'?{sticky:{left:96}}:{})}))}>
         <tbody>{!paged.length?<tr><td colSpan={COLS.length} style={{padding:40,textAlign:'center',color:t.textL}}>없음</td></tr>:paged.map((d,i)=>{const days=exD(d.expiry_date);const nt=getNT(d);return<tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
           <td style={{padding:'8px 12px',fontSize:10,color:t.textM,textAlign:'left',position:'sticky',left:0,zIndex:2,background:t.card,minWidth:96,maxWidth:96,width:96,overflow:'hidden',borderRight:'1px solid '+t.border}}>{d.drug_code}</td>
           <td style={{padding:'8px 12px',fontWeight:600,textAlign:'left',color:t.accent,cursor:'pointer',position:'sticky',left:96,zIndex:2,background:t.card,borderRight:'1px solid '+t.border,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} onClick={()=>onEdit(d)} onMouseEnter={e=>{e.currentTarget.style.textDecoration='underline';e.currentTarget.style.color=t.purple}} onMouseLeave={e=>{e.currentTarget.style.textDecoration='none';e.currentTarget.style.color=t.accent}}>{d.drug_name}</td>
@@ -1493,7 +1509,7 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
           <td style={cellC}><SB s={d.status}/></td>
           <td style={{padding:'8px 6px',textAlign:'center',borderRight:'1px solid '+t.border}}><button onClick={()=>onAdjust(d)} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.amber}`,background:'transparent',color:t.amber,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>보정</button></td>
         </tr>})}</tbody>
-      </table></HScroll>
+      </StandardTable>
       <Pg page={page} setPage={setPage} tp={tp} fl={filtered} pp={PP} ends/>
     </div><Ft/>
   </div>
