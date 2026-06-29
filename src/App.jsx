@@ -1155,34 +1155,8 @@ function DateCell({ value, onChange }) {
     </div>}
   </span>;
 }
-function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
-  const{t}=useTheme();const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
-  const[editRow,setEditRow]=useState(null);const[editVal,setEditVal]=useState({})
-  const fd=drugs.filter(d=>cats.includes(d.category)&&stats.includes(d.status))
-  const unusedDays=d=>{if(!d.last_used_date)return null;return Math.floor((new Date()-new Date(d.last_used_date))/864e5)}
-  const isUnused=d=>{const days=unusedDays(d);return days!==null&&days>=365}
-  /* 알림상태 수식: <=0 만료, <=30 긴급, <=60 주의, <=90 확인, 그외 정상 */
-  const alertSt=days=>{if(days===null)return{text:'',c:t.textL,bg:''};if(days<=0)return{text:'★만료★',c:'#fff',bg:t.red};if(days<=30)return{text:'▲긴급▲',c:'#fff',bg:'#E65100'};if(days<=60)return{text:'◆주의◆',c:'#333',bg:'#FFD600'};if(days<=90)return{text:'●확인●',c:'#fff',bg:t.blue};return{text:'정상',c:t.green,bg:''}}
-  const g={urgent:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=30}),warning:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>30&&x<=90}),notice:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>90&&x<=180}),narcotic:drugs.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180&&isN(d)&&cats.includes(d.category)}),unused:fd.filter(d=>isUnused(d))}
-  useEffect(()=>{if(focusLevel)setALv(focusLevel)},[focusLevel])
-  async function saveRow(d){
-    const ud={}
-    if(editVal.last_used_dept!==undefined)ud.last_used_dept=editVal.last_used_dept
-    if(editVal.last_used_date!==undefined)ud.last_used_date=editVal.last_used_date||null
-    if(editVal.recommended_action!==undefined)ud.recommended_action=editVal.recommended_action||null
-    if(editVal.expiry_notes!==undefined)ud.expiry_notes=editVal.expiry_notes||null
-    if(Object.keys(ud).length){
-      let res=await supabase.from('drugs').update(ud).eq('drug_code',d.drug_code)
-      for(let retry=0;retry<3&&res.error&&res.error.message?.includes('column');retry++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete ud[m[1]];res=await supabase.from('drugs').update(ud).eq('drug_code',d.drug_code)}
-      onReload?.()
-    }
-    setEditRow(null);setEditVal({})
-  }
-  function startEdit(d){setEditRow(d.drug_code);setEditVal({last_used_dept:d.last_used_dept||'',last_used_date:d.last_used_date||'',recommended_action:d.recommended_action||'',expiry_notes:d.expiry_notes||''})}
-  async function saveNote(d,val){if(val===(d.expiry_notes||''))return;let res=await supabase.from('drugs').update({expiry_notes:val||null}).eq('drug_code',d.drug_code);for(let r=0;r<2&&res.error&&res.error.message?.includes('column');r++){res=await supabase.from('drugs').update({}).eq('drug_code',d.drug_code)};onReload?.()}  function dlE(){const all=[...g.urgent,...g.warning,...g.notice,...g.narcotic,...g.unused];const ws=XLSX.utils.json_to_sheet(all.map(d=>{const days=exD(d.expiry_date);const a=alertSt(days);const uD=unusedDays(d);return{약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,현재고:d.current_qty||0,유효기한:d.expiry_date||'',남은일수:days,알림상태:a.text,최종사용과:d.last_used_dept||'',최종사용일:d.last_used_date||'','미사용기간(일)':uD||'',미사용알림:uD!==null&&uD>365?'■미사용■':'',권장조치:d.recommended_action||'',비고:d.expiry_notes||'',사용상태:d.status,향정:getNT(d)}}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'유효기한');XLSX.writeFile(wb,`유효기한_${new Date().toISOString().split('T')[0]}.xlsx`)}
-  const lvs=[{k:'urgent',l:'긴급',sub:'≤30일',c:t.red},{k:'warning',l:'주의',sub:'31~90일',c:t.amber},{k:'notice',l:'확인',sub:'91~180일',c:t.blue},{k:'narcotic',l:'향정마약',sub:'≤180일',c:t.purple},{k:'unused',l:'미사용',sub:'1년 이상',c:'#B71C1C'}]
-  const ip2={padding:'4px 6px',border:`1px solid ${t.border}`,borderRadius:4,fontSize:10,outline:'none',background:t.bg,color:t.text}
-  function ET({items,color}){const{so,TS,sk,sd,setSort}=useSort('expiry_date');const[hfV,setHfV]=useState({})
+/* 유효기한 표 — ExpiryAlert에서 모듈 추출(component-in-render 리마운트 제거 → 편집 시 가로 스크롤 보존). 렌더/동작 동일. */
+function ET({ items, color, editRow, editVal, setEditVal, startEdit, saveRow, saveNote, onEdit, unusedDays, isUnused, alertSt, ip2 }) { const { t } = useTheme(); const{so,TS,sk,sd,setSort}=useSort('expiry_date');const[hfV,setHfV]=useState({})
     /* 남은일수·미사용기간 사전 계산 → 정렬 가능 */
     const withCalc=items.map(d=>{const rd=exD(d.expiry_date);const ud=unusedDays(d);return{...d,_remainDays:rd,_unusedDays:ud,_alertStatus:alertSt(rd).text}})
     const sorted=so(withCalc);if(!sorted.length)return<div style={{padding:16,textAlign:'center',color:t.textL,fontSize:12}}>해당 없음</div>
@@ -1211,6 +1185,34 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
         <td style={{padding:'5px 6px'}}><SB s={d.status}/></td>
         {isEd&&<td style={{padding:'5px 4px',whiteSpace:'nowrap'}}><button onClick={()=>saveRow(d)} style={{padding:'2px 8px',borderRadius:4,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>저장</button></td>}
       </tr>})}</tbody></StandardTable>}
+function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
+  const{t}=useTheme();const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
+  const[editRow,setEditRow]=useState(null);const[editVal,setEditVal]=useState({})
+  const fd=drugs.filter(d=>cats.includes(d.category)&&stats.includes(d.status))
+  const unusedDays=d=>{if(!d.last_used_date)return null;return Math.floor((new Date()-new Date(d.last_used_date))/864e5)}
+  const isUnused=d=>{const days=unusedDays(d);return days!==null&&days>=365}
+  /* 알림상태 수식: <=0 만료, <=30 긴급, <=60 주의, <=90 확인, 그외 정상 */
+  const alertSt=days=>{if(days===null)return{text:'',c:t.textL,bg:''};if(days<=0)return{text:'★만료★',c:'#fff',bg:t.red};if(days<=30)return{text:'▲긴급▲',c:'#fff',bg:'#E65100'};if(days<=60)return{text:'◆주의◆',c:'#333',bg:'#FFD600'};if(days<=90)return{text:'●확인●',c:'#fff',bg:t.blue};return{text:'정상',c:t.green,bg:''}}
+  const g={urgent:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=30}),warning:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>30&&x<=90}),notice:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>90&&x<=180}),narcotic:drugs.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180&&isN(d)&&cats.includes(d.category)}),unused:fd.filter(d=>isUnused(d))}
+  useEffect(()=>{if(focusLevel)setALv(focusLevel)},[focusLevel])
+  async function saveRow(d){
+    const ud={}
+    if(editVal.last_used_dept!==undefined)ud.last_used_dept=editVal.last_used_dept
+    if(editVal.last_used_date!==undefined)ud.last_used_date=editVal.last_used_date||null
+    if(editVal.recommended_action!==undefined)ud.recommended_action=editVal.recommended_action||null
+    if(editVal.expiry_notes!==undefined)ud.expiry_notes=editVal.expiry_notes||null
+    if(Object.keys(ud).length){
+      let res=await supabase.from('drugs').update(ud).eq('drug_code',d.drug_code)
+      for(let retry=0;retry<3&&res.error&&res.error.message?.includes('column');retry++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete ud[m[1]];res=await supabase.from('drugs').update(ud).eq('drug_code',d.drug_code)}
+      onReload?.()
+    }
+    setEditRow(null);setEditVal({})
+  }
+  function startEdit(d){setEditRow(d.drug_code);setEditVal({last_used_dept:d.last_used_dept||'',last_used_date:d.last_used_date||'',recommended_action:d.recommended_action||'',expiry_notes:d.expiry_notes||''})}
+  async function saveNote(d,val){if(val===(d.expiry_notes||''))return;let res=await supabase.from('drugs').update({expiry_notes:val||null}).eq('drug_code',d.drug_code);for(let r=0;r<2&&res.error&&res.error.message?.includes('column');r++){res=await supabase.from('drugs').update({}).eq('drug_code',d.drug_code)};onReload?.()}  function dlE(){const all=[...g.urgent,...g.warning,...g.notice,...g.narcotic,...g.unused];const ws=XLSX.utils.json_to_sheet(all.map(d=>{const days=exD(d.expiry_date);const a=alertSt(days);const uD=unusedDays(d);return{약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,현재고:d.current_qty||0,유효기한:d.expiry_date||'',남은일수:days,알림상태:a.text,최종사용과:d.last_used_dept||'',최종사용일:d.last_used_date||'','미사용기간(일)':uD||'',미사용알림:uD!==null&&uD>365?'■미사용■':'',권장조치:d.recommended_action||'',비고:d.expiry_notes||'',사용상태:d.status,향정:getNT(d)}}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'유효기한');XLSX.writeFile(wb,`유효기한_${new Date().toISOString().split('T')[0]}.xlsx`)}
+  const lvs=[{k:'urgent',l:'긴급',sub:'≤30일',c:t.red},{k:'warning',l:'주의',sub:'31~90일',c:t.amber},{k:'notice',l:'확인',sub:'91~180일',c:t.blue},{k:'narcotic',l:'향정마약',sub:'≤180일',c:t.purple},{k:'unused',l:'미사용',sub:'1년 이상',c:'#B71C1C'}]
+  const ip2={padding:'4px 6px',border:`1px solid ${t.border}`,borderRadius:4,fontSize:10,outline:'none',background:t.bg,color:t.text}
+
   const show=aLv?lvs.filter(l=>l.k===aLv):lvs.filter(l=>l.k!=='unused'||g.unused.length>0)
   return<div style={{padding:'20px 24px'}}>
     <div className="no-print" style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'10px 16px',marginBottom:12,display:'flex',alignItems:'center',flexWrap:'wrap',gap:6}}>
@@ -1219,7 +1221,7 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
     </div>
     <div style={{display:'grid',gridTemplateColumns:`repeat(${g.unused.length>0?5:4},1fr)`,gap:8,marginBottom:14}}>{(g.unused.length>0?lvs:lvs.slice(0,4)).map(l=><div key={l.k} onClick={()=>setALv(aLv===l.k?null:l.k)} style={{background:t.card,border:`1px solid ${aLv===l.k?l.c:t.border}`,borderRadius:12,padding:'14px 16px',cursor:'pointer',transition:'all .15s',boxShadow:aLv===l.k?`0 0 12px ${l.c}15`:'none'}} onMouseEnter={e=>e.currentTarget.style.borderColor=l.c} onMouseLeave={e=>{if(aLv!==l.k)e.currentTarget.style.borderColor=t.border}}><div style={{fontSize:12,color:l.c,fontWeight:700}}>{l.l}</div><div style={{fontSize:28,fontWeight:700,color:l.c,marginTop:4}}>{g[l.k].length}</div><div style={{fontSize:10,color:t.textM,marginTop:2}}>{l.sub}</div></div>)}</div>
     {aLv&&<button className="no-print" onClick={()=>setALv(null)} style={{padding:'5px 14px',borderRadius:6,border:`1px solid ${t.border}`,background:t.card,color:t.textM,cursor:'pointer',fontSize:11,marginBottom:8}}>← 전체 보기</button>}
-    {show.map(l=><div key={l.k} style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',marginBottom:12}}><div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,display:'flex',alignItems:'center',gap:8,background:l.c+'08'}}><span style={{fontWeight:700,fontSize:13,color:l.c}}>{l.l}</span><span style={{fontSize:11,color:t.textM}}>{l.sub}</span><span style={{marginLeft:'auto',background:l.c,color:'#fff',borderRadius:8,padding:'2px 12px',fontSize:11,fontWeight:700}}>{g[l.k].length}</span></div><ET items={g[l.k]} color={l.c}/></div>)}
+    {show.map(l=><div key={l.k} style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',marginBottom:12}}><div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,display:'flex',alignItems:'center',gap:8,background:l.c+'08'}}><span style={{fontWeight:700,fontSize:13,color:l.c}}>{l.l}</span><span style={{fontSize:11,color:t.textM}}>{l.sub}</span><span style={{marginLeft:'auto',background:l.c,color:'#fff',borderRadius:8,padding:'2px 12px',fontSize:11,fontWeight:700}}>{g[l.k].length}</span></div><ET items={g[l.k]} color={l.c} editRow={editRow} editVal={editVal} setEditVal={setEditVal} startEdit={startEdit} saveRow={saveRow} saveNote={saveNote} onEdit={onEdit} unusedDays={unusedDays} isUnused={isUnused} alertSt={alertSt} ip2={ip2}/></div>)}
     <Ft/>
   </div>
 }
