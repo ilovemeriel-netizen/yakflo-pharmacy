@@ -1182,16 +1182,17 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
   async function saveNote(d,val){if(val===(d.expiry_notes||''))return;let res=await supabase.from('drugs').update({expiry_notes:val||null}).eq('drug_code',d.drug_code);for(let r=0;r<2&&res.error&&res.error.message?.includes('column');r++){res=await supabase.from('drugs').update({}).eq('drug_code',d.drug_code)};onReload?.()}  function dlE(){const all=[...g.urgent,...g.warning,...g.notice,...g.narcotic,...g.unused];const ws=XLSX.utils.json_to_sheet(all.map(d=>{const days=exD(d.expiry_date);const a=alertSt(days);const uD=unusedDays(d);return{약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,현재고:d.current_qty||0,유효기한:d.expiry_date||'',남은일수:days,알림상태:a.text,최종사용과:d.last_used_dept||'',최종사용일:d.last_used_date||'','미사용기간(일)':uD||'',미사용알림:uD!==null&&uD>365?'■미사용■':'',권장조치:d.recommended_action||'',비고:d.expiry_notes||'',사용상태:d.status,향정:getNT(d)}}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'유효기한');XLSX.writeFile(wb,`유효기한_${new Date().toISOString().split('T')[0]}.xlsx`)}
   const lvs=[{k:'urgent',l:'긴급',sub:'≤30일',c:t.red},{k:'warning',l:'주의',sub:'31~90일',c:t.amber},{k:'notice',l:'확인',sub:'91~180일',c:t.blue},{k:'narcotic',l:'향정마약',sub:'≤180일',c:t.purple},{k:'unused',l:'미사용',sub:'1년 이상',c:'#B71C1C'}]
   const ip2={padding:'4px 6px',border:`1px solid ${t.border}`,borderRadius:4,fontSize:10,outline:'none',background:t.bg,color:t.text}
-  function ET({items,color}){const{hs,so,SI,TS}=useSort('expiry_date');const[hfV,setHfV]=useState({})
+  function ET({items,color}){const{so,TS,sk,sd,setSort}=useSort('expiry_date');const[hfV,setHfV]=useState({})
     /* 남은일수·미사용기간 사전 계산 → 정렬 가능 */
-    const withCalc=items.map(d=>{const rd=exD(d.expiry_date);const ud=unusedDays(d);return{...d,_remainDays:rd,_unusedDays:ud}})
+    const withCalc=items.map(d=>{const rd=exD(d.expiry_date);const ud=unusedDays(d);return{...d,_remainDays:rd,_unusedDays:ud,_alertStatus:alertSt(rd).text}})
     const sorted=so(withCalc);if(!sorted.length)return<div style={{padding:16,textAlign:'center',color:t.textL,fontSize:12}}>해당 없음</div>
-    const cols=[['drug_code','코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['expiry_date','유효기한'],['_remainDays','남은일수'],['_remainDays','알림상태'],['last_used_dept','최종사용과'],['last_used_date','최종사용일'],['_unusedDays','미사용기간(일)'],['_unusedDays','미사용알림'],['recommended_action','권장조치'],['expiry_notes','비고'],['status','사용상태']]
+    const cols=[['drug_code','코드'],['drug_name','약품명'],['category','구분'],['current_qty','현재고'],['expiry_date','유효기한'],['_remainDays','남은일수'],['_alertStatus','알림상태'],['last_used_dept','최종사용과'],['last_used_date','최종사용일'],['_unusedDays','미사용기간(일)'],['_unusedDays','미사용알림'],['recommended_action','권장조치'],['expiry_notes','비고'],['status','사용상태']]
     const _uniq=a=>[...new Set(a.filter(v=>v!=null&&String(v).trim()!==''))].sort()
     const _hfopt={'구분':_uniq(items.map(d=>d.category)),'알림상태':_uniq(items.map(d=>alertSt(exD(d.expiry_date)).text)),'최종사용과':_uniq(items.map(d=>d.last_used_dept)),'권장조치':_uniq(items.map(d=>d.recommended_action)),'사용상태':_uniq(items.map(d=>d.status))}
     const _hfget=h=>h==='알림상태'?(d=>alertSt(exD(d.expiry_date)).text):h==='구분'?(d=>d.category):h==='최종사용과'?(d=>d.last_used_dept||''):h==='권장조치'?(d=>d.recommended_action||''):(d=>d.status)
     const rows=sorted.filter(d=>Object.keys(_hfopt).every(h=>!hfV[h]||_hfget(h)(d)===hfV[h]))
-    return<HScroll><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr>{cols.map(([k,h])=><th key={h} style={k?{...TS(k),fontSize:10,whiteSpace:'nowrap'}:{padding:'8px 6px',textAlign:'center',color:t.textM,fontWeight:600,borderBottom:`1px solid ${t.border}`,fontSize:10,whiteSpace:'nowrap'}}><span onClick={()=>k&&hs(k)} style={{cursor:k?'pointer':'default'}}>{h}{k&&<SI col={k}/>}</span>{_hfopt[h]?<HeaderFilter items={_hfopt[h]} value={hfV[h]||null} onChange={v=>setHfV(pp=>({...pp,[h]:v}))} color={t.accent}/>:null}</th>)}</tr></thead>
+    const hf={category:{items:_hfopt['구분'],value:hfV['구분']||null,on:v=>setHfV(pp=>({...pp,'구분':v}))},_alertStatus:{items:_hfopt['알림상태'],value:hfV['알림상태']||null,on:v=>setHfV(pp=>({...pp,'알림상태':v}))},last_used_dept:{items:_hfopt['최종사용과'],value:hfV['최종사용과']||null,on:v=>setHfV(pp=>({...pp,'최종사용과':v}))},recommended_action:{items:_hfopt['권장조치'],value:hfV['권장조치']||null,on:v=>setHfV(pp=>({...pp,'권장조치':v}))},status:{items:_hfopt['사용상태'],value:hfV['사용상태']||null,on:v=>setHfV(pp=>({...pp,'사용상태':v}))}}
+    return<StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={setSort} hf={hf} fontSize={11} cols={cols.map(([k,h])=>({k,h,th:{whiteSpace:'nowrap'}}))}>
     <tbody>{rows.map((d,i)=>{const days=exD(d.expiry_date);const a=alertSt(days);const uDays=unusedDays(d);const isEd=editRow===d.drug_code;const uu=isUnused(d)
       return<tr key={i} style={{borderBottom:`1px solid ${t.border}`,background:uu?t.redL+'60':''}} onMouseEnter={e=>{if(!uu)e.currentTarget.style.background=t.glass}} onMouseLeave={e=>{if(!uu)e.currentTarget.style.background=''}}>
         <td style={{padding:'5px 8px',fontSize:10,color:t.textM,textAlign:'left'}}>{d.drug_code}<NT d={d}/></td>
@@ -1209,7 +1210,7 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
         <td style={{padding:'5px 6px'}}><input defaultValue={d.expiry_notes||''} onBlur={e=>saveNote(d,e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.target.blur()}} placeholder="입력" style={{...ip2,width:80,fontSize:9}}/></td>
         <td style={{padding:'5px 6px'}}><SB s={d.status}/></td>
         {isEd&&<td style={{padding:'5px 4px',whiteSpace:'nowrap'}}><button onClick={()=>saveRow(d)} style={{padding:'2px 8px',borderRadius:4,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>저장</button></td>}
-      </tr>})}</tbody></table></HScroll>}
+      </tr>})}</tbody></StandardTable>}
   const show=aLv?lvs.filter(l=>l.k===aLv):lvs.filter(l=>l.k!=='unused'||g.unused.length>0)
   return<div style={{padding:'20px 24px'}}>
     <div className="no-print" style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'10px 16px',marginBottom:12,display:'flex',alignItems:'center',flexWrap:'wrap',gap:6}}>
@@ -1263,12 +1264,12 @@ function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
   </span>;
 }
 /* 표준 표 셸(공통 추출): HScroll+table+colgroup+thead(ColMenu). tbody는 children으로 받음(화면별 bespoke 무변경). 순수 추출·동작/외형 무변경. */
-function StandardTable({ cols, TS, sk, sd, setSort, hf, t, grid, layout, colWidths, minWidth, headerBg, hscroll, children }) {
+function StandardTable({ cols, TS, sk, sd, setSort, hf, t, grid, layout, colWidths, minWidth, headerBg, hscroll, fontSize, children }) {
   const bg = headerBg || t.bg;
   const br = grid ? { borderRight: '1px solid ' + t.border } : {};
   const tableStyle = layout === 'fixed'
-    ? { borderCollapse: 'collapse', fontSize: 12, tableLayout: 'fixed', width: '100%', minWidth: minWidth }
-    : { width: '100%', borderCollapse: 'collapse', fontSize: 12 };
+    ? { borderCollapse: 'collapse', fontSize: fontSize || 12, tableLayout: 'fixed', width: '100%', minWidth: minWidth }
+    : { width: '100%', borderCollapse: 'collapse', fontSize: fontSize || 12 };
   return <HScroll {...(hscroll || {})}><table style={tableStyle}>
     {colWidths ? <colgroup>{colWidths.map((w, ci) => <col key={ci} style={{ width: w }} />)}</colgroup> : null}
     <thead><tr>{cols.map(c => {
