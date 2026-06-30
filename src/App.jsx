@@ -1212,7 +1212,7 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
   const lvs=[{k:'urgent',l:'긴급',sub:'≤30일',c:t.red},{k:'warning',l:'주의',sub:'31~90일',c:t.amber},{k:'notice',l:'확인',sub:'91~180일',c:t.blue},{k:'narcotic',l:'향정마약',sub:'≤180일',c:t.purple},{k:'unused',l:'미사용',sub:'1년 이상',c:'#B71C1C'}]
   const ip2={padding:'4px 6px',border:`1px solid ${t.border}`,borderRadius:4,fontSize:10,outline:'none',background:t.bg,color:t.text}
 
-  const _dCat=cats.length!==CATS.length,_dStat=!(stats.length===MAIN_STATS.length&&MAIN_STATS.every(x=>stats.includes(x))),_dLv=!!aLv;const _fcount=(_dCat?1:0)+(_dStat?1:0)+(_dLv?1:0);const _showReset=_fcount>0;
+  const _dCat=cats.length!==CATS.length,_dStat=!(stats.length===MAIN_STATS.length&&MAIN_STATS.every(x=>stats.includes(x))),_dLv=!!aLv;const _fcount=(_dCat?1:0)+(_dStat?1:0)+(_dLv?1:0);const _showReset=_fcount>0&&editRow==null;/* 편집 중엔 초기화 숨김 — ET 리마운트로 인한 표시·draft 불일치 차단 */
   function _resetF(){setCats(CATS);setStats(MAIN_STATS);setALv(null);setResetKey(k=>k+1)}
   const show=aLv?lvs.filter(l=>l.k===aLv):lvs.filter(l=>l.k!=='unused'||g.unused.length>0)
   return<div style={{padding:'20px 24px'}}>

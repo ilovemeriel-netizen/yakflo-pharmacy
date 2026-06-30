@@ -26,4 +26,9 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  {
+    /* Node 컨텍스트(빌드·서버리스 설정/스크립트): Buffer/process 등 Node 전역 허용 */
+    files: ['*.config.js', 'vite.config.js', 'vitest.config.js', 'netlify/**/*.js', 'scripts/**/*.js'],
+    languageOptions: { globals: globals.node },
+  },
 ])
