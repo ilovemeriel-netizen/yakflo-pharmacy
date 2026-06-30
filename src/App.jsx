@@ -748,7 +748,7 @@ function Header({ menu: m, setMenu: sm }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tenant, setTenant] = useState('')
   useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, [])
-  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'ordering', l: '🧾 발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'annual', l: '연간보고서' }]
+  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'ordering', l: '🧾 발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }]
   function nav(id) { sm(id); setMobileOpen(false) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
@@ -2308,6 +2308,12 @@ function Report({drugs,txns,onNav}){
   const _pn=new Date(),_pf=x=>{const z=new Date(_pn);z.setDate(z.getDate()+x);return z.toISOString().slice(0,10)},_pt=_pn.toISOString().slice(0,10);
   const _pe=drugs.filter(d=>d.status!=='중지'&&d.expiry_date);
   const expExpired=_pe.filter(d=>d.expiry_date<_pt).length,expU30=_pe.filter(d=>d.expiry_date>=_pt&&d.expiry_date<_pf(30)).length,expW60=_pe.filter(d=>d.expiry_date>=_pf(30)&&d.expiry_date<_pf(60)).length,expC90=_pe.filter(d=>d.expiry_date>=_pf(60)&&d.expiry_date<_pf(90)).length;
+  /* ── 연간 월별 추이(이전: 구 AnnualReport). 전체 고정 — cats/stats/검색 미연동(연간 정본). 폐기/반품액=Σ(수량×구입단가). 전월재고[m]=현재고[m-1] 연쇄, 1월=opening_amount. ── */
+  const _aWon=v=>'₩'+Math.round(v||0).toLocaleString();const _aNoop=()=>{};const _aEmpty=<span style={{color:t.textL}}>–</span>;
+  const _aTd={padding:'8px 12px',textAlign:'right',fontSize:12,color:t.text,borderBottom:`1px solid ${t.border}`};const _aTdM={..._aTd,textAlign:'center',color:t.textM,fontWeight:700};
+  const _aCols=[{k:'',h:'월',plain:true,th:{textAlign:'center'}},{k:'',h:'전월재고',plain:true,th:{textAlign:'right'}},{k:'',h:'입고',plain:true,th:{textAlign:'right'}},{k:'',h:'사용',plain:true,th:{textAlign:'right'}},{k:'',h:'폐기',plain:true,th:{textAlign:'right'}},{k:'',h:'반품',plain:true,th:{textAlign:'right'}},{k:'',h:'현재고',plain:true,th:{textAlign:'right'}}];
+  const annM=[];{let pc=null;for(let m=1;m<=12;m++){const rs=snaps.filter(s=>s.snap_month===m);const has=rs.length>0;const inA=rs.reduce((a,s)=>a+(s.total_in_amount||0),0);const outA=rs.reduce((a,s)=>a+(s.total_out_amount||0),0);const dispA=rs.reduce((a,s)=>a+(s.total_disp_qty||0)*(drugMap[s.drug_code]?.purchase_price||0),0);const retA=rs.reduce((a,s)=>a+(s.total_ret_qty||0)*(drugMap[s.drug_code]?.purchase_price||0),0);const closeA=rs.reduce((a,s)=>a+(s.closing_amount||0),0);const openA=rs.reduce((a,s)=>a+(s.opening_amount||0),0);const prevA=has?(pc!=null?pc:openA):null;annM.push({m,has,prevA,inA,outA,dispA,retA,closeA});if(has)pc=closeA}}
+  const _aData=annM.filter(r=>r.has);const annSum={inA:_aData.reduce((a,r)=>a+r.inA,0),outA:_aData.reduce((a,r)=>a+r.outA,0),dispA:_aData.reduce((a,r)=>a+r.dispA,0),retA:_aData.reduce((a,r)=>a+r.retA,0),prevA:_aData.length?_aData[0].prevA:0,closeA:_aData.length?_aData[_aData.length-1].closeA:0};
 
   function dl(){
     const wb=XLSX.utils.book_new();const sn=rtype==='monthly'?`${year}년${month}월보고서`:`${year}년연간보고서`;
@@ -2344,7 +2350,44 @@ function Report({drugs,txns,onNav}){
     </div>
     {closeMsg&&<div style={{background:closeMsg.includes('✅')?t.greenL:t.redL,border:`1px solid ${closeMsg.includes('✅')?t.green:t.red}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:closeMsg.includes('✅')?t.green:t.red,fontSize:12,fontWeight:600}}>{closeMsg}</div>}
 
-      <div className="cnc-print-month" style={{color:'#222',background:'#fff',fontSize:13,lineHeight:1.4}}>
+    {rtype==='annual'&&<div className="cnc-annual-print" style={{marginBottom:14}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:12}}>
+        <KpiCard label="입고액" value={_aWon(annSum.inA)} color={t.accent} />
+        <KpiCard label="사용액" value={_aWon(annSum.outA)} color={t.blue} />
+        <KpiCard label="폐기액" value={_aWon(annSum.dispA)} color={t.red} sub="수량×구입단가" />
+        <KpiCard label="반품액" value={_aWon(annSum.retA)} color={t.amber} sub="수량×구입단가" />
+        <KpiCard label="현재고액" value={_aWon(annSum.closeA)} color={t.green} sub="최근 마감월" />
+      </div>
+      <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
+        <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.accent}}>{year}년 월별 집계 <span style={{fontSize:11,fontWeight:500,color:t.textM}}>(폐기·반품액 = 수량×구입단가 파생)</span></div>
+        <StandardTable t={t} TS={_aNoop} sk="" sd="" setSort={_aNoop} hf={{}} hscroll={{noLabel:true,ends:true}} cols={_aCols}>
+          <tbody>
+            {annM.map(r=><tr key={r.m} style={{background:r.has?'':t.bg}} onMouseEnter={e=>{if(r.has)e.currentTarget.style.background=t.glass}} onMouseLeave={e=>{if(r.has)e.currentTarget.style.background=''}}>
+              <td style={_aTdM}>{r.m}월</td>
+              <td style={_aTd}>{r.has?_aWon(r.prevA):_aEmpty}</td>
+              <td style={_aTd}>{r.has?_aWon(r.inA):_aEmpty}</td>
+              <td style={_aTd}>{r.has?_aWon(r.outA):_aEmpty}</td>
+              <td style={_aTd}>{r.has?_aWon(r.dispA):_aEmpty}</td>
+              <td style={_aTd}>{r.has?_aWon(r.retA):_aEmpty}</td>
+              <td style={{..._aTd,fontWeight:700}}>{r.has?_aWon(r.closeA):_aEmpty}</td>
+            </tr>)}
+            <tr style={{background:t.accentL,fontWeight:800}}>
+              <td style={{..._aTdM,color:t.accent}}>합계</td>
+              <td style={{..._aTd,fontWeight:800}}>{_aWon(annSum.prevA)}</td>
+              <td style={{..._aTd,fontWeight:800}}>{_aWon(annSum.inA)}</td>
+              <td style={{..._aTd,fontWeight:800}}>{_aWon(annSum.outA)}</td>
+              <td style={{..._aTd,fontWeight:800}}>{_aWon(annSum.dispA)}</td>
+              <td style={{..._aTd,fontWeight:800}}>{_aWon(annSum.retA)}</td>
+              <td style={{..._aTd,fontWeight:800,color:t.accent}}>{_aWon(annSum.closeA)}</td>
+            </tr>
+          </tbody>
+        </StandardTable>
+      </div>
+      <div style={{marginTop:10,fontSize:11,color:t.textL,lineHeight:1.7}}>※ 연 KPI·합계는 <b style={{color:t.textM}}>데이터 존재 월({_aData.length}개월) 기준</b> 합계입니다(연 전체 아님).<br />※ 폐기·반품액은 <b style={{color:t.textM}}>현재 구입단가(purchase_price) 기준 파생</b>(수량×단가)이라, 과거월 실제 폐기·반품액과 단가 시점 차가 있을 수 있습니다.</div>
+      <style>{'@media print{.cnc-annual-print{display:block!important;page-break-inside:avoid}.cnc-print-month.cnc-hide-print{display:none!important}.cnc-report-table.cnc-hide-print{display:none!important}.cnc-annual-print table{font-size:11px!important}.cnc-annual-print th,.cnc-annual-print td{padding:6px 10px!important}.cnc-annual-print tr{page-break-inside:avoid}}'}</style>
+    </div>}
+
+      <div className={"cnc-print-month"+(rtype==='annual'?' cnc-hide-print':'')} style={{color:'#222',background:'#fff',fontSize:13,lineHeight:1.4}}>
         <div style={{background:'#804A87',color:'#fff',padding:'12px 16px',textAlign:'center',fontSize:19,fontWeight:800}}>🏥 씨엔씨재활의학과병원 약품관리 월간보고서</div>
         <div style={{textAlign:'center',color:'#804A87',fontWeight:700,margin:'8px 0 14px'}}>▶ 보고월: {year}년 {rtype==='monthly'?month+'월':'연간'}</div>
         <MSec title="■ 재고 현황">
@@ -2413,7 +2456,7 @@ function Report({drugs,txns,onNav}){
     </div>
 
     {/* 상세 테이블 */}
-    <div className="cnc-report-table" style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
+    <div className={"cnc-report-table"+(rtype==='annual'?' cnc-hide-print':'')} style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
       <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.accent}}>{rtype==='monthly'?`${year}년 ${month}월`:`${year}년 연간`} 보고서 ({filtered.length}건) {ld&&<span style={{fontSize:11,color:t.textL}}>로딩...</span>}</div>
       <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
         <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['opening_qty','전월재고'],['total_in_qty','입고'],['total_out_qty','출고'],['total_disp_qty','폐기'],['total_ret_qty','반품'],['closing_qty','기말재고'],['closing_amount','기말금액']].map(([k,h])=><th key={k} style={TS(k)} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}</tr></thead>
@@ -2454,97 +2497,6 @@ function KpiCard({ label, value, color, sub }) {
     {sub ? <div style={{ fontSize: 10, color: t.textL, marginTop: 2 }}>{sub}</div> : null}
   </div>;
 }
-function AnnualReport({ drugs }) {
-  const { t } = useTheme();
-  const cy = new Date().getFullYear();
-  const [year, setYear] = useState(cy);
-  const [snaps, setSnaps] = useState([]);
-  const [ld, setLd] = useState(true);
-  useEffect(() => { let on = true; supabase.from('monthly_snapshots').select('*').eq('snap_year', year).then(({ data }) => { if (on) { setSnaps(data || []); setLd(false) } }); return () => { on = false } }, [year]);
-  const ppMap = {}; drugs.forEach(d => { ppMap[d.drug_code] = d.purchase_price || 0 });
-  const won = v => '₩' + Math.round(v || 0).toLocaleString();
-  /* 월별 집계(1~12). 폐기/반품액 = Σ(수량 × 구입단가). 전월재고[m]=현재고[m-1] 연쇄, 1월은 opening_amount. */
-  const M = []; let prevClose = null;
-  for (let m = 1; m <= 12; m++) {
-    const rows = snaps.filter(s => s.snap_month === m);
-    const has = rows.length > 0;
-    const inA = rows.reduce((a, s) => a + (s.total_in_amount || 0), 0);
-    const outA = rows.reduce((a, s) => a + (s.total_out_amount || 0), 0);
-    const dispA = rows.reduce((a, s) => a + (s.total_disp_qty || 0) * (ppMap[s.drug_code] || 0), 0);
-    const retA = rows.reduce((a, s) => a + (s.total_ret_qty || 0) * (ppMap[s.drug_code] || 0), 0);
-    const closeA = rows.reduce((a, s) => a + (s.closing_amount || 0), 0);
-    const openA = rows.reduce((a, s) => a + (s.opening_amount || 0), 0);
-    const prevA = has ? (prevClose != null ? prevClose : openA) : null;
-    M.push({ m, has, prevA, inA, outA, dispA, retA, closeA });
-    if (has) prevClose = closeA;
-  }
-  const dataMonths = M.filter(r => r.has);
-  const sum = {
-    inA: dataMonths.reduce((a, r) => a + r.inA, 0),
-    outA: dataMonths.reduce((a, r) => a + r.outA, 0),
-    dispA: dataMonths.reduce((a, r) => a + r.dispA, 0),
-    retA: dataMonths.reduce((a, r) => a + r.retA, 0),
-    prevA: dataMonths.length ? dataMonths[0].prevA : 0,
-    closeA: dataMonths.length ? dataMonths[dataMonths.length - 1].closeA : 0,
-  };
-  const cols = [
-    { k: '', h: '월', plain: true, th: { textAlign: 'center' } },
-    { k: '', h: '전월재고', plain: true, th: { textAlign: 'right' } },
-    { k: '', h: '입고', plain: true, th: { textAlign: 'right' } },
-    { k: '', h: '사용', plain: true, th: { textAlign: 'right' } },
-    { k: '', h: '폐기', plain: true, th: { textAlign: 'right' } },
-    { k: '', h: '반품', plain: true, th: { textAlign: 'right' } },
-    { k: '', h: '현재고', plain: true, th: { textAlign: 'right' } },
-  ];
-  const _noop = () => {};
-  const td = { padding: '8px 12px', textAlign: 'right', fontSize: 12, color: t.text, borderBottom: `1px solid ${t.border}` };
-  const tdM = { ...td, textAlign: 'center', color: t.textM, fontWeight: 700 };
-  const empty = <span style={{ color: t.textL }}>–</span>;
-  return <div style={{ padding: '20px 24px' }}>
-    <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 16, fontWeight: 800, color: t.text }}>📅 연간보고서</span>
-      <select value={year} onChange={e => { setYear(Number(e.target.value)); setLd(true) }} style={{ padding: '6px 10px', borderRadius: 6, border: `1px solid ${t.border}`, fontSize: 12, background: t.bg, color: t.text }}>
-        {[2025, 2026, 2027].map(y => <option key={y} value={y}>{y}년</option>)}
-      </select>
-      {ld ? <span style={{ fontSize: 11, color: t.textL }}>로딩…</span> : <span style={{ fontSize: 11, color: t.textM }}>{dataMonths.length}개월 데이터</span>}
-    </div>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 16 }}>
-      <KpiCard label="입고액" value={won(sum.inA)} color={t.accent} />
-      <KpiCard label="사용액" value={won(sum.outA)} color={t.blue} />
-      <KpiCard label="폐기액" value={won(sum.dispA)} color={t.red} sub="수량×구입단가" />
-      <KpiCard label="반품액" value={won(sum.retA)} color={t.amber} sub="수량×구입단가" />
-      <KpiCard label="현재고액" value={won(sum.closeA)} color={t.green} sub="최근 마감월" />
-    </div>
-    <div style={{ background: t.card, borderRadius: 12, border: `1px solid ${t.border}`, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 18px', borderBottom: `1px solid ${t.border}`, fontWeight: 700, fontSize: 13, color: t.accent }}>{year}년 월별 집계 <span style={{ fontSize: 11, fontWeight: 500, color: t.textM }}>(폐기·반품액 = 수량×구입단가 파생)</span></div>
-      <StandardTable t={t} TS={_noop} sk="" sd="" setSort={_noop} hf={{}} hscroll={{ noLabel: true, ends: true }} cols={cols}>
-        <tbody>
-          {M.map(r => <tr key={r.m} style={{ background: r.has ? '' : t.bg }} onMouseEnter={e => { if (r.has) e.currentTarget.style.background = t.glass }} onMouseLeave={e => { if (r.has) e.currentTarget.style.background = '' }}>
-            <td style={tdM}>{r.m}월</td>
-            <td style={td}>{r.has ? won(r.prevA) : empty}</td>
-            <td style={td}>{r.has ? won(r.inA) : empty}</td>
-            <td style={td}>{r.has ? won(r.outA) : empty}</td>
-            <td style={td}>{r.has ? won(r.dispA) : empty}</td>
-            <td style={td}>{r.has ? won(r.retA) : empty}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{r.has ? won(r.closeA) : empty}</td>
-          </tr>)}
-          <tr style={{ background: t.accentL, fontWeight: 800 }}>
-            <td style={{ ...tdM, color: t.accent }}>합계</td>
-            <td style={{ ...td, fontWeight: 800 }}>{won(sum.prevA)}</td>
-            <td style={{ ...td, fontWeight: 800 }}>{won(sum.inA)}</td>
-            <td style={{ ...td, fontWeight: 800 }}>{won(sum.outA)}</td>
-            <td style={{ ...td, fontWeight: 800 }}>{won(sum.dispA)}</td>
-            <td style={{ ...td, fontWeight: 800 }}>{won(sum.retA)}</td>
-            <td style={{ ...td, fontWeight: 800, color: t.accent }}>{won(sum.closeA)}</td>
-          </tr>
-        </tbody>
-      </StandardTable>
-    </div>
-    <div className="no-print" style={{ marginTop: 10, fontSize: 11, color: t.textL, lineHeight: 1.7 }}>※ 연 KPI·합계는 <b style={{ color: t.textM }}>데이터 존재 월({dataMonths.length}개월) 기준</b> 합계입니다(연 전체 아님).<br />※ 폐기·반품액은 <b style={{ color: t.textM }}>현재 구입단가(purchase_price) 기준 파생</b>(수량×단가)이라, 과거월 실제 폐기·반품액과 단가 시점 차가 있을 수 있습니다.</div>
-    <Ft />
-  </div>;
-}
-
 function Toast({ msg, kind = 'ok', onClose }) {
   const { t } = useTheme()
   useEffect(() => { if (!msg) return; const id = setTimeout(onClose, 3000); return () => clearTimeout(id) }, [msg, onClose])
@@ -3028,7 +2980,7 @@ function RecoveryPage({ onDone }) {
 
 /* ═══ 메인 App ═══ */
 /* SPA 라우트: 화면 식별자 ↔ URL 해시(#menu). 새로고침/직접진입 복원·뒤로가기 동기화와 일관. */
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'annual', 'register', 'mypage', 'admin', 'archive'];
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'register', 'mypage', 'admin', 'archive'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); return ROUTES.includes(h) ? h : 'dashboard'; }
 export default function App() {
   const [dark, setDark] = useState(false)
@@ -3250,7 +3202,6 @@ export default function App() {
         {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
         {menu === 'report' && <Report drugs={drugs} txns={txns} onNav={handleNav} />}
-        {menu === 'annual' && <AnnualReport drugs={drugs} />}
         {menu === 'register' && <DrugRegister onRefresh={load} />}
         {menu === 'mypage' && <MyPage profile={profile} onProfileUpdated={loadProfile} />}
         {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
