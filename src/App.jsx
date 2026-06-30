@@ -748,7 +748,7 @@ function Header({ menu: m, setMenu: sm }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tenant, setTenant] = useState('')
   useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, [])
-  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'ordering', l: '🧾 발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }]
+  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'ordering', l: '🧾 발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'annual', l: '연간보고서' }]
   function nav(id) { sm(id); setMobileOpen(false) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
@@ -2438,6 +2438,105 @@ function Report({drugs,txns,onNav}){
 }
 
 /* ═══ 성공 토스트 (공용) ═══ */
+/* ═══ 연간보고서 ①단계 — 연 KPI + 월별 12행 (monthly_snapshots 집계, 폐기/반품액=수량×구입단가 파생) ═══ */
+function KpiCard({ label, value, color, sub }) {
+  const { t } = useTheme();
+  return <div style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: 12, padding: '14px 16px' }}>
+    <div style={{ fontSize: 12, color: color || t.textM, fontWeight: 700 }}>{label}</div>
+    <div style={{ fontSize: 22, fontWeight: 800, color: color || t.text, marginTop: 6, whiteSpace: 'nowrap' }}>{value}</div>
+    {sub ? <div style={{ fontSize: 10, color: t.textL, marginTop: 2 }}>{sub}</div> : null}
+  </div>;
+}
+function AnnualReport({ drugs }) {
+  const { t } = useTheme();
+  const cy = new Date().getFullYear();
+  const [year, setYear] = useState(cy);
+  const [snaps, setSnaps] = useState([]);
+  const [ld, setLd] = useState(true);
+  useEffect(() => { let on = true; supabase.from('monthly_snapshots').select('*').eq('snap_year', year).then(({ data }) => { if (on) { setSnaps(data || []); setLd(false) } }); return () => { on = false } }, [year]);
+  const ppMap = {}; drugs.forEach(d => { ppMap[d.drug_code] = d.purchase_price || 0 });
+  const won = v => '₩' + Math.round(v || 0).toLocaleString();
+  /* 월별 집계(1~12). 폐기/반품액 = Σ(수량 × 구입단가). 전월재고[m]=현재고[m-1] 연쇄, 1월은 opening_amount. */
+  const M = []; let prevClose = null;
+  for (let m = 1; m <= 12; m++) {
+    const rows = snaps.filter(s => s.snap_month === m);
+    const has = rows.length > 0;
+    const inA = rows.reduce((a, s) => a + (s.total_in_amount || 0), 0);
+    const outA = rows.reduce((a, s) => a + (s.total_out_amount || 0), 0);
+    const dispA = rows.reduce((a, s) => a + (s.total_disp_qty || 0) * (ppMap[s.drug_code] || 0), 0);
+    const retA = rows.reduce((a, s) => a + (s.total_ret_qty || 0) * (ppMap[s.drug_code] || 0), 0);
+    const closeA = rows.reduce((a, s) => a + (s.closing_amount || 0), 0);
+    const openA = rows.reduce((a, s) => a + (s.opening_amount || 0), 0);
+    const prevA = has ? (prevClose != null ? prevClose : openA) : null;
+    M.push({ m, has, prevA, inA, outA, dispA, retA, closeA });
+    if (has) prevClose = closeA;
+  }
+  const dataMonths = M.filter(r => r.has);
+  const sum = {
+    inA: dataMonths.reduce((a, r) => a + r.inA, 0),
+    outA: dataMonths.reduce((a, r) => a + r.outA, 0),
+    dispA: dataMonths.reduce((a, r) => a + r.dispA, 0),
+    retA: dataMonths.reduce((a, r) => a + r.retA, 0),
+    prevA: dataMonths.length ? dataMonths[0].prevA : 0,
+    closeA: dataMonths.length ? dataMonths[dataMonths.length - 1].closeA : 0,
+  };
+  const cols = [
+    { k: '', h: '월', plain: true, th: { textAlign: 'center' } },
+    { k: '', h: '전월재고', plain: true, th: { textAlign: 'right' } },
+    { k: '', h: '입고', plain: true, th: { textAlign: 'right' } },
+    { k: '', h: '사용', plain: true, th: { textAlign: 'right' } },
+    { k: '', h: '폐기', plain: true, th: { textAlign: 'right' } },
+    { k: '', h: '반품', plain: true, th: { textAlign: 'right' } },
+    { k: '', h: '현재고', plain: true, th: { textAlign: 'right' } },
+  ];
+  const _noop = () => {};
+  const td = { padding: '8px 12px', textAlign: 'right', fontSize: 12, color: t.text, borderBottom: `1px solid ${t.border}` };
+  const tdM = { ...td, textAlign: 'center', color: t.textM, fontWeight: 700 };
+  const empty = <span style={{ color: t.textL }}>–</span>;
+  return <div style={{ padding: '20px 24px' }}>
+    <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 16, fontWeight: 800, color: t.text }}>📅 연간보고서</span>
+      <select value={year} onChange={e => { setYear(Number(e.target.value)); setLd(true) }} style={{ padding: '6px 10px', borderRadius: 6, border: `1px solid ${t.border}`, fontSize: 12, background: t.bg, color: t.text }}>
+        {[2025, 2026, 2027].map(y => <option key={y} value={y}>{y}년</option>)}
+      </select>
+      {ld ? <span style={{ fontSize: 11, color: t.textL }}>로딩…</span> : <span style={{ fontSize: 11, color: t.textM }}>{dataMonths.length}개월 데이터</span>}
+    </div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 16 }}>
+      <KpiCard label="입고액" value={won(sum.inA)} color={t.accent} />
+      <KpiCard label="사용액" value={won(sum.outA)} color={t.blue} />
+      <KpiCard label="폐기액" value={won(sum.dispA)} color={t.red} sub="수량×구입단가" />
+      <KpiCard label="반품액" value={won(sum.retA)} color={t.amber} sub="수량×구입단가" />
+      <KpiCard label="현재고액" value={won(sum.closeA)} color={t.green} sub="연말 기준" />
+    </div>
+    <div style={{ background: t.card, borderRadius: 12, border: `1px solid ${t.border}`, overflow: 'hidden' }}>
+      <div style={{ padding: '12px 18px', borderBottom: `1px solid ${t.border}`, fontWeight: 700, fontSize: 13, color: t.accent }}>{year}년 월별 집계 <span style={{ fontSize: 11, fontWeight: 500, color: t.textM }}>(폐기·반품액 = 수량×구입단가 파생)</span></div>
+      <StandardTable t={t} TS={_noop} sk="" sd="" setSort={_noop} hf={{}} hscroll={{ noLabel: true, ends: true }} cols={cols}>
+        <tbody>
+          {M.map(r => <tr key={r.m} style={{ background: r.has ? '' : t.bg }} onMouseEnter={e => { if (r.has) e.currentTarget.style.background = t.glass }} onMouseLeave={e => { if (r.has) e.currentTarget.style.background = '' }}>
+            <td style={tdM}>{r.m}월</td>
+            <td style={td}>{r.has ? won(r.prevA) : empty}</td>
+            <td style={td}>{r.has ? won(r.inA) : empty}</td>
+            <td style={td}>{r.has ? won(r.outA) : empty}</td>
+            <td style={td}>{r.has ? won(r.dispA) : empty}</td>
+            <td style={td}>{r.has ? won(r.retA) : empty}</td>
+            <td style={{ ...td, fontWeight: 700 }}>{r.has ? won(r.closeA) : empty}</td>
+          </tr>)}
+          <tr style={{ background: t.accentL, fontWeight: 800 }}>
+            <td style={{ ...tdM, color: t.accent }}>합계</td>
+            <td style={{ ...td, fontWeight: 800 }}>{won(sum.prevA)}</td>
+            <td style={{ ...td, fontWeight: 800 }}>{won(sum.inA)}</td>
+            <td style={{ ...td, fontWeight: 800 }}>{won(sum.outA)}</td>
+            <td style={{ ...td, fontWeight: 800 }}>{won(sum.dispA)}</td>
+            <td style={{ ...td, fontWeight: 800 }}>{won(sum.retA)}</td>
+            <td style={{ ...td, fontWeight: 800, color: t.accent }}>{won(sum.closeA)}</td>
+          </tr>
+        </tbody>
+      </StandardTable>
+    </div>
+    <Ft />
+  </div>;
+}
+
 function Toast({ msg, kind = 'ok', onClose }) {
   const { t } = useTheme()
   useEffect(() => { if (!msg) return; const id = setTimeout(onClose, 3000); return () => clearTimeout(id) }, [msg, onClose])
@@ -2921,7 +3020,7 @@ function RecoveryPage({ onDone }) {
 
 /* ═══ 메인 App ═══ */
 /* SPA 라우트: 화면 식별자 ↔ URL 해시(#menu). 새로고침/직접진입 복원·뒤로가기 동기화와 일관. */
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'register', 'mypage', 'admin', 'archive'];
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'annual', 'register', 'mypage', 'admin', 'archive'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); return ROUTES.includes(h) ? h : 'dashboard'; }
 export default function App() {
   const [dark, setDark] = useState(false)
@@ -3143,6 +3242,7 @@ export default function App() {
         {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
         {menu === 'report' && <Report drugs={drugs} txns={txns} onNav={handleNav} />}
+        {menu === 'annual' && <AnnualReport drugs={drugs} />}
         {menu === 'register' && <DrugRegister onRefresh={load} />}
         {menu === 'mypage' && <MyPage profile={profile} onProfileUpdated={loadProfile} />}
         {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
