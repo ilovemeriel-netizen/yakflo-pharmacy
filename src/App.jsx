@@ -2506,7 +2506,7 @@ function AnnualReport({ drugs }) {
       <KpiCard label="사용액" value={won(sum.outA)} color={t.blue} />
       <KpiCard label="폐기액" value={won(sum.dispA)} color={t.red} sub="수량×구입단가" />
       <KpiCard label="반품액" value={won(sum.retA)} color={t.amber} sub="수량×구입단가" />
-      <KpiCard label="현재고액" value={won(sum.closeA)} color={t.green} sub="연말 기준" />
+      <KpiCard label="현재고액" value={won(sum.closeA)} color={t.green} sub="최근 마감월" />
     </div>
     <div style={{ background: t.card, borderRadius: 12, border: `1px solid ${t.border}`, overflow: 'hidden' }}>
       <div style={{ padding: '12px 18px', borderBottom: `1px solid ${t.border}`, fontWeight: 700, fontSize: 13, color: t.accent }}>{year}년 월별 집계 <span style={{ fontSize: 11, fontWeight: 500, color: t.textM }}>(폐기·반품액 = 수량×구입단가 파생)</span></div>
@@ -2533,6 +2533,7 @@ function AnnualReport({ drugs }) {
         </tbody>
       </StandardTable>
     </div>
+    <div className="no-print" style={{ marginTop: 10, fontSize: 11, color: t.textL, lineHeight: 1.7 }}>※ 연 KPI·합계는 <b style={{ color: t.textM }}>데이터 존재 월({dataMonths.length}개월) 기준</b> 합계입니다(연 전체 아님).<br />※ 폐기·반품액은 <b style={{ color: t.textM }}>현재 구입단가(purchase_price) 기준 파생</b>(수량×단가)이라, 과거월 실제 폐기·반품액과 단가 시점 차가 있을 수 있습니다.</div>
     <Ft />
   </div>;
 }
