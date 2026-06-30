@@ -2350,7 +2350,7 @@ function Report({drugs,txns,onNav}){
     </div>
     {closeMsg&&<div style={{background:closeMsg.includes('✅')?t.greenL:t.redL,border:`1px solid ${closeMsg.includes('✅')?t.green:t.red}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:closeMsg.includes('✅')?t.green:t.red,fontSize:12,fontWeight:600}}>{closeMsg}</div>}
 
-    {rtype==='annual'&&<div className="cnc-rpt-hide" style={{marginBottom:14}}>
+    {rtype==='annual'&&<div className="cnc-annual-print" style={{marginBottom:14}}>
       <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:12}}>
         <KpiCard label="입고액" value={_aWon(annSum.inA)} color={t.accent} />
         <KpiCard label="사용액" value={_aWon(annSum.outA)} color={t.blue} />
@@ -2384,9 +2384,10 @@ function Report({drugs,txns,onNav}){
         </StandardTable>
       </div>
       <div style={{marginTop:10,fontSize:11,color:t.textL,lineHeight:1.7}}>※ 연 KPI·합계는 <b style={{color:t.textM}}>데이터 존재 월({_aData.length}개월) 기준</b> 합계입니다(연 전체 아님).<br />※ 폐기·반품액은 <b style={{color:t.textM}}>현재 구입단가(purchase_price) 기준 파생</b>(수량×단가)이라, 과거월 실제 폐기·반품액과 단가 시점 차가 있을 수 있습니다.</div>
+      <style>{'@media print{.cnc-annual-print{display:block!important;page-break-inside:avoid}.cnc-print-month.cnc-hide-print{display:none!important}.cnc-report-table.cnc-hide-print{display:none!important}.cnc-annual-print table{font-size:11px!important}.cnc-annual-print th,.cnc-annual-print td{padding:6px 10px!important}.cnc-annual-print tr{page-break-inside:avoid}}'}</style>
     </div>}
 
-      <div className="cnc-print-month" style={{color:'#222',background:'#fff',fontSize:13,lineHeight:1.4}}>
+      <div className={"cnc-print-month"+(rtype==='annual'?' cnc-hide-print':'')} style={{color:'#222',background:'#fff',fontSize:13,lineHeight:1.4}}>
         <div style={{background:'#804A87',color:'#fff',padding:'12px 16px',textAlign:'center',fontSize:19,fontWeight:800}}>🏥 씨엔씨재활의학과병원 약품관리 월간보고서</div>
         <div style={{textAlign:'center',color:'#804A87',fontWeight:700,margin:'8px 0 14px'}}>▶ 보고월: {year}년 {rtype==='monthly'?month+'월':'연간'}</div>
         <MSec title="■ 재고 현황">
@@ -2455,7 +2456,7 @@ function Report({drugs,txns,onNav}){
     </div>
 
     {/* 상세 테이블 */}
-    <div className="cnc-report-table" style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
+    <div className={"cnc-report-table"+(rtype==='annual'?' cnc-hide-print':'')} style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
       <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.accent}}>{rtype==='monthly'?`${year}년 ${month}월`:`${year}년 연간`} 보고서 ({filtered.length}건) {ld&&<span style={{fontSize:11,color:t.textL}}>로딩...</span>}</div>
       <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
         <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['opening_qty','전월재고'],['total_in_qty','입고'],['total_out_qty','출고'],['total_disp_qty','폐기'],['total_ret_qty','반품'],['closing_qty','기말재고'],['closing_amount','기말금액']].map(([k,h])=><th key={k} style={TS(k)} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}</tr></thead>
