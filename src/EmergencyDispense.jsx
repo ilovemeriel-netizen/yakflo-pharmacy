@@ -12,11 +12,11 @@ const SLOTS = [{ key: 'm', label: '아침' }, { key: 'l', label: '점심' }, { k
 const TIMINGS = ['식전', '식후', '식간', '필요시', '의사지시대로', '기타']
 const TIME_TM = ['', '식전', '식후', '식간']   /* 시간대와 짝지어 파우치, ''=시점없음(시간대만) */
 const NONTIME_TM = ['필요시', '의사지시대로', '기타']   /* 시간대 없이 단독 파우치(약 모아 1매) */
-const METHODS = { TP: { s: ['m', 'l', 'd'], t: '식후' }, DA: { s: ['m'], t: '식전' }, DP: { s: ['m'], t: '식후' }, BP: { s: ['m', 'd'], t: '식후' }, PRN: { s: [], t: '필요시' }, DIRI: { s: [], t: '의사지시대로' } }
-const METHOD_KEYS = ['(직접입력)', 'TP', 'DA', 'DP', 'BP', 'PRN', 'DIRI']
+const METHODS = { TP: { s: ['m', 'l', 'd'], t: '식후' }, DA: { s: ['m'], t: '식전' }, DP: { s: ['m'], t: '식후' }, BP: { s: ['m', 'd'], t: '식후' }, PRN: { s: [], t: '필요시' }, DIRI: { s: [], t: '의사지시대로' }, hs: { s: ['b'], t: '' } }
+const METHOD_KEYS = ['(직접입력)', 'TP', 'DA', 'DP', 'BP', 'PRN', 'DIRI', 'hs']
 const NARC = { 마약: NAVY, 향정: PURPLE, 한외마약: LAV }
 /* 파우치 레이아웃 상수(mm) — 행 '한도'는 상수 금지(높이에서 계산), 부위 높이는 레이아웃 상수 */
-const PAD_MM = 5, TOP_MM = 12, BOTTOM_MM = 13
+const PAD_MM = 7, TOP_MM = 12, BOTTOM_MM = 13
 const ROW_MM = { normal: 4.0, small: 3.2 }
 const A4_W = 210, A4_H = 297, A4_MARGIN = 8
 
@@ -74,7 +74,8 @@ export default function EmergencyDispense() {
       const dstr = addDays(dateYmd, di), dayNo = di + 1
       const dayRows = active.filter(r => dayNo <= eff(r))   /* 그 일자 ≤ 해당 약 일수 */
       for (const slot of SLOTS) for (const tm of TIME_TM) emit(dayRows.filter(r => r[slot.key] && (r.timing || '') === tm), slot.label, tm, dstr)
-      for (const tm of NONTIME_TM) emit(dayRows.filter(r => r.timing === tm), '', tm, dstr)
+      const norm = t => TIME_TM.includes(t || '') ? null : (NONTIME_TM.includes(t) ? t : '기타')   /* 미매핑 값은 '기타'로 */
+      for (const tm of NONTIME_TM) emit(dayRows.filter(r => norm(r.timing) === tm), '', tm, dstr)
     }
     return out
   }, [rows, startSeq, dateYmd, days, eH])
@@ -201,7 +202,7 @@ function Pouch({ p, eW, eH, org, patient, room, patientNo }) {
   const label = p.slot + (p.timing || '')   /* 통짜 복용시점: 아침식전 / 점심식후 / 취침전 */
   return <div style={{ width: eW + 'mm', height: eH + 'mm', boxSizing: 'border-box', border: '1px dashed #000', background: '#fff', color: '#000', position: 'relative', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
     {/* 안쪽 보조 재단선(사방 1mm 안, 옅은 실선). 본문은 안쪽 기준 배치 + 내부 패딩 → 두 선 어디로 잘라도 글자 안전 */}
-    <div style={{ position: 'absolute', inset: '1mm', border: '0.2mm solid #b3b3b3', boxSizing: 'border-box', padding: '1.5mm', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontWeight: 600 }}>
+    <div style={{ position: 'absolute', inset: '1mm', border: '0.2mm solid #b3b3b3', boxSizing: 'border-box', padding: '2.5mm', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontWeight: 600 }}>
       {/* 상단: 순번(대형) · 환자번호(문자열 원문) */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <span style={{ fontSize: 15, fontWeight: 900, lineHeight: 1 }}>{p.seq}</span>
