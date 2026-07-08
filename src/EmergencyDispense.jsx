@@ -12,8 +12,8 @@ const SLOTS = [{ key: 'm', label: '아침' }, { key: 'l', label: '점심' }, { k
 const TIMINGS = ['식전', '식후', '식간', '필요시', '의사지시대로', '기타']
 const TIME_TM = ['', '식전', '식후', '식간']   /* 시간대와 짝지어 파우치, ''=시점없음(시간대만) */
 const NONTIME_TM = ['필요시', '의사지시대로', '기타']   /* 시간대 없이 단독 파우치(약 모아 1매) */
-const METHODS = { TP: { s: ['m', 'l', 'd'], t: '식후' }, DA: { s: ['m'], t: '식전' }, DP: { s: ['m'], t: '식후' }, BP: { s: ['m', 'd'], t: '식후' }, PRN: { s: [], t: '필요시' }, DIRI: { s: [], t: '의사지시대로' }, hs: { s: ['b'], t: '' } }
-const METHOD_KEYS = ['(직접입력)', 'TP', 'DA', 'DP', 'BP', 'PRN', 'DIRI', 'hs']
+const METHODS = { TP: { s: ['m', 'l', 'd'], t: '식후' }, DA: { s: ['m'], t: '식전' }, DP: { s: ['m'], t: '식후' }, BP: { s: ['m', 'd'], t: '식후' }, PRN: { s: [], t: '필요시' }, DIRI: { s: [], t: '의사지시대로' }, hs: { s: ['b'], t: '' }, MP: { s: ['l'], t: '식후' }, PP: { s: ['d'], t: '식후' } }
+const METHOD_KEYS = ['(직접입력)', ...Object.keys(METHODS)]   /* 코드 추가는 METHODS에 1줄만 → 드롭다운·자동세팅·그룹핑 모두 반영 */
 const NARC = { 마약: NAVY, 향정: PURPLE, 한외마약: LAV }
 /* 파우치 레이아웃 상수(mm) — 행 '한도'는 상수 금지(높이에서 계산), 부위 높이는 레이아웃 상수 */
 const PAD_MM = 7, TOP_MM = 12, BOTTOM_MM = 13
