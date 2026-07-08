@@ -234,7 +234,7 @@ function Pouch({ p, eW, eH, org, patient, room, patientNo, powder }) {
       </div>
       {/* 둘째 줄 강조: 조제일자·(병실)·환자명 — 굵고 크게 + 굵은 밑줄 밀착 */}
       <div style={{ fontSize: 12.5, fontWeight: 800, display: 'flex', gap: '1.5mm', alignItems: 'baseline', borderBottom: '2px solid #000', paddingBottom: '0.3mm', marginTop: '0.6mm', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-        <span>{p.date}</span>{room ? <span>({room}호)</span> : null}<span style={{ marginLeft: 'auto', overflow: 'hidden', textOverflow: 'ellipsis' }}>{powder ? '● ' : ''}{patient || '　'}</span>
+        <span>{p.date}</span>{room ? <span>({room}호)</span> : null}<span style={{ marginLeft: 'auto', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 13.5, fontWeight: 900 }}>{powder ? '● ' : ''}{patient || '　'}</span>
       </div>
       {/* 약품 목록(약간 굵게) */}
       <div style={{ flex: '1 1 auto', overflow: 'hidden', minHeight: 0, marginTop: '0.8mm' }}>
@@ -245,11 +245,11 @@ function Pouch({ p, eW, eH, org, patient, room, patientNo, powder }) {
       </div>
       {/* 하단 고정: 복용시점 통짜 초대형(가장 큰 텍스트, 자간 넓게) + (i/n) 소형 / 기관명 중간 */}
       <div style={{ marginTop: 'auto', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '1.5mm' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '1.5mm' }}>
           <span style={{ fontSize: 18, fontWeight: 900, letterSpacing: '0.5mm', lineHeight: 1, whiteSpace: 'nowrap' }}>{label}</span>
           {p.page ? <span style={{ fontSize: 8, fontWeight: 700, paddingBottom: '1mm' }}>({p.page}/{p.pageN})</span> : null}
         </div>
-        <div style={{ fontSize: 10, marginTop: '0.6mm', fontWeight: 700 }}>{org || ''}</div>
+        <div style={{ fontSize: 10, marginTop: '0.6mm', fontWeight: 700, textAlign: 'center' }}>{org || ''}</div>
       </div>
     </div>
   </div>
