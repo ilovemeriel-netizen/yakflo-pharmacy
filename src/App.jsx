@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './lib/supabase'
 import { passesDrugFilters } from './lib/drugFilter'
+import EmergencyDispense from './EmergencyDispense'
 /* XLSX는 동적 import로 별도 청크 분리(초기 번들 축소). 모든 사용은 사용자 액션 핸들러 내부뿐 → 로드 시점 안전 */
 let XLSX; import('xlsx').then(m => { XLSX = m })
 
@@ -748,7 +749,7 @@ function Header({ menu: m, setMenu: sm }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tenant, setTenant] = useState('')
   useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, [])
-  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'ordering', l: '🧾 발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }]
+  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'ordering', l: '🧾 발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'emergency', l: '비상조제' }]
   function nav(id) { sm(id); setMobileOpen(false) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
@@ -3014,7 +3015,7 @@ function RecoveryPage({ onDone }) {
 
 /* ═══ 메인 App ═══ */
 /* SPA 라우트: 화면 식별자 ↔ URL 해시(#menu). 새로고침/직접진입 복원·뒤로가기 동기화와 일관. */
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'register', 'mypage', 'admin', 'archive'];
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'emergency', 'register', 'mypage', 'admin', 'archive'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); return ROUTES.includes(h) ? h : 'dashboard'; }
 export default function App() {
   const [dark, setDark] = useState(false)
@@ -3236,6 +3237,7 @@ export default function App() {
         {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
         {menu === 'report' && <Report drugs={drugs} txns={txns} onNav={handleNav} />}
+        {menu === 'emergency' && <EmergencyDispense />}
         {menu === 'register' && <DrugRegister onRefresh={load} />}
         {menu === 'mypage' && <MyPage profile={profile} onProfileUpdated={loadProfile} />}
         {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
