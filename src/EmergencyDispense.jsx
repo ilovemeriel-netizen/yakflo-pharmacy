@@ -33,7 +33,7 @@ const todayYmd = () => { const d = new Date(); return `${d.getFullYear()}-${pad2
 const newRow = () => ({ id: rid(), name: '', code: '', narc: '', qty: '1', days: '', method: '(직접입력)', m: true, l: true, d: true, b: false, timing: '식후', sep: '' })
 
 export default function EmergencyDispense() {
-  const [cache, setCache] = useState([]); const [loaded, setLoaded] = useState(false)
+  const [cache, setCache] = useState([]); const [, setLoaded] = useState(false)
   const [rows, setRows] = useState([newRow()])
   const [patient, setPatient] = useState(''); const [room, setRoom] = useState(''); const [patientNo, setPatientNo] = useState('')
   const [startSeq, setStartSeq] = useState(1)
@@ -140,7 +140,7 @@ export default function EmergencyDispense() {
     <div className="ed-noprint">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 18, fontWeight: 800, color: PURPLE }}>💊 비상조제</span>
-        <span style={{ fontSize: 12, color: '#6b6b6b' }}>조제기 고장 시 수기 약포지 인쇄 · {loaded ? `약품 ${cache.length}종` : '로딩…'}</span>
+        <span style={{ fontSize: 12, color: '#6b6b6b' }}>조제기 고장 시 수기 약포지 인쇄 </span>
         <div style={{ flex: 1 }} />
         <button onClick={nextPatient} style={btn(NAVY, NAVY)}>다음 환자</button>
       </div>
