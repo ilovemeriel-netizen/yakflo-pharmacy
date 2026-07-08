@@ -236,7 +236,7 @@ function Pouch({ p, eW, eH, org, patient, room, patientNo }) {
 /* ── 약품 행(자동완성) ── */
 function DrugRow({ r, cache, setRow, delRow, inputRef }) {
   const [q, setQ] = useState(''); const [open, setOpen] = useState(false); const [idx, setIdx] = useState(0)
-  const boxRef = useRef(null); const activeRef = useRef(null); const listId = 'ed-sug-' + r.id
+  const boxRef = useRef(null); const activeRef = useRef(null); const qtyRef = useRef(null); const listId = 'ed-sug-' + r.id
   useEffect(() => { function od(e) { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false) } document.addEventListener('mousedown', od); return () => document.removeEventListener('mousedown', od) }, [])
   const nt = d => { const v = (d.narcotic_type || '').trim(); if (NARC[v]) return v; return d.is_narcotic ? '향정' : '' }
   const sug = useMemo(() => {
@@ -249,7 +249,7 @@ function DrugRow({ r, cache, setRow, delRow, inputRef }) {
   useEffect(() => { if (listOpen && activeRef.current) activeRef.current.scrollIntoView({ block: 'nearest' }) }, [idx, listOpen])
   function pick(d) { if (!d) return; setRow(r.id, { name: d.drug_name, code: d.drug_code, narc: nt(d) }); setQ(d.drug_name); setOpen(false) }
   function onKey(e) {
-    if (!listOpen) return   /* 목록 닫힘: 기본 동작(검색창은 인적 Enter 체인의 종단) */
+    if (!listOpen) { if (e.key === 'Enter') { e.preventDefault(); qtyRef.current && qtyRef.current.focus() } return }   /* 목록 닫힘: Enter → 같은 행 수량칸으로 이동(선택 즉시 자동이동은 아님) */
     if (e.key === 'ArrowDown') { e.preventDefault(); setIdx(i => (Math.min(i, sug.length - 1) + 1) % sug.length) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setIdx(i => (Math.min(i, sug.length - 1) - 1 + sug.length) % sug.length) }
     else if (e.key === 'Enter') { e.preventDefault(); pick(sug[act]) }   /* 목록 열림 → 항목 선택 우선(필드 이동보다 먼저) */
@@ -266,7 +266,7 @@ function DrugRow({ r, cache, setRow, delRow, inputRef }) {
         </div>)}
       </div>}
     </div>
-    <input value={r.qty} onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setRow(r.id, { qty: v }) }} title="1회 복용량" style={{ ...inp, textAlign: 'center', padding: '7px 4px' }} />
+    <input ref={qtyRef} value={r.qty} onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setRow(r.id, { qty: v }) }} title="1회 복용량" style={{ ...inp, textAlign: 'center', padding: '7px 4px' }} />
     <input value={r.days} onChange={e => { const v = e.target.value; if (/^\d*$/.test(v)) setRow(r.id, { days: v }) }} placeholder="전역" title="약품별 복용일수(빈칸=전역 일수)" style={{ ...inp, textAlign: 'center', padding: '7px 4px' }} />
     <select value={r.method} onChange={e => { const mk = e.target.value; const cfg = METHODS[mk]; if (cfg) setRow(r.id, { method: mk, m: cfg.s.includes('m'), l: cfg.s.includes('l'), d: cfg.s.includes('d'), b: cfg.s.includes('b'), timing: cfg.t }); else setRow(r.id, { method: mk }) }} title="방법 코드(선택 시 시간대·복용시점 자동, 이후 수동 수정 가능)" style={{ ...inp, padding: '7px 4px' }}>{METHOD_KEYS.map(k => <option key={k}>{k}</option>)}</select>
     {SLOTS.map(s => <div key={s.key} style={{ textAlign: 'center' }}><input type="checkbox" checked={!!r[s.key]} onChange={e => setRow(r.id, { [s.key]: e.target.checked })} style={{ width: 16, height: 16, accentColor: PURPLE, cursor: 'pointer' }} /></div>)}
