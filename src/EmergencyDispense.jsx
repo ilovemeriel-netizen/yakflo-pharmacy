@@ -133,7 +133,7 @@ export default function EmergencyDispense() {
     setRows([newRow()]); setPatient(''); setRoom(''); setPatientNo(''); setPrinted(false); setPowder(false)
   }
 
-  return <div style={{ padding: '20px 24px', background: '#F7F6F3', minHeight: '100vh' }}>
+  return <div className="ed-root" style={{ padding: '20px 24px', background: '#F7F6F3', minHeight: '100vh' }}>
     <style>{ED_CSS}</style>
 
     {/* ─── 컨트롤(인쇄 제외) ─── */}
@@ -308,6 +308,8 @@ const ED_CSS = `
 .ed-ruler{display:none}
 @media print{
   @page{size:A4;margin:8mm}
+  /* 래퍼(minHeight:100vh)가 visibility만 숨겨져 flow에서 한 페이지를 점유 → 백지 선행 페이지가 되던 문제 제거 */
+  body.ed-printing .ed-root,body.ed-printing-ruler .ed-root{min-height:0!important;padding:0!important;margin:0!important}
   /* 파우치 인쇄 */
   body.ed-printing *{visibility:hidden!important}
   body.ed-printing .ed-print-only,body.ed-printing .ed-print-only *{visibility:visible!important}
