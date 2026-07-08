@@ -13,8 +13,8 @@ const TIMINGS = ['식전 30분', '식후 30분', '식후 즉시', '식간', '해
 const TIMING_SHORT = { '식전 30분': '식전', '식후 30분': '식후', '식후 즉시': '식후즉시', '식간': '식간', '해당없음': '' }
 const NARC = { 마약: NAVY, 향정: PURPLE, 한외마약: LAV }
 /* 파우치 레이아웃 상수(mm) — 행 '한도'는 상수 금지(높이에서 계산), 부위 높이는 레이아웃 상수 */
-const PAD_MM = 6, TOP_MM = 10, BOTTOM_MM = 15
-const ROW_MM = { normal: 3.8, small: 3.1 }
+const PAD_MM = 5, TOP_MM = 11, BOTTOM_MM = 13
+const ROW_MM = { normal: 4.0, small: 3.2 }
 const A4_W = 210, A4_H = 297, A4_MARGIN = 8
 
 let _seq = 1
@@ -25,7 +25,7 @@ function addDays(startYmd, n) { const p = ymdParts(startYmd); const dt = new Dat
 function chunk(arr, n) { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out }
 function rowLimit(envH, small) { const avail = envH - TOP_MM - BOTTOM_MM - PAD_MM; return Math.max(1, Math.floor(avail / ROW_MM[small ? 'small' : 'normal'])) }
 const todayYmd = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
-const newRow = () => ({ id: rid(), name: '', code: '', narc: '', qty: '1', m: false, l: false, d: false, b: false, timing: '식후 30분' })
+const newRow = () => ({ id: rid(), name: '', code: '', narc: '', qty: '1', m: true, l: true, d: true, b: false, timing: '식후 30분' })
 
 export default function EmergencyDispense() {
   const [cache, setCache] = useState([]); const [loaded, setLoaded] = useState(false)
@@ -134,7 +134,7 @@ export default function EmergencyDispense() {
       <div style={{ background: '#fff', border: '1px solid #e3e0dc', borderRadius: 12, padding: 14, marginBottom: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10 }}>
         {fld('환자명', <input value={patient} onChange={e => setPatient(e.target.value)} style={inp} />)}
         {fld('병실호수', <input value={room} onChange={e => setRoom(e.target.value)} placeholder="607" style={inp} />)}
-        {fld('환자번호(선택)', <input value={patientNo} onChange={e => setPatientNo(e.target.value)} placeholder="00010950" style={inp} />)}
+        {fld('환자번호(선택)', <input value={patientNo} onChange={e => setPatientNo(String(e.target.value))} placeholder="00010950" style={inp} />)}
         {fld('시작순번', <input type="number" min={1} value={startSeq} onChange={e => setStartSeq(e.target.value)} style={inp} />)}
         {fld('조제일자', <input type="date" value={dateYmd} onChange={e => setDateYmd(e.target.value)} style={inp} />)}
         {fld('일수(1~31)', <input type="number" min={1} max={31} value={days} onChange={e => setDays(e.target.value)} style={inp} />)}
@@ -193,31 +193,35 @@ function A4Page({ pouches, pageIdx, total, eW, eH, org, patient, room, patientNo
 
 /* ── 파우치(흰 배경·검정 잉크·절취 점선). 복용시간 하단 좌측 ── */
 function Pouch({ p, eW, eH, org, patient, room, patientNo }) {
-  const fs = p.small ? 8 : 10
-  return <div style={{ width: eW + 'mm', height: eH + 'mm', boxSizing: 'border-box', border: '1px dashed #000', background: '#fff', color: '#000', padding: PAD_MM / 2 + 'mm', display: 'flex', flexDirection: 'column', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
-    {/* 상단: 순번(좌 대형) · 환자번호(우) */}
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-      <span style={{ fontSize: 15, fontWeight: 900, lineHeight: 1 }}>{p.seq}{p.page ? <span style={{ fontSize: 8, fontWeight: 700 }}> ({p.page}/{p.pageN})</span> : null}</span>
-      <span style={{ fontSize: 8.5, letterSpacing: 0.3 }}>{patientNo || ''}</span>
-    </div>
-    {/* 조제일자 · (병실) · 환자명 + 굵은 밑줄 */}
-    <div style={{ fontSize: 9, display: 'flex', gap: '1.5mm', alignItems: 'baseline', borderBottom: '0.6mm solid #000', paddingBottom: '0.6mm', marginTop: '0.4mm' }}>
-      <span>{p.date}</span>{room ? <span>({room}호)</span> : null}<span style={{ fontWeight: 700, marginLeft: 'auto' }}>{patient || '　'}</span>
-    </div>
-    {/* 약품 목록(좌 약품명 / 우 수량, 소형) */}
-    <div style={{ flex: '1 1 auto', overflow: 'hidden', minHeight: 0, marginTop: '0.6mm' }}>
-      {p.rows.map((r, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '1.5mm', fontSize: fs, lineHeight: 1.28 }}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-        <span style={{ flexShrink: 0, fontWeight: 700 }}>{r.qty || '1'}</span>
-      </div>)}
-    </div>
-    {/* 하단 고정: 복용시간(초대형 볼드, 좌) + 식전/식후 소형 병기 / 기관명 */}
-    <div style={{ marginTop: 'auto', flexShrink: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: '1.5mm' }}>
-        <span style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{p.slot}</span>
-        {p.timing ? <span style={{ fontSize: 9, fontWeight: 700, paddingBottom: '0.5mm' }}>{p.timing}</span> : null}
+  const fs = p.small ? 8.5 : 10.5
+  const label = p.slot + (p.timing || '')   /* 통짜 복용시점: 아침식전 / 점심식후 / 취침전 */
+  return <div style={{ width: eW + 'mm', height: eH + 'mm', boxSizing: 'border-box', border: '1px dashed #000', background: '#fff', color: '#000', position: 'relative', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+    {/* 안쪽 보조 재단선(사방 1mm 안, 옅은 실선). 본문은 안쪽 기준 배치 + 내부 패딩 → 두 선 어디로 잘라도 글자 안전 */}
+    <div style={{ position: 'absolute', inset: '1mm', border: '0.2mm solid #b3b3b3', boxSizing: 'border-box', padding: '1.5mm', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontWeight: 600 }}>
+      {/* 상단: 순번(대형) · 환자번호(문자열 원문) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <span style={{ fontSize: 15, fontWeight: 900, lineHeight: 1 }}>{p.seq}</span>
+        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>{patientNo || ''}</span>
       </div>
-      <div style={{ fontSize: 8, marginTop: '0.4mm', fontWeight: 700 }}>{org || ''}</div>
+      {/* 둘째 줄 강조: 조제일자·(병실)·환자명 — 굵고 크게 + 굵은 밑줄 밀착 */}
+      <div style={{ fontSize: 11, fontWeight: 800, display: 'flex', gap: '1.5mm', alignItems: 'baseline', borderBottom: '2px solid #000', paddingBottom: '0.3mm', marginTop: '0.6mm' }}>
+        <span>{p.date}</span>{room ? <span>({room}호)</span> : null}<span style={{ marginLeft: 'auto' }}>{patient || '　'}</span>
+      </div>
+      {/* 약품 목록(약간 굵게) */}
+      <div style={{ flex: '1 1 auto', overflow: 'hidden', minHeight: 0, marginTop: '0.8mm' }}>
+        {p.rows.map((r, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '1.5mm', fontSize: fs, fontWeight: 600, lineHeight: 1.3 }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+          <span style={{ flexShrink: 0, fontWeight: 800 }}>{r.qty || '1'}</span>
+        </div>)}
+      </div>
+      {/* 하단 고정: 복용시점 통짜 초대형(가장 큰 텍스트, 자간 넓게) + (i/n) 소형 / 기관명 중간 */}
+      <div style={{ marginTop: 'auto', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '1.5mm' }}>
+          <span style={{ fontSize: 18, fontWeight: 900, letterSpacing: '0.5mm', lineHeight: 1, whiteSpace: 'nowrap' }}>{label}</span>
+          {p.page ? <span style={{ fontSize: 8, fontWeight: 700, paddingBottom: '1mm' }}>({p.page}/{p.pageN})</span> : null}
+        </div>
+        <div style={{ fontSize: 10, marginTop: '0.6mm', fontWeight: 700 }}>{org || ''}</div>
+      </div>
     </div>
   </div>
 }
