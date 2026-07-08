@@ -40,6 +40,8 @@ export default function EmergencyDispense() {
   const [envW, setEnvW] = useState(64); const [envH, setEnvH] = useState(86)
   const [printed, setPrinted] = useState(false)
   const wrapRef = useRef(null); const [scale, setScale] = useState(1)
+  const patientRef = useRef(null), roomRef = useRef(null), patientNoRef = useRef(null), firstDrugRef = useRef(null)
+  const onEnterFocus = (e, next) => { if (e.key === 'Enter') { e.preventDefault(); next.current && next.current.focus() } }   /* Tab 순서 불변, Enter만 추가 */
 
   useEffect(() => {
     let on = true
@@ -131,15 +133,15 @@ export default function EmergencyDispense() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 74px repeat(4,32px) 96px 30px', gap: 8, fontSize: 11, fontWeight: 700, color: '#555', padding: '0 4px 8px', borderBottom: '1px solid #eee' }}>
           <div>약품명</div><div style={{ textAlign: 'center' }}>1회량</div><div style={{ textAlign: 'center' }}>일수</div><div style={{ textAlign: 'center' }}>방법</div>{SLOTS.map(s => <div key={s.key} style={{ textAlign: 'center' }}>{s.label}</div>)}<div style={{ textAlign: 'center' }}>복용시점</div><div />
         </div>
-        {rows.map(r => <DrugRow key={r.id} r={r} cache={cache} setRow={setRow} delRow={delRow} />)}
+        {rows.map((r, i) => <DrugRow key={r.id} r={r} cache={cache} setRow={setRow} delRow={delRow} inputRef={i === 0 ? firstDrugRef : undefined} />)}
         <button onClick={addRow} style={btn(LAV, PURPLE)}>+ 약품 행 추가</button>
       </div>
 
       {/* 인쇄 설정 */}
       <div style={{ background: '#fff', border: '1px solid #e3e0dc', borderRadius: 12, padding: 14, marginBottom: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10 }}>
-        {fld('환자명', <input value={patient} onChange={e => setPatient(e.target.value)} style={inp} />)}
-        {fld('병실호수', <input value={room} onChange={e => setRoom(e.target.value)} placeholder="607" style={inp} />)}
-        {fld('환자번호(선택)', <input value={patientNo} onChange={e => setPatientNo(String(e.target.value))} placeholder="00010950" style={inp} />)}
+        {fld('환자명', <input ref={patientRef} value={patient} onChange={e => setPatient(e.target.value)} onKeyDown={e => onEnterFocus(e, roomRef)} style={inp} />)}
+        {fld('병실호수', <input ref={roomRef} value={room} onChange={e => setRoom(e.target.value)} onKeyDown={e => onEnterFocus(e, patientNoRef)} placeholder="607" style={inp} />)}
+        {fld('환자번호(선택)', <input ref={patientNoRef} value={patientNo} onChange={e => setPatientNo(String(e.target.value))} onKeyDown={e => onEnterFocus(e, firstDrugRef)} placeholder="00010950" style={inp} />)}
         {fld('시작순번', <input type="number" min={1} value={startSeq} onChange={e => setStartSeq(e.target.value)} style={inp} />)}
         {fld('조제일자', <input type="date" value={dateYmd} onChange={e => setDateYmd(e.target.value)} style={inp} />)}
         {fld('일수(1~31)', <input type="number" min={1} max={31} value={days} onChange={e => setDays(e.target.value)} style={inp} />)}
@@ -232,8 +234,9 @@ function Pouch({ p, eW, eH, org, patient, room, patientNo }) {
 }
 
 /* ── 약품 행(자동완성) ── */
-function DrugRow({ r, cache, setRow, delRow }) {
-  const [q, setQ] = useState(''); const [open, setOpen] = useState(false); const boxRef = useRef(null)
+function DrugRow({ r, cache, setRow, delRow, inputRef }) {
+  const [q, setQ] = useState(''); const [open, setOpen] = useState(false); const [idx, setIdx] = useState(0)
+  const boxRef = useRef(null); const activeRef = useRef(null); const listId = 'ed-sug-' + r.id
   useEffect(() => { function od(e) { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false) } document.addEventListener('mousedown', od); return () => document.removeEventListener('mousedown', od) }, [])
   const nt = d => { const v = (d.narcotic_type || '').trim(); if (NARC[v]) return v; return d.is_narcotic ? '향정' : '' }
   const sug = useMemo(() => {
@@ -241,13 +244,23 @@ function DrugRow({ r, cache, setRow, delRow }) {
     return cache.filter(d => (d.drug_name || '').toLowerCase().includes(s) || (d.drug_code || '').toLowerCase().includes(s))
       .sort((a, b) => (a.status === '사용' ? 0 : 1) - (b.status === '사용' ? 0 : 1) || String(a.drug_name).localeCompare(String(b.drug_name), 'ko')).slice(0, 8)
   }, [q, cache])
-  function pick(d) { setRow(r.id, { name: d.drug_name, code: d.drug_code, narc: nt(d) }); setQ(d.drug_name); setOpen(false) }
+  const listOpen = open && sug.length > 0
+  const act = Math.min(idx, sug.length - 1)
+  useEffect(() => { if (listOpen && activeRef.current) activeRef.current.scrollIntoView({ block: 'nearest' }) }, [idx, listOpen])
+  function pick(d) { if (!d) return; setRow(r.id, { name: d.drug_name, code: d.drug_code, narc: nt(d) }); setQ(d.drug_name); setOpen(false) }
+  function onKey(e) {
+    if (!listOpen) return   /* 목록 닫힘: 기본 동작(검색창은 인적 Enter 체인의 종단) */
+    if (e.key === 'ArrowDown') { e.preventDefault(); setIdx(i => (Math.min(i, sug.length - 1) + 1) % sug.length) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setIdx(i => (Math.min(i, sug.length - 1) - 1 + sug.length) % sug.length) }
+    else if (e.key === 'Enter') { e.preventDefault(); pick(sug[act]) }   /* 목록 열림 → 항목 선택 우선(필드 이동보다 먼저) */
+    else if (e.key === 'Escape') { e.preventDefault(); setOpen(false) }
+  }
   return <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 74px repeat(4,32px) 96px 30px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f2f0ed' }}>
     <div ref={boxRef} style={{ position: 'relative' }}>
-      <input value={r.name} onChange={e => { setRow(r.id, { name: e.target.value, code: '', narc: '' }); setQ(e.target.value); setOpen(true) }} onFocus={() => setOpen(true)} placeholder="약품명·코드(2글자↑) / 자유입력" style={{ ...inp, borderColor: r.narc ? PURPLE : '#d9d5d0' }} />
+      <input ref={inputRef} value={r.name} role="combobox" aria-autocomplete="list" aria-expanded={listOpen} aria-controls={listId} aria-activedescendant={listOpen ? listId + '-' + act : undefined} onChange={e => { setRow(r.id, { name: e.target.value, code: '', narc: '' }); setQ(e.target.value); setOpen(true); setIdx(0) }} onFocus={() => setOpen(true)} onKeyDown={onKey} placeholder="약품명·코드(2글자↑) / 자유입력" style={{ ...inp, borderColor: r.narc ? PURPLE : '#d9d5d0' }} />
       {r.narc ? <span style={{ position: 'absolute', right: 8, top: 7, fontSize: 9, fontWeight: 700, color: '#fff', background: NARC[r.narc] || PURPLE, borderRadius: 6, padding: '1px 5px' }}>{r.narc}</span> : (r.code ? <span style={{ position: 'absolute', right: 8, top: 9, fontSize: 9, color: '#999' }}>{r.code}</span> : null)}
-      {open && sug.length > 0 && <div style={{ position: 'absolute', zIndex: 30, top: 34, left: 0, right: 0, background: '#fff', border: '1px solid #d9d5d0', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.12)', maxHeight: 220, overflowY: 'auto' }}>
-        {sug.map(d => <div key={d.drug_code} onClick={() => pick(d)} style={{ padding: '7px 10px', cursor: 'pointer', borderBottom: '1px solid #f2f0ed', display: 'flex', justifyContent: 'space-between', gap: 8 }} onMouseEnter={e => e.currentTarget.style.background = '#F7F6F3'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+      {listOpen && <div id={listId} role="listbox" style={{ position: 'absolute', zIndex: 30, top: 34, left: 0, right: 0, background: '#fff', border: '1px solid #d9d5d0', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.12)', maxHeight: 220, overflowY: 'auto' }}>
+        {sug.map((d, i) => <div key={d.drug_code} id={listId + '-' + i} role="option" aria-selected={i === act} ref={i === act ? activeRef : null} onClick={() => pick(d)} onMouseEnter={() => setIdx(i)} style={{ padding: '7px 10px', cursor: 'pointer', borderBottom: '1px solid #f2f0ed', display: 'flex', justifyContent: 'space-between', gap: 8, background: i === act ? LAV + '33' : '#fff' }}>
           <span style={{ fontSize: 12, color: '#222', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_name}{nt(d) && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, color: '#fff', background: NARC[nt(d)] || PURPLE, borderRadius: 5, padding: '1px 4px' }}>{nt(d)}</span>}{d.status !== '사용' && <span style={{ marginLeft: 6, fontSize: 8, color: '#999' }}>{d.status}</span>}</span>
           <span style={{ fontSize: 10, color: '#999', flexShrink: 0 }}>{d.drug_code}</span>
         </div>)}
