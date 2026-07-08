@@ -9,11 +9,14 @@ import { supabase } from './lib/supabase'
 const PURPLE = '#804A87', GREEN = '#019748', LAV = '#BFA6D9', NAVY = '#2E4A62'
 const MM = 3.7795275591 /* mm→px @96dpi (미리보기 스케일 계산용) */
 const SLOTS = [{ key: 'm', label: '아침' }, { key: 'l', label: '점심' }, { key: 'd', label: '저녁' }, { key: 'b', label: '취침전' }]
-const TIMINGS = ['식전 30분', '식후 30분', '식후 즉시', '식간', '해당없음']
-const TIMING_SHORT = { '식전 30분': '식전', '식후 30분': '식후', '식후 즉시': '식후즉시', '식간': '식간', '해당없음': '' }
+const TIMINGS = ['식전', '식후', '식간', '필요시', '의사지시대로', '기타']
+const TIME_TM = ['', '식전', '식후', '식간']   /* 시간대와 짝지어 파우치, ''=시점없음(시간대만) */
+const NONTIME_TM = ['필요시', '의사지시대로', '기타']   /* 시간대 없이 단독 파우치(약 모아 1매) */
+const METHODS = { TP: { s: ['m', 'l', 'd'], t: '식후' }, DA: { s: ['m'], t: '식전' }, DP: { s: ['m'], t: '식후' }, BP: { s: ['m', 'd'], t: '식후' }, PRN: { s: [], t: '필요시' }, DIRI: { s: [], t: '의사지시대로' } }
+const METHOD_KEYS = ['(직접입력)', 'TP', 'DA', 'DP', 'BP', 'PRN', 'DIRI']
 const NARC = { 마약: NAVY, 향정: PURPLE, 한외마약: LAV }
 /* 파우치 레이아웃 상수(mm) — 행 '한도'는 상수 금지(높이에서 계산), 부위 높이는 레이아웃 상수 */
-const PAD_MM = 5, TOP_MM = 11, BOTTOM_MM = 13
+const PAD_MM = 5, TOP_MM = 12, BOTTOM_MM = 13
 const ROW_MM = { normal: 4.0, small: 3.2 }
 const A4_W = 210, A4_H = 297, A4_MARGIN = 8
 
@@ -25,7 +28,7 @@ function addDays(startYmd, n) { const p = ymdParts(startYmd); const dt = new Dat
 function chunk(arr, n) { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out }
 function rowLimit(envH, small) { const avail = envH - TOP_MM - BOTTOM_MM - PAD_MM; return Math.max(1, Math.floor(avail / ROW_MM[small ? 'small' : 'normal'])) }
 const todayYmd = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
-const newRow = () => ({ id: rid(), name: '', code: '', narc: '', qty: '1', m: true, l: true, d: true, b: false, timing: '식후 30분' })
+const newRow = () => ({ id: rid(), name: '', code: '', narc: '', qty: '1', days: '', method: '(직접입력)', m: true, l: true, d: true, b: false, timing: '식후' })
 
 export default function EmergencyDispense() {
   const [cache, setCache] = useState([]); const [loaded, setLoaded] = useState(false)
@@ -55,22 +58,23 @@ export default function EmergencyDispense() {
   /* 파우치 생성: 일자×시간대×복용시점(정확값) 그룹별. 한도 초과→폰트축소→그래도 초과→(i/n) 분할 */
   const pouches = useMemo(() => {
     const out = []; let seq = Number(startSeq) || 1
-    const nd = Math.max(1, Math.min(31, Number(days) || 1))
+    const g = Math.max(1, Math.min(31, Number(days) || 1))
+    const eff = r => { const v = parseInt(r.days, 10); return v >= 1 ? Math.min(31, v) : g }   /* 약품별 일수(빈칸=전역) */
+    const active = rows.filter(r => (r.name || '').trim())
+    const totalDays = active.length ? Math.max(...active.map(eff)) : g   /* 전체 발행 일수 = 약품별 일수 최댓값 */
     const nLim = rowLimit(eH, false), sLim = rowLimit(eH, true)
-    for (let di = 0; di < nd; di++) {
-      const dstr = addDays(dateYmd, di)
-      for (const slot of SLOTS) {
-        const sr = rows.filter(r => r[slot.key] && (r.name || '').trim())
-        if (!sr.length) continue
-        for (const tm of TIMINGS) {
-          const grp = sr.filter(r => r.timing === tm); if (!grp.length) continue
-          const small = grp.length > nLim
-          const per = small ? sLim : nLim
-          const pages = grp.length > per ? chunk(grp, per) : [grp]
-          pages.forEach((pg, pi) => out.push({ seq, date: dstr, slot: slot.label, timing: TIMING_SHORT[tm], rows: pg, small, page: pages.length > 1 ? pi + 1 : null, pageN: pages.length > 1 ? pages.length : null }))
-          seq++
-        }
-      }
+    const emit = (grp, slotLabel, tm, dstr) => {
+      if (!grp.length) return
+      const small = grp.length > nLim; const per = small ? sLim : nLim
+      const pages = grp.length > per ? chunk(grp, per) : [grp]
+      pages.forEach((pg, pi) => out.push({ seq, date: dstr, slot: slotLabel, timing: tm, rows: pg, small, page: pages.length > 1 ? pi + 1 : null, pageN: pages.length > 1 ? pages.length : null }))
+      seq++
+    }
+    for (let di = 0; di < totalDays; di++) {
+      const dstr = addDays(dateYmd, di), dayNo = di + 1
+      const dayRows = active.filter(r => dayNo <= eff(r))   /* 그 일자 ≤ 해당 약 일수 */
+      for (const slot of SLOTS) for (const tm of TIME_TM) emit(dayRows.filter(r => r[slot.key] && (r.timing || '') === tm), slot.label, tm, dstr)
+      for (const tm of NONTIME_TM) emit(dayRows.filter(r => r.timing === tm), '', tm, dstr)
     }
     return out
   }, [rows, startSeq, dateYmd, days, eH])
@@ -123,8 +127,8 @@ export default function EmergencyDispense() {
 
       {/* 약품 행 */}
       <div style={{ background: '#fff', border: '1px solid #e3e0dc', borderRadius: 12, padding: 14, marginBottom: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 66px repeat(4,40px) 118px 36px', gap: 8, fontSize: 11, fontWeight: 700, color: '#555', padding: '0 4px 8px', borderBottom: '1px solid #eee' }}>
-          <div>약품명</div><div style={{ textAlign: 'center' }}>수량</div>{SLOTS.map(s => <div key={s.key} style={{ textAlign: 'center' }}>{s.label}</div>)}<div style={{ textAlign: 'center' }}>복용시점</div><div />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 74px repeat(4,32px) 96px 30px', gap: 8, fontSize: 11, fontWeight: 700, color: '#555', padding: '0 4px 8px', borderBottom: '1px solid #eee' }}>
+          <div>약품명</div><div style={{ textAlign: 'center' }}>1회량</div><div style={{ textAlign: 'center' }}>일수</div><div style={{ textAlign: 'center' }}>방법</div>{SLOTS.map(s => <div key={s.key} style={{ textAlign: 'center' }}>{s.label}</div>)}<div style={{ textAlign: 'center' }}>복용시점</div><div />
         </div>
         {rows.map(r => <DrugRow key={r.id} r={r} cache={cache} setRow={setRow} delRow={delRow} />)}
         <button onClick={addRow} style={btn(LAV, PURPLE)}>+ 약품 행 추가</button>
@@ -204,8 +208,8 @@ function Pouch({ p, eW, eH, org, patient, room, patientNo }) {
         <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>{patientNo || ''}</span>
       </div>
       {/* 둘째 줄 강조: 조제일자·(병실)·환자명 — 굵고 크게 + 굵은 밑줄 밀착 */}
-      <div style={{ fontSize: 11, fontWeight: 800, display: 'flex', gap: '1.5mm', alignItems: 'baseline', borderBottom: '2px solid #000', paddingBottom: '0.3mm', marginTop: '0.6mm' }}>
-        <span>{p.date}</span>{room ? <span>({room}호)</span> : null}<span style={{ marginLeft: 'auto' }}>{patient || '　'}</span>
+      <div style={{ fontSize: 12.5, fontWeight: 800, display: 'flex', gap: '1.5mm', alignItems: 'baseline', borderBottom: '2px solid #000', paddingBottom: '0.3mm', marginTop: '0.6mm', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <span>{p.date}</span>{room ? <span>({room}호)</span> : null}<span style={{ marginLeft: 'auto', overflow: 'hidden', textOverflow: 'ellipsis' }}>{patient || '　'}</span>
       </div>
       {/* 약품 목록(약간 굵게) */}
       <div style={{ flex: '1 1 auto', overflow: 'hidden', minHeight: 0, marginTop: '0.8mm' }}>
@@ -237,7 +241,7 @@ function DrugRow({ r, cache, setRow, delRow }) {
       .sort((a, b) => (a.status === '사용' ? 0 : 1) - (b.status === '사용' ? 0 : 1) || String(a.drug_name).localeCompare(String(b.drug_name), 'ko')).slice(0, 8)
   }, [q, cache])
   function pick(d) { setRow(r.id, { name: d.drug_name, code: d.drug_code, narc: nt(d) }); setQ(d.drug_name); setOpen(false) }
-  return <div style={{ display: 'grid', gridTemplateColumns: '1fr 66px repeat(4,40px) 118px 36px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f2f0ed' }}>
+  return <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 74px repeat(4,32px) 96px 30px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f2f0ed' }}>
     <div ref={boxRef} style={{ position: 'relative' }}>
       <input value={r.name} onChange={e => { setRow(r.id, { name: e.target.value, code: '', narc: '' }); setQ(e.target.value); setOpen(true) }} onFocus={() => setOpen(true)} placeholder="약품명·코드(2글자↑) / 자유입력" style={{ ...inp, borderColor: r.narc ? PURPLE : '#d9d5d0' }} />
       {r.narc ? <span style={{ position: 'absolute', right: 8, top: 7, fontSize: 9, fontWeight: 700, color: '#fff', background: NARC[r.narc] || PURPLE, borderRadius: 6, padding: '1px 5px' }}>{r.narc}</span> : (r.code ? <span style={{ position: 'absolute', right: 8, top: 9, fontSize: 9, color: '#999' }}>{r.code}</span> : null)}
@@ -248,9 +252,11 @@ function DrugRow({ r, cache, setRow, delRow }) {
         </div>)}
       </div>}
     </div>
-    <input value={r.qty} onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setRow(r.id, { qty: v }) }} style={{ ...inp, textAlign: 'center' }} />
-    {SLOTS.map(s => <div key={s.key} style={{ textAlign: 'center' }}><input type="checkbox" checked={!!r[s.key]} onChange={e => setRow(r.id, { [s.key]: e.target.checked })} style={{ width: 17, height: 17, accentColor: PURPLE, cursor: 'pointer' }} /></div>)}
-    <select value={r.timing} onChange={e => setRow(r.id, { timing: e.target.value })} style={{ ...inp, padding: '7px 6px' }}>{TIMINGS.map(t => <option key={t}>{t}</option>)}</select>
+    <input value={r.qty} onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setRow(r.id, { qty: v }) }} title="1회 복용량" style={{ ...inp, textAlign: 'center', padding: '7px 4px' }} />
+    <input value={r.days} onChange={e => { const v = e.target.value; if (/^\d*$/.test(v)) setRow(r.id, { days: v }) }} placeholder="전역" title="약품별 복용일수(빈칸=전역 일수)" style={{ ...inp, textAlign: 'center', padding: '7px 4px' }} />
+    <select value={r.method} onChange={e => { const mk = e.target.value; const cfg = METHODS[mk]; if (cfg) setRow(r.id, { method: mk, m: cfg.s.includes('m'), l: cfg.s.includes('l'), d: cfg.s.includes('d'), b: cfg.s.includes('b'), timing: cfg.t }); else setRow(r.id, { method: mk }) }} title="방법 코드(선택 시 시간대·복용시점 자동, 이후 수동 수정 가능)" style={{ ...inp, padding: '7px 4px' }}>{METHOD_KEYS.map(k => <option key={k}>{k}</option>)}</select>
+    {SLOTS.map(s => <div key={s.key} style={{ textAlign: 'center' }}><input type="checkbox" checked={!!r[s.key]} onChange={e => setRow(r.id, { [s.key]: e.target.checked })} style={{ width: 16, height: 16, accentColor: PURPLE, cursor: 'pointer' }} /></div>)}
+    <select value={r.timing} onChange={e => setRow(r.id, { timing: e.target.value })} style={{ ...inp, padding: '7px 4px' }}><option value="">(없음)</option>{TIMINGS.map(t => <option key={t}>{t}</option>)}</select>
     <button onClick={() => delRow(r.id)} title="행 삭제" style={{ border: '1px solid #e3e0dc', background: '#fff', color: '#c0392b', borderRadius: 6, cursor: 'pointer', fontSize: 12, height: 30 }}>✕</button>
   </div>
 }
