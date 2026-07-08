@@ -15,6 +15,8 @@ const NONTIME_TM = ['필요시', '의사지시대로', '기타']   /* 시간대 
 const METHODS = { TP: { s: ['m', 'l', 'd'], t: '식후' }, DA: { s: ['m'], t: '식전' }, DP: { s: ['m'], t: '식후' }, BP: { s: ['m', 'd'], t: '식후' }, PRN: { s: [], t: '필요시' }, DIRI: { s: [], t: '의사지시대로' }, hs: { s: ['b'], t: '' }, MP: { s: ['l'], t: '식후' }, PP: { s: ['d'], t: '식후' } }
 const METHOD_KEYS = ['(직접입력)', ...Object.keys(METHODS)]   /* 코드 추가는 METHODS에 1줄만 → 드롭다운·자동세팅·그룹핑 모두 반영 */
 const NARC = { 마약: NAVY, 향정: PURPLE, 한외마약: LAV }
+const SEP_TINTS = [LAV, PURPLE, GREEN, NAVY]   /* 분리번호 시각 구분 — 팔레트 4색 저알파, 신색 없음 */
+function sepTint(sep) { const k = (sep || '').trim(); if (!k) return '#fff'; let h = 0; for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) >>> 0; return SEP_TINTS[h % SEP_TINTS.length] + '2b' }
 /* 파우치 레이아웃 상수(mm) — 행 '한도'는 상수 금지(높이에서 계산), 부위 높이는 레이아웃 상수 */
 const PAD_MM = 7, TOP_MM = 12, BOTTOM_MM = 13
 const ROW_MM = { normal: 4.0, small: 3.2 }
@@ -28,7 +30,7 @@ function addDays(startYmd, n) { const p = ymdParts(startYmd); const dt = new Dat
 function chunk(arr, n) { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out }
 function rowLimit(envH, small) { const avail = envH - TOP_MM - BOTTOM_MM - PAD_MM; return Math.max(1, Math.floor(avail / ROW_MM[small ? 'small' : 'normal'])) }
 const todayYmd = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
-const newRow = () => ({ id: rid(), name: '', code: '', narc: '', qty: '1', days: '', method: '(직접입력)', m: true, l: true, d: true, b: false, timing: '식후' })
+const newRow = () => ({ id: rid(), name: '', code: '', narc: '', qty: '1', days: '', method: '(직접입력)', m: true, l: true, d: true, b: false, timing: '식후', sep: '' })
 
 export default function EmergencyDispense() {
   const [cache, setCache] = useState([]); const [loaded, setLoaded] = useState(false)
@@ -39,6 +41,7 @@ export default function EmergencyDispense() {
   const [org, setOrg] = useState('씨엔씨재활의학과병원')
   const [envW, setEnvW] = useState(64); const [envH, setEnvH] = useState(86)
   const [printed, setPrinted] = useState(false)
+  const [powder, setPowder] = useState(false)   /* 파우더 환자: 파우치 환자명 앞 ● */
   const wrapRef = useRef(null); const [scale, setScale] = useState(1)
   const patientRef = useRef(null), roomRef = useRef(null), patientNoRef = useRef(null), firstDrugRef = useRef(null)
   const onEnterFocus = (e, next) => { if (e.key === 'Enter') { e.preventDefault(); next.current && next.current.focus() } }   /* Tab 순서 불변, Enter만 추가 */
@@ -72,15 +75,29 @@ export default function EmergencyDispense() {
       pages.forEach((pg, pi) => out.push({ seq, date: dstr, slot: slotLabel, timing: tm, rows: pg, small, page: pages.length > 1 ? pi + 1 : null, pageN: pages.length > 1 ? pages.length : null }))
       seq++
     }
+    const emitBySep = (list, slotLabel, tm, dstr) => {   /* 같은 시간대+복용시점 안에서 분리번호별로 다시 나눔 */
+      if (!list.length) return
+      const bySep = new Map()
+      for (const r of list) { const k = (r.sep || '').trim(); if (!bySep.has(k)) bySep.set(k, []); bySep.get(k).push(r) }
+      for (const sub of bySep.values()) emit(sub, slotLabel, tm, dstr)   /* 번호별 개별 파우치, 빈칸('')끼리는 '번호 없음' 한 그룹 */
+    }
     for (let di = 0; di < totalDays; di++) {
       const dstr = addDays(dateYmd, di), dayNo = di + 1
       const dayRows = active.filter(r => dayNo <= eff(r))   /* 그 일자 ≤ 해당 약 일수 */
-      for (const slot of SLOTS) for (const tm of TIME_TM) emit(dayRows.filter(r => r[slot.key] && (r.timing || '') === tm), slot.label, tm, dstr)
+      for (const slot of SLOTS) for (const tm of TIME_TM) emitBySep(dayRows.filter(r => r[slot.key] && (r.timing || '') === tm), slot.label, tm, dstr)
       const norm = t => TIME_TM.includes(t || '') ? null : (NONTIME_TM.includes(t) ? t : '기타')   /* 미매핑 값은 '기타'로 */
-      for (const tm of NONTIME_TM) emit(dayRows.filter(r => norm(r.timing) === tm), '', tm, dstr)
+      for (const tm of NONTIME_TM) emitBySep(dayRows.filter(r => norm(r.timing) === tm), '', tm, dstr)
     }
     return out
   }, [rows, startSeq, dateYmd, days, eH])
+
+  /* 분리번호 묶음 요약(화면 전용): 잘못 적은 번호를 육안으로 잡기 위함 */
+  const sepSummary = useMemo(() => {
+    const active = rows.filter(r => (r.name || '').trim())
+    const map = new Map()
+    for (const r of active) { const key = (r.sep || '').trim() || '(번호 없음)'; if (!map.has(key)) map.set(key, []); map.get(key).push((r.name || '').trim()) }
+    return [...map.entries()]
+  }, [rows])
 
   const lastSeq = pouches.length ? Math.max(...pouches.map(p => p.seq)) : (Number(startSeq) || 1) - 1
   /* A4 배치: 인쇄영역 194×281 안에 envW×envH 그리드 */
@@ -113,7 +130,7 @@ export default function EmergencyDispense() {
       : '다음 환자로 넘어갑니다.\n약품 목록·환자명·병실·환자번호를 초기화합니다. (기관명·조제일자·일수·봉투규격 유지)'
     if (!window.confirm(warn)) return
     setStartSeq(lastSeq + 1)            /* 순번 이어감 */
-    setRows([newRow()]); setPatient(''); setRoom(''); setPatientNo(''); setPrinted(false)
+    setRows([newRow()]); setPatient(''); setRoom(''); setPatientNo(''); setPrinted(false); setPowder(false)
   }
 
   return <div style={{ padding: '20px 24px', background: '#F7F6F3', minHeight: '100vh' }}>
@@ -130,8 +147,8 @@ export default function EmergencyDispense() {
 
       {/* 약품 행 */}
       <div style={{ background: '#fff', border: '1px solid #e3e0dc', borderRadius: 12, padding: 14, marginBottom: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 74px repeat(4,32px) 96px 30px', gap: 8, fontSize: 11, fontWeight: 700, color: '#555', padding: '0 4px 8px', borderBottom: '1px solid #eee' }}>
-          <div>약품명</div><div style={{ textAlign: 'center' }}>1회량</div><div style={{ textAlign: 'center' }}>일수</div><div style={{ textAlign: 'center' }}>방법</div>{SLOTS.map(s => <div key={s.key} style={{ textAlign: 'center' }}>{s.label}</div>)}<div style={{ textAlign: 'center' }}>복용시점</div><div />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 74px repeat(4,32px) 96px 56px 30px', gap: 8, fontSize: 11, fontWeight: 700, color: '#555', padding: '0 4px 8px', borderBottom: '1px solid #eee' }}>
+          <div>약품명</div><div style={{ textAlign: 'center' }}>1회량</div><div style={{ textAlign: 'center' }}>일수</div><div style={{ textAlign: 'center' }}>방법</div>{SLOTS.map(s => <div key={s.key} style={{ textAlign: 'center' }}>{s.label}</div>)}<div style={{ textAlign: 'center' }}>복용시점</div><div style={{ textAlign: 'center' }}>분리</div><div />
         </div>
         {rows.map((r, i) => <DrugRow key={r.id} r={r} cache={cache} setRow={setRow} delRow={delRow} inputRef={i === 0 ? firstDrugRef : undefined} />)}
         <button onClick={addRow} style={btn(LAV, PURPLE)}>+ 약품 행 추가</button>
@@ -142,6 +159,7 @@ export default function EmergencyDispense() {
         {fld('환자명', <input ref={patientRef} value={patient} onChange={e => setPatient(e.target.value)} onKeyDown={e => onEnterFocus(e, roomRef)} style={inp} />)}
         {fld('병실호수', <input ref={roomRef} value={room} onChange={e => setRoom(e.target.value)} onKeyDown={e => onEnterFocus(e, patientNoRef)} placeholder="607" style={inp} />)}
         {fld('환자번호(선택)', <input ref={patientNoRef} value={patientNo} onChange={e => setPatientNo(String(e.target.value))} onKeyDown={e => onEnterFocus(e, firstDrugRef)} placeholder="00010950" style={inp} />)}
+        {fld('파우더 환자', <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 34 }}><input type="checkbox" checked={powder} onChange={e => { touch(); setPowder(e.target.checked) }} style={{ width: 17, height: 17, accentColor: PURPLE, cursor: 'pointer' }} /><span style={{ fontSize: 12, color: '#333' }}>환자명 앞 ● 표시</span></div>)}
         {fld('시작순번', <input type="number" min={1} value={startSeq} onChange={e => setStartSeq(e.target.value)} style={inp} />)}
         {fld('조제일자', <input type="date" value={dateYmd} onChange={e => setDateYmd(e.target.value)} style={inp} />)}
         {fld('일수(1~31)', <input type="number" min={1} max={31} value={days} onChange={e => setDays(e.target.value)} style={inp} />)}
@@ -155,6 +173,10 @@ export default function EmergencyDispense() {
         <button onClick={printRuler} style={btn(NAVY, NAVY)}>📏 보정 인쇄(100mm 눈금자)</button>
         <span style={{ fontSize: 11, color: '#6b6b6b' }}>파우치 {eW}×{eH}mm · A4당 {cols}×{prows}={perPage}매 · 순번 {startSeq}~{Math.max(startSeq, lastSeq)}</span>
       </div>
+      {sepSummary.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 11, color: '#555' }}>
+        <span style={{ fontWeight: 800, color: NAVY }}>분리번호 묶음</span>
+        {sepSummary.map(([k, names]) => <span key={k} title={names.join(', ')} style={{ padding: '3px 9px', borderRadius: 999, background: k === '(번호 없음)' ? '#efeef0' : sepTint(k), border: '1px solid #e3e0dc', fontWeight: 700, color: '#333' }}>{k === '(번호 없음)' ? k : '분리번호 ' + k}: {names.length}종</span>)}
+      </div>}
       <div style={{ fontSize: 11, color: '#a06b00', background: '#fff7e6', border: '1px solid #ffe1a6', borderRadius: 8, padding: '6px 10px', marginBottom: 14 }}>ℹ 실제 출력은 프린터 여백·용지에 따라 미세 차이가 날 수 있습니다. 첫 사용 시 [보정 인쇄]로 배율을 확인하세요.</div>
     </div>
 
@@ -163,7 +185,7 @@ export default function EmergencyDispense() {
       <div className="ed-print-area" style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: A4_W + 'mm' }}>
         {pages.length === 0
           ? null
-          : pages.map((pg, pi) => <A4Page key={pi} pouches={pg} pageIdx={pi} total={pages.length} eW={eW} eH={eH} org={org} patient={patient} room={room} patientNo={patientNo} />)}
+          : pages.map((pg, pi) => <A4Page key={pi} pouches={pg} pageIdx={pi} total={pages.length} eW={eW} eH={eH} org={org} patient={patient} room={room} patientNo={patientNo} powder={powder} />)}
       </div>
       {pages.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: '#999', fontSize: 13 }}>약품·복용시간을 선택하면 A4 미리보기가 생성됩니다.</div>}
       {pages.length > 0 && <div style={{ transform: `scale(1)`, marginTop: 8, fontSize: 11, color: '#6b6b6b' }}>총 {pages.length}장 · 미리보기 배율 {(scale * 100).toFixed(0)}%</div>}
@@ -171,7 +193,7 @@ export default function EmergencyDispense() {
 
     {/* 인쇄 전용(화면 숨김): 실제 출력용 파우치 flow */}
     <div className="ed-print-only">
-      {pages.map((pg, pi) => <A4Page key={pi} pouches={pg} pageIdx={pi} total={pages.length} eW={eW} eH={eH} org={org} patient={patient} room={room} patientNo={patientNo} printMode />)}
+      {pages.map((pg, pi) => <A4Page key={pi} pouches={pg} pageIdx={pi} total={pages.length} eW={eW} eH={eH} org={org} patient={patient} room={room} patientNo={patientNo} powder={powder} printMode />)}
     </div>
 
     {/* 보정 눈금자(100mm) — 화면 숨김, 보정 인쇄 시에만 출력 */}
@@ -189,17 +211,17 @@ export default function EmergencyDispense() {
 }
 
 /* ── A4 한 장 ── */
-function A4Page({ pouches, pageIdx, total, eW, eH, org, patient, room, patientNo, printMode }) {
+function A4Page({ pouches, pageIdx, total, eW, eH, org, patient, room, patientNo, powder, printMode }) {
   return <div className="ed-a4" style={{ width: A4_W + 'mm', height: A4_H + 'mm', boxSizing: 'border-box', padding: A4_MARGIN + 'mm', background: '#fff', ...(printMode ? {} : { boxShadow: '0 2px 10px rgba(0,0,0,0.15)', marginBottom: 14, border: '1px solid #ddd' }), pageBreakAfter: 'always', breakAfter: 'page' }}>
     {!printMode && <div style={{ fontSize: 9, color: '#bbb', marginBottom: '2mm' }}>A4 {pageIdx + 1}/{total}</div>}
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0mm', alignContent: 'flex-start' }}>
-      {pouches.map((p, i) => <Pouch key={i} p={p} eW={eW} eH={eH} org={org} patient={patient} room={room} patientNo={patientNo} />)}
+      {pouches.map((p, i) => <Pouch key={i} p={p} eW={eW} eH={eH} org={org} patient={patient} room={room} patientNo={patientNo} powder={powder} />)}
     </div>
   </div>
 }
 
 /* ── 파우치(흰 배경·검정 잉크·절취 점선). 복용시간 하단 좌측 ── */
-function Pouch({ p, eW, eH, org, patient, room, patientNo }) {
+function Pouch({ p, eW, eH, org, patient, room, patientNo, powder }) {
   const fs = p.small ? 8.5 : 10.5
   const label = p.slot + (p.timing || '')   /* 통짜 복용시점: 아침식전 / 점심식후 / 취침전 */
   return <div style={{ width: eW + 'mm', height: eH + 'mm', boxSizing: 'border-box', border: '1px dashed #000', background: '#fff', color: '#000', position: 'relative', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
@@ -212,7 +234,7 @@ function Pouch({ p, eW, eH, org, patient, room, patientNo }) {
       </div>
       {/* 둘째 줄 강조: 조제일자·(병실)·환자명 — 굵고 크게 + 굵은 밑줄 밀착 */}
       <div style={{ fontSize: 12.5, fontWeight: 800, display: 'flex', gap: '1.5mm', alignItems: 'baseline', borderBottom: '2px solid #000', paddingBottom: '0.3mm', marginTop: '0.6mm', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-        <span>{p.date}</span>{room ? <span>({room}호)</span> : null}<span style={{ marginLeft: 'auto', overflow: 'hidden', textOverflow: 'ellipsis' }}>{patient || '　'}</span>
+        <span>{p.date}</span>{room ? <span>({room}호)</span> : null}<span style={{ marginLeft: 'auto', overflow: 'hidden', textOverflow: 'ellipsis' }}>{powder ? '● ' : ''}{patient || '　'}</span>
       </div>
       {/* 약품 목록(약간 굵게) */}
       <div style={{ flex: '1 1 auto', overflow: 'hidden', minHeight: 0, marginTop: '0.8mm' }}>
@@ -255,7 +277,7 @@ function DrugRow({ r, cache, setRow, delRow, inputRef }) {
     else if (e.key === 'Enter') { e.preventDefault(); pick(sug[act]) }   /* 목록 열림 → 항목 선택 우선(필드 이동보다 먼저) */
     else if (e.key === 'Escape') { e.preventDefault(); setOpen(false) }
   }
-  return <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 74px repeat(4,32px) 96px 30px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f2f0ed' }}>
+  return <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 74px repeat(4,32px) 96px 56px 30px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f2f0ed' }}>
     <div ref={boxRef} style={{ position: 'relative' }}>
       <input ref={inputRef} value={r.name} role="combobox" aria-autocomplete="list" aria-expanded={listOpen} aria-controls={listId} aria-activedescendant={listOpen ? listId + '-' + act : undefined} onChange={e => { setRow(r.id, { name: e.target.value, code: '', narc: '' }); setQ(e.target.value); setOpen(true); setIdx(0) }} onFocus={() => setOpen(true)} onKeyDown={onKey} placeholder="약품명·코드(2글자↑) / 자유입력" style={{ ...inp, borderColor: r.narc ? PURPLE : '#d9d5d0' }} />
       {r.narc ? <span style={{ position: 'absolute', right: 8, top: 7, fontSize: 9, fontWeight: 700, color: '#fff', background: NARC[r.narc] || PURPLE, borderRadius: 6, padding: '1px 5px' }}>{r.narc}</span> : (r.code ? <span style={{ position: 'absolute', right: 8, top: 9, fontSize: 9, color: '#999' }}>{r.code}</span> : null)}
@@ -271,6 +293,7 @@ function DrugRow({ r, cache, setRow, delRow, inputRef }) {
     <select value={r.method} onChange={e => { const mk = e.target.value; const cfg = METHODS[mk]; if (cfg) setRow(r.id, { method: mk, m: cfg.s.includes('m'), l: cfg.s.includes('l'), d: cfg.s.includes('d'), b: cfg.s.includes('b'), timing: cfg.t }); else setRow(r.id, { method: mk }) }} title="방법 코드(선택 시 시간대·복용시점 자동, 이후 수동 수정 가능)" style={{ ...inp, padding: '7px 4px' }}>{METHOD_KEYS.map(k => <option key={k}>{k}</option>)}</select>
     {SLOTS.map(s => <div key={s.key} style={{ textAlign: 'center' }}><input type="checkbox" checked={!!r[s.key]} onChange={e => setRow(r.id, { [s.key]: e.target.checked })} style={{ width: 16, height: 16, accentColor: PURPLE, cursor: 'pointer' }} /></div>)}
     <select value={r.timing} onChange={e => setRow(r.id, { timing: e.target.value })} style={{ ...inp, padding: '7px 4px' }}><option value="">(없음)</option>{TIMINGS.map(t => <option key={t}>{t}</option>)}</select>
+    <input value={r.sep} onChange={e => setRow(r.id, { sep: e.target.value })} placeholder="번호" title="분리번호(봉투 미인쇄 · 같은 번호끼리 한 파우치)" style={{ ...inp, textAlign: 'center', padding: '7px 4px', background: sepTint(r.sep), fontWeight: r.sep ? 800 : 400 }} />
     <button onClick={() => delRow(r.id)} title="행 삭제" style={{ border: '1px solid #e3e0dc', background: '#fff', color: '#c0392b', borderRadius: 6, cursor: 'pointer', fontSize: 12, height: 30 }}>✕</button>
   </div>
 }
