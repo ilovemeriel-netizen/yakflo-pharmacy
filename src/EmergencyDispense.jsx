@@ -48,7 +48,20 @@ export default function EmergencyDispense() {
 
   useEffect(() => {
     let on = true
-    supabase.from('drugs').select('drug_code,drug_name,status,narcotic_type,is_narcotic').limit(3000).then(({ data, error }) => { if (on) { if (error) { console.error('[비상조제] drugs 로딩 실패:', error); setLoadErr(error.message || String(error)) } setCache(data || []); setLoaded(true) } })
+    ;(async () => {
+      const CHUNK = 1000, MAX_CHUNKS = 20   /* max_rows=1000 서버캡 → 1000행씩 .range 반복. 상한 20청크(=20000행)로 무한루프 차단 */
+      const all = []
+      for (let i = 0; i < MAX_CHUNKS; i++) {
+        const from = i * CHUNK
+        const { data, error } = await supabase.from('drugs').select('drug_code,drug_name,status,narcotic_type,is_narcotic').order('drug_code').range(from, from + CHUNK - 1)
+        if (!on) return
+        if (error) { console.error('[비상조제] drugs 로딩 실패:', error); setLoadErr(error.message || String(error)); break }
+        const batch = data || []
+        all.push(...batch)
+        if (batch.length < CHUNK) break   /* 마지막 청크(1000행 미만) → 종료 */
+      }
+      if (on) { setCache(all); setLoaded(true) }
+    })()
     return () => { on = false }
   }, [])
 
