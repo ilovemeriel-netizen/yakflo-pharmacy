@@ -33,7 +33,7 @@ const todayYmd = () => { const d = new Date(); return `${d.getFullYear()}-${pad2
 const newRow = () => ({ id: rid(), name: '', code: '', narc: '', qty: '1', days: '', method: '(직접입력)', m: true, l: true, d: true, b: false, timing: '식후', sep: '' })
 
 export default function EmergencyDispense() {
-  const [cache, setCache] = useState([]); const [, setLoaded] = useState(false)
+  const [cache, setCache] = useState([]); const [loaded, setLoaded] = useState(false); const [loadErr, setLoadErr] = useState(null)
   const [rows, setRows] = useState([newRow()])
   const [patient, setPatient] = useState(''); const [room, setRoom] = useState(''); const [patientNo, setPatientNo] = useState('')
   const [startSeq, setStartSeq] = useState(1)
@@ -48,7 +48,7 @@ export default function EmergencyDispense() {
 
   useEffect(() => {
     let on = true
-    supabase.from('drugs').select('drug_code,drug_name,status,narcotic_type,is_narcotic').limit(3000).then(({ data }) => { if (on) { setCache(data || []); setLoaded(true) } })
+    supabase.from('drugs').select('drug_code,drug_name,status,narcotic_type,is_narcotic').limit(3000).then(({ data, error }) => { if (on) { if (error) { console.error('[비상조제] drugs 로딩 실패:', error); setLoadErr(error.message || String(error)) } setCache(data || []); setLoaded(true) } })
     return () => { on = false }
   }, [])
 
@@ -141,6 +141,7 @@ export default function EmergencyDispense() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 18, fontWeight: 800, color: PURPLE }}>💊 비상조제</span>
         <span style={{ fontSize: 12, color: '#6b6b6b' }}>조제기 고장 시 수기 약포지 인쇄 </span>
+        {loaded && (loadErr || cache.length === 0) && <span style={{ fontSize: 11, fontWeight: 700, color: '#a06b00', background: '#fff7e6', border: '1px solid #ffe1a6', borderRadius: 6, padding: '2px 8px' }}>⚠ 약품 0종 — 로그인·권한을 확인하세요{loadErr ? ' (' + loadErr + ')' : ''}</span>}
         <div style={{ flex: 1 }} />
         <button onClick={nextPatient} style={btn(NAVY, NAVY)}>다음 환자</button>
       </div>
