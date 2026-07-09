@@ -39,7 +39,7 @@ export default function EmergencyDispense() {
   const [startSeq, setStartSeq] = useState(1)
   const [dateYmd, setDateYmd] = useState(todayYmd()); const [days, setDays] = useState(1)
   const [org, setOrg] = useState('씨엔씨재활의학과병원')
-  const [envW, setEnvW] = useState(64); const [envH, setEnvH] = useState(86)
+  const [envW, setEnvW] = useState(50); const [envH, setEnvH] = useState(70)
   const [printed, setPrinted] = useState(false)
   const [powder, setPowder] = useState(false)   /* 파우더 환자: 파우치 환자명 앞 ● */
   const wrapRef = useRef(null); const [scale, setScale] = useState(1)
@@ -70,8 +70,8 @@ export default function EmergencyDispense() {
   function addRow() { touch(); setRows(rs => [...rs, newRow()]) }
   function delRow(id) { touch(); setRows(rs => rs.length > 1 ? rs.filter(r => r.id !== id) : rs) }
 
-  const eW = Math.max(30, Math.min(120, Number(envW) || 64))
-  const eH = Math.max(40, Math.min(150, Number(envH) || 86))
+  const eW = Math.max(30, Math.min(120, Number(envW) || 50))
+  const eH = Math.max(40, Math.min(150, Number(envH) || 70))
 
   /* 파우치 생성: 일자×시간대×복용시점(정확값) 그룹별. 한도 초과→폰트축소→그래도 초과→(i/n) 분할 */
   const pouches = useMemo(() => {
