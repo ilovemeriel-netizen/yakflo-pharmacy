@@ -533,11 +533,11 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     if (!CATS.includes(f.category)) { setMsg('구분을 선택하세요'); return }
     if (dupCode) { setMsg('이미 존재하는 약품코드입니다.'); return }
     setSaving(true); setMsg(null)
-    const row = { drug_code: code, drug_name: f.drug_name.trim(), category: f.category, ingredient_en: f.ingredient_en || null, ingredient_kr: f.ingredient_kr || null, efficacy_class: f.efficacy_class || null, efficacy: f.efficacy || null, manufacturer: f.manufacturer || null, specification: f.specification || null, unit: f.unit || null, purchase_price: (f.purchase_price === '' || f.purchase_price == null) ? null : Number(f.purchase_price), insurance_price: Number(f.insurance_price) || 0, insurance_type: f.insurance_type, insurance_code: f.insurance_code || null, compound_type: f.compound_type || '단일제', current_qty: Number(f.current_qty) || 0, safety_stock: Number(f.safety_stock) || 0, max_stock: Number(f.max_stock) || 0, expiry_date: f.expiry_date || null, lot_no: f.lot_no || null, storage_method: f.storage_method || null, storage_location: f.storage_location || null, status: f.status, notes: f.notes || null, is_narcotic: f.narcotic_type === '향정' || f.narcotic_type === '마약', narcotic_type: f.narcotic_type === '일반' ? null : f.narcotic_type }
+    const row = { drug_code: code, drug_name: f.drug_name.trim(), category: f.category, ingredient_en: f.ingredient_en || null, ingredient_kr: f.ingredient_kr || null, efficacy_class: f.efficacy_class || null, efficacy: f.efficacy || null, manufacturer: f.manufacturer || null, specification: f.specification || null, unit: f.unit || null, purchase_price: (f.purchase_price === '' || f.purchase_price == null) ? null : Number(f.purchase_price), edi_price: Number(f.insurance_price) || 0, insurance_type: f.insurance_type, insurance_code: f.insurance_code || null, compound_type: f.compound_type || '단일제', current_qty: Number(f.current_qty) || 0, safety_stock: Number(f.safety_stock) || 0, max_stock: Number(f.max_stock) || 0, expiry_date: f.expiry_date || null, lot_no: f.lot_no || null, storage_method: f.storage_method || null, storage_location: f.storage_location || null, status: f.status, notes: f.notes || null, is_narcotic: f.narcotic_type === '향정' || f.narcotic_type === '마약', narcotic_type: f.narcotic_type === '일반' ? null : f.narcotic_type }
     if (memberRole === 'owner') row.is_high_alert = !!f.is_high_alert
     let res = await supabase.from('drugs').insert([row])
     for (let retry = 0; retry < 3 && res.error && res.error.message.includes('column'); retry++) {
-      const m = res.error.message.match(/'([^']+)' column/); if (!m) break; delete row[m[1]]
+      const m = res.error.message.match(/'([^']+)' column/); if (!m) break; console.warn('[drugs INSERT] 미존재 컬럼 자동 제거:', m[1], '/ 원인:', res.error.message); delete row[m[1]]
       res = await supabase.from('drugs').insert([row])
     }
     setSaving(false)
@@ -548,15 +548,21 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     if (isNew) return saveNew()
     if (!f.drug_name.trim()) { setMsg('약품명 필수'); return }
     setSaving(true); setMsg(null)
-    const ud = { drug_name: f.drug_name, category: f.category, ingredient_kr: f.ingredient_kr, manufacturer: f.manufacturer, price_unit: Number(f.price_unit) || 0, purchase_price: (f.purchase_price === '' || f.purchase_price == null) ? null : Number(f.purchase_price), expiry_date: f.expiry_date || null, status: f.status, is_narcotic: f.narcotic_type === '향정' || f.narcotic_type === '마약' }
-    if (f.drug_code.trim() !== oc) ud.drug_code = f.drug_code.trim()
-    const ts = (k, v) => { ud[k] = v }
-    ;['narcotic_type', 'lot_no', 'insurance_type', 'insurance_code', 'ingredient_en', 'efficacy', 'efficacy_class', 'specification', 'unit', 'storage_method', 'storage_location', 'notes'].forEach(k => ts(k, f[k]))
-    ;['safety_stock', 'max_stock', 'insurance_price'].forEach(k => ts(k, Number(f[k]) || 0))
+    /* [빈칸=기존값 유지] A(saveNew)·D(BulkUpload)와 동일하게, 비운 칸은 UPDATE에서 제외해 기존 DB 값을 덮어쓰지 않는다.
+       의도적 값 삭제는 별도 UI로 처리 예정 - 현재는 '기존값 유지'로 통일. price_unit(표시용 파생)·insurance_price(미존재 컬럼)는 기입하지 않는다.
+       편집 모드엔 보험약가 입력칸이 없어 edi_price도 기입하지 않는다(빈 유령값으로 실제 edi_price를 0으로 덮어쓰는 것 방지). */
+    const _has = v => (v != null && String(v).trim() !== '')
+    const _num = v => (v !== '' && v != null && Number.isFinite(Number(v)))
+    const ud = { status: f.status, is_narcotic: f.narcotic_type === '향정' || f.narcotic_type === '마약' }
+    if (_has(f.drug_name)) ud.drug_name = f.drug_name
+    if (f.drug_code.trim() && f.drug_code.trim() !== oc) ud.drug_code = f.drug_code.trim()
+    ;['category', 'narcotic_type', 'insurance_type', 'storage_method', 'ingredient_kr', 'ingredient_en', 'manufacturer', 'lot_no', 'insurance_code', 'efficacy', 'efficacy_class', 'specification', 'unit', 'storage_location', 'notes'].forEach(k => { if (_has(f[k])) ud[k] = f[k] })
+    if (_has(f.expiry_date)) ud.expiry_date = f.expiry_date
+    ;['safety_stock', 'max_stock', 'purchase_price'].forEach(k => { if (_num(f[k])) ud[k] = Number(f[k]) })
     let res = dr.id ? await supabase.from('drugs').update(ud).eq('id', dr.id) : await supabase.from('drugs').update(ud).eq('drug_code', oc)
     /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) */
     for(let retry=0;retry<3&&res.error&&res.error.message.includes('column');retry++){
-      const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete ud[m[1]];console.log('누락 컬럼 제거:',m[1])
+      const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[drugs UPDATE] 미존재 컬럼 자동 제거:', m[1], '/ 원인:', res.error.message);delete ud[m[1]]
       res=dr.id?await supabase.from('drugs').update(ud).eq('id',dr.id):await supabase.from('drugs').update(ud).eq('drug_code',oc)
     }
     setSaving(false)
@@ -2021,8 +2027,7 @@ function DrugRegister({onRefresh}) {
       efficacy:form.efficacy||null,
       specification:form.specification||null,
       unit:form.unit||null,
-      price_unit:Number(form.insurance_price)||Number(form.price_unit)||0,
-      insurance_price:Number(form.insurance_price)||0,
+      edi_price:Number(form.insurance_price)||0,
       insurance_type:form.insurance_type,
       insurance_code:form.insurance_code||null,
       current_qty:Number(form.current_qty)||0,
@@ -2036,7 +2041,7 @@ function DrugRegister({onRefresh}) {
     /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) */
     let res=await supabase.from('drugs').insert([row])
     for(let retry=0;retry<3&&res.error&&res.error.message.includes('column');retry++){
-      const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete row[m[1]];console.log('누락 컬럼 제거:',m[1])
+      const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[drugs INSERT] 미존재 컬럼 자동 제거:', m[1], '/ 원인:', res.error.message);delete row[m[1]]
       res=await supabase.from('drugs').insert([row])
     }
     const error=res.error
