@@ -2,7 +2,8 @@ import { useEffect, useState, useRef, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './lib/supabase'
 import { passesDrugFilters } from './lib/drugFilter'
-import { RX_TOGGLE, RX_MORE } from './lib/drugRules'
+import { RX_TOGGLE, RX_MORE, autoMap } from './lib/drugRules'
+import { classifyDrugRows, applyDrugRows } from './lib/drugBulk'
 import { decomposeAtc } from './lib/atcMap'
 import EmergencyDispense from './EmergencyDispense'
 import BulkUploadModal from './BulkUploadModal'
@@ -1792,7 +1793,8 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
 }
 
 /* ═══ 기초정보 등록 ═══ */
-function DrugRegister({onRefresh}) {
+function DrugRegister({onRefresh, drugs}) {
+  const { memberRole, profile } = useTheme(); const isOwner = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
   const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:''}
   const[form,setForm]=useState(initForm)
   const[msg,setMsg]=useState(null)
@@ -2074,65 +2076,39 @@ function DrugRegister({onRefresh}) {
     reader.onload=ev=>{
       try{
         const wb2=XLSX.read(ev.target.result,{type:'array'})
-        const rows=XLSX.utils.sheet_to_json(wb2.Sheets[wb2.SheetNames[0]],{defval:'',raw:false})
-        if(rows.length===0){setBulkMsg({type:'error',text:'데이터가 없습니다.'});return}
-        const parsed=rows.map((r,i)=>{
-          const code=String(r['약품코드']||r['약품코드(필수)']||r['drug_code']||'').trim().toUpperCase()
-          const nt=String(r['향정']||r['향정마약']||r['narcotic_type']||'').trim()
-          return{
-            idx:i+1,drug_code:code,
-            drug_name:String(r['약품명']||r['약품명(필수)']||r['drug_name']||'').trim(),
-            category:String(r['구분']||r['category']||'경구제').trim(),
-            ingredient_en:String(r['성분명(영문)']||r['성분명(영어)']||r['ingredient_en']||'').trim(),
-            ingredient_kr:String(r['성분명(한글)']||r['성분명']||r['ingredient_kr']||'').trim(),
-            efficacy_class:String(r['약효분류']||r['약효분류명']||r['efficacy_class']||'').trim(),
-            efficacy:String(r['효능']||r['efficacy']||'').trim(),
-            manufacturer:String(r['제조사']||r['manufacturer']||'').trim(),
-            unit:String(r['단위']||r['unit']||'').trim(),
-            specification:String(r['규격']||r['specification']||'').trim(),
-            price_unit:Number(r['단가']||r['price_unit']||0),
-            insurance_price:Number(r['EDI단가']||r['보험가']||r['insurance_price']||0),
-            current_qty:Number(r['현재고']||r['current_qty']||0),
-            insurance_type:String(r['급여구분']||r['insurance_type']||'급여').trim(),
-            insurance_code:String(r['보험코드']||r['insurance_code']||'').trim(),
-            expiry_date:edts(r['유효기한']||r['expiry_date']||''),
-            lot_no:String(r['LOT번호']||r['lot_no']||'').trim(),
-            storage_method:String(r['보관']||r['보관방법']||r['storage_method']||'').trim(),
-            status:String(r['상태']||r['status']||'사용').trim(),
-            is_narcotic:nt==='향정신성'||nt==='향정'||nt==='마약'||nt==='Y',
-            narcotic_type:nt==='Y'?'향정':(nt==='마약'?'마약':(nt==='향정'?'향정':(nt==='한외마약'?'한외마약':null))),
-            valid:!!code&&!!(String(r['약품명']||r['약품명(필수)']||r['drug_name']||'').trim())
-          }
-        })
+        const ws=wb2.Sheets[wb2.SheetNames[0]]
+        const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''})
+        if(!aoa.length){setBulkMsg({type:'error',text:'데이터가 없습니다.'});return}
+        const hdrs=(aoa[0]||[]).map(h=>String(h).trim()).filter(Boolean)
+        if(!hdrs.length){setBulkMsg({type:'error',text:'헤더 행을 찾을 수 없습니다.'});return}
+        const rawRows=aoa.slice(1).filter(r=>r.some(x=>String(x).trim()!=='')).map(r=>{const o={};hdrs.forEach((h,i)=>{o[h]=String(r[i]==null?'':r[i])});return o})
+        if(!rawRows.length){setBulkMsg({type:'error',text:'데이터 행이 없습니다.'});return}
+        const mapping=autoMap(hdrs)
+        if(!mapping.drug_code||!mapping.drug_name){setBulkMsg({type:'error',text:'약품코드·약품명 컬럼을 인식하지 못했습니다. 양식을 확인하세요.'});return}
+        const existingMap=new Map((drugs||[]).map(d=>[String(d.drug_code),d]))
+        const parsed=classifyDrugRows(rawRows,mapping,existingMap,isOwner)
         setBulk(parsed)
-        setBulkMsg({type:'info',text:`${parsed.length}행 읽음 · 유효: ${parsed.filter(r=>r.valid).length}행 · 오류: ${parsed.filter(r=>!r.valid).length}행`})
+        const nc=parsed.filter(r=>r.status==='new').length,uc=parsed.filter(r=>r.status==='update').length,ec=parsed.filter(r=>r.status==='error').length
+        setBulkMsg({type:'info',text:`${parsed.length}행 · 신규 ${nc} · 갱신 ${uc} · 오류 ${ec}`})
       }catch(err){setBulkMsg({type:'error',text:'파일 읽기 오류: '+err.message})}
     }
     reader.readAsArrayBuffer(file);e.target.value=''
   }
 
   async function bulkSubmit(){
-    const valid=bulk.filter(r=>r.valid)
-    if(valid.length===0){setBulkMsg({type:'error',text:'등록 가능한 데이터가 없습니다.'});return}
+    const targets=bulk.filter(r=>r.status!=='error')
+    if(targets.length===0){setBulkMsg({type:'error',text:'반영 가능한 데이터가 없습니다.'});return}
     setBulkLoading(true)
-    const{error}=await supabase.from('drugs').insert(valid.map(r=>({
-      drug_code:r.drug_code,drug_name:r.drug_name,category:r.category||'경구제',
-      manufacturer:r.manufacturer||null,ingredient_kr:r.ingredient_kr||null,ingredient_en:r.ingredient_en||null,
-      efficacy_class:r.efficacy_class||null,efficacy:r.efficacy||null,specification:r.specification||null,unit:r.unit||null,
-      price_unit:r.price_unit||0,insurance_price:r.insurance_price||0,insurance_type:r.insurance_type||'급여',
-      insurance_code:r.insurance_code||null,storage_method:r.storage_method?stdStorage(r.storage_method):'실온',
-      status:r.status||'사용',is_narcotic:r.is_narcotic,narcotic_type:r.narcotic_type||null,
-      current_qty:r.current_qty||0,expiry_date:r.expiry_date||null,lot_no:r.lot_no||null,
-    })))
+    const res=await applyDrugRows(bulk)
     setBulkLoading(false)
-    if(error){setBulkMsg({type:'error',text:'등록 실패: '+error.message});return}
-    setBulkMsg({type:'success',text:`${valid.length}건 일괄 등록 완료!`})
-    setBulk([]);onRefresh();setTimeout(()=>setBulkMsg(null),4000)
+    if(res.fail.length){setBulkMsg({type:'error',text:`${res.success}건 반영 · 실패 ${res.fail.length}건 (${res.fail.slice(0,3).map(f=>f.code||'-').join(', ')}${res.fail.length>3?'…':''})`})}
+    else setBulkMsg({type:'success',text:`${res.success}건 반영 완료! (신규 ${res.newCount} · 갱신 ${res.updateCount})`})
+    setBulk([]);onRefresh();setTimeout(()=>setBulkMsg(null),5000)
   }
 
   function dlTemplate(){
     const ws=XLSX.utils.aoa_to_sheet([
-      ['약품코드','약품명','구분','성분명(영문)','성분명(한글)','약효분류','효능','제조사','단위','규격','단가','EDI단가','현재고','급여구분','보험코드','유효기한','LOT번호','보관','상태','향정'],
+      ['약품코드','약품명','구분','성분명(영문)','성분명(한글)','약효분류','효능','제조사','단위','제형','구입단가','보험약가','현재고','급여구분','보험코드','유효기한','LOT번호','보관','상태','향정'],
       ['NEWDRUG001','신규약품정1mg','경구제','ingredient','성분명','소화기계질환','해열 진통 효능','제조사명','정','100',1000,1000,100,'급여','64XXXXXX','2028-12-31','LOT001','실온','사용','일반'],
       ['','','','','','','','','','','','','','','','','','','','← 필수: 약품코드, 약품명만 입력하면 등록 가능'],
     ])
@@ -2304,30 +2280,30 @@ function DrugRegister({onRefresh}) {
               <div style={{overflowX:'auto',marginBottom:14,maxHeight:380,overflowY:'auto',border:`0.5px solid ${C.grayB}`,borderRadius:8}}>
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                   <thead style={{position:'sticky',top:0}}><tr style={{background:'#fafafa'}}>
-                    {['#','상태','약품코드','약품명','구분','제조사','단가','현재고','유효기한','상태','향정'].map(h=><th key={h} style={{padding:'8px 10px',textAlign:'left',color:'#666',fontWeight:500,borderBottom:`0.5px solid ${C.grayB}`,whiteSpace:'nowrap'}}>{h}</th>)}
+                    {['#','상태','약품코드','약품명','구분','제조사','보험약가','현재고','유효기한','상태','향정'].map(h=><th key={h} style={{padding:'8px 10px',textAlign:'left',color:'#666',fontWeight:500,borderBottom:`0.5px solid ${C.grayB}`,whiteSpace:'nowrap'}}>{h}</th>)}
                   </tr></thead>
                   <tbody>{bulk.map((r,i)=>(
-                    <tr key={i} style={{borderBottom:`0.5px solid #f5f5f5`,background:r.valid?'':C.coralL+'50'}}>
+                    <tr key={i} title={r.errors&&r.errors.length?r.errors.join(' / '):''} style={{borderBottom:`0.5px solid #f5f5f5`,background:r.status==='error'?C.coralL+'50':''}}>
                       <td style={{padding:'7px 10px',color:'#bbb'}}>{r.idx}</td>
-                      <td style={{padding:'7px 10px'}}>{r.valid?<span style={{background:C.greenL,color:C.greenD,padding:'2px 7px',borderRadius:6,fontSize:10,fontWeight:600}}>정상</span>:<span style={{background:C.coralL,color:C.coral,padding:'2px 7px',borderRadius:6,fontSize:10,fontWeight:600}}>오류</span>}</td>
-                      <td style={{padding:'7px 10px',fontFamily:'monospace',fontSize:10,color:'#888'}}>{r.drug_code||'없음'}</td>
-                      <td style={{padding:'7px 10px',fontWeight:500,textAlign:'left'}}>{r.drug_name||'-'}</td>
-                      <td style={{padding:'7px 10px',color:'#666'}}>{r.category}</td>
-                      <td style={{padding:'7px 10px',color:'#888'}}>{r.manufacturer||'-'}</td>
-                      <td style={{padding:'7px 10px',textAlign:'right'}}>{r.price_unit?.toLocaleString()}</td>
-                      <td style={{padding:'7px 10px',textAlign:'right'}}>{r.current_qty?.toLocaleString()}</td>
-                      <td style={{padding:'7px 10px',color:'#888'}}>{r.expiry_date||'-'}</td>
-                      <td style={{padding:'7px 10px'}}><SB s={r.status}/></td>
-                      <td style={{padding:'7px 10px'}}>{r.is_narcotic?<span style={{background:C.lavL,color:C.lavender,padding:'1px 6px',borderRadius:4,fontSize:10}}>향정</span>:'-'}</td>
+                      <td style={{padding:'7px 10px'}}>{r.status==='error'?<span style={{background:C.coralL,color:C.coral,padding:'2px 7px',borderRadius:6,fontSize:10,fontWeight:600}}>오류</span>:r.status==='update'?<span style={{background:C.blueL,color:C.blue,padding:'2px 7px',borderRadius:6,fontSize:10,fontWeight:600}}>갱신</span>:<span style={{background:C.greenL,color:C.greenD,padding:'2px 7px',borderRadius:6,fontSize:10,fontWeight:600}}>신규</span>}</td>
+                      <td style={{padding:'7px 10px',fontFamily:'monospace',fontSize:10,color:'#888'}}>{r.code||'없음'}</td>
+                      <td style={{padding:'7px 10px',fontWeight:500,textAlign:'left'}}>{r.name||'-'}</td>
+                      <td style={{padding:'7px 10px',color:'#666'}}>{r.fields.category||(r.ex&&r.ex.category)||'-'}</td>
+                      <td style={{padding:'7px 10px',color:'#888'}}>{r.fields.manufacturer||'-'}</td>
+                      <td style={{padding:'7px 10px',textAlign:'right'}}>{r.fields.edi_price!=null?Number(r.fields.edi_price).toLocaleString():'-'}</td>
+                      <td style={{padding:'7px 10px',textAlign:'right'}}>{r.fields.current_qty!=null?Number(r.fields.current_qty).toLocaleString():'-'}</td>
+                      <td style={{padding:'7px 10px',color:'#888'}}>{r.fields.expiry_date||'-'}</td>
+                      <td style={{padding:'7px 10px'}}>{(r.fields.status||(r.ex&&r.ex.status))?<SB s={r.fields.status||r.ex.status}/>:'-'}</td>
+                      <td style={{padding:'7px 10px'}}>{r.fields.is_narcotic?<span style={{background:C.lavL,color:C.lavender,padding:'1px 6px',borderRadius:4,fontSize:10}}>향정</span>:'-'}</td>
                     </tr>
                   ))}</tbody>
                 </table>
               </div>
               <div style={{display:'flex',gap:8}}>
                 <button onClick={()=>{setBulk([]);setBulkMsg(null)}} style={{flex:1,padding:11,borderRadius:10,border:`1px solid ${C.grayB}`,cursor:'pointer',background:'#fff',color:'#888',fontSize:13}}>취소</button>
-                <button onClick={bulkSubmit} disabled={bulkLoading||bulk.filter(r=>r.valid).length===0}
+                <button onClick={bulkSubmit} disabled={bulkLoading||bulk.filter(r=>r.status!=='error').length===0}
                   style={{flex:2,padding:11,borderRadius:10,border:'none',cursor:bulkLoading?'not-allowed':'pointer',background:bulkLoading?C.grayB:C.purple,color:'#fff',fontSize:14,fontWeight:700}}>
-                  {bulkLoading?'등록 중...':`정상 ${bulk.filter(r=>r.valid).length}건 일괄 등록`}
+                  {bulkLoading?'반영 중...':`${bulk.filter(r=>r.status!=='error').length}건 일괄 반영`}
                 </button>
               </div>
             </>
@@ -3551,7 +3527,7 @@ export default function App() {
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
         {menu === 'report' && <Report drugs={drugs} txns={txns} onNav={handleNav} />}
         {menu === 'emergency' && <EmergencyDispense />}
-        {menu === 'register' && <DrugRegister onRefresh={load} />}
+        {menu === 'register' && <DrugRegister onRefresh={load} drugs={drugs} />}
         {menu === 'mypage' && <MyPage profile={profile} onProfileUpdated={loadProfile} />}
         {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
 
