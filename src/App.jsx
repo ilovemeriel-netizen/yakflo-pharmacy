@@ -1742,12 +1742,12 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
   const cellL={padding:'8px 10px',color:t.textM,fontSize:11,borderRight:'1px solid '+t.border,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'};
   const cellC={padding:'8px 10px',textAlign:'center',color:t.textM,fontSize:11,borderRight:'1px solid '+t.border};
   const cellR={padding:'8px 10px',textAlign:'right',color:t.textM,fontSize:11,borderRight:'1px solid '+t.border};
-  const COLS=[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['narcotic_type','분류'],['atc_l1','ATC1단계'],['atc_l2','ATC2단계'],['atc_l3','ATC3단계'],['additive','첨가제'],['manufacturer','제조사'],['total_qty','포장단위'],['packaging','포장'],['current_qty','현재고'],['purchase_price','구입단가'],['insurance_type','급여'],['insurance_code','보험코드'],['expiry_date','유효기한'],['','D-day'],['storage_method','보관'],['status','상태'],['','보정']];
+  const COLS=[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['narcotic_type','분류'],['atc_l1','ATC1단계'],['atc_l2','ATC2단계'],['atc_l3','ATC3단계'],['additive','첨가제'],['manufacturer','제조사'],['total_qty','포장단위'],['packaging','포장'],['current_qty','현재고'],['edi_price','보험약가'],['insurance_type','급여'],['insurance_code','보험코드'],['expiry_date','유효기한'],['','D-day'],['storage_method','보관'],['status','상태'],['','보정']];
   const CW=[96,180,76,64,96,110,130,150,130,64,64,76,80,64,100,100,64,80,72,64];
   const dStats=!(stats.length===1&&stats[0]==='사용'),dCard=cardF!=='전체',dSearch=search.trim()!=='',dDonut=!!donutF,dHf=Object.keys(hfV).length,dSort=!(sk==='drug_name'&&sd==='asc');
   const fcount=(dStats?1:0)+(dCard?1:0)+(dSearch?1:0)+(dDonut?1:0)+dHf;const showReset=fcount>0||dSort;
   function resetFilters(){setStats(['사용']);setCardF('전체');setSearch('');setHfV({});setDonutF(null);setSort('drug_name','asc');setPage(1);setResetN(n=>n+1)}
-  function dl(){const ws=XLSX.utils.json_to_sheet(filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,분류:getNT(d),ATC1단계:d.atc_l1||'',ATC2단계:d.atc_l2||'',ATC3단계:d.atc_l3||'',첨가제:d.additive||'',제조사:d.manufacturer||'',포장단위:d.total_qty??'',포장:d.packaging||'',현재고:d.current_qty||0,구입단가:d.purchase_price??'',급여:d.insurance_type||'',보험코드:d.insurance_code||'',유효기한:d.expiry_date||'',남은일수:exD(d.expiry_date),보관:d.storage_method||'',상태:d.status})));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'향정마약');XLSX.writeFile(wb,`향정마약_${new Date().toISOString().split('T')[0]}.xlsx`)}
+  function dl(){const ws=XLSX.utils.json_to_sheet(filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,분류:getNT(d),ATC1단계:d.atc_l1||'',ATC2단계:d.atc_l2||'',ATC3단계:d.atc_l3||'',첨가제:d.additive||'',제조사:d.manufacturer||'',포장단위:d.total_qty??'',포장:d.packaging||'',현재고:d.current_qty||0,보험약가:d.edi_price??'',급여:d.insurance_type||'',보험코드:d.insurance_code||'',유효기한:d.expiry_date||'',남은일수:exD(d.expiry_date),보관:d.storage_method||'',상태:d.status})));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'향정마약');XLSX.writeFile(wb,`향정마약_${new Date().toISOString().split('T')[0]}.xlsx`)}
   return<div style={{padding:'20px 24px'}}>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><div style={{fontSize:16,fontWeight:700,color:t.purple}}>향정·마약류 관리</div><button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button></div>
     <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'10px 16px',marginBottom:12,backdropFilter:'blur(12px)'}}>
@@ -1777,7 +1777,7 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
           <td style={cellR}>{d.total_qty!=null&&d.total_qty!==''?Number(d.total_qty).toLocaleString():'-'}</td>
           <td style={cellC}>{d.packaging||'-'}</td>
           <td style={{...cellR,fontWeight:600,color:d.current_qty===0?t.red:t.text}}>{(d.current_qty||0).toLocaleString()}</td>
-          <td style={cellR}>{d.purchase_price!=null&&d.purchase_price!==''?Number(d.purchase_price).toLocaleString():'-'}</td>
+          <td style={cellR}>{d.edi_price!=null&&d.edi_price!==''?Number(d.edi_price).toLocaleString():'-'}</td>
           <td style={cellC}>{d.insurance_type||'-'}</td>
           <td style={cellL}>{d.insurance_code||'-'}</td>
           <td style={{...cellL,...exS(d.expiry_date,t)}}>{d.expiry_date||'-'}</td>
