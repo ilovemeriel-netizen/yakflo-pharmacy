@@ -6,6 +6,7 @@ import EmergencyDispense from './EmergencyDispense'
 import BulkUploadModal from './BulkUploadModal'
 import ColumnSelector from './ColumnSelector'
 import GnbSearch from './GnbSearch'
+import { useDraggableModal } from './useDraggableModal'
 /* XLSX는 동적 import로 별도 청크 분리(초기 번들 축소). 모든 사용은 사용자 액션 핸들러 내부뿐 → 로드 시점 안전 */
 let XLSX; import('xlsx').then(m => { XLSX = m })
 
@@ -275,9 +276,11 @@ function GnbNav({ ms, m, onFlat, navTo }) {
   </div>;
 }
 
-function Drug360Modal({ drug: dr, onClose }) {
+function Drug360Modal({ drug: dr, onClose, pos, setPos }) {
   const { t } = useTheme();
   const [tab, setTab] = useState('개요');
+  const boxRef = useRef(null);
+  const { dragging, onHeaderMouseDown } = useDraggableModal(boxRef, pos, setPos);
   const [txs, setTxs] = useState(null);
   const [lots, setLots] = useState(null);
   useEffect(() => { let on = true;
@@ -292,9 +295,9 @@ function Drug360Modal({ drug: dr, onClose }) {
   const chip = (v) => (v && String(v).trim()) ? <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: acc + '1A', color: acc, border: '1px solid ' + acc + '33', marginRight: 6, marginBottom: 4 }}>{v}</span> : null;
   const row = (label, val) => <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid ' + t.border, fontSize: 13 }}><span style={{ color: t.textM }}>{label}</span><span style={{ fontWeight: 600, color: t.text, textAlign: 'right' }}>{val}</span></div>;
   const dstr = (x) => x !== null ? 'D' + (x <= 0 ? x : '-' + x) : '-';
-  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
-    <div onClick={e => e.stopPropagation()} style={{ background: t.card, borderRadius: 16, width: '100%', maxWidth: 640, boxShadow: t.shadowH, overflow: 'hidden' }}>
-      <div style={{ background: t.nav, padding: '16px 20px', color: '#fff' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}><div><div style={{ fontSize: 17, fontWeight: 700 }}>{dr.drug_name}</div><div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{dr.drug_code} · {dr.category || '-'}</div></div><button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 28, height: 28, borderRadius: 8, cursor: 'pointer', fontSize: 15 }}>✕</button></div></div>
+  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'transparent', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
+    <div ref={boxRef} onClick={e => e.stopPropagation()} style={{ background: t.card, borderRadius: 16, width: '100%', maxWidth: 640, boxShadow: t.shadowH, overflow: 'hidden', transform: `translate(${pos.x}px, ${pos.y}px)` }}>
+      <div onMouseDown={onHeaderMouseDown} style={{ background: t.nav, padding: '16px 20px', color: '#fff', cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}><div><div style={{ fontSize: 17, fontWeight: 700 }}>{dr.drug_name}</div><div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{dr.drug_code} · {dr.category || '-'}</div></div><button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 28, height: 28, borderRadius: 8, cursor: 'pointer', fontSize: 15 }}>✕</button></div></div>
       <div style={{ display: 'flex', gap: 2, padding: '8px 12px 0', borderBottom: '1px solid ' + t.border, background: t.bg }}>{TABS.map(x => <button key={x} onClick={() => setTab(x)} style={{ padding: '8px 14px', border: 'none', borderBottom: tab === x ? '2px solid ' + t.accent : '2px solid transparent', background: 'transparent', color: tab === x ? t.accent : t.textM, fontWeight: tab === x ? 700 : 500, fontSize: 12, cursor: 'pointer' }}>{x}</button>)}</div>
       <div style={{ padding: '16px 20px', maxHeight: '60vh', overflowY: 'auto' }}>
         {tab === '개요' && <div><div style={{ marginBottom: 10 }}>{chip(dr.atc_l1)}{chip(dr.atc_l2)}{chip(dr.atc_l3)}{!dr.atc_l1 && <span style={{ color: t.textL, fontSize: 12 }}>ATC 미분류</span>}</div>{row('상태', <SB s={dr.status} />)}{row('구분', dr.category || '-')}{row('구입단가', dr.purchase_price ? Number(dr.purchase_price).toLocaleString() + '원' : '-')}{row('성분명', dr.ingredient_kr || '-')}{row('제조사', dr.manufacturer || '-')}{row('규격 / 단위', (dr.specification || '-') + ' / ' + (dr.unit || '-'))}{row('현재고', q.toLocaleString() + '  (' + st + ')')}</div>}
@@ -3267,6 +3270,7 @@ export default function App() {
   const [adjustDrug, setAdjustDrug] = useState(null)
   const [lotDrug, setLotDrug] = useState(null)
   const [d360, setD360] = useState(null)
+  const [d360Pos, setD360Pos] = useState({ x: 0, y: 0 }) // 360° 모달 위치(세션 내 유지, 새로고침 시 중앙 복귀)
   const [searchOpen, setSearchOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const isPopRef = useRef(false); const isFirstRef = useRef(true)
@@ -3477,7 +3481,7 @@ export default function App() {
         {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
 
         {editDrug && <DrugEditModal drug={editDrug} onClose={() => setEditDrug(null)} onSaved={() => { setEditDrug(null); load() }} onLotManage={d => { setEditDrug(null); setLotDrug(d) }} />}
-        {d360 && <Drug360Modal drug={d360} onClose={() => setD360(null)} />}
+        {d360 && <Drug360Modal drug={d360} pos={d360Pos} setPos={setD360Pos} onClose={() => setD360(null)} />}
         {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
         {adjustDrug && <AdjustModal drug={adjustDrug} onClose={() => setAdjustDrug(null)} onSaved={() => { setAdjustDrug(null); load() }} />}
         {lotDrug && <LotModal drug={lotDrug} onClose={() => setLotDrug(null)} onSaved={() => { setLotDrug(null); load() }} />}
