@@ -150,12 +150,14 @@ function CN({ drug: d, onEdit }) { const { t } = useTheme(); return <td style={{
 function MP({ items, selected, onChange, color, label }) {
   const { t } = useTheme(); const allSel = selected.length === items.length
   function tog(item) { const n = selected.includes(item) ? selected.filter(x => x !== item) : [...selected, item]; onChange(n.length ? n : [...items]) }
-  const on = { padding: '5px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 11, fontWeight: 600, background: color, color: '#fff', border: `1.5px solid ${color}`, transition: 'all .15s' }
+  const CHIP = items === STATS ? { '사용': '#019748', '중지': t.textM, '휴면': '#BFA6D9' } : items === CATS ? { '경구제': '#019748', '주사제': '#2B7BB9', '외용제': '#BFA6D9', '수액제': t.textM, '영양제': '#804A87', '의약외품': '#804A87' } : null
+  const mk = c => ({ padding: '5px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 11, fontWeight: 600, background: c, color: '#fff', border: `1.5px solid ${c}`, transition: 'all .15s' })
+  const on = mk(color)
   const off = { padding: '5px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 11, fontWeight: 500, background: 'transparent', color: t.textM, border: `1.5px solid ${t.border}`, transition: 'all .15s' }
   return <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
     {label && <span style={{ fontSize: 10, color: t.textL, fontWeight: 600, marginRight: 3 }}>{label}</span>}
     <button onClick={() => onChange(allSel ? [items[0]] : [...items])} style={allSel ? { ...on, background: t.text, borderColor: t.text } : off}>전체</button>
-    {items.map(i => <button key={i} onClick={() => tog(i)} style={selected.includes(i) ? on : off}>{i}</button>)}
+    {items.map(i => { const ao = CHIP && CHIP[i] ? mk(CHIP[i]) : on; return <button key={i} onClick={() => tog(i)} style={selected.includes(i) ? ao : off}>{i}</button> })}
   </div>
 }
 
@@ -814,7 +816,7 @@ function Header({ menu: m, setMenu: sm }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tenant, setTenant] = useState('')
   useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, [])
-  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'ordering', l: '🧾 발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'emergency', l: '비상조제' }]
+  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'ordering', l: '발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'emergency', l: '비상조제' }]
   function nav(id) { sm(id); setMobileOpen(false) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
