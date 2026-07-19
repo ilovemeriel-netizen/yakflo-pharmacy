@@ -5,6 +5,7 @@ import { passesDrugFilters } from './lib/drugFilter'
 import EmergencyDispense from './EmergencyDispense'
 import BulkUploadModal from './BulkUploadModal'
 import ColumnSelector from './ColumnSelector'
+import GnbSearch from './GnbSearch'
 /* XLSX는 동적 import로 별도 청크 분리(초기 번들 축소). 모든 사용은 사용자 액션 핸들러 내부뿐 → 로드 시점 안전 */
 let XLSX; import('xlsx').then(m => { XLSX = m })
 
@@ -814,7 +815,7 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 
 /* ═══ 헤더 — 반응형 (모바일 햄버거) ═══ */
 function Header({ menu: m, setMenu: sm }) {
-  const { t, dark, toggle, user, profile, logout, openSearch } = useTheme()
+  const { t, dark, toggle, user, profile, logout, openSearch, open360 } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tenant, setTenant] = useState('')
   useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, [])
@@ -832,10 +833,10 @@ function Header({ menu: m, setMenu: sm }) {
           <div className="brand-sub" style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: 0.2, lineHeight: 1.2 }}>약품 통합 관리 솔루션</div>
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}><div className="cnc-date" style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 2 }}><span style={{ width: 7, height: 7, borderRadius: 4, background: t.green, boxShadow: '0 0 6px ' + t.green, flexShrink: 0 }} /><span style={{ fontSize: 11, fontWeight: 700, color: '#ffffff' }}>ONLINE</span>{tenant && <span style={{ fontSize: 11, fontWeight: 600, color: t.navHi, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tenant}>· {tenant}</span>}</div><div style={{ width: 1, height: 22, background: 'rgba(255,255,255,0.16)', margin: '0 2px', flexShrink: 0 }} />
+      <GnbSearch t={t} open360={open360} openSearch={openSearch} atcColor={atcColor} /><div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}><div className="cnc-date" style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 2 }}><span style={{ width: 7, height: 7, borderRadius: 4, background: t.green, boxShadow: '0 0 6px ' + t.green, flexShrink: 0 }} /><span style={{ fontSize: 11, fontWeight: 700, color: '#ffffff' }}>ONLINE</span>{tenant && <span style={{ fontSize: 11, fontWeight: 600, color: t.navHi, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tenant}>· {tenant}</span>}</div><div style={{ width: 1, height: 22, background: 'rgba(255,255,255,0.16)', margin: '0 2px', flexShrink: 0 }} />
         <button onClick={() => nav('mypage')} title="마이페이지" className="cnc-date" style={{ padding: '4px 10px', borderRadius: 6, border: m === 'mypage' ? `1px solid ${t.navHi}60` : '1px solid rgba(255,255,255,0.10)', background: m === 'mypage' ? t.navHi + '22' : 'rgba(255,255,255,0.04)', color: m === 'mypage' ? t.navHi : 'rgba(255,255,255,0.65)', cursor: 'pointer', fontSize: 11, fontWeight: 500, transition: 'all .15s' }}>{displayName}</button>
         {isAdmin && <button onClick={() => nav('admin')} title="가입자 관리" style={{ padding: '4px 10px', borderRadius: 6, border: m === 'admin' ? `1px solid ${t.navHi}60` : '1px solid rgba(255,255,255,0.15)', background: m === 'admin' ? t.navHi + '22' : 'rgba(255,255,255,0.04)', color: m === 'admin' ? t.navHi : 'rgba(255,255,255,0.55)', cursor: 'pointer', fontSize: 10, fontWeight: 600 }}>관리</button>}
-        <button onClick={() => openSearch && openSearch()} title="통합 검색 (Ctrl+K)" style={{ padding: '4px 9px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: 13 }}>🔍</button><button onClick={logout} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 10, fontWeight: 500 }}>로그아웃</button>
+        <button onClick={logout} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 10, fontWeight: 500 }}>로그아웃</button>
         <button onClick={toggle} style={{ width: 38, height: 20, borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: dark ? t.navHi + '30' : 'rgba(255,255,255,0.08)', cursor: 'pointer', position: 'relative', padding: 0 }}><div style={{ width: 16, height: 16, borderRadius: 8, background: dark ? t.navHi : 'rgba(255,255,255,0.4)', position: 'absolute', top: 1, left: dark ? 19 : 1, transition: 'all .2s' }} /></button>
         <button className="cnc-hamburger" onClick={() => setMobileOpen(!mobileOpen)} style={{ display: 'none', width: 32, height: 32, borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: mobileOpen ? t.navHi + '20' : 'transparent', cursor: 'pointer', color: t.navText, fontSize: 18, alignItems: 'center', justifyContent: 'center' }}>{mobileOpen ? '✕' : '☰'}</button>
       </div>
