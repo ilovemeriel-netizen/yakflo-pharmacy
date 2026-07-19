@@ -2480,6 +2480,11 @@ function Report({drugs,txns,onNav}){
   const[closing,setClosing]=useState(false);const[closeMsg,setCloseMsg]=useState(null);
   const{hs,so,SI,TS}=useSort('drug_code');
 
+  /* 마감 버튼 파생값 — 대상은 화면 선택 연/월(year·month). cy/cm은 미래월 차단용 현재값 */
+  const isFuture=year>cy||(year===cy&&month>cm); // 현재 월 이후 선택 → 마감 불가
+  const monthClosed=snaps.some(s=>Number(s.snap_month)===month); // 선택 월 스냅샷 존재(월간 탭 기준)
+  const closedMonthCount=new Set(snaps.map(s=>Number(s.snap_month))).size; // 연간 탭: 해당 연도 마감 완료 월 수
+
   useEffect(()=>{loadS()},[year,month,rtype]);
   async function loadS(){
     setLd(true);
@@ -2488,14 +2493,16 @@ function Report({drugs,txns,onNav}){
     const{data}=await q;setSnaps(data||[]);setLd(false)
   }
 
-  /* 월마감 실행 */
+  /* 월마감 실행 — 화면 선택 연/월(year·month) 기준. 집계 산식 무변경, 대상 기간만 선택값 사용 */
   async function doClose(){
-    if(!confirm(`${cy}년 ${cm}월 월마감을 실행하시겠습니까?\n기존 ${cm}월 스냅샷은 덮어씁니다.`))return;
+    if(isFuture)return; // 미래 월 방어(버튼도 비활성)
+    const label=`${year}년 ${month}월`;
+    if(!confirm(`${label}을 마감합니다. 계속하시겠습니까?${monthClosed?`\n기존 ${label} 스냅샷을 덮어씁니다.`:''}`))return;
     setClosing(true);setCloseMsg(null);
     try{
-      const ym=`${cy}-${String(cm).padStart(2,'0')}`;
+      const ym=`${year}-${String(month).padStart(2,'0')}`;
       const mTx=txns.filter(tx=>tx.transaction_date?.startsWith(ym));
-      const{data:prevData}=await supabase.from('monthly_snapshots').select('*').eq('snap_year',cm===1?cy-1:cy).eq('snap_month',cm===1?12:cm-1);
+      const{data:prevData}=await supabase.from('monthly_snapshots').select('*').eq('snap_year',month===1?year-1:year).eq('snap_month',month===1?12:month-1);
       const prevMap={};(prevData||[]).forEach(s=>{prevMap[s.drug_code]=s});
       const rows=drugs.map(d=>{
         const prev=prevMap[d.drug_code]||{};
@@ -2506,18 +2513,23 @@ function Report({drugs,txns,onNav}){
         const outA=dTx.filter(x=>x.type==='출고').reduce((a,x)=>a+(x.total_amount||0),0);
         const dispQ=dTx.filter(x=>x.type==='폐기').reduce((a,x)=>a+(x.quantity||0),0);
         const retQ=dTx.filter(x=>x.type==='반품').reduce((a,x)=>a+(x.quantity||0),0);
-        return{drug_code:d.drug_code,snap_year:cy,snap_month:cm,
+        return{drug_code:d.drug_code,snap_year:year,snap_month:month,
           opening_qty:prev.closing_qty||d.current_qty||0,opening_amount:prev.closing_amount||(d.current_qty||0)*(d.purchase_price||0),
           total_in_qty:inQ,total_in_amount:inA,total_out_qty:outQ,total_out_amount:outA,
           total_disp_qty:dispQ,total_ret_qty:retQ,
           closing_qty:d.current_qty||0,closing_amount:(d.current_qty||0)*(d.purchase_price||0)}
       });
-      await supabase.from('monthly_snapshots').delete().eq('snap_year',cy).eq('snap_month',cm);
+      await supabase.from('monthly_snapshots').delete().eq('snap_year',year).eq('snap_month',month);
       const batch=[];for(let i=0;i<rows.length;i+=500)batch.push(rows.slice(i,i+500));
       for(const b of batch){const{error}=await supabase.from('monthly_snapshots').insert(b);if(error)throw error}
-      setCloseMsg(`✅ ${cy}년 ${cm}월 마감 완료! (${rows.length}건)`);loadS()
+      setCloseMsg(`✅ ${label} 마감 완료! (${rows.length}건)`);loadS()
     }catch(err){setCloseMsg('❌ 오류: '+err.message)}
     setClosing(false)
+  }
+
+  /* 연마감 — 로직 미구현. 12개월 월마감 선행 조건 안내만 표시(해당 연도 마감 완료 월 수 N/12) */
+  function showAnnualInfo(){
+    alert(`연마감은 12개월 월마감 완료 후 사용할 수 있습니다.\n현재 ${year}년 마감 완료: ${closedMonthCount}/12개월`);
   }
 
   /* 데이터 가공 */
@@ -2597,7 +2609,9 @@ function Report({drugs,txns,onNav}){
       <div style={{flex:1}}/>
       <button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>
       <button onClick={()=>window.print()} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>인쇄</button>
-      <button onClick={doClose} disabled={closing} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:700}}>{closing?'마감 중...':'📋 월마감'}</button>
+      {rtype==='monthly'
+        ? <button onClick={doClose} disabled={closing||isFuture} title={isFuture?'미래 월은 마감할 수 없습니다':undefined} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:(closing||isFuture)?'not-allowed':'pointer',opacity:(closing||isFuture)?0.5:1,fontSize:11,fontWeight:700}}>{closing?'마감 중...':(monthClosed?'📋 재마감':'📋 월마감')}</button>
+        : <button onClick={showAnnualInfo} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:700}}>📅 연마감</button>}
     </div>
     {closeMsg&&<div style={{background:closeMsg.includes('✅')?t.greenL:t.redL,border:`1px solid ${closeMsg.includes('✅')?t.green:t.red}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:closeMsg.includes('✅')?t.green:t.red,fontSize:12,fontWeight:600}}>{closeMsg}</div>}
 
