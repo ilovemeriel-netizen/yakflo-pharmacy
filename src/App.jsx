@@ -1244,6 +1244,18 @@ function DrugList({ drugs, navFilter: nf, onEdit, onReload, nonins }) {
   const { so, TS, sk, sd, setSort } = useSort('drug_name')
   const { memberRole, profile, user, setProfile } = useTheme(); const [bulkOpen, setBulkOpen] = useState(false)
   const [selCols, setSelCols] = useState(() => { const _s = profile?.settings?.drugCols; return Array.isArray(_s) && _s.length ? _s : DRUG_DEFAULT_COLS })
+  const colBtnRef = useRef(null); const [gnbH, setGnbH] = useState(99)
+  /* 툴바 sticky top 오프셋: GNB(sticky 헤더 래퍼) 실측. 반응형 높이 변화 대응(Header 미편집). */
+  useEffect(() => {
+    const wrap = document.querySelector('.cnc-header')?.parentElement
+    if (!wrap) return
+    const measure = () => setGnbH(Math.round(wrap.getBoundingClientRect().height))
+    measure()
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
+    ro?.observe(wrap)
+    window.addEventListener('resize', measure)
+    return () => { ro?.disconnect(); window.removeEventListener('resize', measure) }
+  }, [])
   useEffect(() => { if (nf?.cats) setCats(Array.isArray(nf.cats) ? nf.cats : [nf.cats]); else setCats(CATS); if (nf?.status) setStats(Array.isArray(nf.status) ? nf.status : [nf.status]); if (nf?.narcotic) setNarcOnly(true); else setNarcOnly(false); if (nf?.insType) setInsF(nf.insType); else setInsF('전체'); setPage(1) }, [nf])
   useEffect(() => { let on = true; supabase.from('location_vocab').select('label,sort_order,is_active').order('sort_order').then(({ data }) => { if (on) setLocOpts((data || []).filter(x => x.is_active !== false).map(x => x.label)) }); return () => { on = false } }, [])
   const filtered = so(drugs.filter(d => passesDrugFilters(d, { cats, stats, narcOnly, insF, atcF, search }) && (!rxF || d.prescription_type === rxF) && (!hanoeOnly || d.narcotic_type === '한외마약') && (!donutF || (d[donutF.level] || '') === donutF.value) && (!cmpHF || d.compound_type === cmpHF) && (!stoHF || d.storage_method === stoHF) && (!locHF || (d.storage_location || '') === locHF) && (!hiAlertOnly || d.is_high_alert === true)))
@@ -1261,6 +1273,10 @@ function DrugList({ drugs, navFilter: nf, onEdit, onReload, nonins }) {
   const selGroups = DRUG_COL_GROUPS.map(g => ({ title: g.title, items: g.keys.filter(_isAvail).map(k => ({ key: k, label: DRUG_COL_LABEL[k] })) })).filter(g => g.items.length)
   const selPresets = DRUG_COL_PRESETS.map(p => ({ name: p.name, keys: p.keys.filter(_isAvail) }))
   const _colsDirty = !(selCols.length === DRUG_DEFAULT_COLS.length && DRUG_DEFAULT_COLS.every(k => selCols.includes(k)))
+  /* 프리셋 배지: 현재 selCols가 프리셋과 집합 일치면 그 이름, 아니면 '사용자 지정'. N열은 실제 표시열. */
+  const _sameColSet = (x, y) => x.length === y.length && x.every(k => y.includes(k))
+  const _curPreset = selPresets.find(p => _sameColSet(selCols, p.keys))
+  const _presetLabel = (_curPreset ? _curPreset.name : '사용자 지정') + ' · ' + visCols.length + '열'
   function applyCols(keys) { setSelCols(keys); if (!user) return; const next = { ...(profile?.settings || {}), drugCols: keys }; supabase.from('profiles').update({ settings: next }).eq('id', user.id).then(({ error }) => { if (!error && setProfile) setProfile(p => p ? { ...p, settings: next } : p) }) }
   /* 엑셀 다운로드 — 표시 중 컬럼 + 필터·검색·정렬 적용 전체행(페이지네이션 무시). 원본값 사용, 코드열 텍스트 강제. */
   async function exportXlsx() {
@@ -1294,13 +1310,13 @@ function DrugList({ drugs, navFilter: nf, onEdit, onReload, nonins }) {
       </div>
     </div>
     <AtcDonutsRow drugs={drugs} t={t} nonins={nonins} sel={donutF} onPick={(level, value) => { setDonutF({ level, value }); setPage(1) }} onClear={() => { setDonutF(null); setPage(1) }} onCenterReset={_resetF} />
-    <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, overflow: 'hidden', boxShadow: t.shadow }}>
-      <div style={{ padding: '10px 18px', borderBottom: `1px solid ${t.border}`, fontSize: 12, color: t.textM, display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}><span>전체 {drugs.length}개 · 결과 <strong style={{ color: t.accent }}>{filtered.length}개</strong>{atcF && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: atcColor(atcF) + '1A', color: atcColor(atcF), fontSize: 10, fontWeight: 700, border: '1px solid '+atcColor(atcF)+'40' }}>효능군: {atcF}<span onClick={() => setAtcF(null)} style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span>}{rxF && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: t.purpleL, color: t.purple, fontSize: 10, fontWeight: 700, border: '1px solid ' + t.purple + '40' }}>분류: {rxF}<span onClick={() => setRxF(null)} style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span>}</span><span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{_showReset && <button onClick={_resetF} title="필터·정렬 전체 초기화" style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent + '12', color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>필터 초기화{_df > 0 ? ' (' + _df + ')' : ''}</button>}<span style={{ fontSize: 10, color: t.textL }}>약품명 클릭 → 수정</span></span></div>
-      <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={(k,sdv)=>{setSort(k,sdv);setPage(1)}} hf={hf} hscroll={{noLabel:true,ends:true}} cols={drugCols} colWidths={drugColWidths}>
+    <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, overflow: 'visible', boxShadow: t.shadow }}>
+      <div style={{ position: 'sticky', top: gnbH, zIndex: 20, padding: '10px 18px', borderBottom: `1px solid ${t.border}`, fontSize: 12, color: t.textM, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 600, background: t.card, borderTopLeftRadius: 14, borderTopRightRadius: 14 }}><span>전체 {drugs.length}개 · 결과 <strong style={{ color: t.accent }}>{filtered.length}개</strong><span onClick={() => colBtnRef.current && colBtnRef.current.toggle()} title="표시 컬럼 선택(클릭)" style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: t.purpleL, color: t.purple, fontSize: 10, fontWeight: 700, border: '1px solid ' + t.purple + '40', cursor: 'pointer', whiteSpace: 'nowrap' }}>{_presetLabel}</span>{atcF && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: atcColor(atcF) + '1A', color: atcColor(atcF), fontSize: 10, fontWeight: 700, border: '1px solid '+atcColor(atcF)+'40' }}>효능군: {atcF}<span onClick={() => setAtcF(null)} style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span>}{rxF && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: t.purpleL, color: t.purple, fontSize: 10, fontWeight: 700, border: '1px solid ' + t.purple + '40' }}>분류: {rxF}<span onClick={() => setRxF(null)} style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span>}</span><span style={{ display: 'flex', alignItems: 'center', gap: 10 }}><ColumnSelector ref={colBtnRef} t={t} groups={selGroups} value={selCols} onChange={applyCols} presets={selPresets} />{_showReset && <button onClick={_resetF} title="필터·정렬 전체 초기화" style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent + '12', color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>필터 초기화{_df > 0 ? ' (' + _df + ')' : ''}</button>}<span style={{ fontSize: 10, color: t.textL }}>약품명 클릭 → 수정</span></span></div>
+      <div style={{ overflow: 'hidden', borderBottomLeftRadius: 14, borderBottomRightRadius: 14 }}><StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={(k,sdv)=>{setSort(k,sdv);setPage(1)}} hf={hf} hscroll={{noLabel:true,ends:true}} cols={drugCols} colWidths={drugColWidths}>
         <tbody>{!paged.length ? <tr><td colSpan={visCols.length || 1} style={{ padding: 40, textAlign: 'center', color: t.textL }}>검색 결과 없음</td></tr> : paged.map((d, i) => { const nSticky = stickyOn.length; const rowBg = i % 2 ? t.bg : ''; const stickBg = i % 2 ? t.bg : t.card; return <tr key={i} style={{ borderBottom: '1px solid ' + t.border, background: rowBg }} onMouseEnter={e => { const r = e.currentTarget; r.style.background = 'rgba(128,74,135,0.08)'; const op = 'linear-gradient(rgba(128,74,135,0.08),rgba(128,74,135,0.08)), ' + t.card; const c = r.children; for (let j = 0; j < nSticky; j++) { if (c[j]) { c[j].style.background = op; if (j === 0) c[j].style.boxShadow = 'inset 3px 0 0 0 #804A87' } } }} onMouseLeave={e => { const r = e.currentTarget; r.style.background = rowBg; const c = r.children; for (let j = 0; j < nSticky; j++) { if (c[j]) { c[j].style.background = stickBg; if (j === 0) c[j].style.boxShadow = '' } } }}>{visCols.map(c => { const left = stickyLeft(c.key); const stick = left !== null ? { position: 'sticky', left, zIndex: 2, background: stickBg, ...(c.key === 'drug_code' ? { minWidth: 128, maxWidth: 128, width: 128 } : {}) } : {}; const base = c.td ? c.td(d, colCtx) : {}; const extra = c.tdProps ? c.tdProps(d, colCtx) : {}; return <td key={c.key} {...extra} style={{ ...base, ...stick }}>{c.render(d, colCtx)}</td> })}</tr> })}</tbody>
       </StandardTable>
       <Pg page={page} setPage={setPage} tp={tp} fl={filtered} pp={PP} ends/>
-    </div><Ft />
+    </div></div><Ft />
   </div>
 }
 /* ═══ 유효기한 — 칩 클릭 라우팅 ═══ */
