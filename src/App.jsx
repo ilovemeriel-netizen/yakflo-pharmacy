@@ -7,6 +7,7 @@ import BulkUploadModal from './BulkUploadModal'
 import ColumnSelector from './ColumnSelector'
 import GnbSearch from './GnbSearch'
 import { useDraggableModal } from './useDraggableModal'
+import SnapshotUploadModal from './SnapshotUploadModal'
 /* XLSX는 동적 import로 별도 청크 분리(초기 번들 축소). 모든 사용은 사용자 액션 핸들러 내부뿐 → 로드 시점 안전 */
 let XLSX; import('xlsx').then(m => { XLSX = m })
 
@@ -2471,18 +2472,21 @@ function MSec({title,children}){return <div style={{marginBottom:9}}><div style=
 function MRow({label,value,bg}){return <tr><td style={{...mpTd,background:bg||'#eee',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',fontWeight:800,color:'#804A87'}}>{value}</td></tr>}
 function MRow2({label,cnt,amt,bg,fg}){return <tr><td style={{...mpTd,background:bg||'#eee',color:fg||'#222',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',width:'29%'}}>{cnt}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontWeight:700}}>{amt}</td></tr>}
 function Report({drugs,txns,onNav}){
-  const{t}=useTheme();
+  const{t,memberRole}=useTheme();
+  const isOwner=memberRole==='owner'; // 마감·업로드 권한(고위험 체크박스와 동일 패턴)
   const cy=new Date().getFullYear(),cm=new Date().getMonth()+1;
   const[rtype,setRtype]=useState('monthly');
   const[year,setYear]=useState(cy);const[month,setMonth]=useState(cm);
   const[snaps,setSnaps]=useState([]);const[ld,setLd]=useState(false);
   const[search,setSearch]=useState('');const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(STATS);
   const[closing,setClosing]=useState(false);const[closeMsg,setCloseMsg]=useState(null);
+  const[uploadOpen,setUploadOpen]=useState(false);const[dialog,setDialog]=useState(null); // 스냅샷 업로드 모달 · 앱 내 확인/안내 모달
   const{hs,so,SI,TS}=useSort('drug_code');
 
   /* 마감 버튼 파생값 — 대상은 화면 선택 연/월(year·month). cy/cm은 미래월 차단용 현재값 */
   const isFuture=year>cy||(year===cy&&month>cm); // 현재 월 이후 선택 → 마감 불가
   const monthClosed=snaps.some(s=>Number(s.snap_month)===month); // 선택 월 스냅샷 존재(월간 탭 기준)
+  const snapCount=snaps.filter(s=>Number(s.snap_month)===month).length; // 선택 월 스냅샷 행수
   const closedMonthCount=new Set(snaps.map(s=>Number(s.snap_month))).size; // 연간 탭: 해당 연도 마감 완료 월 수
 
   useEffect(()=>{loadS()},[year,month,rtype]);
@@ -2493,11 +2497,29 @@ function Report({drugs,txns,onNav}){
     const{data}=await q;setSnaps(data||[]);setLd(false)
   }
 
-  /* 월마감 실행 — 화면 선택 연/월(year·month) 기준. 집계 산식 무변경, 대상 기간만 선택값 사용 */
-  async function doClose(){
-    if(isFuture)return; // 미래 월 방어(버튼도 비활성)
+  /* 월마감 요청 — 실행 직전 대상월 스냅샷 존재를 재조회. 있으면 차단(우회 경로 없음), 없으면 확인 후 진행 */
+  async function requestClose(){
+    if(!isOwner)return; // owner 전용(프론트 재확인)
+    if(isFuture)return; // 미래 월 방어
     const label=`${year}년 ${month}월`;
-    if(!confirm(`${label}을 마감합니다. 계속하시겠습니까?${monthClosed?`\n기존 ${label} 스냅샷을 덮어씁니다.`:''}`))return;
+    const{count,error}=await supabase.from('monthly_snapshots').select('id',{count:'exact',head:true}).eq('snap_year',year).eq('snap_month',month);
+    const n=error?snapCount:(count||0);
+    if(n>0){ // 기존 스냅샷 보호 — 재마감 차단(강행 버튼 미제공)
+      setDialog({title:'재마감 제한',body:`${label}은 이미 스냅샷이 있습니다(${n.toLocaleString()}행).\n현재 값을 보호하기 위해 재마감이 제한됩니다.\n결산 재구축은 '스냅샷 업로드'를 사용하십시오.`});
+      return;
+    }
+    const ym=`${year}-${String(month).padStart(2,'0')}`;
+    const noTx=!txns.some(tx=>tx.transaction_date?.startsWith(ym));
+    setDialog({title:`${label} 마감`,
+      body:noTx?`해당 월의 거래 기록이 없어 입고·사용·폐기·반품이 0으로 기록됩니다.\n계속하시겠습니까?`:`${label}을 마감합니다. 계속하시겠습니까?`,
+      confirmLabel:'마감 실행',onConfirm:runClose});
+  }
+
+  /* 월마감 실제 반영 — 화면 선택 연/월(year·month) 기준. 집계 산식 무변경.
+     기존 스냅샷이 없는 월에서만 도달(requestClose가 차단) → DELETE 없이 insert만(덮어쓰기 경로 미생성) */
+  async function runClose(){
+    if(!isOwner)return; // 실행부 이중 확인
+    setDialog(null);const label=`${year}년 ${month}월`;
     setClosing(true);setCloseMsg(null);
     try{
       const ym=`${year}-${String(month).padStart(2,'0')}`;
@@ -2519,7 +2541,6 @@ function Report({drugs,txns,onNav}){
           total_disp_qty:dispQ,total_ret_qty:retQ,
           closing_qty:d.current_qty||0,closing_amount:(d.current_qty||0)*(d.purchase_price||0)}
       });
-      await supabase.from('monthly_snapshots').delete().eq('snap_year',year).eq('snap_month',month);
       const batch=[];for(let i=0;i<rows.length;i+=500)batch.push(rows.slice(i,i+500));
       for(const b of batch){const{error}=await supabase.from('monthly_snapshots').insert(b);if(error)throw error}
       setCloseMsg(`✅ ${label} 마감 완료! (${rows.length}건)`);loadS()
@@ -2529,7 +2550,7 @@ function Report({drugs,txns,onNav}){
 
   /* 연마감 — 로직 미구현. 12개월 월마감 선행 조건 안내만 표시(해당 연도 마감 완료 월 수 N/12) */
   function showAnnualInfo(){
-    alert(`연마감은 12개월 월마감 완료 후 사용할 수 있습니다.\n현재 ${year}년 마감 완료: ${closedMonthCount}/12개월`);
+    setDialog({title:'연마감 안내',body:`연마감은 12개월 월마감 완료 후 사용할 수 있습니다.\n현재 ${year}년 마감 완료: ${closedMonthCount}/12개월`});
   }
 
   /* 데이터 가공 */
@@ -2608,12 +2629,26 @@ function Report({drugs,txns,onNav}){
       </select>}
       <div style={{flex:1}}/>
       <button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>
+      {isOwner&&rtype==='monthly'&&<button onClick={()=>setUploadOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accentL,color:t.accent,cursor:'pointer',fontSize:11,fontWeight:600}}>스냅샷 업로드</button>}
       <button onClick={()=>window.print()} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>인쇄</button>
-      {rtype==='monthly'
-        ? <button onClick={doClose} disabled={closing||isFuture} title={isFuture?'미래 월은 마감할 수 없습니다':undefined} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:(closing||isFuture)?'not-allowed':'pointer',opacity:(closing||isFuture)?0.5:1,fontSize:11,fontWeight:700}}>{closing?'마감 중...':(monthClosed?'📋 재마감':'📋 월마감')}</button>
-        : <button onClick={showAnnualInfo} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:700}}>📅 연마감</button>}
+      {isOwner&&(rtype==='monthly'
+        ? <button onClick={requestClose} disabled={closing||isFuture||monthClosed} title={monthClosed?'이미 스냅샷이 있어 재마감이 제한됩니다':isFuture?'미래 월은 마감할 수 없습니다':undefined} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:(closing||isFuture||monthClosed)?'not-allowed':'pointer',opacity:(closing||isFuture||monthClosed)?0.5:1,fontSize:11,fontWeight:700}}>{closing?'마감 중...':(monthClosed?'📋 마감됨':'📋 월마감')}</button>
+        : <button onClick={showAnnualInfo} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:700}}>📅 연마감</button>)}
     </div>
     {closeMsg&&<div style={{background:closeMsg.includes('✅')?t.greenL:t.redL,border:`1px solid ${closeMsg.includes('✅')?t.green:t.red}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:closeMsg.includes('✅')?t.green:t.red,fontSize:12,fontWeight:600}}>{closeMsg}</div>}
+
+    {/* 앱 내 확인/안내 모달(alert·confirm 대체) — 기존 DrugDeleteConfirm 스타일 재사용 */}
+    {dialog&&<div onClick={()=>setDialog(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:420,width:'100%',border:`1px solid ${t.border}`,boxShadow:t.shadowH}}>
+        <div style={{fontSize:14,fontWeight:700,color:t.text,marginBottom:10}}>{dialog.title}</div>
+        <div style={{fontSize:12,color:t.textM,lineHeight:1.6,whiteSpace:'pre-line',marginBottom:18}}>{dialog.body}</div>
+        <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
+          {dialog.onConfirm&&<button onClick={()=>setDialog(null)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.border}`,background:'transparent',color:t.textM,cursor:'pointer',fontSize:12,fontWeight:700}}>취소</button>}
+          <button onClick={()=>{const fn=dialog.onConfirm;if(fn)fn();else setDialog(null)}} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>{dialog.confirmLabel||'확인'}</button>
+        </div>
+      </div>
+    </div>}
+    {uploadOpen&&<SnapshotUploadModal t={t} isOwner={isOwner} onClose={()=>setUploadOpen(false)} onReload={loadS} />}
 
     {rtype==='annual'&&<div className="cnc-annual-print" style={{marginBottom:14}}>
       <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:12}}>
@@ -2749,7 +2784,7 @@ function Report({drugs,txns,onNav}){
 
     {/* 상세 테이블 — 연간 탭 미표시(월간 전용) */}
     {rtype==='monthly'&&<div className="cnc-report-table" style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
-      <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.accent}}>{rtype==='monthly'?`${year}년 ${month}월`:`${year}년 연간`} 보고서 ({filtered.length}건) {ld&&<span style={{fontSize:11,color:t.textL}}>로딩...</span>}</div>
+      <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.accent}}>{rtype==='monthly'?`${year}년 ${month}월`:`${year}년 연간`} 보고서 ({filtered.length}건){monthClosed?<span style={{marginLeft:8,fontSize:11,fontWeight:600,color:t.green}}>· 스냅샷 있음({snapCount.toLocaleString()}행)</span>:null} {ld&&<span style={{fontSize:11,color:t.textL}}>로딩...</span>}</div>
       <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
         <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['opening_qty','전월재고'],['total_in_qty','입고'],['total_out_qty','출고'],['total_disp_qty','폐기'],['total_ret_qty','반품'],['closing_qty','기말재고'],['closing_amount','기말금액']].map(([k,h])=><th key={k} style={TS(k)} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}</tr></thead>
         <tbody>{filtered.length===0?<tr><td colSpan={10} style={{padding:40,textAlign:'center',color:t.textL}}>{ld?'로딩 중...':'데이터 없음 — 월마감을 실행해주세요'}</td></tr>:filtered.slice(0,100).map((d,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
