@@ -281,6 +281,12 @@ function Drug360Modal({ drug: dr, onClose, pos, setPos }) {
   const [tab, setTab] = useState('개요');
   const boxRef = useRef(null);
   const { dragging, onHeaderMouseDown } = useDraggableModal(boxRef, pos, setPos);
+  // Esc 닫기 — 모달이 열려 있을 때(마운트 동안)만 바인딩, 닫히면 해제. 입력 포커스 무관(window 레벨).
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose]);
   const [txs, setTxs] = useState(null);
   const [lots, setLots] = useState(null);
   useEffect(() => { let on = true;
@@ -295,8 +301,8 @@ function Drug360Modal({ drug: dr, onClose, pos, setPos }) {
   const chip = (v) => (v && String(v).trim()) ? <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: acc + '1A', color: acc, border: '1px solid ' + acc + '33', marginRight: 6, marginBottom: 4 }}>{v}</span> : null;
   const row = (label, val) => <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid ' + t.border, fontSize: 13 }}><span style={{ color: t.textM }}>{label}</span><span style={{ fontWeight: 600, color: t.text, textAlign: 'right' }}>{val}</span></div>;
   const dstr = (x) => x !== null ? 'D' + (x <= 0 ? x : '-' + x) : '-';
-  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'transparent', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
-    <div ref={boxRef} onClick={e => e.stopPropagation()} style={{ background: t.card, borderRadius: 16, width: '100%', maxWidth: 640, boxShadow: t.shadowH, overflow: 'hidden', transform: `translate(${pos.x}px, ${pos.y}px)` }}>
+  return <div style={{ position: 'fixed', inset: 0, background: 'transparent', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto', pointerEvents: 'none' }}>
+    <div ref={boxRef} style={{ background: t.card, borderRadius: 16, width: '100%', maxWidth: 640, boxShadow: t.shadowH, overflow: 'hidden', transform: `translate(${pos.x}px, ${pos.y}px)`, pointerEvents: 'auto' }}>
       <div onMouseDown={onHeaderMouseDown} style={{ background: t.nav, padding: '16px 20px', color: '#fff', cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}><div><div style={{ fontSize: 17, fontWeight: 700 }}>{dr.drug_name}</div><div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{dr.drug_code} · {dr.category || '-'}</div></div><button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 28, height: 28, borderRadius: 8, cursor: 'pointer', fontSize: 15 }}>✕</button></div></div>
       <div style={{ display: 'flex', gap: 2, padding: '8px 12px 0', borderBottom: '1px solid ' + t.border, background: t.bg }}>{TABS.map(x => <button key={x} onClick={() => setTab(x)} style={{ padding: '8px 14px', border: 'none', borderBottom: tab === x ? '2px solid ' + t.accent : '2px solid transparent', background: 'transparent', color: tab === x ? t.accent : t.textM, fontWeight: tab === x ? 700 : 500, fontSize: 12, cursor: 'pointer' }}>{x}</button>)}</div>
       <div style={{ padding: '16px 20px', maxHeight: '60vh', overflowY: 'auto' }}>
