@@ -2538,6 +2538,49 @@ function Report({drugs,txns,onNav}){
 
   /* 월마감 실제 반영 — 화면 선택 연/월(year·month) 기준. 집계 산식 무변경.
      기존 스냅샷이 없는 월에서만 도달(requestClose가 차단) → DELETE 없이 insert만(덮어쓰기 경로 미생성) */
+  /* 사이드카 총계 upsert 공통 — runClose·재기록 공유. 결재본(엑셀결재본) 보호 + calc/audit + float 잔차 방지(4자리 문자열).
+     a={openA,inA,outA,closeA,dispA,retA,itemCount,inC,outC,dispC,retC,expE,expU,expW,expC} */
+  async function _writeSidecar(tid,y,m,a){
+    const{data:_ex,error:_exErr}=await supabase.from('monthly_report_totals').select('source').eq('snap_year',y).eq('snap_month',m).limit(1).maybeSingle();
+    if(_exErr)return{ok:false,error:_exErr};
+    if(_ex&&_ex.source==='엑셀결재본')return{ok:false,protected:true};
+    const _f4=v=>Number(v||0).toFixed(4);
+    const calc=a.openA+a.inA-a.outA-a.dispA-a.retA;
+    const{error}=await supabase.from('monthly_report_totals').upsert({tenant_id:tid,snap_year:y,snap_month:m,
+      opening_amount:_f4(a.openA),in_amount:_f4(a.inA),out_amount:_f4(a.outA),
+      disposal_amount:_f4(a.dispA),return_amount:_f4(a.retA),
+      calc_closing:_f4(calc),actual_closing:_f4(a.closeA),audit_adjust:_f4(a.closeA-calc),
+      item_count:a.itemCount,in_count:a.inC,out_count:a.outC,disposal_count:a.dispC,return_count:a.retC,
+      exp_expired:a.expE,exp_urgent30:a.expU,exp_caution60:a.expW,exp_check90:a.expC,
+      source:'시스템'},{onConflict:'tenant_id,snap_year,snap_month'});
+    if(error)return{ok:false,error};
+    return{ok:true,calc,audit:a.closeA-calc,actual:a.closeA};
+  }
+  /* 사이드카 재기록 요청 — owner 전용. 대상 월 스냅샷 없으면 불가 안내, 있으면 확인 후 rebuildSidecar */
+  async function requestRebuild(){
+    if(!isOwner)return;
+    const label=`${year}년 ${month}월`;
+    if(snapCount===0){setDialog({title:'재기록 불가',body:`${label}은 monthly_snapshots가 없어 집계할 원천이 없습니다.\n먼저 월마감을 실행하십시오.`});return;}
+    setDialog({title:`${label} 사이드카 재기록`,body:`${label}의 스냅샷(${snapCount.toLocaleString()}행)을 집계해 사이드카 총계를 재기록합니다.\n· monthly_snapshots는 읽기만 하며 변경하지 않습니다.\n· 결재본 정본(엑셀결재본)이 있으면 보호되어 중단됩니다.`,confirmLabel:'재기록 실행',onConfirm:rebuildSidecar});
+  }
+  /* 사이드카 재기록 실행 — 선택 월 monthly_snapshots(읽기만)+transactions 집계 → _writeSidecar(runClose와 동일 식) */
+  async function rebuildSidecar(){
+    if(!isOwner)return;
+    setDialog(null);const label=`${year}년 ${month}월`;setClosing(true);setCloseMsg(null);
+    try{
+      const ym=`${year}-${String(month).padStart(2,'0')}`;
+      const mTx=txns.filter(tx=>tx.transaction_date?.startsWith(ym));
+      const ms=snaps.filter(s=>Number(s.snap_month)===month);
+      if(ms.length===0){setCloseMsg(`❌ ${label} 집계할 스냅샷이 없습니다.`);setClosing(false);return;}
+      const{data:_tm}=await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle();
+      const _sum=(ty,fld)=>mTx.filter(x=>x.type===ty).reduce((a,x)=>a+(x[fld]||0),0),_cnt=ty=>mTx.filter(x=>x.type===ty).length;
+      const _res=await _writeSidecar(_tm?.tenant_id||null,year,month,{openA:ms.reduce((a,s)=>a+(s.opening_amount||0),0),inA:ms.reduce((a,s)=>a+(s.total_in_amount||0),0),outA:ms.reduce((a,s)=>a+(s.total_out_amount||0),0),closeA:ms.reduce((a,s)=>a+(s.closing_amount||0),0),dispA:_sum('폐기','total_amount'),retA:_sum('반품','total_amount'),itemCount:ms.length,inC:_cnt('입고'),outC:_cnt('출고'),dispC:_cnt('폐기'),retC:_cnt('반품'),expE:expExpired,expU:expU30,expW:expW60,expC:expC90});
+      if(_res.protected){setCloseMsg(`❌ ${label} 결재본 정본(엑셀결재본)이 존재해 덮어쓸 수 없습니다.`);setClosing(false);return;}
+      if(!_res.ok)throw new Error(_res.error?.message||'사이드카 기록 실패');
+      setCloseMsg(`✅ ${label} 사이드카 재기록 완료 — 기말재고 ₩${Math.round(_res.actual).toLocaleString()} / 보정값 ₩${Math.round(_res.audit).toLocaleString()} (집계 ${ms.length}행)`);loadS()
+    }catch(err){setCloseMsg(`❌ ${label} 사이드카 재기록 실패: ${err.message}`)}
+    setClosing(false)
+  }
   async function runClose(){
     if(!isOwner)return; // 실행부 이중 확인
     setDialog(null);const label=`${year}년 ${month}월`;
@@ -2568,22 +2611,12 @@ function Report({drugs,txns,onNav}){
          재마감은 requestClose가 스냅샷 존재로 차단 → 1~6월 엑셀결재본 무영향. onConflict는 시스템 재마감 대비 UPDATE */
       try{
         const{data:_tm}=await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle();
-        const _f4=v=>Number(v||0).toFixed(4); // float 잔차 방지: 4자리 문자열로 저장(numeric(20,4))
         const _sum=(ty,fld)=>mTx.filter(x=>x.type===ty).reduce((a,x)=>a+(x[fld]||0),0);
         const _openA=rows.reduce((a,r)=>a+(r.opening_amount||0),0),_inA=rows.reduce((a,r)=>a+(r.total_in_amount||0),0),
               _outA=rows.reduce((a,r)=>a+(r.total_out_amount||0),0),_closeA=rows.reduce((a,r)=>a+(r.closing_amount||0),0),
-              _dispA=_sum('폐기','total_amount'),_retA=_sum('반품','total_amount'),_calc=_openA+_inA-_outA-_dispA-_retA;
-        const _side={tenant_id:_tm?.tenant_id||null,snap_year:year,snap_month:month,
-          opening_amount:_f4(_openA),in_amount:_f4(_inA),out_amount:_f4(_outA),
-          disposal_amount:_f4(_dispA),return_amount:_f4(_retA),
-          calc_closing:_f4(_calc),actual_closing:_f4(_closeA),audit_adjust:_f4(_closeA-_calc),
-          item_count:rows.length,
-          in_count:mTx.filter(x=>x.type==='입고').length,out_count:mTx.filter(x=>x.type==='출고').length,
-          disposal_count:mTx.filter(x=>x.type==='폐기').length,return_count:mTx.filter(x=>x.type==='반품').length,
-          exp_expired:expExpired,exp_urgent30:expU30,exp_caution60:expW60,exp_check90:expC90,
-          source:'시스템'};
-        const{error:_sErr}=await supabase.from('monthly_report_totals').upsert(_side,{onConflict:'tenant_id,snap_year,snap_month'});
-        if(_sErr)throw _sErr;
+              _dispA=_sum('폐기','total_amount'),_retA=_sum('반품','total_amount');
+        const _res=await _writeSidecar(_tm?.tenant_id||null,year,month,{openA:_openA,inA:_inA,outA:_outA,closeA:_closeA,dispA:_dispA,retA:_retA,itemCount:rows.length,inC:mTx.filter(x=>x.type==='입고').length,outC:mTx.filter(x=>x.type==='출고').length,dispC:mTx.filter(x=>x.type==='폐기').length,retC:mTx.filter(x=>x.type==='반품').length,expE:expExpired,expU:expU30,expW:expW60,expC:expC90});
+        if(!_res.ok)throw new Error(_res.protected?'결재본 정본이 존재해 사이드카를 덮어쓸 수 없습니다':(_res.error?.message||'사이드카 기록 실패'));
       }catch(_sideErr){
         setCloseMsg(`⚠ ${label} 스냅샷은 저장됐으나 사이드카 총계 기록 실패: ${_sideErr.message} — 다시 시도해 주세요`);loadS();setClosing(false);return;
       }
@@ -2677,6 +2710,7 @@ function Report({drugs,txns,onNav}){
       <div style={{flex:1}}/>
       <button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>
       {isOwner&&rtype==='monthly'&&<button onClick={()=>setUploadOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accentL,color:t.accent,cursor:'pointer',fontSize:11,fontWeight:600}}>스냅샷 업로드</button>}
+      {isOwner&&rtype==='monthly'&&<button onClick={requestRebuild} disabled={closing} title="선택 월 스냅샷을 집계해 사이드카 총계를 재기록(결재본 보호)" style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.purple}`,background:t.accentL,color:t.purple,cursor:closing?'not-allowed':'pointer',opacity:closing?0.5:1,fontSize:11,fontWeight:600}}>🧮 사이드카 재기록</button>}
       <button onClick={()=>window.print()} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>인쇄</button>
       {isOwner&&(rtype==='monthly'
         ? <button onClick={requestClose} disabled={closing||isFuture||monthClosed} title={monthClosed?'이미 스냅샷이 있어 재마감이 제한됩니다':isFuture?'미래 월은 마감할 수 없습니다':undefined} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:(closing||isFuture||monthClosed)?'not-allowed':'pointer',opacity:(closing||isFuture||monthClosed)?0.5:1,fontSize:11,fontWeight:700}}>{closing?'마감 중...':(monthClosed?'📋 마감됨':'📋 월마감')}</button>
