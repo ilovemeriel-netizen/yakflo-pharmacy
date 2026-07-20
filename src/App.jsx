@@ -2727,8 +2727,8 @@ function Report({drugs,txns,onNav}){
           <MRow2 label="순입고" bg="#ececec" cnt={(inCnt-outCnt)+'건'} amt={'₩'+Math.round(tot.ia-tot.oua).toLocaleString()} />
         </MSec>
         <MSec title="■ 손실 현황">
-          <MRow2 label="폐기" bg="#f6dede" cnt={dispCnt+'건'} amt={'₩'+Math.round(tot.da).toLocaleString()} />
-          <MRow2 label="반품" bg="#f7f3d6" cnt={retCnt+'건'} amt={'₩'+Math.round(tot.ra).toLocaleString()} />
+          <MRow2 label="폐기" bg="#f6dede" cnt={dispCnt+'품목'} amt={'₩'+Math.round(tot.da).toLocaleString()} />
+          <MRow2 label="반품" bg="#f7f3d6" cnt={retCnt+'품목'} amt={'₩'+Math.round(tot.ra).toLocaleString()} />
           <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(dispCnt+retCnt)+'건'} amt={'₩'+Math.round(tot.da+tot.ra).toLocaleString()} />
         </MSec>
         <MSec title="■ 유효기간 관리">
@@ -2745,10 +2745,10 @@ function Report({drugs,txns,onNav}){
       <style>{'.cnc-print-month{display:none}@media print{.cnc-rpt-hide{display:none!important}.cnc-print-month{display:block!important;page-break-after:always;max-width:680px;margin:0 auto}.cnc-print-month table{font-size:12.5px!important}.cnc-print-month td,.cnc-print-month th{padding:6px 10px!important;font-size:12.5px!important}.cnc-report-table table{font-size:9px!important}}'}</style>
     {/* 요약 카드 — 연간 탭에서는 연 KPI 5장과 지표가 중복되어 숨김(월간 전용) */}
     {rtype==='monthly'&&<div className="cnc-rpt-hide" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:12}}>
-      {[{l:'전월재고',v:tot.oa,c:t.purple,nav:'stock'},{l:'입고 금액',v:tot.ia,c:t.green,nav:'transaction'},{l:'출고 금액',v:tot.oua,c:t.blue,nav:'transaction'},{l:'폐기',v:tot.dq,sub:tot.da,c:t.red,nav:'transaction'},{l:'반품',v:tot.rq,sub:tot.ra,c:t.amber,nav:'transaction'},{l:'기말재고',v:tot.ca,c:t.accent,nav:'stock'}].map((x,i)=><div key={i} onClick={()=>onNav?.({menu:x.nav})} style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`,cursor:'pointer',transition:'all .15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor=x.c;e.currentTarget.style.transform='translateY(-1px)'}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.transform=''}}>
+      {[{l:'전월재고',v:tot.oa,c:t.purple,nav:'stock'},{l:'입고 금액',v:tot.ia,c:t.green,nav:'transaction'},{l:'출고 금액',v:tot.oua,c:t.blue,nav:'transaction'},{l:'폐기',v:tot.dq,sub:tot.da,cnt:dispCnt,c:t.red,nav:'transaction'},{l:'반품',v:tot.rq,sub:tot.ra,cnt:retCnt,c:t.amber,nav:'transaction'},{l:'기말재고',v:tot.ca,c:t.accent,nav:'stock'}].map((x,i)=><div key={i} onClick={()=>onNav?.({menu:x.nav})} style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`,cursor:'pointer',transition:'all .15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor=x.c;e.currentTarget.style.transform='translateY(-1px)'}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.transform=''}}>
         <div style={{fontSize:10,color:t.textM}}>{x.l}</div>
         {x.sub!==undefined?<>
-          <div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4}}>{x.v}개</div>
+          <div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4,whiteSpace:'nowrap'}}>{x.cnt}품목 ({x.v}개)</div>
           <div style={{fontSize:12,color:x.c,marginTop:2}}>₩{x.sub.toLocaleString()}</div>
         </>:<div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4}}>{typeof x.v==='number'?'₩'+x.v.toLocaleString():x.v}</div>}
       </div>)}
