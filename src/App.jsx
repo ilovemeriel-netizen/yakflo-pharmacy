@@ -2744,26 +2744,26 @@ function Report({drugs,txns,onNav}){
         <div style={{background:'#804A87',color:'#fff',padding:'12px 16px',textAlign:'center',fontSize:19,fontWeight:800}}>🏥 씨엔씨재활의학과병원 약품관리 월간보고서</div>
         <div style={{textAlign:'center',color:'#804A87',fontWeight:700,margin:'8px 0 14px'}}>▶ 보고월: {year}년 {rtype==='monthly'?month+'월':'연간'}</div>
         <MSec title="■ 재고 현황">
-          <MRow label="관리 품목수" bg="#e3f0e3" value={itemCnt.toLocaleString()+'개'} />
+          <MRow label="관리 품목수" bg="#e3f0e3" value={(sideTot?Number(sideTot.item_count):itemCnt).toLocaleString()+'개'} />
           <MRow label="현재고" bg="#e3f0e3" value={'₩'+Math.round(sideTot?Number(sideTot.actual_closing):tot.ca).toLocaleString()} />
           <MRow label="전월재고" bg="#e3f0e3" value={'₩'+Math.round(sideTot?Number(sideTot.opening_amount):tot.oa).toLocaleString()} />
           <MRow label="증감" bg="#e3f0e3" value={'₩'+Math.round(sideTot?(Number(sideTot.actual_closing)-Number(sideTot.opening_amount)):(tot.ca-tot.oa)).toLocaleString()} />
         </MSec>
         <MSec title="■ 입출고 현황">
-          <MRow2 label="입고" bg="#ece4f1" cnt={inCnt+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.in_amount):tot.ia).toLocaleString()} />
-          <MRow2 label="출고" bg="#f1e4ee" cnt={outCnt+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.out_amount):tot.oua).toLocaleString()} />
-          <MRow2 label="순입고" bg="#ececec" cnt={(inCnt-outCnt)+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.in_amount)-Number(sideTot.out_amount)):(tot.ia-tot.oua)).toLocaleString()} />
+          <MRow2 label="입고" bg="#ece4f1" cnt={(sideTot?Number(sideTot.in_count):inCnt)+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.in_amount):tot.ia).toLocaleString()} />
+          <MRow2 label="출고" bg="#f1e4ee" cnt={(sideTot?Number(sideTot.out_count):outCnt)+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.out_amount):tot.oua).toLocaleString()} />
+          <MRow2 label="순입고" bg="#ececec" cnt={(sideTot?(Number(sideTot.in_count)-Number(sideTot.out_count)):(inCnt-outCnt))+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.in_amount)-Number(sideTot.out_amount)):(tot.ia-tot.oua)).toLocaleString()} />
         </MSec>
         <MSec title="■ 손실 현황">
-          <MRow2 label="폐기" bg="#f6dede" cnt={dispCnt+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.disposal_amount):tot.da).toLocaleString()} />
-          <MRow2 label="반품" bg="#f7f3d6" cnt={retCnt+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.return_amount):tot.ra).toLocaleString()} />
-          <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(dispCnt+retCnt)+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.disposal_amount)+Number(sideTot.return_amount)):(tot.da+tot.ra)).toLocaleString()} />
+          <MRow2 label="폐기" bg="#f6dede" cnt={(sideTot?Number(sideTot.disposal_count):dispCnt)+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.disposal_amount):tot.da).toLocaleString()} />
+          <MRow2 label="반품" bg="#f7f3d6" cnt={(sideTot?Number(sideTot.return_count):retCnt)+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.return_amount):tot.ra).toLocaleString()} />
+          <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(sideTot?(Number(sideTot.disposal_count)+Number(sideTot.return_count)):(dispCnt+retCnt))+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.disposal_amount)+Number(sideTot.return_amount)):(tot.da+tot.ra)).toLocaleString()} />
         </MSec>
         <MSec title="■ 유효기간 관리">
-          <MRow label="★ 만료" bg="#f6dede" value={expExpired+'건'} />
-          <MRow label="▲ 긴급 (30일)" bg="#fce6cf" value={expU30+'건'} />
-          <MRow label="◆ 주의 (60일)" bg="#f7f3d6" value={expW60+'건'} />
-          <MRow label="● 확인 (90일)" bg="#e3f0e3" value={expC90+'건'} />
+          <MRow label="★ 만료" bg="#f6dede" value={(sideTot?Number(sideTot.exp_expired):expExpired)+'건'} />
+          <MRow label="▲ 긴급 (30일)" bg="#fce6cf" value={(sideTot?Number(sideTot.exp_urgent30):expU30)+'건'} />
+          <MRow label="◆ 주의 (60일)" bg="#f7f3d6" value={(sideTot?Number(sideTot.exp_caution60):expW60)+'건'} />
+          <MRow label="● 확인 (90일)" bg="#e3f0e3" value={(sideTot?Number(sideTot.exp_check90):expC90)+'건'} />
         </MSec>
         <div style={{textAlign:'center',color:'#999',fontSize:11,marginTop:22}}>
           <div>{nowStamp()}</div>
