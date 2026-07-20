@@ -2478,6 +2478,7 @@ function Report({drugs,txns,onNav}){
   const[snaps,setSnaps]=useState([]);const[ld,setLd]=useState(false);
   const[sideTot,setSideTot]=useState(null); // 정본 사이드카(월 총계) 단일행 — 월간 KPI 표시용
   const[sideY,setSideY]=useState({}); // 정본 사이드카(연도 전체 월 맵) — 연간 표 표시용
+  const[live,setLive]=useState(null); // 미마감 당월 실시간 집계({rows,oa,da,ra,dispCnt,retCnt}) — 없으면 null
   const[search,setSearch]=useState('');const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(['사용']);
   const[page,setPage]=useState(1);const RPP=100; // 상세표 페이지네이션(화면 전용) — 한 페이지 100행
   const[closing,setClosing]=useState(false);const[closeMsg,setCloseMsg]=useState(null);
@@ -2502,6 +2503,27 @@ function Report({drugs,txns,onNav}){
   async function loadSideY(){
     const{data}=await supabase.from('monthly_report_totals').select('*').eq('snap_year',year);
     const map={};(data||[]).forEach(r=>{map[r.snap_month]=r});setSideY(map);
+  }
+  useEffect(()=>{ if(rtype==='monthly'&&!monthClosed&&!ld){loadLive()} else if(rtype!=='monthly'||monthClosed){setLive(null)} },[year,month,rtype,monthClosed,ld]); // 미마감 당월 실시간 집계 트리거(마감 월이면 null)
+  async function loadLive(){
+    try{
+      const py=month===1?year-1:year,pm=month===1?12:month-1;
+      const{data:pS,error:pErr}=await supabase.from('monthly_report_totals').select('actual_closing').eq('snap_year',py).eq('snap_month',pm).limit(1).maybeSingle();
+      if(pErr)throw pErr;
+      let ps=[],pf=0; while(true){const{data,error}=await supabase.from('monthly_snapshots').select('drug_code,closing_qty,closing_amount').eq('snap_year',py).eq('snap_month',pm).range(pf,pf+999); if(error)throw error; if(!data||!data.length)break; ps=ps.concat(data); if(data.length<1000)break; pf+=1000;}
+      const pmap={}; const pSum=ps.reduce((a,s)=>{pmap[s.drug_code]=s;return a+(Number(s.closing_amount)||0)},0);
+      const oa=pS?Number(pS.actual_closing):pSum; // 작업A: 전월 사이드카 actual_closing, 없으면 전월 스냅샷 Σclosing
+      const mm=String(month).padStart(2,'0'),nmm=month===12?`${year+1}-01`:`${year}-${String(month+1).padStart(2,'0')}`;
+      let tx=[],tf=0; while(true){const{data,error}=await supabase.from('transactions').select('drug_code,type,quantity,total_amount').gte('transaction_date',`${year}-${mm}-01`).lt('transaction_date',`${nmm}-01`).range(tf,tf+999); if(error)throw error; if(!data||!data.length)break; tx=tx.concat(data); if(data.length<1000)break; tf+=1000;}
+      const txByCode={}; tx.forEach(x=>{(txByCode[x.drug_code]=txByCode[x.drug_code]||[]).push(x)});
+      const sq=(a,ty)=>(a||[]).filter(x=>x.type===ty).reduce((s,x)=>s+(Number(x.quantity)||0),0);
+      const sa=(a,ty)=>(a||[]).filter(x=>x.type===ty).reduce((s,x)=>s+(Number(x.total_amount)||0),0);
+      const codes=new Set(); drugs.forEach(d=>codes.add(d.drug_code)); ps.forEach(s=>codes.add(s.drug_code));
+      const rows=[...codes].map(code=>{const d=drugMap[code]||{},prev=pmap[code]||{},a=txByCode[code];const cq=Number(d.current_qty)||0,pp=Number(d.purchase_price)||0;
+        return{drug_code:code,drug_name:d.drug_name||code,category:d.category||'-',opening_qty:Number(prev.closing_qty)||0,opening_amount:Number(prev.closing_amount)||0,total_in_qty:sq(a,'입고'),total_in_amount:sa(a,'입고'),total_out_qty:sq(a,'출고'),total_out_amount:sa(a,'출고'),total_disp_qty:sq(a,'폐기'),total_ret_qty:sq(a,'반품'),closing_qty:cq,closing_amount:cq*pp};
+      }).filter(r=>r.opening_qty!==0||r.closing_qty!==0||r.total_in_qty||r.total_out_qty||r.total_disp_qty||r.total_ret_qty); // 거래 없어도 전월/현재고 있으면 포함
+      setLive({rows,oa,da:sa(tx,'폐기'),ra:sa(tx,'반품'),dispCnt:tx.filter(x=>x.type==='폐기').length,retCnt:tx.filter(x=>x.type==='반품').length});
+    }catch(e){setCloseMsg('❌ 실시간 집계 오류: '+e.message);setLive(null)}
   }
   async function loadS(){
     setLd(true);
@@ -2589,6 +2611,7 @@ function Report({drugs,txns,onNav}){
       const ym=`${year}-${String(month).padStart(2,'0')}`;
       const mTx=txns.filter(tx=>tx.transaction_date?.startsWith(ym));
       const{data:prevData}=await supabase.from('monthly_snapshots').select('*').eq('snap_year',month===1?year-1:year).eq('snap_month',month===1?12:month-1);
+      const{data:_prevSide}=await supabase.from('monthly_report_totals').select('actual_closing').eq('snap_year',month===1?year-1:year).eq('snap_month',month===1?12:month-1).limit(1).maybeSingle();
       const prevMap={};(prevData||[]).forEach(s=>{prevMap[s.drug_code]=s});
       const rows=drugs.map(d=>{
         const prev=prevMap[d.drug_code]||{};
@@ -2615,7 +2638,7 @@ function Report({drugs,txns,onNav}){
         const _openA=rows.reduce((a,r)=>a+(r.opening_amount||0),0),_inA=rows.reduce((a,r)=>a+(r.total_in_amount||0),0),
               _outA=rows.reduce((a,r)=>a+(r.total_out_amount||0),0),_closeA=rows.reduce((a,r)=>a+(r.closing_amount||0),0),
               _dispA=_sum('폐기','total_amount'),_retA=_sum('반품','total_amount');
-        const _res=await _writeSidecar(_tm?.tenant_id||null,year,month,{openA:_openA,inA:_inA,outA:_outA,closeA:_closeA,dispA:_dispA,retA:_retA,itemCount:rows.length,inC:mTx.filter(x=>x.type==='입고').length,outC:mTx.filter(x=>x.type==='출고').length,dispC:mTx.filter(x=>x.type==='폐기').length,retC:mTx.filter(x=>x.type==='반품').length,expE:expExpired,expU:expU30,expW:expW60,expC:expC90});
+        const _res=await _writeSidecar(_tm?.tenant_id||null,year,month,{openA:(_prevSide?Number(_prevSide.actual_closing):_openA),inA:_inA,outA:_outA,closeA:_closeA,dispA:_dispA,retA:_retA,itemCount:rows.length,inC:mTx.filter(x=>x.type==='입고').length,outC:mTx.filter(x=>x.type==='출고').length,dispC:mTx.filter(x=>x.type==='폐기').length,retC:mTx.filter(x=>x.type==='반품').length,expE:expExpired,expU:expU30,expW:expW60,expC:expC90});
         if(!_res.ok)throw new Error(_res.protected?'결재본 정본이 존재해 사이드카를 덮어쓸 수 없습니다':(_res.error?.message||'사이드카 기록 실패'));
       }catch(_sideErr){
         setCloseMsg(`⚠ ${label} 스냅샷은 저장됐으나 사이드카 총계 기록 실패: ${_sideErr.message} — 다시 시도해 주세요`);loadS();setClosing(false);return;
@@ -2634,7 +2657,7 @@ function Report({drugs,txns,onNav}){
   const drugMap={};drugs.forEach(d=>{drugMap[d.drug_code]=d});
   let tableData=[];
   if(rtype==='monthly'){
-    tableData=snaps.map(s=>({...s,drug_name:drugMap[s.drug_code]?.drug_name||s.drug_code,category:drugMap[s.drug_code]?.category||'-'}))
+    tableData=live?live.rows:snaps.map(s=>({...s,drug_name:drugMap[s.drug_code]?.drug_name||s.drug_code,category:drugMap[s.drug_code]?.category||'-'}))
   }else{
     const map={};
     snaps.forEach(s=>{
@@ -2659,6 +2682,7 @@ function Report({drugs,txns,onNav}){
   /* 구분별 */
   const catSum=CATS.map(cat=>{const items=filtered.filter(d=>d.category===cat);if(!items.length)return null;return{cat,count:items.length,inA:items.reduce((a,d)=>a+(d.total_in_amount||0),0),outA:items.reduce((a,d)=>a+(d.total_out_amount||0),0),closeA:items.reduce((a,d)=>a+(d.closing_amount||0),0)}}).filter(Boolean);
   const inCnt=filtered.filter(d=>(d.total_in_qty||0)>0).length,outCnt=filtered.filter(d=>(d.total_out_qty||0)>0).length,dispCnt=filtered.filter(d=>(d.total_disp_qty||0)>0).length,retCnt=filtered.filter(d=>(d.total_ret_qty||0)>0).length,itemCnt=filtered.filter(d=>(d.closing_qty||0)!==0).length;
+  const liveAudit=live?(tot.ca-(live.oa+tot.ia-tot.oua-live.da-live.ra)):null; // 미마감 당월 보정값 = 기말 - (전월사이드카+입-출-폐-반)
   const _pn=new Date(),_pf=x=>{const z=new Date(_pn);z.setDate(z.getDate()+x);return z.toISOString().slice(0,10)},_pt=_pn.toISOString().slice(0,10);
   const _pe=drugs.filter(d=>d.status!=='중지'&&d.expiry_date);
   const expExpired=_pe.filter(d=>d.expiry_date<_pt).length,expU30=_pe.filter(d=>d.expiry_date>=_pt&&d.expiry_date<_pf(30)).length,expW60=_pe.filter(d=>d.expiry_date>=_pf(30)&&d.expiry_date<_pf(60)).length,expC90=_pe.filter(d=>d.expiry_date>=_pf(60)&&d.expiry_date<_pf(90)).length;
@@ -2830,15 +2854,15 @@ function Report({drugs,txns,onNav}){
       <style>{'.cnc-print-month{display:none}.cnc-rpt-prn{display:none}@media print{.cnc-rpt-hide{display:none!important}.cnc-print-month{display:block!important;page-break-after:always;max-width:680px;margin:0 auto}.cnc-print-month table{font-size:12.5px!important}.cnc-print-month td,.cnc-print-month th{padding:6px 10px!important;font-size:12.5px!important}.cnc-report-table table{font-size:9px!important}.cnc-rpt-scr{display:none!important}.cnc-rpt-prn{display:table-row-group!important}.cnc-report-table tfoot{display:table-row-group!important}}'}</style>
     {/* 요약 카드 — 연간 탭에서는 연 KPI 5장과 지표가 중복되어 숨김(월간 전용) */}
     {rtype==='monthly'&&<div className="cnc-rpt-hide" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:12}}>
-      {[{l:'전월재고',v:sideTot?Number(sideTot.opening_amount):tot.oa,c:t.purple,nav:'stock'},{l:'입고 금액',v:sideTot?Number(sideTot.in_amount):tot.ia,c:t.green,nav:'transaction'},{l:'출고 금액',v:sideTot?Number(sideTot.out_amount):tot.oua,c:t.blue,nav:'transaction'},{l:'폐기',v:tot.dq,sub:sideTot?Number(sideTot.disposal_amount):tot.da,cnt:dispCnt,cN:sideTot?Number(sideTot.disposal_count):null,c:t.red,nav:'transaction'},{l:'반품',v:tot.rq,sub:sideTot?Number(sideTot.return_amount):tot.ra,cnt:retCnt,cN:sideTot?Number(sideTot.return_count):null,c:t.amber,nav:'transaction'},{l:'기말재고',v:sideTot?Number(sideTot.actual_closing):tot.ca,c:t.accent,nav:'stock'}].map((x,i)=><div key={i} onClick={()=>onNav?.({menu:x.nav})} style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`,cursor:'pointer',transition:'all .15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor=x.c;e.currentTarget.style.transform='translateY(-1px)'}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.transform=''}}>
+      {[{l:'전월재고',v:sideTot?Number(sideTot.opening_amount):(live?live.oa:tot.oa),c:t.purple,nav:'stock'},{l:'입고 금액',v:sideTot?Number(sideTot.in_amount):tot.ia,c:t.green,nav:'transaction'},{l:'출고 금액',v:sideTot?Number(sideTot.out_amount):tot.oua,c:t.blue,nav:'transaction'},{l:'폐기',v:tot.dq,sub:sideTot?Number(sideTot.disposal_amount):(live?live.da:tot.da),cnt:live?live.dispCnt:dispCnt,cN:sideTot?Number(sideTot.disposal_count):null,c:t.red,nav:'transaction'},{l:'반품',v:tot.rq,sub:sideTot?Number(sideTot.return_amount):(live?live.ra:tot.ra),cnt:live?live.retCnt:retCnt,cN:sideTot?Number(sideTot.return_count):null,c:t.amber,nav:'transaction'},{l:'기말재고',v:sideTot?Number(sideTot.actual_closing):tot.ca,c:t.accent,nav:'stock'}].map((x,i)=><div key={i} onClick={()=>onNav?.({menu:x.nav})} style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`,cursor:'pointer',transition:'all .15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor=x.c;e.currentTarget.style.transform='translateY(-1px)'}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.transform=''}}>
         <div style={{fontSize:10,color:t.textM}}>{x.l}</div>
         {x.sub!==undefined?<>
           {x.cN!=null?<><div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4}}>{_aWon(x.sub)}</div><div style={{fontSize:12,color:x.c,marginTop:2}}>{x.cN}건</div></>:<><div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4,whiteSpace:'nowrap'}}>{x.cnt} <span style={{fontSize:17}}>({x.v})</span></div><div style={{fontSize:12,color:x.c,marginTop:2}}>{_aWon(x.sub)}</div></>}
         </>:<div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4}}>{typeof x.v==='number'?_aWon(x.v):x.v}</div>}
       </div>)}
-      {sideTot&&<div style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`}}>
+      {(sideTot||live)&&<div style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`}}>
         <div style={{fontSize:10,color:t.textM}}>보정값</div>
-        <div style={{fontSize:20,fontWeight:700,color:t.textM,marginTop:4}}>{_aWon(sideTot.audit_adjust)}</div>
+        <div style={{fontSize:20,fontWeight:700,color:t.textM,marginTop:4}}>{_aWon(sideTot?sideTot.audit_adjust:liveAudit)}</div>
       </div>}
     </div>}
 
@@ -2873,7 +2897,7 @@ function Report({drugs,txns,onNav}){
       <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.accent}}>{rtype==='monthly'?`${year}년 ${month}월`:`${year}년 연간`} 보고서 ({filtered.length}건) {ld&&<span style={{fontSize:11,color:t.textL}}>로딩...</span>}</div>
       <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
         <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['opening_qty','전월재고'],['total_in_qty','입고'],['total_out_qty','출고'],['total_disp_qty','폐기'],['total_ret_qty','반품'],['closing_qty','기말재고'],['closing_amount','기말금액']].map(([k,h])=><th key={k} style={{ ...TS(k), background: t.bg, fontWeight: 700 }} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}</tr></thead>
-        <tbody className="cnc-rpt-scr">{filtered.length===0?<tr><td colSpan={10} style={{padding:40,textAlign:'center',color:t.textL}}>{ld?'로딩 중...':'데이터 없음 — 월마감을 실행해주세요'}</td></tr>:filtered.slice((page-1)*RPP,page*RPP).map((d,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
+        <tbody className="cnc-rpt-scr">{filtered.length===0?<tr><td colSpan={10} style={{padding:40,textAlign:'center',color:t.textL}}>{ld?'로딩 중...':(live?'실시간 집계 중 — 거래·재고 기준(미마감 당월)':'데이터 없음 — 월마감을 실행해주세요')}</td></tr>:filtered.slice((page-1)*RPP,page*RPP).map((d,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
           <td style={{padding:'6px 10px',fontSize:10,color:t.textL}}>{d.drug_code}</td>
           <td style={{padding:'6px 10px',fontWeight:500,textAlign:'left'}}>{d.drug_name}</td>
           <td style={{padding:'6px 10px',color:t.textM}}>{d.category}</td>
