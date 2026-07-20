@@ -229,7 +229,7 @@ export default function EmergencyDispense() {
 /* ── A4 한 장 ── */
 function A4Page({ pouches, pageIdx, total, eW, eH, org, patient, room, patientNo, powder, printMode }) {
   return <div className="ed-a4" style={{ width: A4_W + 'mm', height: A4_H + 'mm', boxSizing: 'border-box', padding: A4_MARGIN + 'mm', background: '#fff', ...(printMode ? {} : { boxShadow: '0 2px 10px rgba(0,0,0,0.15)', marginBottom: 14, border: '1px solid #ddd' }), pageBreakAfter: 'always', breakAfter: 'page' }}>
-    {!printMode && <div style={{ fontSize: 9, color: t.textL, marginBottom: '2mm' }}>A4 {pageIdx + 1}/{total}</div>}
+    {!printMode && <div style={{ fontSize: 9, color: '#bbb', marginBottom: '2mm' }}>A4 {pageIdx + 1}/{total}</div>}
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0mm', alignContent: 'flex-start' }}>
       {pouches.map((p, i) => <Pouch key={i} p={p} eW={eW} eH={eH} org={org} patient={patient} room={room} patientNo={patientNo} powder={powder} />)}
     </div>
