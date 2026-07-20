@@ -2490,9 +2490,17 @@ function Report({drugs,txns,onNav}){
   useEffect(()=>{loadS()},[year,month,rtype]);
   async function loadS(){
     setLd(true);
-    let q=supabase.from('monthly_snapshots').select('*').eq('snap_year',year);
-    if(rtype==='monthly')q=q.eq('snap_month',month);
-    const{data}=await q;setSnaps(data||[]);setLd(false)
+    let all=[], f=0;
+    while(true){
+      let q=supabase.from('monthly_snapshots').select('*').eq('snap_year',year);
+      if(rtype==='monthly')q=q.eq('snap_month',month);
+      const{data,error}=await q.range(f,f+999);
+      if(error||!data||!data.length)break;
+      all=[...all,...data];
+      if(data.length<1000)break;
+      f+=1000;
+    }
+    setSnaps(all);setLd(false)
   }
 
   /* 월마감 요청 — 실행 직전 대상월 스냅샷 존재를 재조회. 있으면 차단(우회 경로 없음), 없으면 확인 후 진행 */
