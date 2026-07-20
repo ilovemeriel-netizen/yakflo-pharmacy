@@ -2564,6 +2564,29 @@ function Report({drugs,txns,onNav}){
       });
       const batch=[];for(let i=0;i<rows.length;i+=500)batch.push(rows.slice(i,i+500));
       for(const b of batch){const{error}=await supabase.from('monthly_snapshots').insert(b);if(error)throw error}
+      /* 사이드카(월 총계) 가산 기록 — 스냅샷 생성 성공 후에만. 실패해도 스냅샷 유지·에러 표시(삼키지 않음).
+         재마감은 requestClose가 스냅샷 존재로 차단 → 1~6월 엑셀결재본 무영향. onConflict는 시스템 재마감 대비 UPDATE */
+      try{
+        const{data:_tm}=await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle();
+        const _f4=v=>Number(v||0).toFixed(4); // float 잔차 방지: 4자리 문자열로 저장(numeric(20,4))
+        const _sum=(ty,fld)=>mTx.filter(x=>x.type===ty).reduce((a,x)=>a+(x[fld]||0),0);
+        const _openA=rows.reduce((a,r)=>a+(r.opening_amount||0),0),_inA=rows.reduce((a,r)=>a+(r.total_in_amount||0),0),
+              _outA=rows.reduce((a,r)=>a+(r.total_out_amount||0),0),_closeA=rows.reduce((a,r)=>a+(r.closing_amount||0),0),
+              _dispA=_sum('폐기','total_amount'),_retA=_sum('반품','total_amount'),_calc=_openA+_inA-_outA-_dispA-_retA;
+        const _side={tenant_id:_tm?.tenant_id||null,snap_year:year,snap_month:month,
+          opening_amount:_f4(_openA),in_amount:_f4(_inA),out_amount:_f4(_outA),
+          disposal_amount:_f4(_dispA),return_amount:_f4(_retA),
+          calc_closing:_f4(_calc),actual_closing:_f4(_closeA),audit_adjust:_f4(_closeA-_calc),
+          item_count:rows.length,
+          in_count:mTx.filter(x=>x.type==='입고').length,out_count:mTx.filter(x=>x.type==='출고').length,
+          disposal_count:mTx.filter(x=>x.type==='폐기').length,return_count:mTx.filter(x=>x.type==='반품').length,
+          exp_expired:expExpired,exp_urgent30:expU30,exp_caution60:expW60,exp_check90:expC90,
+          source:'시스템'};
+        const{error:_sErr}=await supabase.from('monthly_report_totals').upsert(_side,{onConflict:'tenant_id,snap_year,snap_month'});
+        if(_sErr)throw _sErr;
+      }catch(_sideErr){
+        setCloseMsg(`⚠ ${label} 스냅샷은 저장됐으나 사이드카 총계 기록 실패: ${_sideErr.message} — 다시 시도해 주세요`);loadS();setClosing(false);return;
+      }
       setCloseMsg(`✅ ${label} 마감 완료! (${rows.length}건)`);loadS()
     }catch(err){setCloseMsg('❌ 오류: '+err.message)}
     setClosing(false)
