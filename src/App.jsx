@@ -2727,8 +2727,8 @@ function Report({drugs,txns,onNav}){
           <MRow2 label="순입고" bg="#ececec" cnt={(inCnt-outCnt)+'건'} amt={'₩'+Math.round(tot.ia-tot.oua).toLocaleString()} />
         </MSec>
         <MSec title="■ 손실 현황">
-          <MRow2 label="폐기" bg="#f6dede" cnt={dispCnt+'품목'} amt={'₩'+Math.round(tot.da).toLocaleString()} />
-          <MRow2 label="반품" bg="#f7f3d6" cnt={retCnt+'품목'} amt={'₩'+Math.round(tot.ra).toLocaleString()} />
+          <MRow2 label="폐기" bg="#f6dede" cnt={dispCnt+'건'} amt={'₩'+Math.round(tot.da).toLocaleString()} />
+          <MRow2 label="반품" bg="#f7f3d6" cnt={retCnt+'건'} amt={'₩'+Math.round(tot.ra).toLocaleString()} />
           <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(dispCnt+retCnt)+'건'} amt={'₩'+Math.round(tot.da+tot.ra).toLocaleString()} />
         </MSec>
         <MSec title="■ 유효기간 관리">
@@ -2748,7 +2748,7 @@ function Report({drugs,txns,onNav}){
       {[{l:'전월재고',v:tot.oa,c:t.purple,nav:'stock'},{l:'입고 금액',v:tot.ia,c:t.green,nav:'transaction'},{l:'출고 금액',v:tot.oua,c:t.blue,nav:'transaction'},{l:'폐기',v:tot.dq,sub:tot.da,cnt:dispCnt,c:t.red,nav:'transaction'},{l:'반품',v:tot.rq,sub:tot.ra,cnt:retCnt,c:t.amber,nav:'transaction'},{l:'기말재고',v:tot.ca,c:t.accent,nav:'stock'}].map((x,i)=><div key={i} onClick={()=>onNav?.({menu:x.nav})} style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`,cursor:'pointer',transition:'all .15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor=x.c;e.currentTarget.style.transform='translateY(-1px)'}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.transform=''}}>
         <div style={{fontSize:10,color:t.textM}}>{x.l}</div>
         {x.sub!==undefined?<>
-          <div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4,whiteSpace:'nowrap'}}>{x.cnt}품목 ({x.v}개)</div>
+          <div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4,whiteSpace:'nowrap'}}>{x.cnt} <span style={{fontSize:17}}>({x.v})</span></div>
           <div style={{fontSize:12,color:x.c,marginTop:2}}>₩{x.sub.toLocaleString()}</div>
         </>:<div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4}}>{typeof x.v==='number'?'₩'+x.v.toLocaleString():x.v}</div>}
       </div>)}
