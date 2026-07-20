@@ -2478,7 +2478,7 @@ function Report({drugs,txns,onNav}){
   const[snaps,setSnaps]=useState([]);const[ld,setLd]=useState(false);
   const[sideTot,setSideTot]=useState(null); // 정본 사이드카(월 총계) 단일행 — 월간 KPI 표시용
   const[sideY,setSideY]=useState({}); // 정본 사이드카(연도 전체 월 맵) — 연간 표 표시용
-  const[search,setSearch]=useState('');const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(STATS);
+  const[search,setSearch]=useState('');const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(['사용']);
   const[page,setPage]=useState(1);const RPP=100; // 상세표 페이지네이션(화면 전용) — 한 페이지 100행
   const[closing,setClosing]=useState(false);const[closeMsg,setCloseMsg]=useState(null);
   const[uploadOpen,setUploadOpen]=useState(false);const[dialog,setDialog]=useState(null); // 스냅샷 업로드 모달 · 앱 내 확인/안내 모달
@@ -2744,26 +2744,26 @@ function Report({drugs,txns,onNav}){
         <div style={{background:'#804A87',color:'#fff',padding:'12px 16px',textAlign:'center',fontSize:19,fontWeight:800}}>🏥 씨엔씨재활의학과병원 약품관리 월간보고서</div>
         <div style={{textAlign:'center',color:'#804A87',fontWeight:700,margin:'8px 0 14px'}}>▶ 보고월: {year}년 {rtype==='monthly'?month+'월':'연간'}</div>
         <MSec title="■ 재고 현황">
-          <MRow label="관리 품목수" bg="#e3f0e3" value={itemCnt.toLocaleString()+'개'} />
+          <MRow label="관리 품목수" bg="#e3f0e3" value={(sideTot?Number(sideTot.item_count):itemCnt).toLocaleString()+'개'} />
           <MRow label="현재고" bg="#e3f0e3" value={'₩'+Math.round(sideTot?Number(sideTot.actual_closing):tot.ca).toLocaleString()} />
           <MRow label="전월재고" bg="#e3f0e3" value={'₩'+Math.round(sideTot?Number(sideTot.opening_amount):tot.oa).toLocaleString()} />
           <MRow label="증감" bg="#e3f0e3" value={'₩'+Math.round(sideTot?(Number(sideTot.actual_closing)-Number(sideTot.opening_amount)):(tot.ca-tot.oa)).toLocaleString()} />
         </MSec>
         <MSec title="■ 입출고 현황">
-          <MRow2 label="입고" bg="#ece4f1" cnt={inCnt+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.in_amount):tot.ia).toLocaleString()} />
-          <MRow2 label="출고" bg="#f1e4ee" cnt={outCnt+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.out_amount):tot.oua).toLocaleString()} />
-          <MRow2 label="순입고" bg="#ececec" cnt={(inCnt-outCnt)+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.in_amount)-Number(sideTot.out_amount)):(tot.ia-tot.oua)).toLocaleString()} />
+          <MRow2 label="입고" bg="#ece4f1" cnt={(sideTot?Number(sideTot.in_count):inCnt)+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.in_amount):tot.ia).toLocaleString()} />
+          <MRow2 label="출고" bg="#f1e4ee" cnt={(sideTot?Number(sideTot.out_count):outCnt)+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.out_amount):tot.oua).toLocaleString()} />
+          <MRow2 label="순입고" bg="#ececec" cnt={(sideTot?(Number(sideTot.in_count)-Number(sideTot.out_count)):(inCnt-outCnt))+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.in_amount)-Number(sideTot.out_amount)):(tot.ia-tot.oua)).toLocaleString()} />
         </MSec>
         <MSec title="■ 손실 현황">
-          <MRow2 label="폐기" bg="#f6dede" cnt={dispCnt+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.disposal_amount):tot.da).toLocaleString()} />
-          <MRow2 label="반품" bg="#f7f3d6" cnt={retCnt+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.return_amount):tot.ra).toLocaleString()} />
-          <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(dispCnt+retCnt)+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.disposal_amount)+Number(sideTot.return_amount)):(tot.da+tot.ra)).toLocaleString()} />
+          <MRow2 label="폐기" bg="#f6dede" cnt={(sideTot?Number(sideTot.disposal_count):dispCnt)+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.disposal_amount):tot.da).toLocaleString()} />
+          <MRow2 label="반품" bg="#f7f3d6" cnt={(sideTot?Number(sideTot.return_count):retCnt)+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.return_amount):tot.ra).toLocaleString()} />
+          <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(sideTot?(Number(sideTot.disposal_count)+Number(sideTot.return_count)):(dispCnt+retCnt))+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.disposal_amount)+Number(sideTot.return_amount)):(tot.da+tot.ra)).toLocaleString()} />
         </MSec>
         <MSec title="■ 유효기간 관리">
-          <MRow label="★ 만료" bg="#f6dede" value={expExpired+'건'} />
-          <MRow label="▲ 긴급 (30일)" bg="#fce6cf" value={expU30+'건'} />
-          <MRow label="◆ 주의 (60일)" bg="#f7f3d6" value={expW60+'건'} />
-          <MRow label="● 확인 (90일)" bg="#e3f0e3" value={expC90+'건'} />
+          <MRow label="★ 만료" bg="#f6dede" value={(sideTot?Number(sideTot.exp_expired):expExpired)+'건'} />
+          <MRow label="▲ 긴급 (30일)" bg="#fce6cf" value={(sideTot?Number(sideTot.exp_urgent30):expU30)+'건'} />
+          <MRow label="◆ 주의 (60일)" bg="#f7f3d6" value={(sideTot?Number(sideTot.exp_caution60):expW60)+'건'} />
+          <MRow label="● 확인 (90일)" bg="#e3f0e3" value={(sideTot?Number(sideTot.exp_check90):expC90)+'건'} />
         </MSec>
         <div style={{textAlign:'center',color:'#999',fontSize:11,marginTop:22}}>
           <div>{nowStamp()}</div>
@@ -2773,11 +2773,10 @@ function Report({drugs,txns,onNav}){
       <style>{'.cnc-print-month{display:none}.cnc-rpt-prn{display:none}@media print{.cnc-rpt-hide{display:none!important}.cnc-print-month{display:block!important;page-break-after:always;max-width:680px;margin:0 auto}.cnc-print-month table{font-size:12.5px!important}.cnc-print-month td,.cnc-print-month th{padding:6px 10px!important;font-size:12.5px!important}.cnc-report-table table{font-size:9px!important}.cnc-rpt-scr{display:none!important}.cnc-rpt-prn{display:table-row-group!important}.cnc-report-table tfoot{display:table-row-group!important}}'}</style>
     {/* 요약 카드 — 연간 탭에서는 연 KPI 5장과 지표가 중복되어 숨김(월간 전용) */}
     {rtype==='monthly'&&<div className="cnc-rpt-hide" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:12}}>
-      {[{l:'전월재고',v:sideTot?Number(sideTot.opening_amount):tot.oa,c:t.purple,nav:'stock'},{l:'입고 금액',v:sideTot?Number(sideTot.in_amount):tot.ia,c:t.green,nav:'transaction'},{l:'출고 금액',v:sideTot?Number(sideTot.out_amount):tot.oua,c:t.blue,nav:'transaction'},{l:'폐기',v:tot.dq,sub:sideTot?Number(sideTot.disposal_amount):tot.da,cnt:dispCnt,c:t.red,nav:'transaction'},{l:'반품',v:tot.rq,sub:sideTot?Number(sideTot.return_amount):tot.ra,cnt:retCnt,c:t.amber,nav:'transaction'},{l:'기말재고',v:sideTot?Number(sideTot.actual_closing):tot.ca,c:t.accent,nav:'stock'}].map((x,i)=><div key={i} onClick={()=>onNav?.({menu:x.nav})} style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`,cursor:'pointer',transition:'all .15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor=x.c;e.currentTarget.style.transform='translateY(-1px)'}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.transform=''}}>
+      {[{l:'전월재고',v:sideTot?Number(sideTot.opening_amount):tot.oa,c:t.purple,nav:'stock'},{l:'입고 금액',v:sideTot?Number(sideTot.in_amount):tot.ia,c:t.green,nav:'transaction'},{l:'출고 금액',v:sideTot?Number(sideTot.out_amount):tot.oua,c:t.blue,nav:'transaction'},{l:'폐기',v:tot.dq,sub:sideTot?Number(sideTot.disposal_amount):tot.da,cnt:dispCnt,cN:sideTot?Number(sideTot.disposal_count):null,c:t.red,nav:'transaction'},{l:'반품',v:tot.rq,sub:sideTot?Number(sideTot.return_amount):tot.ra,cnt:retCnt,cN:sideTot?Number(sideTot.return_count):null,c:t.amber,nav:'transaction'},{l:'기말재고',v:sideTot?Number(sideTot.actual_closing):tot.ca,c:t.accent,nav:'stock'}].map((x,i)=><div key={i} onClick={()=>onNav?.({menu:x.nav})} style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`,cursor:'pointer',transition:'all .15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor=x.c;e.currentTarget.style.transform='translateY(-1px)'}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.transform=''}}>
         <div style={{fontSize:10,color:t.textM}}>{x.l}</div>
         {x.sub!==undefined?<>
-          <div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4,whiteSpace:'nowrap'}}>{x.cnt} <span style={{fontSize:17}}>({x.v})</span></div>
-          <div style={{fontSize:12,color:x.c,marginTop:2}}>{_aWon(x.sub)}</div>
+          {x.cN!=null?<><div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4}}>{_aWon(x.sub)}</div><div style={{fontSize:12,color:x.c,marginTop:2}}>{x.cN}건</div></>:<><div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4,whiteSpace:'nowrap'}}>{x.cnt} <span style={{fontSize:17}}>({x.v})</span></div><div style={{fontSize:12,color:x.c,marginTop:2}}>{_aWon(x.sub)}</div></>}
         </>:<div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4}}>{typeof x.v==='number'?_aWon(x.v):x.v}</div>}
       </div>)}
       {sideTot&&<div style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`}}>
