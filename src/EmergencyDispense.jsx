@@ -161,7 +161,7 @@ export default function EmergencyDispense() {
 
       {/* 약품 행 */}
       <div style={{ background: '#fff', border: '1px solid #e3e0dc', borderRadius: 12, padding: 14, marginBottom: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 74px repeat(4,32px) 96px 56px 30px', gap: 8, fontSize: 11, fontWeight: 700, color: '#555', padding: '0 4px 8px', borderBottom: '1px solid #eee' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 90px 32px 32px 32px 36px 96px 56px 30px', gap: 8, fontSize: 11, fontWeight: 700, color: '#555', padding: '0 4px 8px', borderBottom: '1px solid #eee' }}>
           <div>약품명</div><div style={{ textAlign: 'center' }}>1회량</div><div style={{ textAlign: 'center' }}>일수</div><div style={{ textAlign: 'center' }}>방법</div>{SLOTS.map(s => <div key={s.key} style={{ textAlign: 'center' }}>{s.label}</div>)}<div style={{ textAlign: 'center' }}>복용시점</div><div style={{ textAlign: 'center' }}>분리</div><div />
         </div>
         {rows.map((r, i) => <DrugRow key={r.id} r={r} cache={cache} setRow={setRow} delRow={delRow} inputRef={i === 0 ? firstDrugRef : undefined} />)}
@@ -291,7 +291,7 @@ function DrugRow({ r, cache, setRow, delRow, inputRef }) {
     else if (e.key === 'Enter') { e.preventDefault(); pick(sug[act]) }   /* 목록 열림 → 항목 선택 우선(필드 이동보다 먼저) */
     else if (e.key === 'Escape') { e.preventDefault(); setOpen(false) }
   }
-  return <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 74px repeat(4,32px) 96px 56px 30px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f2f0ed' }}>
+  return <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 90px 32px 32px 32px 36px 96px 56px 30px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f2f0ed' }}>
     <div ref={boxRef} style={{ position: 'relative' }}>
       <input ref={inputRef} value={r.name} role="combobox" aria-autocomplete="list" aria-expanded={listOpen} aria-controls={listId} aria-activedescendant={listOpen ? listId + '-' + act : undefined} onChange={e => { setRow(r.id, { name: e.target.value, code: '', narc: '' }); setQ(e.target.value); setOpen(true); setIdx(0) }} onFocus={() => setOpen(true)} onKeyDown={onKey} placeholder="약품명·코드(2글자↑) / 자유입력" style={{ ...inp, borderColor: r.narc ? PURPLE : '#d9d5d0' }} />
       {r.narc ? <span style={{ position: 'absolute', right: 8, top: 7, fontSize: 9, fontWeight: 700, color: '#fff', background: NARC[r.narc] || PURPLE, borderRadius: 6, padding: '1px 5px' }}>{r.narc}</span> : (r.code ? <span style={{ position: 'absolute', right: 8, top: 9, fontSize: 9, color: '#999' }}>{r.code}</span> : null)}
@@ -304,7 +304,7 @@ function DrugRow({ r, cache, setRow, delRow, inputRef }) {
     </div>
     <input ref={qtyRef} value={r.qty} onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setRow(r.id, { qty: v }) }} title="1회 복용량" style={{ ...inp, textAlign: 'center', padding: '7px 4px' }} />
     <input value={r.days} onChange={e => { const v = e.target.value; if (/^\d*$/.test(v)) setRow(r.id, { days: v }) }} placeholder="전역" title="약품별 복용일수(빈칸=전역 일수)" style={{ ...inp, textAlign: 'center', padding: '7px 4px' }} />
-    <select value={r.method} onChange={e => { const mk = e.target.value; const cfg = METHODS[mk]; if (cfg) setRow(r.id, { method: mk, m: cfg.s.includes('m'), l: cfg.s.includes('l'), d: cfg.s.includes('d'), b: cfg.s.includes('b'), timing: cfg.t }); else setRow(r.id, { method: mk }) }} title="방법 코드(선택 시 시간대·복용시점 자동, 이후 수동 수정 가능)" style={{ ...inp, padding: '7px 4px' }}>{METHOD_KEYS.map(k => <option key={k}>{k}</option>)}</select>
+    <select value={r.method} onChange={e => { const mk = e.target.value; const cfg = METHODS[mk]; if (cfg) setRow(r.id, { method: mk, m: cfg.s.includes('m'), l: cfg.s.includes('l'), d: cfg.s.includes('d'), b: cfg.s.includes('b'), timing: cfg.t }); else setRow(r.id, { method: mk }) }} title="방법 코드(선택 시 시간대·복용시점 자동, 이후 수동 수정 가능)" style={{ ...inp, padding: '7px 20px 7px 4px' }}>{METHOD_KEYS.map(k => <option key={k}>{k}</option>)}</select>
     {SLOTS.map(s => <div key={s.key} style={{ textAlign: 'center' }}><input type="checkbox" checked={!!r[s.key]} onChange={e => setRow(r.id, { [s.key]: e.target.checked })} style={{ width: 16, height: 16, accentColor: PURPLE, cursor: 'pointer' }} /></div>)}
     <select value={r.timing} onChange={e => setRow(r.id, { timing: e.target.value })} style={{ ...inp, padding: '7px 4px' }}><option value="">(없음)</option>{TIMINGS.map(t => <option key={t}>{t}</option>)}</select>
     <input value={r.sep} onChange={e => setRow(r.id, { sep: e.target.value })} placeholder="번호" title="분리번호(봉투 미인쇄 · 같은 번호끼리 한 파우치)" style={{ ...inp, textAlign: 'center', padding: '7px 4px', background: sepTint(r.sep), fontWeight: r.sep ? 800 : 400 }} />
