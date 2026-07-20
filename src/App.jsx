@@ -2769,6 +2769,10 @@ function Report({drugs,txns,onNav}){
           <div style={{fontSize:12,color:x.c,marginTop:2}}>{_aWon(x.sub)}</div>
         </>:<div style={{fontSize:20,fontWeight:700,color:x.c,marginTop:4}}>{typeof x.v==='number'?_aWon(x.v):x.v}</div>}
       </div>)}
+      {sideTot&&<div style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`}}>
+        <div style={{fontSize:10,color:t.textM}}>보정값</div>
+        <div style={{fontSize:20,fontWeight:700,color:t.textM,marginTop:4}}>{_aWon(sideTot.audit_adjust)}</div>
+      </div>}
     </div>}
 
     {/* 구분별 현황 */}
