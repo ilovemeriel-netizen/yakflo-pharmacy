@@ -2745,19 +2745,19 @@ function Report({drugs,txns,onNav}){
         <div style={{textAlign:'center',color:'#804A87',fontWeight:700,margin:'8px 0 14px'}}>▶ 보고월: {year}년 {rtype==='monthly'?month+'월':'연간'}</div>
         <MSec title="■ 재고 현황">
           <MRow label="관리 품목수" bg="#e3f0e3" value={itemCnt.toLocaleString()+'개'} />
-          <MRow label="현재고" bg="#e3f0e3" value={'₩'+Math.round(tot.ca).toLocaleString()} />
-          <MRow label="전월재고" bg="#e3f0e3" value={'₩'+Math.round(tot.oa).toLocaleString()} />
-          <MRow label="증감" bg="#e3f0e3" value={'₩'+Math.round(tot.ca-tot.oa).toLocaleString()} />
+          <MRow label="현재고" bg="#e3f0e3" value={'₩'+Math.round(sideTot?Number(sideTot.actual_closing):tot.ca).toLocaleString()} />
+          <MRow label="전월재고" bg="#e3f0e3" value={'₩'+Math.round(sideTot?Number(sideTot.opening_amount):tot.oa).toLocaleString()} />
+          <MRow label="증감" bg="#e3f0e3" value={'₩'+Math.round(sideTot?(Number(sideTot.actual_closing)-Number(sideTot.opening_amount)):(tot.ca-tot.oa)).toLocaleString()} />
         </MSec>
         <MSec title="■ 입출고 현황">
-          <MRow2 label="입고" bg="#ece4f1" cnt={inCnt+'건'} amt={'₩'+Math.round(tot.ia).toLocaleString()} />
-          <MRow2 label="출고" bg="#f1e4ee" cnt={outCnt+'건'} amt={'₩'+Math.round(tot.oua).toLocaleString()} />
-          <MRow2 label="순입고" bg="#ececec" cnt={(inCnt-outCnt)+'건'} amt={'₩'+Math.round(tot.ia-tot.oua).toLocaleString()} />
+          <MRow2 label="입고" bg="#ece4f1" cnt={inCnt+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.in_amount):tot.ia).toLocaleString()} />
+          <MRow2 label="출고" bg="#f1e4ee" cnt={outCnt+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.out_amount):tot.oua).toLocaleString()} />
+          <MRow2 label="순입고" bg="#ececec" cnt={(inCnt-outCnt)+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.in_amount)-Number(sideTot.out_amount)):(tot.ia-tot.oua)).toLocaleString()} />
         </MSec>
         <MSec title="■ 손실 현황">
-          <MRow2 label="폐기" bg="#f6dede" cnt={dispCnt+'건'} amt={'₩'+Math.round(tot.da).toLocaleString()} />
-          <MRow2 label="반품" bg="#f7f3d6" cnt={retCnt+'건'} amt={'₩'+Math.round(tot.ra).toLocaleString()} />
-          <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(dispCnt+retCnt)+'건'} amt={'₩'+Math.round(tot.da+tot.ra).toLocaleString()} />
+          <MRow2 label="폐기" bg="#f6dede" cnt={dispCnt+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.disposal_amount):tot.da).toLocaleString()} />
+          <MRow2 label="반품" bg="#f7f3d6" cnt={retCnt+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.return_amount):tot.ra).toLocaleString()} />
+          <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(dispCnt+retCnt)+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.disposal_amount)+Number(sideTot.return_amount)):(tot.da+tot.ra)).toLocaleString()} />
         </MSec>
         <MSec title="■ 유효기간 관리">
           <MRow label="★ 만료" bg="#f6dede" value={expExpired+'건'} />
@@ -2814,7 +2814,7 @@ function Report({drugs,txns,onNav}){
 
     {/* 상세 테이블 — 연간 탭 미표시(월간 전용) */}
     {rtype==='monthly'&&<div className="cnc-report-table" style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
-      <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.accent}}>{rtype==='monthly'?`${year}년 ${month}월`:`${year}년 연간`} 보고서 ({filtered.length}건){monthClosed?<span style={{marginLeft:8,fontSize:11,fontWeight:600,color:t.green}}>· 스냅샷 있음({snapCount.toLocaleString()}행)</span>:null} {ld&&<span style={{fontSize:11,color:t.textL}}>로딩...</span>}</div>
+      <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.accent}}>{rtype==='monthly'?`${year}년 ${month}월`:`${year}년 연간`} 보고서 ({filtered.length}건) {ld&&<span style={{fontSize:11,color:t.textL}}>로딩...</span>}</div>
       <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
         <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['opening_qty','전월재고'],['total_in_qty','입고'],['total_out_qty','출고'],['total_disp_qty','폐기'],['total_ret_qty','반품'],['closing_qty','기말재고'],['closing_amount','기말금액']].map(([k,h])=><th key={k} style={{ ...TS(k), background: t.bg, fontWeight: 700 }} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}</tr></thead>
         <tbody className="cnc-rpt-scr">{filtered.length===0?<tr><td colSpan={10} style={{padding:40,textAlign:'center',color:t.textL}}>{ld?'로딩 중...':'데이터 없음 — 월마감을 실행해주세요'}</td></tr>:filtered.slice((page-1)*RPP,page*RPP).map((d,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
