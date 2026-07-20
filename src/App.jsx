@@ -2579,13 +2579,13 @@ function Report({drugs,txns,onNav}){
     });
     tableData=Object.values(map)
   }
-  const filtered=so(tableData.filter(d=>{
+  const filtered=[...so([...tableData.filter(d=>{
     if(!cats.includes(d.category))return false;
     const drugStatus=drugMap[d.drug_code]?.status||'사용';
     if(!stats.includes(drugStatus))return false;
     if(search.trim()){const q=search.trim().toLowerCase();return d.drug_name?.toLowerCase().includes(q)||d.drug_code?.toLowerCase().includes(q)}
     return true
-  }));
+  })].sort((a,b)=>String(a.drug_name??'').localeCompare(String(b.drug_name??''),'ko')))].sort((a,b)=>{const ia=CATS.indexOf(a.category),ib=CATS.indexOf(b.category);return (ia<0?CATS.length:ia)-(ib<0?CATS.length:ib)});
   const tot=filtered.reduce((a,d)=>({oa:a.oa+(d.opening_amount||0),ia:a.ia+(d.total_in_amount||0),oua:a.oua+(d.total_out_amount||0),ca:a.ca+(d.closing_amount||0),dq:a.dq+(d.total_disp_qty||0),rq:a.rq+(d.total_ret_qty||0),oq:a.oq+(d.opening_qty||0),iq:a.iq+(d.total_in_qty||0),ouq:a.ouq+(d.total_out_qty||0),cq:a.cq+(d.closing_qty||0),da:a.da+((d.total_disp_qty||0)*(drugMap[d.drug_code]?.purchase_price||0)),ra:a.ra+((d.total_ret_qty||0)*(drugMap[d.drug_code]?.purchase_price||0))}),{oa:0,ia:0,oua:0,ca:0,dq:0,rq:0,oq:0,iq:0,ouq:0,cq:0,da:0,ra:0});
   /* 구분별 */
   const catSum=CATS.map(cat=>{const items=filtered.filter(d=>d.category===cat);if(!items.length)return null;return{cat,count:items.length,inA:items.reduce((a,d)=>a+(d.total_in_amount||0),0),outA:items.reduce((a,d)=>a+(d.total_out_amount||0),0),closeA:items.reduce((a,d)=>a+(d.closing_amount||0),0)}}).filter(Boolean);
