@@ -5,7 +5,7 @@
    · 파우치는 인쇄물이라 흰 배경·검정 잉크 고정. 복용시간 하단 좌측 배치. */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
-import { useTheme } from './App'
+import { useTheme } from './lib/theme'
 
 const PURPLE = '#804A87', GREEN = '#019748', LAV = '#BFA6D9', NAVY = '#2E4A62'
 const MM = 3.7795275591 /* mm→px @96dpi (미리보기 스케일 계산용) */

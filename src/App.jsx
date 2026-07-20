@@ -5,6 +5,7 @@ import { passesDrugFilters } from './lib/drugFilter'
 import { RX_TOGGLE, RX_MORE, autoMap } from './lib/drugRules'
 import { classifyDrugRows, applyDrugRows } from './lib/drugBulk'
 import { decomposeAtc } from './lib/atcMap'
+import { ThemeCtx, useTheme } from './lib/theme'
 import EmergencyDispense from './EmergencyDispense'
 import BulkUploadModal from './BulkUploadModal'
 import ColumnSelector from './ColumnSelector'
@@ -44,8 +45,6 @@ const themes = {
     shadow:'0 2px 8px rgba(0,0,0,0.3)', shadowH:'0 8px 24px rgba(0,0,0,0.4)',
   }
 }
-export const ThemeCtx = createContext()
-export function useTheme() { return useContext(ThemeCtx) }
 const CATS = ['경구제','주사제','외용제','수액제','영양제','의약외품']
 const STATS = ['사용','중지','휴면']
 const MAIN_STATS = ['사용','휴면']
