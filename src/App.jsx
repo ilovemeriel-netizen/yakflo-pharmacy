@@ -44,8 +44,8 @@ const themes = {
     shadow:'0 2px 8px rgba(0,0,0,0.3)', shadowH:'0 8px 24px rgba(0,0,0,0.4)',
   }
 }
-const ThemeCtx = createContext()
-function useTheme() { return useContext(ThemeCtx) }
+export const ThemeCtx = createContext()
+export function useTheme() { return useContext(ThemeCtx) }
 const CATS = ['경구제','주사제','외용제','수액제','영양제','의약외품']
 const STATS = ['사용','중지','휴면']
 const MAIN_STATS = ['사용','휴면']
