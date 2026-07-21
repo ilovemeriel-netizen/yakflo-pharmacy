@@ -9,7 +9,8 @@
      · drug_code 문자열 강제(숫자·날짜 변환 금지). snap_year/snap_month 정수·범위 검증.
      · tenant_id 직접 미기입(트리거 set_tenant_id_from_user 에 위임).
    - 미리보기 확인 전 DB 쓰기 없음. 실패 목록 CSV 다운로드. */
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
+import { useDraggableModal } from './useDraggableModal'
 import { supabase } from './lib/supabase'
 
 const CHUNK = 500
@@ -89,6 +90,7 @@ function normalizeRow(raw, mapping) {
 }
 
 export default function SnapshotUploadModal({ t, isOwner, onClose, onReload }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const [step, setStep] = useState(1)
   const [fileName, setFileName] = useState('')
   const [headers, setHeaders] = useState([])
@@ -221,8 +223,8 @@ export default function SnapshotUploadModal({ t, isOwner, onClose, onReload }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
-      <div style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 880, maxHeight: '92vh', display: 'flex', flexDirection: 'column', border: `1px solid ${t.border}`, boxShadow: t.shadowH }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ padding: '16px 22px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 880, maxHeight: '92vh', display: 'flex', flexDirection: 'column', border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }} onClick={(e) => e.stopPropagation()}>
+        <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 22px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: t.text }}>월별 스냅샷 업로드</div>
             <div style={{ display: 'flex', gap: 6 }}>{stepName.map((s, i) => <span key={s} style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: step === i + 1 ? t.accent : t.bg, color: step === i + 1 ? '#fff' : t.textL, border: '1px solid ' + (step === i + 1 ? t.accent : t.border) }}>{i + 1}. {s}</span>)}</div>

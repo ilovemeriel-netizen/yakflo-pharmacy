@@ -681,6 +681,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
 
 /* ═══ 약품 영구 삭제 확인 모달 — 거래/재고 이력 카운트 → 0건일 때만 약품명 입력 후 hard delete ═══ */
 function DrugDeleteConfirm({ drug: dr, onClose, onDeleted }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const { t } = useTheme()
   const [phase, setPhase] = useState('checking') /* 'checking' | 'blocked' | 'confirm' | 'deleting' */
   /* 카운트 분리: tx(차단 기준) / inv·snap(안내/경고용, 차단 X) */
@@ -728,8 +729,8 @@ function DrugDeleteConfirm({ drug: dr, onClose, onDeleted }) {
   const canSubmit = confirmName === dr.drug_name && phase === 'confirm'
 
   return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-    <div onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 14, padding: '22px 26px', maxWidth: 420, width: '100%', border: `1px solid ${t.border}`, boxShadow: t.shadowH }}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 4 }}>약품 영구 삭제</div>
+    <div ref={_dmBox} onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 14, padding: '22px 26px', maxWidth: 420, width: '100%', border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }}>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 4 }}>약품 영구 삭제</div>
       <div style={{ fontSize: 11, color: t.textM, marginBottom: 16, lineHeight: 1.5 }}>
         <span style={{ fontFamily: 'monospace' }}>{dr.drug_code}</span> · <strong style={{ color: t.text }}>{dr.drug_name}</strong>
       </div>
@@ -775,6 +776,7 @@ function DrugDeleteConfirm({ drug: dr, onClose, onDeleted }) {
 
 /* ═══ 재고 보정 모달 — 거래기록 없이 수량만 보정, 보정이력은 drugs 테이블에 기록 ═══ */
 function AdjustModal({ drug: dr, onClose, onSaved }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const { t } = useTheme(); const [qty, setQty] = useState(dr.current_qty || 0); const [reason, setReason] = useState('실사 결과 반영'); const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null); const diff = qty - (dr.current_qty || 0)
   async function save() { if (!reason.trim()) { setMsg('사유 필수'); return }; setSaving(true)
     const d = Number(qty) - (dr.current_qty || 0)
@@ -788,8 +790,8 @@ function AdjustModal({ drug: dr, onClose, onSaved }) {
     setMsg('OK'); setTimeout(() => { onSaved?.(); onClose() }, 500) }
   const ip = { width: '100%', padding: '9px 12px', border: `1px solid ${t.border}`, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }
   return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
-    <div style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: `1px solid ${t.border}`, boxShadow: t.shadowH }} onClick={e => e.stopPropagation()}>
-      <div style={{ padding: '16px 20px', borderBottom: `1px solid ${t.border}` }}><div style={{ fontSize: 15, fontWeight: 700, color: t.amber }}>재고 보정</div><div style={{ fontSize: 12, color: t.textM, marginTop: 2 }}>{dr.drug_name}</div></div>
+    <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }} onClick={e => e.stopPropagation()}>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: `1px solid ${t.border}` }}><div style={{ fontSize: 15, fontWeight: 700, color: t.amber }}>재고 보정</div><div style={{ fontSize: 12, color: t.textM, marginTop: 2 }}>{dr.drug_name}</div></div>
       <div style={{ padding: '16px 20px' }}>
         {msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '보정 완료' : msg}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
@@ -808,6 +810,7 @@ function AdjustModal({ drug: dr, onClose, onSaved }) {
 
 /* ═══ 폐기·반품 처리 모달 — 유효기한 화면 전용. transactions INSERT→0009 트리거로 재고 차감(TxForm 저장방식 재사용) ═══ */
 function DisposalModal({ drug: dr, onClose, onSaved }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const { t } = useTheme()
   const pp = dr.purchase_price || 0, cur = dr.current_qty || 0
   const today = new Date().toISOString().split('T')[0]
@@ -835,8 +838,8 @@ function DisposalModal({ drug: dr, onClose, onSaved }) {
   const ip = { width: '100%', padding: '9px 12px', border: `1px solid ${t.border}`, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }
   const lb = { fontSize: 10, color: t.textM, display: 'block', marginBottom: 4 }
   return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
-    <div style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: `1px solid ${t.border}`, boxShadow: t.shadowH, maxHeight: '92vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-      <div style={{ padding: '16px 20px', borderBottom: `1px solid ${t.border}` }}><div style={{ fontSize: 15, fontWeight: 700, color: t.amber }}>폐기 · 반품 처리</div><div style={{ fontSize: 12, color: t.textM, marginTop: 2 }}>{dr.drug_name}</div></div>
+    <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: `1px solid ${t.border}`, boxShadow: t.shadowH, maxHeight: '92vh', overflowY: 'auto', transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }} onClick={e => e.stopPropagation()}>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: `1px solid ${t.border}` }}><div style={{ fontSize: 15, fontWeight: 700, color: t.amber }}>폐기 · 반품 처리</div><div style={{ fontSize: 12, color: t.textM, marginTop: 2 }}>{dr.drug_name}</div></div>
       <div style={{ padding: '16px 20px' }}>
         {msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '처리 완료' : msg}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
@@ -861,6 +864,7 @@ function DisposalModal({ drug: dr, onClose, onSaved }) {
 
 /* ═══ LOT 관리 모달 ═══ */
 function LotModal({ drug: dr, onClose, onSaved }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const { t } = useTheme(); const [lots, setLots] = useState([]); const [ld, setLd] = useState(true); const [msg, setMsg] = useState(null)
   const [nf, setNf] = useState({ lot_no: '', expiry_date: '', quantity: '', supplier: '', memo: '' })
   useEffect(() => { loadLots() }, [])
@@ -871,8 +875,8 @@ function LotModal({ drug: dr, onClose, onSaved }) {
   const totalQty = lots.filter(l => l.is_active).reduce((a, l) => a + (l.quantity || 0), 0)
   const ip = { width: '100%', padding: '8px 10px', border: `1px solid ${t.border}`, borderRadius: 6, fontSize: 12, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }
   return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1002, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
-    <div style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 680, maxHeight: '90vh', overflowY: 'auto', border: `1px solid ${t.border}`, boxShadow: t.shadowH }} onClick={e => e.stopPropagation()}>
-      <div style={{ padding: '16px 20px', borderBottom: `1px solid ${t.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 680, maxHeight: '90vh', overflowY: 'auto', border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }} onClick={e => e.stopPropagation()}>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: `1px solid ${t.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div><div style={{ fontSize: 15, fontWeight: 700, color: t.blue }}>LOT 관리</div><div style={{ fontSize: 11, color: t.textM, marginTop: 2 }}>{dr.drug_name} ({dr.drug_code})</div></div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ fontSize: 12, color: t.green, fontWeight: 600 }}>활성합계: {totalQty}개</span><button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${t.border}`, background: 'transparent', cursor: 'pointer', fontSize: 14, color: t.textM }}>✕</button></div>
       </div>
@@ -3158,6 +3162,7 @@ function MyPage({ profile, onProfileUpdated }) {
 
 /* ═══ 탈퇴 확인 모달 ═══ */
 function DeleteAccountModal({ isEmailUser, onClose, onDeleted }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const { t, user } = useTheme()
   const [confirmText, setConfirmText] = useState('')
   const [password, setPassword] = useState('')
@@ -3186,8 +3191,8 @@ function DeleteAccountModal({ isEmailUser, onClose, onDeleted }) {
   const ip = { width: '100%', padding: '11px 14px', border: `1.5px solid ${t.border}`, borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.card, color: t.text }
 
   return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20 }}>
-    <div onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 16, padding: '24px 26px', maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
-      <div style={{ fontSize: 16, fontWeight: 700, color: t.red, marginBottom: 6 }}>정말 탈퇴하시겠습니까?</div>
+    <div ref={_dmBox} onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 16, padding: '24px 26px', maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }}>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', fontSize: 16, fontWeight: 700, color: t.red, marginBottom: 6 }}>정말 탈퇴하시겠습니까?</div>
       <div style={{ fontSize: 12, color: t.textM, marginBottom: 18, lineHeight: 1.6 }}>
         탈퇴하면 <strong style={{ color: t.text }}>{user?.email}</strong> 계정과 프로필이 즉시 영구 삭제됩니다.<br />이 작업은 <strong style={{ color: t.red }}>되돌릴 수 없습니다.</strong>
       </div>
@@ -3300,6 +3305,7 @@ function AdminUsers() {
 
 /* ═══ 관리자 — 사용자 권한 수정 모달 (role 변경 전용) ═══ */
 function AdminUserEditModal({ row, currentUserId, onClose, onSaved }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const { t } = useTheme()
   const [role, setRole] = useState(row.role || 'user')
   const [saving, setSaving] = useState(false)
@@ -3332,8 +3338,8 @@ function AdminUserEditModal({ row, currentUserId, onClose, onSaved }) {
   }
 
   return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-    <div onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 16, padding: '22px 26px', maxWidth: 420, width: '100%', border: `1px solid ${t.border}`, boxShadow: t.shadowH }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: t.text, marginBottom: 4 }}>사용자 권한 수정</div>
+    <div ref={_dmBox} onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 16, padding: '22px 26px', maxWidth: 420, width: '100%', border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }}>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', fontSize: 15, fontWeight: 700, color: t.text, marginBottom: 4 }}>사용자 권한 수정</div>
       <div style={{ fontSize: 11, color: t.textL, marginBottom: 18 }}>
         {row.email}{row.full_name ? ` · ${row.full_name}` : ''}
         {isSelf && <span style={{ marginLeft: 6, background: t.accentL, color: t.accent, padding: '2px 6px', borderRadius: 6, fontSize: 10, fontWeight: 700 }}>본인</span>}

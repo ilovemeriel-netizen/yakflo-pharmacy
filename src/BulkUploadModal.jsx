@@ -5,7 +5,8 @@
    - 약품코드 기준 upsert(onConflict). DELETE 없음. 엑셀에 없는 기존 행은 불변.
    - 청크 500행. 미리보기 확인 전 DB 쓰기 없음. 실패 목록 CSV 다운로드.
    - 팔레트: 부모가 넘긴 t + #D9342B 만 사용(신규 색상 없음). */
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
+import { useDraggableModal } from './useDraggableModal'
 import { supabase } from './lib/supabase'
 import { FIELD_DEFS, autoMap, normalizeDrugRow } from './lib/drugRules'
 
@@ -13,6 +14,7 @@ const CHUNK = 500
 const ALERT = '#D9342B'
 
 export default function BulkUploadModal({ t, isOwner, drugs, onClose, onReload }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const [step, setStep] = useState(1)
   const [fileName, setFileName] = useState('')
   const [headers, setHeaders] = useState([])
@@ -130,9 +132,9 @@ export default function BulkUploadModal({ t, isOwner, drugs, onClose, onReload }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
-      <div style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 860, maxHeight: '92vh', display: 'flex', flexDirection: 'column', border: `1px solid ${t.border}`, boxShadow: t.shadowH }} onClick={e => e.stopPropagation()}>
+      <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 860, maxHeight: '92vh', display: 'flex', flexDirection: 'column', border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }} onClick={e => e.stopPropagation()}>
         {/* 헤더 + 단계 표시 */}
-        <div style={{ padding: '16px 22px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 22px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: t.text }}>약품 대량 업로드</div>
             <div style={{ display: 'flex', gap: 6 }}>{stepName.map((s, i) => <span key={s} style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: step === i + 1 ? t.accent : t.bg, color: step === i + 1 ? '#fff' : t.textL, border: '1px solid ' + (step === i + 1 ? t.accent : t.border) }}>{i + 1}. {s}</span>)}</div>
