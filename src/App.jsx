@@ -50,6 +50,7 @@ const STATS = ['사용','중지','휴면']
 const MAIN_STATS = ['사용','휴면']
 const PP = 20
 const TYPES = ['입고','출고','반품','폐기']
+const TX_DISPOSE = '폐기', TX_RETURN = '반품'  // 폐기·반품 거래 type 상수(오타 방지)
 const STORAGE_OPTS = ['실온','실온/차광','냉장','냉장/차광']
 const REC_ACTIONS = ['','우선사용','재고이관','반품검토','폐기예정','약품변경','업체교환','사용중지','확인필요','긴급처리']
 const IN_SUBS = ['정기입고','긴급입고','반품입고','이관입고','무상입고','기타']
@@ -805,6 +806,59 @@ function AdjustModal({ drug: dr, onClose, onSaved }) {
   </div>
 }
 
+/* ═══ 폐기·반품 처리 모달 — 유효기한 화면 전용. transactions INSERT→0009 트리거로 재고 차감(TxForm 저장방식 재사용) ═══ */
+function DisposalModal({ drug: dr, onClose, onSaved }) {
+  const { t } = useTheme()
+  const pp = dr.purchase_price || 0, cur = dr.current_qty || 0
+  const today = new Date().toISOString().split('T')[0]
+  const [txType, setTxType] = useState(TX_DISPOSE)
+  const [qty, setQty] = useState(''); const [lot, setLot] = useState(''); const [reason, setReason] = useState(''); const [supplier, setSupplier] = useState('')
+  const [amtRaw, setAmtRaw] = useState(''); const [amtTouched, setAmtTouched] = useState(false)
+  const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null)
+  const q = Number(qty)
+  const autoAmt = Math.round((Number(qty) || 0) * pp)
+  const amt = amtTouched ? Math.round(Number(amtRaw) || 0) : autoAmt
+  const reasons = txType === TX_RETURN ? RET_REASONS : DSP_REASONS
+  const qtyErr = !(q > 0) ? '수량은 1개 이상 입력하세요' : q > cur ? `현재고(${cur.toLocaleString()}개)를 초과할 수 없습니다` : null
+  const canSave = !qtyErr && !!reason && !saving
+  async function save() {
+    if (!canSave) { if (!reason && !qtyErr) setMsg('사유를 선택해주세요'); return }
+    setSaving(true); setMsg(null)
+    /* 저장 로직은 TxForm과 동일 규약: unit_price=purchase_price, total_amount=사용자 확정 금액(정수), 재고는 0009 트리거가 차감. 컬럼 재시도 루프 포함. */
+    const tx = { drug_code: dr.drug_code, drug_name: dr.drug_name, type: txType, quantity: q, unit_price: pp, total_amount: amt, lot_no: lot || null, reason: reason || null, supplier: txType === TX_RETURN ? (supplier || null) : null, transaction_date: today }
+    let res = await supabase.from('transactions').insert([tx])
+    for (let r = 0; r < 3 && res.error && res.error.message?.includes('column'); r++) { const m = res.error.message.match(/'([^']+)' column/); if (!m) break; delete tx[m[1]]; res = await supabase.from('transactions').insert([tx]) }
+    setSaving(false)
+    if (res.error) { setMsg(res.error.message); return }  // 트리거 '재고 부족' 등 메시지 그대로 노출
+    setMsg('OK'); setTimeout(() => { onSaved?.(); onClose() }, 500)
+  }
+  const ip = { width: '100%', padding: '9px 12px', border: `1px solid ${t.border}`, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }
+  const lb = { fontSize: 10, color: t.textM, display: 'block', marginBottom: 4 }
+  return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
+    <div style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: `1px solid ${t.border}`, boxShadow: t.shadowH, maxHeight: '92vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+      <div style={{ padding: '16px 20px', borderBottom: `1px solid ${t.border}` }}><div style={{ fontSize: 15, fontWeight: 700, color: t.amber }}>폐기 · 반품 처리</div><div style={{ fontSize: 12, color: t.textM, marginTop: 2 }}>{dr.drug_name}</div></div>
+      <div style={{ padding: '16px 20px' }}>
+        {msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '처리 완료' : msg}</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+          <div style={{ background: t.bg, borderRadius: 10, padding: '12px', textAlign: 'center', border: `1px solid ${t.border}` }}><div style={{ fontSize: 10, color: t.textM }}>현재고</div><div style={{ fontSize: 22, fontWeight: 700, color: t.text, marginTop: 4 }}>{cur.toLocaleString()}</div></div>
+          <div style={{ background: t.bg, borderRadius: 10, padding: '12px', textAlign: 'center', border: `1px solid ${t.border}` }}><div style={{ fontSize: 10, color: t.textM }}>유효기한</div><div style={{ fontSize: 15, fontWeight: 700, color: t.text, marginTop: 8 }}>{dr.expiry_date || '-'}</div></div>
+        </div>
+        <div style={{ marginBottom: 10 }}><label style={lb}>처리구분 *</label><select value={txType} onChange={e => { setTxType(e.target.value); setReason('') }} style={ip}><option value={TX_DISPOSE}>폐기</option><option value={TX_RETURN}>반품</option></select></div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div><label style={lb}>수량 *</label><input type="number" min="1" value={qty} onChange={e => setQty(e.target.value)} placeholder="0" style={ip} /></div>
+          <div><label style={lb}>LOT 번호</label><input value={lot} onChange={e => setLot(e.target.value)} placeholder="자유 입력" style={ip} /></div>
+        </div>
+        {qtyErr && qty !== '' && <div style={{ background: t.redL, borderRadius: 8, padding: '7px 10px', marginBottom: 10, color: t.red, fontSize: 11, fontWeight: 600 }}>{qtyErr}</div>}
+        <div style={{ marginBottom: 10 }}><label style={lb}>사유 *</label><select value={reason} onChange={e => setReason(e.target.value)} style={ip}><option value="">사유 선택</option>{reasons.map(r => <option key={r}>{r}</option>)}</select></div>
+        {txType === TX_RETURN && <div style={{ marginBottom: 10 }}><label style={lb}>공급업체</label><input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="반품처" style={ip} /></div>}
+        <div style={{ marginBottom: 10 }}><label style={lb}>금액 (자동 산출 · 수정 가능)</label><input type="number" value={amtTouched ? amtRaw : String(autoAmt)} onChange={e => { setAmtTouched(true); setAmtRaw(e.target.value) }} style={ip} /><div style={{ fontSize: 10, color: t.textL, marginTop: 3 }}>= 수량 × 개당 {pp.toLocaleString()}원 · 저장 {amt.toLocaleString()}원</div></div>
+        <div style={{ background: t.blueL, borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 11, color: t.blue, display: 'flex', justifyContent: 'space-between' }}><span>거래일자</span><span style={{ fontWeight: 700 }}>{today} · 오늘 고정</span></div>
+        <div style={{ display: 'flex', gap: 8 }}><button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, border: `1px solid ${t.border}`, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button><button onClick={save} disabled={!canSave} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: canSave ? 'pointer' : 'not-allowed', background: canSave ? t.amber : t.textL, color: '#fff', fontSize: 13, fontWeight: 700 }}>{saving ? '처리 중...' : txType + ' 처리'}</button></div>
+      </div>
+    </div>
+  </div>
+}
+
 /* ═══ LOT 관리 모달 ═══ */
 function LotModal({ drug: dr, onClose, onSaved }) {
   const { t } = useTheme(); const [lots, setLots] = useState([]); const [ld, setLd] = useState(true); const [msg, setMsg] = useState(null)
@@ -1421,7 +1475,7 @@ function DateCell({ value, onChange }) {
   </span>;
 }
 /* 유효기한 표 — ExpiryAlert에서 모듈 추출(component-in-render 리마운트 제거 → 편집 시 가로 스크롤 보존). 렌더/동작 동일. */
-function ET({ items, color, label, sub, editRow, editField, startEdit, saveField, closeEdit, saveNote, onEdit, unusedDays, isUnused, alertSt, ip2, fb }) { const { t } = useTheme(); const{so,TS,sk,sd,setSort}=useSort('expiry_date');const[hfV,setHfV]=useState({})
+function ET({ items, color, label, sub, editRow, editField, startEdit, saveField, closeEdit, saveNote, onEdit, unusedDays, isUnused, alertSt, ip2, fb, onDispose, canDispose }) { const { t } = useTheme(); const{so,TS,sk,sd,setSort}=useSort('expiry_date');const[hfV,setHfV]=useState({})
     /* 남은일수·미사용기간 사전 계산 → 정렬 가능 */
     const withCalc=items.map(d=>{const rd=exD(d.expiry_date);const ud=unusedDays(d);return{...d,_remainDays:rd,_unusedDays:ud,_alertStatus:alertSt(rd).text}})
     const sorted=so(withCalc)
@@ -1443,7 +1497,7 @@ function ET({ items, color, label, sub, editRow, editField, startEdit, saveField
         <td style={{padding:'5px 8px',fontSize:10,color:t.textM,textAlign:'left'}}>{d.drug_code}<NT d={d}/></td>
         <td style={{ padding: '8px 12px', fontWeight: 600, textAlign: 'left', color: t.accent, cursor: 'pointer', minWidth: 200, maxWidth: 260 }} onClick={() => onEdit(d)} onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.color = t.purple }} onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none'; e.currentTarget.style.color = t.accent }} title={d.drug_name || ''}><span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.3 }}>{d.drug_name}</span></td>
         <td style={{padding:'5px 8px',color:t.textM,fontSize:10}}>{d.category}</td>
-        <td style={{padding:'5px 8px',textAlign:'right',fontWeight:600,fontSize:11}}>{d.current_qty?.toLocaleString()}</td>
+        <td style={{padding:'5px 8px',textAlign:'right',fontWeight:600,fontSize:11}}>{canDispose?<span onClick={()=>onDispose(d)} title="폐기·반품 처리" style={{cursor:'pointer',borderBottom:`1px dashed ${t.textM}`,paddingBottom:1}} onMouseEnter={e=>e.currentTarget.style.color=t.red} onMouseLeave={e=>e.currentTarget.style.color=''}>{d.current_qty?.toLocaleString()}</span>:d.current_qty?.toLocaleString()}</td>
         <td style={{padding:'5px 8px',color,fontWeight:600,fontSize:10}}>{d.expiry_date}</td>
         <td style={{padding:'5px 8px',textAlign:'right',fontWeight:700,fontSize:11,color}}>{days}</td>
         <td style={{padding:'5px 4px',textAlign:'center'}}>{a.text&&<span style={{background:a.bg||'transparent',color:a.c,fontWeight:700,padding:'2px 6px',borderRadius:4,fontSize:9,whiteSpace:'nowrap'}}>{a.text}</span>}</td>
@@ -1456,14 +1510,14 @@ function ET({ items, color, label, sub, editRow, editField, startEdit, saveField
         <td style={{padding:'5px 6px'}}><SB s={d.status}/></td>
       </tr>})}</tbody></StandardTable>}</>}
 function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
-  const{t}=useTheme();const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
+  const{t,memberRole,profile}=useTheme();const canDispose=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[dispDrug,setDispDrug]=useState(null);const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
   const[editRow,setEditRow]=useState(null);const[editField,setEditField]=useState(null);const[resetKey,setResetKey]=useState(0);const[fb,setFb]=useState({})
   const fd=drugs.filter(d=>cats.includes(d.category)&&stats.includes(d.status))
   const unusedDays=d=>{if(!d.last_used_date)return null;return Math.floor((new Date()-new Date(d.last_used_date))/864e5)}
   const isUnused=d=>{const days=unusedDays(d);return days!==null&&days>=365}
   /* 알림상태 수식: <=0 만료, <=30 긴급, <=60 주의, <=90 확인, 그외 정상 */
   const alertSt=days=>{if(days===null)return{text:'',c:t.textL,bg:''};if(days<=0)return{text:'★만료★',c:'#fff',bg:t.red};if(days<=30)return{text:'▲긴급▲',c:'#fff',bg:'#E65100'};if(days<=60)return{text:'◆주의◆',c:'#333',bg:'#FFD600'};if(days<=90)return{text:'●확인●',c:'#fff',bg:t.blue};return{text:'정상',c:t.green,bg:''}}
-  const g={urgent:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=30}),warning:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>30&&x<=90}),notice:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>90&&x<=180}),narcotic:drugs.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180&&isN(d)&&cats.includes(d.category)}),unused:fd.filter(d=>isUnused(d))}
+  const g={urgent:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=30&&(d.current_qty||0)>0}),warning:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>30&&x<=90&&(d.current_qty||0)>0}),notice:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>90&&x<=180&&(d.current_qty||0)>0}),narcotic:drugs.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180&&isN(d)&&cats.includes(d.category)}),unused:fd.filter(d=>isUnused(d))}
   useEffect(()=>{if(focusLevel)setALv(focusLevel)},[focusLevel])
   function flash(key,kind){setFb(p=>({...p,[key]:kind}));setTimeout(()=>setFb(p=>{const c={...p};delete c[key];return c}),kind==='ok'?1500:2500)}
   function closeEdit(){setEditRow(null);setEditField(null)}
@@ -1494,7 +1548,8 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
     </div>
     <div style={{display:'grid',gridTemplateColumns:`repeat(${g.unused.length>0?5:4},1fr)`,gap:8,marginBottom:14}}>{(g.unused.length>0?lvs:lvs.slice(0,4)).map(l=><div key={l.k} onClick={()=>setALv(aLv===l.k?null:l.k)} style={{background:t.card,border:`1px solid ${aLv===l.k?l.c:t.border}`,borderRadius:12,padding:'14px 16px',cursor:'pointer',transition:'all .15s',boxShadow:aLv===l.k?`0 0 12px ${l.c}15`:'none'}} onMouseEnter={e=>e.currentTarget.style.borderColor=l.c} onMouseLeave={e=>{if(aLv!==l.k)e.currentTarget.style.borderColor=t.border}}><div style={{fontSize:12,color:l.c,fontWeight:700}}>{l.l}</div><div style={{fontSize:28,fontWeight:700,color:l.c,marginTop:4}}>{g[l.k].length}</div><div style={{fontSize:10,color:t.textM,marginTop:2}}>{l.sub}</div></div>)}</div>
     {aLv&&<button className="no-print" onClick={()=>setALv(null)} style={{padding:'5px 14px',borderRadius:6,border:`1px solid ${t.border}`,background:t.card,color:t.textM,cursor:'pointer',fontSize:11,marginBottom:8}}>← 전체 보기</button>}
-    {show.map(l=><div key={l.k} style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',marginBottom:12}}><ET key={l.k+'-'+resetKey} items={g[l.k]} color={l.c} label={l.l} sub={l.sub} editRow={editRow} editField={editField} startEdit={startEdit} saveField={saveField} closeEdit={closeEdit} saveNote={saveNote} onEdit={onEdit} unusedDays={unusedDays} isUnused={isUnused} alertSt={alertSt} ip2={ip2} fb={fb}/></div>)}
+    {show.map(l=><div key={l.k} style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',marginBottom:12}}><ET key={l.k+'-'+resetKey} items={g[l.k]} color={l.c} label={l.l} sub={l.sub} editRow={editRow} editField={editField} startEdit={startEdit} saveField={saveField} closeEdit={closeEdit} saveNote={saveNote} onEdit={onEdit} onDispose={setDispDrug} canDispose={canDispose} unusedDays={unusedDays} isUnused={isUnused} alertSt={alertSt} ip2={ip2} fb={fb}/></div>)}
+    {dispDrug&&<DisposalModal drug={dispDrug} onClose={()=>setDispDrug(null)} onSaved={()=>onReload?.()}/>}
     <Ft/>
   </div>
 }
