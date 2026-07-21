@@ -1513,15 +1513,15 @@ function ET({ items, color, label, sub, editRow, editField, startEdit, saveField
         <td style={{padding:'5px 6px',..._fbSt(d.drug_code+':expiry_notes')}}><input defaultValue={d.expiry_notes||''} onBlur={e=>saveNote(d,e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.target.blur()}} placeholder="입력" style={{...ip2,width:80,fontSize:9}}/></td>
         <td style={{padding:'5px 6px'}}><SB s={d.status}/></td>
       </tr>})}</tbody></StandardTable>}</>}
-function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
-  const{t,memberRole,profile}=useTheme();const canDispose=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[dispDrug,setDispDrug]=useState(null);const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
+function ExpiryAlert({drugs,onEdit,focusLevel,onReload,onDispose}){
+  const{t,memberRole,profile}=useTheme();const canDispose=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
   const[editRow,setEditRow]=useState(null);const[editField,setEditField]=useState(null);const[resetKey,setResetKey]=useState(0);const[fb,setFb]=useState({})
   const fd=drugs.filter(d=>cats.includes(d.category)&&stats.includes(d.status))
   const unusedDays=d=>{if(!d.last_used_date)return null;return Math.floor((new Date()-new Date(d.last_used_date))/864e5)}
   const isUnused=d=>{const days=unusedDays(d);return days!==null&&days>=365}
   /* 알림상태 수식: <=0 만료, <=30 긴급, <=60 주의, <=90 확인, 그외 정상 */
   const alertSt=days=>{if(days===null)return{text:'',c:t.textL,bg:''};if(days<=0)return{text:'★만료★',c:'#fff',bg:t.red};if(days<=30)return{text:'▲긴급▲',c:'#fff',bg:'#E65100'};if(days<=60)return{text:'◆주의◆',c:'#333',bg:'#FFD600'};if(days<=90)return{text:'●확인●',c:'#fff',bg:t.blue};return{text:'정상',c:t.green,bg:''}}
-  const g={urgent:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=30&&(d.current_qty||0)>0}),warning:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>30&&x<=90&&(d.current_qty||0)>0}),notice:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>90&&x<=180&&(d.current_qty||0)>0}),narcotic:drugs.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180&&isN(d)&&cats.includes(d.category)}),unused:fd.filter(d=>isUnused(d))}
+  const g={urgent:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=30&&(d.current_qty||0)>0}),warning:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>30&&x<=90&&(d.current_qty||0)>0}),notice:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>90&&x<=180&&(d.current_qty||0)>0}),narcotic:drugs.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180&&isN(d)&&cats.includes(d.category)}),unused:fd.filter(d=>isUnused(d)&&(d.current_qty||0)>0)}
   useEffect(()=>{if(focusLevel)setALv(focusLevel)},[focusLevel])
   function flash(key,kind){setFb(p=>({...p,[key]:kind}));setTimeout(()=>setFb(p=>{const c={...p};delete c[key];return c}),kind==='ok'?1500:2500)}
   function closeEdit(){setEditRow(null);setEditField(null)}
@@ -1552,8 +1552,8 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload}){
     </div>
     <div style={{display:'grid',gridTemplateColumns:`repeat(${g.unused.length>0?5:4},1fr)`,gap:8,marginBottom:14}}>{(g.unused.length>0?lvs:lvs.slice(0,4)).map(l=><div key={l.k} onClick={()=>setALv(aLv===l.k?null:l.k)} style={{background:t.card,border:`1px solid ${aLv===l.k?l.c:t.border}`,borderRadius:12,padding:'14px 16px',cursor:'pointer',transition:'all .15s',boxShadow:aLv===l.k?`0 0 12px ${l.c}15`:'none'}} onMouseEnter={e=>e.currentTarget.style.borderColor=l.c} onMouseLeave={e=>{if(aLv!==l.k)e.currentTarget.style.borderColor=t.border}}><div style={{fontSize:12,color:l.c,fontWeight:700}}>{l.l}</div><div style={{fontSize:28,fontWeight:700,color:l.c,marginTop:4}}>{g[l.k].length}</div><div style={{fontSize:10,color:t.textM,marginTop:2}}>{l.sub}</div></div>)}</div>
     {aLv&&<button className="no-print" onClick={()=>setALv(null)} style={{padding:'5px 14px',borderRadius:6,border:`1px solid ${t.border}`,background:t.card,color:t.textM,cursor:'pointer',fontSize:11,marginBottom:8}}>← 전체 보기</button>}
-    {show.map(l=><div key={l.k} style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',marginBottom:12}}><ET key={l.k+'-'+resetKey} items={g[l.k]} color={l.c} label={l.l} sub={l.sub} editRow={editRow} editField={editField} startEdit={startEdit} saveField={saveField} closeEdit={closeEdit} saveNote={saveNote} onEdit={onEdit} onDispose={setDispDrug} canDispose={canDispose} unusedDays={unusedDays} isUnused={isUnused} alertSt={alertSt} ip2={ip2} fb={fb}/></div>)}
-    {dispDrug&&<DisposalModal drug={dispDrug} onClose={()=>setDispDrug(null)} onSaved={()=>onReload?.()}/>}
+    {show.map(l=><div key={l.k} style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',marginBottom:12}}><ET key={l.k+'-'+resetKey} items={g[l.k]} color={l.c} label={l.l} sub={l.sub} editRow={editRow} editField={editField} startEdit={startEdit} saveField={saveField} closeEdit={closeEdit} saveNote={saveNote} onEdit={onEdit} onDispose={onDispose} canDispose={canDispose} unusedDays={unusedDays} isUnused={isUnused} alertSt={alertSt} ip2={ip2} fb={fb}/></div>)}
+
     <Ft/>
   </div>
 }
@@ -1616,8 +1616,8 @@ function StandardTable({ cols, TS, sk, sd, setSort, hf, t, grid, layout, colWidt
     {children}
   </table></HScroll>;
 }
-function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
-  const{t}=useTheme();
+function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}){
+  const{t,memberRole,profile}=useTheme();const canDispose=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
   const[uMsg,setUMsg]=useState(null);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({})
   useEffect(()=>{if(nf?.filter){setFilter(nf.filter);setPage(1)}},[nf])
@@ -1712,7 +1712,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
     </div>
     <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',backdropFilter:'blur(12px)'}}>
 <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.purple,display:'flex',justifyContent:'space-between'}}><span>재고 현황 목록</span><span style={{display:'flex',alignItems:'center',gap:10}}><span style={{color:t.textM,fontWeight:500}}>{filtered.length}개</span>{_showReset?<button onClick={_resetF} title="처음 상태로 초기화" style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accent+'12',color:t.accent,cursor:'pointer',fontSize:11,fontWeight:700,whiteSpace:'nowrap'}}>필터 초기화{_fcount>0?' ('+_fcount+')':''}</button>:null}</span></div>
-      <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={(k,sdv)=>{setSort(k,sdv);setPage(1)}} hf={hf} grid layout="fixed" minWidth={1306} colWidths={[100,200,90,80,80,80,92,120,104,90,90,100,80]} hscroll={{noLabel:true,ends:true}} cols={[{k:'drug_code',h:'약품코드',sticky:{left:0,w:100}},{k:'drug_name',h:'약품명',sticky:{left:100}},{k:'category',h:'구분'},{k:'current_qty',h:'현재고'},{k:'safety_stock',h:'안전재고'},{k:'max_stock',h:'최대재고'},{k:'prev_year_usage',h:'전년사용량'},{k:'recent_3m_usage',h:'최근3개월사용량'},{k:'monthly_avg',h:'월평균'},{k:'status',h:'상태'},{k:'stockStatus',h:'재고상태'},{k:'expiry_date',h:'유효기한'},{k:'',h:'보정',plain:true}]}>
+      <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={(k,sdv)=>{setSort(k,sdv);setPage(1)}} hf={hf} grid layout="fixed" minWidth={1366} colWidths={[100,200,90,80,80,80,92,120,104,90,90,100,140]} hscroll={{noLabel:true,ends:true}} cols={[{k:'drug_code',h:'약품코드',sticky:{left:0,w:100}},{k:'drug_name',h:'약품명',sticky:{left:100}},{k:'category',h:'구분'},{k:'current_qty',h:'현재고'},{k:'safety_stock',h:'안전재고'},{k:'max_stock',h:'최대재고'},{k:'prev_year_usage',h:'전년사용량'},{k:'recent_3m_usage',h:'최근3개월사용량'},{k:'monthly_avg',h:'월평균'},{k:'status',h:'상태'},{k:'stockStatus',h:'재고상태'},{k:'expiry_date',h:'유효기한'},{k:'',h:'보정',plain:true}]}>
         <tbody>{!paged.length?<tr><td colSpan={13} style={{padding:40,textAlign:'center',color:t.textL}}>없음</td></tr>:paged.map((d,i)=>{const dr=drafts[d.drug_code];const dirty=!!dr;const pyV=dirty?dr.py:origStr(d.prev_year_usage);const r3V=dirty?dr.r3:origStr(d.recent_3m_usage);let pM=d.monthly_avg,pSf=d.safety_stock,pMx=d.max_stock,pSt=d.stockStatus;if(dirty){const pv=pNum(dr.py),rv=pNum(dr.r3);const pvN=typeof pv==='number'?pv:null,rvN=typeof rv==='number'?rv:null;let m=null;if(rvN!=null)m=Math.round(rvN/3);else if(pvN!=null)m=Math.round(pvN/12);pM=m;pSf=m!=null?Math.round(m*1.5):null;pMx=m!=null?Math.round(m*3):null;const q=d.current_qty||0;pSt=q===0?'재고없음':(pSf>0&&q<pSf)?'부족':(pMx>0&&q>pMx)?'과잉':'정상'}const unused=!d.prev_year_usage&&!d.recent_3m_usage;return <tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
           <td style={{padding:'8px 12px',fontSize:10,color:t.textM,textAlign:'left',position:'sticky',left:0,zIndex:2,background:t.card,minWidth:100,maxWidth:100,width:100,overflow:'hidden',borderRight:'1px solid '+t.border}}>{d.drug_code}<NT d={d}/></td><td style={{padding:'8px 12px',fontWeight:600,textAlign:'left',color:t.accent,cursor:'pointer',position:'sticky',left:100,zIndex:2,background:t.card,borderRight:'1px solid '+t.border,minWidth:160,maxWidth:240}} onClick={()=>onEdit(d)} onMouseEnter={e=>{e.currentTarget.style.textDecoration='underline';e.currentTarget.style.color=t.purple}} onMouseLeave={e=>{e.currentTarget.style.textDecoration='none';e.currentTarget.style.color=t.accent}}>{d.drug_name}</td><td style={{padding:'8px 10px',color:t.textM,fontSize:11,borderRight:'1px solid '+t.border}}>{d.category}</td>
           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:d.stockStatus==='재고없음'?t.red:d.stockStatus==='부족'?t.amber:t.text,borderRight:'1px solid '+t.border}}>{d.current_qty?.toLocaleString()}</td>
@@ -1720,7 +1720,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload}){
           <td style={{padding:'8px 10px',borderRight:'1px solid '+t.border}}><SB s={d.status}/></td>
           <td style={{padding:'8px 10px',borderRight:'1px solid '+t.border}}><div style={{display:'flex',flexDirection:'column',gap:3,alignItems:'flex-start'}}><Bd bg={sc(dirty?pSt:d.stockStatus)+'18'} color={sc(dirty?pSt:d.stockStatus)}>{dirty?pSt:d.stockStatus}</Bd>{unused?<Bd bg={t.amber+'18'} color={t.amber}>미사용</Bd>:null}</div></td>
           <td style={{padding:'8px 10',fontSize:11,...exS(d.expiry_date,t),borderRight:'1px solid '+t.border}}>{d.expiry_date||'-'}</td>
-          <td style={{padding:'8px 6px',textAlign:'center',borderRight:'1px solid '+t.border}}>{d.last_adjusted_date&&<div style={{fontSize:8,color:t.amber,fontWeight:600,marginBottom:2}}>{d.last_adjusted_date}</div>}<button onClick={()=>onAdjust(d)} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.amber}`,background:d.last_adjusted_date?t.amberL:'transparent',color:t.amber,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>보정</button></td>
+          <td style={{padding:'8px 6px',textAlign:'center',borderRight:'1px solid '+t.border}}>{d.last_adjusted_date&&<div style={{fontSize:8,color:t.amber,fontWeight:600,marginBottom:2}}>{d.last_adjusted_date}</div>}<button onClick={()=>onAdjust(d)} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.amber}`,background:d.last_adjusted_date?t.amberL:'transparent',color:t.amber,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>보정</button>{canDispose&&<button onClick={()=>onDispose(d)} title="폐기·반품 처리" style={{marginLeft:4,padding:'3px 8px',borderRadius:4,border:`1px solid ${t.red}`,background:'transparent',color:t.red,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>폐기/반품</button>}</td>
         </tr>})}</tbody>
       </StandardTable>
       <Pg page={page} setPage={setPage} tp={tp} fl={filtered} pp={PP} ends/>
@@ -3508,6 +3508,7 @@ export default function App() {
   const [nf, setNf] = useState(null)
   const [editDrug, setEditDrug] = useState(null)
   const [adjustDrug, setAdjustDrug] = useState(null)
+  const [disposeDrug, setDisposeDrug] = useState(null)
   const [lotDrug, setLotDrug] = useState(null)
   const [d360, setD360] = useState(null)
   const [d360Pos, setD360Pos] = useState({ x: 0, y: 0 }) // 360° 모달 위치(세션 내 유지, 새로고침 시 중앙 복귀)
@@ -3710,8 +3711,8 @@ export default function App() {
         {menu === 'druglist' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} />}
         {menu === 'nonins' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} nonins />}
         {menu === 'archive' && <DrugList drugs={drugs} navFilter={{ status: ['중지'], archive: true }} onEdit={setEditDrug} onReload={load} />}
-        {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} />}
-        {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} />}
+        {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} onDispose={setDisposeDrug} />}
+        {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
         {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
         {menu === 'report' && <Report drugs={drugs} txns={txns} onNav={handleNav} />}
@@ -3724,6 +3725,7 @@ export default function App() {
         {d360 && <Drug360Modal drug={d360} pos={d360Pos} setPos={setD360Pos} onClose={() => setD360(null)} />}
         {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
         {adjustDrug && <AdjustModal drug={adjustDrug} onClose={() => setAdjustDrug(null)} onSaved={() => { setAdjustDrug(null); load() }} />}
+        {disposeDrug && <DisposalModal drug={disposeDrug} onClose={() => setDisposeDrug(null)} onSaved={() => { setDisposeDrug(null); load() }} />}
         {lotDrug && <LotModal drug={lotDrug} onClose={() => setLotDrug(null)} onSaved={() => { setLotDrug(null); load() }} />}
         <div className="no-print" style={{ position: 'fixed', right: 18, bottom: 18, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 880 }}>
           <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} title="맨 위로" style={{ width: 46, height: 46, borderRadius: 23, border: '1px solid ' + t.border, background: t.card, color: t.accent, boxShadow: t.shadowH, cursor: 'pointer', fontSize: 12, fontWeight: 800 }}>TOP</button>
