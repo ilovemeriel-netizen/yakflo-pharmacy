@@ -10,10 +10,12 @@ const EDGE = 40 // 헤더가 화면 안에 최소 남을 px
 export function useDraggableModal(boxRef, pos, setPos) {
   const [dragging, setDragging] = useState(false)
   const start = useRef(null)
+  const moved = useRef(false) // 실제 이동 발생 여부 → 드래그 종료 직후 backdrop click(닫힘) 1회 차단용
 
   // 헤더 mousedown: 버튼(✕)에서는 드래그 시작 안 함. 시작 시점의 기준 좌표·너비 캡처.
   function onHeaderMouseDown(e) {
-    if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return
+    if (window.innerWidth < 640) return // 좁은 화면(모바일)에선 드래그 비활성(전체화면에 가까워 이동 의미 없음)
+    if (['INPUT', 'SELECT', 'TEXTAREA', 'OPTION'].includes(e.target.tagName) || e.target.closest('button')) return
     const el = boxRef.current
     const r = el ? el.getBoundingClientRect() : null
     start.current = {
@@ -22,6 +24,7 @@ export function useDraggableModal(boxRef, pos, setPos) {
       baseTop: r ? r.top - pos.y : 0,
       w: r ? r.width : 0,
     }
+    moved.current = false
     setDragging(true)
   }
 
@@ -32,13 +35,24 @@ export function useDraggableModal(boxRef, pos, setPos) {
       const s = start.current
       if (!s) return
       const x = e.clientX - s.sx, y = e.clientY - s.sy
+      moved.current = true
       const minLeft = EDGE - s.w                    // 오른쪽 끝으로 밀어도 헤더 좌측 EDGE는 남음
       const maxLeft = window.innerWidth - EDGE      // 왼쪽 끝으로 밀어도 헤더 우측 EDGE는 남음
       const projLeft = Math.min(Math.max(s.baseLeft + x, minLeft), maxLeft)
       const projTop = Math.min(Math.max(s.baseTop + y, 0), window.innerHeight - EDGE)
       setPos({ x: projLeft - s.baseLeft, y: projTop - s.baseTop })
     }
-    function onUp() { setDragging(false) }
+    function onUp() {
+      setDragging(false)
+      if (moved.current) {
+        // 헤더에서 시작해 backdrop 위에서 뗀 드래그 → 공통 조상(backdrop)에 click 발생 → onClose 오작동.
+        // 종료 직후 click 1회를 캡처 단계에서 삼켜 배경 클릭 닫힘을 막는다(이동 없었으면 통과).
+        const swallow = ev => { ev.stopPropagation(); ev.preventDefault() }
+        window.addEventListener('click', swallow, { capture: true, once: true })
+        setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0)
+      }
+      moved.current = false
+    }
     const prevSel = document.body.style.userSelect
     document.body.style.userSelect = 'none'
     window.addEventListener('mousemove', onMove)
