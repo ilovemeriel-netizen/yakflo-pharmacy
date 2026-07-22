@@ -820,16 +820,18 @@ function DisposalModal({ drug: dr, onClose, onSaved }) {
   const [qty, setQty] = useState(''); const [lot, setLot] = useState(''); const [reason, setReason] = useState(''); const [supplier, setSupplier] = useState('')
   const [expDate, setExpDate] = useState(dr.expiry_date || ''); const [handler, setHandler] = useState('이정화'); const [approver, setApprover] = useState(''); const [memo, setMemo] = useState(''); const [procStatus, setProcStatus] = useState('처리완료')
   const [amtRaw, setAmtRaw] = useState(''); const [amtTouched, setAmtTouched] = useState(false)
+  const [confirm, setConfirm] = useState(false)
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null)
   const q = Number(qty)
   const autoAmt = Math.round((Number(qty) || 0) * pp)
   const amt = amtTouched ? Math.round(Number(amtRaw) || 0) : autoAmt
   const reasons = txType === TX_RETURN ? RET_REASONS : DSP_REASONS
   const qtyErr = !(q > 0) ? '수량은 1개 이상 입력하세요' : q > cur ? `현재고(${cur.toLocaleString()}개)를 초과할 수 없습니다` : null
+  const qtyWarn = cur > 0 && q > 0 && q > cur * 0.5 ? '입력 수량이 현재고(' + cur.toLocaleString() + '개)의 절반을 초과합니다. 수량을 다시 확인하세요' : null
   const canSave = !qtyErr && !!reason && !saving
   async function save() {
     if (!canSave) { if (!reason && !qtyErr) setMsg('사유를 선택해주세요'); return }
-    setSaving(true); setMsg(null)
+    setConfirm(false); setSaving(true); setMsg(null)
     /* 저장 로직은 TxForm과 동일 규약: unit_price=purchase_price, total_amount=사용자 확정 금액(정수), 재고는 0009 트리거가 차감. 컬럼 재시도 루프 포함. */
     const tx = { drug_code: dr.drug_code, type: txType, quantity: q, unit_price: pp, total_amount: amt, lot_no: lot || null, reason: reason || null, supplier: txType === TX_RETURN ? (supplier || null) : null, transaction_date: today, expiry_date: expDate || null, handler: handler || null, approver: approver || null, memo: memo || null, process_status: procStatus || null }
     let res = await supabase.from('transactions').insert([tx])
@@ -855,6 +857,7 @@ function DisposalModal({ drug: dr, onClose, onSaved }) {
           <div><label style={lb}>LOT 번호</label><input value={lot} onChange={e => setLot(e.target.value)} placeholder="자유 입력" style={ip} /></div>
         </div>
         {qtyErr && qty !== '' && <div style={{ background: t.redL, borderRadius: 8, padding: '7px 10px', marginBottom: 10, color: t.red, fontSize: 11, fontWeight: 600 }}>{qtyErr}</div>}
+        {!qtyErr && qtyWarn && qty !== '' && <div style={{ background: t.amberL, borderRadius: 8, padding: '7px 10px', marginBottom: 10, color: t.amber, fontSize: 11, fontWeight: 600 }}>{qtyWarn}</div>}
         <div style={{ marginBottom: 10 }}><label style={lb}>사유 *</label><select value={reason} onChange={e => setReason(e.target.value)} style={ip}><option value="">사유 선택</option>{reasons.map(r => <option key={r}>{r}</option>)}</select></div>
         {txType === TX_RETURN && <div style={{ marginBottom: 10 }}><label style={lb}>공급업체</label><input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="반품처" style={ip} /></div>}
         <div style={{ marginBottom: 10 }}><label style={lb}>금액 (자동 산출 · 수정 가능)</label><input type="number" value={amtTouched ? amtRaw : String(autoAmt)} onChange={e => { setAmtTouched(true); setAmtRaw(e.target.value) }} style={ip} /><div style={{ fontSize: 10, color: t.textL, marginTop: 3 }}>= 수량 × 개당 {pp.toLocaleString()}원 · 저장 {amt.toLocaleString()}원</div></div>
@@ -866,7 +869,15 @@ function DisposalModal({ drug: dr, onClose, onSaved }) {
         <div style={{ marginBottom: 10 }}><label style={lb}>처리상태</label><select value={procStatus} onChange={e => setProcStatus(e.target.value)} style={ip}>{TX_STATUS.map(s => <option key={s}>{s}</option>)}</select></div>
         <div style={{ marginBottom: 10 }}><label style={lb}>비고</label><input value={memo} onChange={e => setMemo(e.target.value)} placeholder="비고" style={ip} /></div>
         <div style={{ background: t.blueL, borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 11, color: t.blue, display: 'flex', justifyContent: 'space-between' }}><span>거래일자</span><span style={{ fontWeight: 700 }}>{today} · 오늘 고정</span></div>
-        <div style={{ display: 'flex', gap: 8 }}><button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, border: `1px solid ${t.border}`, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button><button onClick={save} disabled={!canSave} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: canSave ? 'pointer' : 'not-allowed', background: canSave ? t.amber : t.textL, color: '#fff', fontSize: 13, fontWeight: 700 }}>{saving ? '처리 중...' : txType + ' 처리'}</button></div>
+        <div style={{ display: 'flex', gap: 8 }}><button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, border: `1px solid ${t.border}`, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button><button onClick={() => setConfirm(true)} disabled={!canSave} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: canSave ? 'pointer' : 'not-allowed', background: canSave ? t.amber : t.textL, color: '#fff', fontSize: 13, fontWeight: 700 }}>{saving ? '처리 중...' : txType + ' 처리'}</button></div>
+        {confirm && <div onClick={() => setConfirm(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 14, padding: '22px 26px', maxWidth: 420, width: '100%', border: `1px solid ${t.border}`, boxShadow: t.shadowH }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: t.amber, marginBottom: 10 }}>{txType} 처리 확인</div>
+            <div style={{ fontSize: 12, color: t.textM, lineHeight: 1.7, marginBottom: 12 }}><strong style={{ color: t.text }}>{dr.drug_name}</strong> · {txType} · {q.toLocaleString()}개 · ₩{amt.toLocaleString()} · LOT {lot || '-'} · 유효기한 {expDate || '-'} · {today}<br />재고 <strong style={{ color: t.text }}>{cur.toLocaleString()}</strong> → <strong style={{ color: t.red }}>{(cur - q).toLocaleString()}</strong></div>
+            {qtyWarn && <div style={{ background: t.amberL, borderRadius: 8, padding: '8px 12px', marginBottom: 12, color: t.amber, fontSize: 11, fontWeight: 600 }}>{qtyWarn}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button onClick={() => setConfirm(false)} style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${t.border}`, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>취소</button><button onClick={save} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: t.amber, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>{txType} 확정</button></div>
+          </div>
+        </div>}
       </div>
     </div>
   </div>
@@ -2536,7 +2547,7 @@ function TransactionForm({drugs,onReload,navFilter}){
     {delTx&&<div onClick={()=>{setDelTx(null);setDelMsg(null)}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
       <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:420,width:'100%',border:`1px solid ${t.border}`,boxShadow:t.shadowH}}>
         <div style={{fontSize:14,fontWeight:700,color:t.red,marginBottom:10}}>거래 삭제 확인</div>
-        <div style={{fontSize:12,color:t.textM,lineHeight:1.7,marginBottom:14}}><strong style={{color:t.text}}>{delTx.drug_name||delTx.drug_code}</strong> · {delTx.type} · {(delTx.quantity||0).toLocaleString()}개 · ₩{(delTx.total_amount||0).toLocaleString()} · {delTx.transaction_date}<br/>삭제하면 재고가 자동 복원됩니다. <strong style={{color:t.red}}>삭제 이력은 남지 않아 되돌릴 수 없습니다.</strong></div>
+        <div style={{fontSize:12,color:t.textM,lineHeight:1.7,marginBottom:14}}><strong style={{color:t.text}}>{delTx.drug_name||delTx.drug_code}</strong> · {delTx.type} · {(delTx.quantity||0).toLocaleString()}개 · ₩{(delTx.total_amount||0).toLocaleString()} · {delTx.transaction_date}<br/>삭제하면 재고가 자동 복원됩니다. <strong style={{color:t.red}}>삭제 이력은 남지 않아 되돌릴 수 없습니다.</strong><br/>잘못 입력한 거래는 삭제 후 다시 등록하세요.</div>
         {delMsg&&<div style={{background:t.redL,color:t.red,borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:11,fontWeight:600}}>{delMsg}</div>}
         <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
           <button onClick={()=>{setDelTx(null);setDelMsg(null)}} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.border}`,background:'transparent',color:t.textM,cursor:'pointer',fontSize:12,fontWeight:700}}>취소</button>
