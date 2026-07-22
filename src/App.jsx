@@ -2566,16 +2566,19 @@ function ChangePlanModal({ plan, drugs, onClose, onSaved }) {
   const { t } = useTheme()
   const isNew = !plan.id
   const [search, setSearch] = useState(''); const [selCode, setSelCode] = useState(plan.from_drug_code || '')
-  const [f, setF] = useState({ to_drug_name: plan.to_drug_name || '', to_drug_code: plan.to_drug_code || '', to_manufacturer: plan.to_manufacturer || '', purchased: plan.purchased || '○', plan_status: plan.plan_status || '예정', weekly_usage: plan.weekly_usage ?? '', base_date: plan.base_date || new Date().toISOString().split('T')[0], memo: plan.memo || '' })
+  const [f, setF] = useState({ to_drug_name: plan.to_drug_name || '', to_drug_code: plan.to_drug_code || '', to_manufacturer: plan.to_manufacturer || '', purchased: plan.purchased || '○', plan_status: plan.plan_status || '예정', usage_dept1: plan.usage_dept1 ?? '', usage_dept2: plan.usage_dept2 ?? '', usage_dept3: plan.usage_dept3 ?? '', weekly_usage: plan.weekly_usage ?? '', base_date: plan.base_date || new Date().toISOString().split('T')[0], memo: plan.memo || '' })
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null)
   const sel = drugs.find(d => d.drug_code === selCode)
+  const [wuTouched, setWuTouched] = useState(false)
+  const dsum = (Number(f.usage_dept1) || 0) + (Number(f.usage_dept2) || 0) + (Number(f.usage_dept3) || 0); const hasDept = f.usage_dept1 !== '' || f.usage_dept2 !== '' || f.usage_dept3 !== ''
   const filtered = drugs.filter(d => d.status === '사용' && search.trim() && (d.drug_name?.toLowerCase().includes(search.toLowerCase()) || d.drug_code?.toLowerCase().includes(search.toLowerCase()))).slice(0, 8)
   const sf = (k, v) => setF(p => ({ ...p, [k]: v }))
   const canSave = !!selCode && !!f.base_date && !saving
   async function save() {
     if (!canSave) { setMsg('기존 약품과 기준일을 입력하세요'); return }
     setSaving(true); setMsg(null)
-    const row = { from_drug_code: selCode, to_drug_name: f.to_drug_name || null, to_drug_code: f.to_drug_code || null, to_manufacturer: f.to_manufacturer || null, purchased: f.purchased || null, plan_status: f.plan_status || null, weekly_usage: f.weekly_usage === '' ? null : Number(f.weekly_usage), base_date: f.base_date, memo: f.memo || null }
+    const wuFinal = wuTouched ? f.weekly_usage : (hasDept ? String(dsum) : f.weekly_usage)
+    const row = { from_drug_code: selCode, to_drug_name: f.to_drug_name || null, to_drug_code: f.to_drug_code || null, to_manufacturer: f.to_manufacturer || null, purchased: f.purchased || null, plan_status: f.plan_status || null, usage_dept1: f.usage_dept1 === '' ? null : Number(f.usage_dept1), usage_dept2: f.usage_dept2 === '' ? null : Number(f.usage_dept2), usage_dept3: f.usage_dept3 === '' ? null : Number(f.usage_dept3), weekly_usage: wuFinal === '' ? null : Number(wuFinal), base_date: f.base_date, memo: f.memo || null }
     let res = isNew ? await supabase.from('drug_change_plans').insert([row]) : await supabase.from('drug_change_plans').update(row).eq('id', plan.id)
     setSaving(false)
     if (res.error) { setMsg(dbErrorMsg(res.error)); return }
@@ -2602,8 +2605,9 @@ function ChangePlanModal({ plan, drugs, onClose, onSaved }) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
           <div><label style={lb}>상태</label><select value={f.plan_status} onChange={e => sf('plan_status', e.target.value)} style={ip}><option>예정</option><option>완료</option><option>보류</option></select></div>
-          <div><label style={lb}>주간 사용량</label><input type="number" value={f.weekly_usage} onChange={e => sf('weekly_usage', e.target.value)} placeholder="수기 입력" style={ip} /></div>
+          <div><label style={lb}>주간 사용량(합계)</label><input type="number" value={wuTouched ? f.weekly_usage : (hasDept ? String(dsum) : f.weekly_usage)} onChange={e => { setWuTouched(true); sf('weekly_usage', e.target.value) }} placeholder="수기 입력" style={ip} /></div>
         </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>가정의학과(화)</label><input type="number" value={f.usage_dept1} onChange={e => sf('usage_dept1', e.target.value)} style={ip} /></div><div><label style={lb}>재활의학과(수)</label><input type="number" value={f.usage_dept2} onChange={e => sf('usage_dept2', e.target.value)} style={ip} /></div><div><label style={lb}>신경과(목)</label><input type="number" value={f.usage_dept3} onChange={e => sf('usage_dept3', e.target.value)} style={ip} /></div></div>
         <div style={{ marginBottom: 10 }}><label style={lb}>기준일 *</label><input type="date" value={f.base_date} onChange={e => sf('base_date', e.target.value)} style={ip} /></div>
         <div style={{ marginBottom: 14 }}><label style={lb}>메모</label><input value={f.memo} onChange={e => sf('memo', e.target.value)} style={ip} /></div>
         <div style={{ display: 'flex', gap: 8 }}><button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, border: `1px solid ${t.border}`, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button><button onClick={save} disabled={!canSave} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: canSave ? 'pointer' : 'not-allowed', background: canSave ? t.accent : t.textL, color: '#fff', fontSize: 13, fontWeight: 700 }}>{saving ? '저장 중...' : '저장'}</button></div>
@@ -2637,15 +2641,18 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
     const rows = (snap[p.from_drug_code] || []).slice().sort((a, b) => (b.snap_year - a.snap_year) || (b.snap_month - a.snap_month))
     let cand = rows
     if (p.base_date) { const bd = new Date(p.base_date), by = bd.getFullYear(), bm = bd.getMonth() + 1; cand = rows.filter(s => s.snap_year < by || (s.snap_year === by && s.snap_month < bm)) }
-    const use3 = cand.slice(0, 3)
-    const recent3 = use3.length === 3 ? use3.reduce((a, s) => a + Number(s.total_out_qty || 0), 0) : null
-    const monthlyAvg = recent3 != null ? recent3 / 3 : null
+    const valid = cand.filter(s => Number(s.total_out_qty || 0) > 0)
+    const use3 = valid.slice(0, 3)
+    const recent3 = use3.length ? use3.reduce((a, s) => a + Number(s.total_out_qty || 0), 0) : null
+    const monthlyAvg = use3.length ? recent3 / use3.length : null
+    const usedMonths = use3.map(s => s.snap_month).sort((a, b) => a - b)
+    const monthsLabel = usedMonths.length ? usedMonths.join('·') + '월(' + usedMonths.length + '개월)' : ''
     const rec = monthlyAvg != null ? Math.round(monthlyAvg * 1.2) : null
     const wu = Number(p.weekly_usage) || 0
     const weeksLeft = wu > 0 ? cur / wu : null
     const eta = (p.base_date && weeksLeft != null) ? new Date(new Date(p.base_date).getTime() + weeksLeft * 7 * 864e5) : null
     const etaStr = eta ? eta.toISOString().split('T')[0] : ''
-    return { cur, recent3, monthlyAvg, rec, weeksLeft, etaStr }
+    return { cur, recent3, monthlyAvg, rec, weeksLeft, etaStr, monthsLabel }
   }
   const enriched = plans.map(p => { const d = dmap[p.from_drug_code] || {}; return { ...p, category: d.category || '', from_drug_name: d.drug_name || p.from_drug_code, ...calc(p) } })
   const shown = enriched.filter(p => filter === '전체' || p.plan_status === filter)
@@ -2674,7 +2681,7 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
           <td style={{ padding: '6px 8px', fontSize: 10, color: t.textM }}>{p.to_manufacturer || '-'}</td>
           <td style={{ padding: '6px 8px', fontSize: 10, textAlign: 'center' }}>{p.purchased || '-'}</td>
           <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right' }}>{num(p.recent3)}</td>
-          <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right' }}>{p.monthlyAvg == null ? '—' : Math.round(p.monthlyAvg).toLocaleString()}</td>
+          <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right' }}>{p.monthlyAvg == null ? '—' : Math.round(p.monthlyAvg).toLocaleString()}{p.monthsLabel && <span style={{ fontSize: 8, color: t.textL, marginLeft: 3 }}>{p.monthsLabel}</span>}</td>
           <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right', color: t.accent, fontWeight: 600 }}>{num(p.rec)}</td>
           <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right' }}>{p.weekly_usage == null ? '—' : Number(p.weekly_usage).toLocaleString()}</td>
           <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right', fontWeight: 600 }}>{p.cur.toLocaleString()}</td>
