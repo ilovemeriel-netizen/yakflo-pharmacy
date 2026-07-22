@@ -2384,7 +2384,7 @@ function DrugRegister({onRefresh, drugs}) {
 }
 /* ═══ 입출고 관리 — 4탭 구조 (입고/출고/반품/폐기) ═══ */
 function TransactionForm({drugs,onReload,navFilter}){
-  const{t}=useTheme();
+  const{t,memberRole,profile}=useTheme();const canDel=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
   const[tab,setTab]=useState(navFilter?.txTab||'입고')
   const[search,setSearch]=useState('');const[selDrug,setSelDrug]=useState(null)
   const[form,setForm]=useState({qty:'',sub_type:'',note:'',supplier:'',lot_no:'',expiry_date:'',reason:'',handler:'이정화',approver:'',process_status:'처리완료'})
@@ -2416,10 +2416,11 @@ function TransactionForm({drugs,onReload,navFilter}){
     setTimeout(()=>setMsg(null),3000)
   }
   async function _delTx(tx){
-    if(!confirm(`${tx.drug_name} ${tx.type} ${tx.quantity}개를 삭제하시겠습니까?`))return
-    await supabase.from('transactions').delete().eq('id',tx.id)
-    /* 삭제 역보정은 0015 AFTER DELETE 트리거(trg_revert_tx_from_inventory)가 drugs+inventory 동기 처리. */
-    onReload?.();loadTxns()
+    setDelMsg(null)
+    const {data,error}=await supabase.from('transactions').delete().eq('id',tx.id).select()
+    if(error){setDelMsg(error.message);return}
+    if(!data||data.length===0){setDelMsg('삭제 실패 — 권한이 없거나 마감월·재고 가드에 막혔습니다.');return}
+    setDelTx(null);onReload?.();loadTxns()
   }
   /* 엑셀 대량 업로드 */
   function xlUpload(e){
@@ -2511,13 +2512,24 @@ function TransactionForm({drugs,onReload,navFilter}){
           <span style={{fontSize:12,fontWeight:600,color:tc[tab]?.c}}>{txns.length}건</span>
         </div>
         <div style={{overflowX:'auto',maxHeight:500}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-          <thead><tr>{cols.map(([k,h])=><th key={h} style={{...TS(k),fontSize:10,whiteSpace:'nowrap'}} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}</tr></thead>
+          <thead><tr>{cols.map(([k,h])=><th key={h} style={{...TS(k),fontSize:10,whiteSpace:'nowrap'}} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}{canDel&&<th style={{fontSize:10,whiteSpace:'nowrap',textAlign:'center'}}>삭제</th>}</tr></thead>
           <tbody>{!pagedTx.length?<tr><td colSpan={cols.length} style={{padding:30,textAlign:'center',color:t.textL}}>이력 없음</td></tr>:pagedTx.map((tx,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
-            {cols.map(([k])=><td key={k} style={{padding:'5px 8px',fontSize:10,color:k==='drug_name'?t.text:k==='total_amount'?tc[tab]?.c:t.textM,fontWeight:k==='drug_name'||k==='total_amount'?600:400,textAlign:k==='quantity'||k==='unit_price'||k==='total_amount'?'right':'left',whiteSpace:'nowrap'}}>{k==='total_amount'?'₩'+(tx[k]||0).toLocaleString():k==='unit_price'?(tx[k]||0).toLocaleString():k==='quantity'?(tx[k]||0).toLocaleString():k==='sub_type'&&tx[k]?<Bd bg={tc[tab]?.bg} color={tc[tab]?.c}>{tx[k]}</Bd>:tx[k]||'-'}</td>)}
+            {cols.map(([k])=><td key={k} style={{padding:'5px 8px',fontSize:10,color:k==='drug_name'?t.text:k==='total_amount'?tc[tab]?.c:t.textM,fontWeight:k==='drug_name'||k==='total_amount'?600:400,textAlign:k==='quantity'||k==='unit_price'||k==='total_amount'?'right':'left',whiteSpace:'nowrap'}}>{k==='total_amount'?'₩'+(tx[k]||0).toLocaleString():k==='unit_price'?(tx[k]||0).toLocaleString():k==='quantity'?(tx[k]||0).toLocaleString():k==='sub_type'&&tx[k]?<Bd bg={tc[tab]?.bg} color={tc[tab]?.c}>{tx[k]}</Bd>:tx[k]||'-'}</td>)}{canDel&&<td style={{padding:'5px 8px',textAlign:'center'}}><button onClick={()=>{setDelTx(tx);setDelMsg(null)}} style={{padding:'2px 8px',borderRadius:4,border:`1px solid ${t.red}`,background:'transparent',color:t.red,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>삭제</button></td>}
           </tr>)}</tbody>
         </table></div>
         <Pg page={txPage} setPage={setTxPage} tp={tp2} fl={sorted} pp={PP}/>
       </div>
+    {delTx&&<div onClick={()=>{setDelTx(null);setDelMsg(null)}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:420,width:'100%',border:`1px solid ${t.border}`,boxShadow:t.shadowH}}>
+        <div style={{fontSize:14,fontWeight:700,color:t.red,marginBottom:10}}>거래 삭제 확인</div>
+        <div style={{fontSize:12,color:t.textM,lineHeight:1.7,marginBottom:14}}><strong style={{color:t.text}}>{delTx.drug_name||delTx.drug_code}</strong> · {delTx.type} · {(delTx.quantity||0).toLocaleString()}개 · ₩{(delTx.total_amount||0).toLocaleString()} · {delTx.transaction_date}<br/>삭제하면 재고가 자동 복원됩니다. <strong style={{color:t.red}}>삭제 이력은 남지 않아 되돌릴 수 없습니다.</strong></div>
+        {delMsg&&<div style={{background:t.redL,color:t.red,borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:11,fontWeight:600}}>{delMsg}</div>}
+        <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
+          <button onClick={()=>{setDelTx(null);setDelMsg(null)}} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.border}`,background:'transparent',color:t.textM,cursor:'pointer',fontSize:12,fontWeight:700}}>취소</button>
+          <button onClick={()=>_delTx(delTx)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.red}`,background:t.red,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>삭제</button>
+        </div>
+      </div>
+    </div>}
     </div><Ft/>
   </div>
 }
