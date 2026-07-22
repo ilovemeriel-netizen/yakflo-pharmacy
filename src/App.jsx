@@ -2566,10 +2566,12 @@ function ChangePlanModal({ plan, drugs, onClose, onSaved }) {
   const { t } = useTheme()
   const isNew = !plan.id
   const [search, setSearch] = useState(''); const [selCode, setSelCode] = useState(plan.from_drug_code || '')
-  const [f, setF] = useState({ to_drug_name: plan.to_drug_name || '', to_drug_code: plan.to_drug_code || '', to_manufacturer: plan.to_manufacturer || '', purchased: plan.purchased || '○', plan_status: plan.plan_status || '예정', usage_dept1: plan.usage_dept1 ?? '', usage_dept2: plan.usage_dept2 ?? '', usage_dept3: plan.usage_dept3 ?? '', weekly_usage: plan.weekly_usage ?? '', base_date: plan.base_date || new Date().toISOString().split('T')[0], memo: plan.memo || '' })
+  const [f, setF] = useState({ to_drug_name: plan.to_drug_name || '', to_drug_code: plan.to_drug_code || '', to_manufacturer: plan.to_manufacturer || '', purchased: plan.purchased || '○', plan_status: plan.plan_status || '예정', monthly_avg_manual: plan.monthly_avg_manual ?? '', usage_dept1: plan.usage_dept1 ?? '', usage_dept2: plan.usage_dept2 ?? '', usage_dept3: plan.usage_dept3 ?? '', weekly_usage: plan.weekly_usage ?? '', base_date: plan.base_date || new Date().toISOString().split('T')[0], memo: plan.memo || '' })
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null)
   const sel = drugs.find(d => d.drug_code === selCode)
   const [wuTouched, setWuTouched] = useState(false)
+  const [autoAvg, setAutoAvg] = useState(null); const [autoMonths, setAutoMonths] = useState('')
+  useEffect(() => { if (!selCode) { setAutoAvg(null); setAutoMonths(''); return } let on = true; (async () => { const { data } = await supabase.from('monthly_snapshots').select('snap_year,snap_month,total_out_qty').eq('drug_code', selCode); const rws = (data || []).sort((a, b) => (b.snap_year - a.snap_year) || (b.snap_month - a.snap_month)); let cnd = rws; if (f.base_date) { const bd = new Date(f.base_date), by = bd.getFullYear(), bm = bd.getMonth() + 1; cnd = rws.filter(s => s.snap_year < by || (s.snap_year === by && s.snap_month < bm)) } const vld = cnd.filter(s => Number(s.total_out_qty || 0) > 0).slice(0, 3); const avg = vld.length ? vld.reduce((a, s) => a + Number(s.total_out_qty || 0), 0) / vld.length : null; if (on) { setAutoAvg(avg); setAutoMonths(vld.map(s => s.snap_month).sort((a, b) => a - b).join('·')) } })(); return () => { on = false } }, [selCode, f.base_date])
   const dsum = (Number(f.usage_dept1) || 0) + (Number(f.usage_dept2) || 0) + (Number(f.usage_dept3) || 0); const hasDept = f.usage_dept1 !== '' || f.usage_dept2 !== '' || f.usage_dept3 !== ''
   const filtered = drugs.filter(d => d.status === '사용' && search.trim() && (d.drug_name?.toLowerCase().includes(search.toLowerCase()) || d.drug_code?.toLowerCase().includes(search.toLowerCase()))).slice(0, 8)
   const sf = (k, v) => setF(p => ({ ...p, [k]: v }))
@@ -2578,7 +2580,7 @@ function ChangePlanModal({ plan, drugs, onClose, onSaved }) {
     if (!canSave) { setMsg('기존 약품과 기준일을 입력하세요'); return }
     setSaving(true); setMsg(null)
     const wuFinal = wuTouched ? f.weekly_usage : (hasDept ? String(dsum) : f.weekly_usage)
-    const row = { from_drug_code: selCode, to_drug_name: f.to_drug_name || null, to_drug_code: f.to_drug_code || null, to_manufacturer: f.to_manufacturer || null, purchased: f.purchased || null, plan_status: f.plan_status || null, usage_dept1: f.usage_dept1 === '' ? null : Number(f.usage_dept1), usage_dept2: f.usage_dept2 === '' ? null : Number(f.usage_dept2), usage_dept3: f.usage_dept3 === '' ? null : Number(f.usage_dept3), weekly_usage: wuFinal === '' ? null : Number(wuFinal), base_date: f.base_date, memo: f.memo || null }
+    const row = { from_drug_code: selCode, to_drug_name: f.to_drug_name || null, to_drug_code: f.to_drug_code || null, to_manufacturer: f.to_manufacturer || null, purchased: f.purchased || null, plan_status: f.plan_status || null, monthly_avg_manual: f.monthly_avg_manual === '' ? null : Number(f.monthly_avg_manual), usage_dept1: f.usage_dept1 === '' ? null : Number(f.usage_dept1), usage_dept2: f.usage_dept2 === '' ? null : Number(f.usage_dept2), usage_dept3: f.usage_dept3 === '' ? null : Number(f.usage_dept3), weekly_usage: wuFinal === '' ? null : Number(wuFinal), base_date: f.base_date, memo: f.memo || null }
     let res = isNew ? await supabase.from('drug_change_plans').insert([row]) : await supabase.from('drug_change_plans').update(row).eq('id', plan.id)
     setSaving(false)
     if (res.error) { setMsg(dbErrorMsg(res.error)); return }
@@ -2608,6 +2610,8 @@ function ChangePlanModal({ plan, drugs, onClose, onSaved }) {
           <div><label style={lb}>주간 사용량(합계)</label><input type="number" value={wuTouched ? f.weekly_usage : (hasDept ? String(dsum) : f.weekly_usage)} onChange={e => { setWuTouched(true); sf('weekly_usage', e.target.value) }} placeholder="수기 입력" style={ip} /></div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>가정의학과(화)</label><input type="number" value={f.usage_dept1} onChange={e => sf('usage_dept1', e.target.value)} style={ip} /></div><div><label style={lb}>재활의학과(수)</label><input type="number" value={f.usage_dept2} onChange={e => sf('usage_dept2', e.target.value)} style={ip} /></div><div><label style={lb}>신경과(목)</label><input type="number" value={f.usage_dept3} onChange={e => sf('usage_dept3', e.target.value)} style={ip} /></div></div>
+        <div style={{ marginBottom: 10 }}><label style={lb}>월평균 (자동 산출 · 수기 조정)</label><div style={{ fontSize: 10, color: t.textM, marginBottom: 4 }}>자동: {autoAvg != null ? Math.round(autoAvg).toLocaleString() : '—'}{autoMonths ? ' (' + autoMonths + '월 기준)' : ''}</div><input type="number" value={f.monthly_avg_manual} onChange={e => sf('monthly_avg_manual', e.target.value)} placeholder="수기 조정값 (비우면 자동값)" style={ip} /></div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}><button type="button" disabled={!(f.monthly_avg_manual !== '' || autoAvg != null)} onClick={() => { const eff = f.monthly_avg_manual !== '' ? Number(f.monthly_avg_manual) : autoAvg; if (eff != null) { setWuTouched(true); sf('weekly_usage', String(Math.round(eff / 4.3))) } }} style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${t.accent}`, background: (f.monthly_avg_manual !== '' || autoAvg != null) ? t.accentL : t.bg, color: (f.monthly_avg_manual !== '' || autoAvg != null) ? t.accent : t.textL, cursor: (f.monthly_avg_manual !== '' || autoAvg != null) ? 'pointer' : 'not-allowed', fontSize: 11, fontWeight: 600 }}>월평균 ÷ 4.3 → 주간</button><span style={{ fontSize: 10, color: t.textL }}>주간 추정치 자동 입력</span></div>
         <div style={{ marginBottom: 10 }}><label style={lb}>기준일 *</label><input type="date" value={f.base_date} onChange={e => sf('base_date', e.target.value)} style={ip} /></div>
         <div style={{ marginBottom: 14 }}><label style={lb}>메모</label><input value={f.memo} onChange={e => sf('memo', e.target.value)} style={ip} /></div>
         <div style={{ display: 'flex', gap: 8 }}><button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, border: `1px solid ${t.border}`, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button><button onClick={save} disabled={!canSave} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: canSave ? 'pointer' : 'not-allowed', background: canSave ? t.accent : t.textL, color: '#fff', fontSize: 13, fontWeight: 700 }}>{saving ? '저장 중...' : '저장'}</button></div>
@@ -2637,14 +2641,14 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
     setLd(false)
   }
   function calc(p) {
-    const d = dmap[p.from_drug_code] || {}; const cur = d.current_qty || 0
+    const d = dmap[p.from_drug_code] || {}; const curRaw = d.current_qty; const cur = curRaw || 0
     const rows = (snap[p.from_drug_code] || []).slice().sort((a, b) => (b.snap_year - a.snap_year) || (b.snap_month - a.snap_month))
     let cand = rows
     if (p.base_date) { const bd = new Date(p.base_date), by = bd.getFullYear(), bm = bd.getMonth() + 1; cand = rows.filter(s => s.snap_year < by || (s.snap_year === by && s.snap_month < bm)) }
     const valid = cand.filter(s => Number(s.total_out_qty || 0) > 0)
     const use3 = valid.slice(0, 3)
     const recent3 = use3.length ? use3.reduce((a, s) => a + Number(s.total_out_qty || 0), 0) : null
-    const monthlyAvg = use3.length ? recent3 / use3.length : null
+    const autoAvg = use3.length ? recent3 / use3.length : null; const isManual = p.monthly_avg_manual != null && p.monthly_avg_manual !== ''; const monthlyAvg = isManual ? Number(p.monthly_avg_manual) : autoAvg
     const usedMonths = use3.map(s => s.snap_month).sort((a, b) => a - b)
     const monthsLabel = usedMonths.length ? usedMonths.join('·') + '월(' + usedMonths.length + '개월)' : ''
     const rec = monthlyAvg != null ? Math.round(monthlyAvg * 1.2) : null
@@ -2652,7 +2656,8 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
     const weeksLeft = wu > 0 ? cur / wu : null
     const eta = (p.base_date && weeksLeft != null) ? new Date(new Date(p.base_date).getTime() + weeksLeft * 7 * 864e5) : null
     const etaStr = eta ? eta.toISOString().split('T')[0] : ''
-    return { cur, recent3, monthlyAvg, rec, weeksLeft, etaStr, monthsLabel }
+    const dd1 = Number(p.usage_dept1), dd2 = Number(p.usage_dept2), dd3 = Number(p.usage_dept3); const hasDep = !([p.usage_dept1, p.usage_dept2, p.usage_dept3].every(v => v == null || v === '')); let depDay = null; if (hasDep) { const a = dd1 || 0, b = dd2 || 0, cc = dd3 || 0; if (a > cur) depDay = '화'; else if (a + b > cur) depDay = '수'; else if (a + b + cc > cur) depDay = '목' }
+    return { cur, curRaw, recent3, monthlyAvg, autoAvg, isManual, rec, weeksLeft, etaStr, monthsLabel, depDay }
   }
   const enriched = plans.map(p => { const d = dmap[p.from_drug_code] || {}; return { ...p, category: d.category || '', from_drug_name: d.drug_name || p.from_drug_code, ...calc(p) } })
   const shown = enriched.filter(p => filter === '전체' || p.plan_status === filter)
@@ -2662,6 +2667,7 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
     const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '약품변경'); XLSX.writeFile(wb, `약품변경_${new Date().toISOString().split('T')[0]}.xlsx`)
   }
   const num = v => v == null ? '—' : Number(v).toLocaleString()
+  const remBg = (cr, rem) => { if (cr == null) return '#F1F1F1'; if (cr === 0) return '#7FD9A8'; if (rem == null) return ''; if (rem >= 4) return '#BFA6D9'; if (rem >= 3) return '#92C8E0'; if (rem >= 2) return '#7FD9A8'; if (rem >= 1) return '#FDF6A3'; return '#F39E94' }
   const cols = [{ k: 'category', h: '구분' }, { k: 'from_drug_name', h: '기존 약품명' }, { k: 'to_drug_name', h: '변경 약품명' }, { k: 'to_manufacturer', h: '제약사' }, { k: 'purchased', h: '사입' }, { k: 'recent3', h: '직전3개월' }, { k: 'monthlyAvg', h: '월평균' }, { k: 'rec', h: '추천주문' }, { k: 'weekly_usage', h: '주간사용' }, { k: 'cur', h: '현재고' }, { k: 'weeksLeft', h: '남은주' }, { k: 'etaStr', h: '변경예상' }, { k: 'plan_status', h: '상태' }]
   return <div style={{ padding: '20px 24px' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
@@ -2672,6 +2678,7 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
         <button onClick={() => setEditP({})} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>+ 등록</button>
       </div>
     </div>
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}><span style={{ fontSize: 10, color: t.textM }}>남은 주:</span>{[['4주↑', '#BFA6D9'], ['3~4주', '#92C8E0'], ['2~3주', '#7FD9A8'], ['1~2주', '#FDF6A3'], ['1주 미만', '#F39E94']].map(([l, bg]) => <span key={l} style={{ fontSize: 9, padding: '2px 8px', borderRadius: 6, background: bg, color: bg === '#F39E94' ? '#C00000' : '#333', fontWeight: 600 }}>{l}</span>)}<span style={{ fontSize: 9, color: t.textM, marginLeft: 4 }}>· 요일 누적 소진 시 남은주에 소진 요일 병기</span></div>
     <div style={{ background: t.card, borderRadius: 12, border: `1px solid ${t.border}`, overflow: 'hidden' }}>
       <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={setSort} hf={{}} grid layout="fixed" minWidth={1400} colWidths={[80, 180, 160, 110, 56, 90, 80, 90, 84, 84, 76, 100, 72, 92]} hscroll={{ noLabel: true, ends: true }} cols={cols.map(c => ({ k: c.k, h: c.h, th: { whiteSpace: 'nowrap' } })).concat([{ k: '', h: '관리', plain: true }])}>
         <tbody>{ld ? <tr><td colSpan={14} style={{ padding: 30, textAlign: 'center', color: t.textL }}>불러오는 중...</td></tr> : !sorted.length ? <tr><td colSpan={14} style={{ padding: 30, textAlign: 'center', color: t.textL }}>등록된 약품변경이 없습니다</td></tr> : sorted.map((p, i) => <tr key={p.id || i} style={{ borderBottom: `1px solid ${t.border}` }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
@@ -2681,12 +2688,12 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
           <td style={{ padding: '6px 8px', fontSize: 10, color: t.textM }}>{p.to_manufacturer || '-'}</td>
           <td style={{ padding: '6px 8px', fontSize: 10, textAlign: 'center' }}>{p.purchased || '-'}</td>
           <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right' }}>{num(p.recent3)}</td>
-          <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right' }}>{p.monthlyAvg == null ? '—' : Math.round(p.monthlyAvg).toLocaleString()}{p.monthsLabel && <span style={{ fontSize: 8, color: t.textL, marginLeft: 3 }}>{p.monthsLabel}</span>}</td>
+          <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right' }}>{p.monthlyAvg == null ? '—' : Math.round(p.monthlyAvg).toLocaleString()}{p.isManual ? <span style={{ fontSize: 8, color: t.amber, marginLeft: 3, fontWeight: 700 }}>수기</span> : (p.monthsLabel && <span style={{ fontSize: 8, color: t.textL, marginLeft: 3 }}>{p.monthsLabel}</span>)}</td>
           <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right', color: t.accent, fontWeight: 600 }}>{num(p.rec)}</td>
           <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right' }}>{p.weekly_usage == null ? '—' : Number(p.weekly_usage).toLocaleString()}</td>
           <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right', fontWeight: 600 }}>{p.cur.toLocaleString()}</td>
-          <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right' }}>{p.weeksLeft == null ? '—' : (Math.round(p.weeksLeft * 10) / 10).toLocaleString()}</td>
-          <td style={{ padding: '6px 8px', fontSize: 10, color: p.etaStr ? t.text : t.textL, fontWeight: 600 }}>{p.etaStr || '—'}</td>
+          <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right', background: remBg(p.curRaw, p.weeksLeft), color: (p.weeksLeft != null && p.weeksLeft < 1) ? '#C00000' : undefined }}>{p.weeksLeft == null ? '—' : (Math.round(p.weeksLeft * 10) / 10).toLocaleString()}{p.depDay && <span style={{ fontSize: 8, marginLeft: 3, color: '#C00000', fontWeight: 700 }}>{p.depDay}소진</span>}</td>
+          <td style={{ padding: '6px 8px', fontSize: 10, fontWeight: 600, background: remBg(p.curRaw, p.weeksLeft), color: (p.weeksLeft != null && p.weeksLeft < 1) ? '#C00000' : (p.etaStr ? t.text : t.textL) }}>{p.etaStr || '—'}</td>
           <td style={{ padding: '6px 8px', textAlign: 'center' }}><Bd bg={p.plan_status === '완료' ? t.greenL : p.plan_status === '보류' ? t.amberL : t.accentL} color={p.plan_status === '완료' ? t.green : p.plan_status === '보류' ? t.amber : t.accent}>{p.plan_status || '-'}</Bd></td>
           <td style={{ padding: '6px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
             <button onClick={() => setEditP(p)} style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.accent}`, background: 'transparent', color: t.accent, cursor: 'pointer', fontSize: 9, fontWeight: 600, marginRight: 3 }}>수정</button>
