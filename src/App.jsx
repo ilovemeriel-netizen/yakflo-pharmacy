@@ -2409,7 +2409,7 @@ function TransactionForm({drugs,onReload,navFilter}){
     if((tab==='반품'||tab==='폐기')&&!form.reason){setMsg('사유를 선택해주세요');return}
     setSaving(true);setMsg(null)
     const q=parseInt(form.qty);const amt=q*(selDrug.purchase_price||0)
-    const tx={drug_code:selDrug.drug_code,drug_name:selDrug.drug_name,type:tab,sub_type:form.sub_type||null,quantity:q,unit_price:selDrug.purchase_price||0,total_amount:amt,note:form.note||null,transaction_date:new Date().toISOString().split('T')[0],reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
+    const tx={drug_code:selDrug.drug_code,type:tab,quantity:q,unit_price:selDrug.purchase_price||0,total_amount:amt,memo:form.note||null,transaction_date:new Date().toISOString().split('T')[0],reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
     let res=await supabase.from('transactions').insert([tx])
     for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
     if(res.error){setMsg(dbErrorMsg(res.error));setSaving(false);return}
@@ -2451,7 +2451,7 @@ function TransactionForm({drugs,onReload,navFilter}){
     setBulkLd(true)
     let ok=0,fail=0
     for(const r of valid){
-      const tx={drug_code:r.drug_code,drug_name:r.drug_name,type:tab,sub_type:r.sub_type||null,quantity:r.quantity,unit_price:r.unit_price,total_amount:r.total_amount,note:r.note||null,transaction_date:r.transaction_date,reason:r.reason||null,handler:r.handler||null,approver:r.approver||null,process_status:r.process_status||null,supplier:r.supplier||null,lot_no:r.lot_no||null,expiry_date:r.expiry_date||null}
+      const tx={drug_code:r.drug_code,type:tab,quantity:r.quantity,unit_price:r.unit_price,total_amount:r.total_amount,memo:r.note||null,transaction_date:r.transaction_date,reason:r.reason||null,handler:r.handler||null,approver:r.approver||null,process_status:r.process_status||null,supplier:r.supplier||null,lot_no:r.lot_no||null,expiry_date:r.expiry_date||null}
       let res=await supabase.from('transactions').insert([tx])
       for(let rt=0;rt<3&&res.error&&res.error.message?.includes('column');rt++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
       if(!res.error){ ok++ /* 재고는 0009 트리거 단일기록. 음수는 트리거 RAISE로 차단(해당 행 fail). */ }else fail++
@@ -2464,8 +2464,8 @@ function TransactionForm({drugs,onReload,navFilter}){
     const ws=XLSX.utils.aoa_to_sheet([hdrs]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,tab);XLSX.writeFile(wb,`${tab}_양식.xlsx`)
   }
   /* 테이블 컬럼 정의 */
-  const cols=tab==='입고'?[['transaction_date','일자'],['drug_code','약품코드'],['drug_name','약품명'],['sub_type','구분'],['quantity','수량'],['unit_price','거래단가'],['total_amount','금액'],['supplier','공급업체'],['note','비고']]:tab==='출고'?[['transaction_date','일자'],['drug_code','약품코드'],['drug_name','약품명'],['sub_type','구분'],['quantity','수량'],['unit_price','거래단가'],['total_amount','금액'],['note','비고']]:tab==='반품'?[['transaction_date','일자'],['drug_code','약품코드'],['drug_name','약품명'],['sub_type','구분'],['quantity','수량'],['unit_price','거래단가'],['total_amount','금액'],['lot_no','LOT'],['expiry_date','유효기한'],['reason','사유'],['process_status','처리상태'],['note','비고']]:[['drug_code','약품코드'],['drug_name','약품명'],['sub_type','구분'],['quantity','수량'],['unit_price','거래단가'],['total_amount','금액'],['lot_no','LOT'],['expiry_date','유효기한'],['reason','사유'],['handler','처리자'],['approver','승인자'],['note','비고']]
-  const sorted=so(txns);const tp2=Math.ceil(sorted.length/PP),pagedTx=sorted.slice((txPage-1)*PP,txPage*PP)
+  const cols=tab==='입고'?[['transaction_date','일자'],['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['quantity','수량'],['unit_price','거래단가'],['total_amount','금액'],['supplier','공급업체'],['memo','비고']]:tab==='출고'?[['transaction_date','일자'],['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['quantity','수량'],['unit_price','거래단가'],['total_amount','금액'],['memo','비고']]:tab==='반품'?[['transaction_date','일자'],['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['quantity','수량'],['unit_price','거래단가'],['total_amount','금액'],['lot_no','LOT'],['expiry_date','유효기한'],['reason','사유'],['process_status','처리상태'],['memo','비고']]:[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['quantity','수량'],['unit_price','거래단가'],['total_amount','금액'],['lot_no','LOT'],['expiry_date','유효기한'],['reason','사유'],['handler','처리자'],['approver','승인자'],['memo','비고']]
+  const _dmap={};(drugs||[]).forEach(d=>{_dmap[d.drug_code]=d});const _enr=txns.map(x=>({...x,drug_name:_dmap[x.drug_code]?.drug_name||'',category:_dmap[x.drug_code]?.category||''}));const sorted=so(_enr);const tp2=Math.ceil(sorted.length/PP),pagedTx=sorted.slice((txPage-1)*PP,txPage*PP)
 
   return<div style={{padding:'20px 24px'}}>
     {/* 탭 */}
