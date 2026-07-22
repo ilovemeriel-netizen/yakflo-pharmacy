@@ -818,6 +818,7 @@ function DisposalModal({ drug: dr, onClose, onSaved }) {
   const today = new Date().toISOString().split('T')[0]
   const [txType, setTxType] = useState(TX_DISPOSE)
   const [qty, setQty] = useState(''); const [lot, setLot] = useState(''); const [reason, setReason] = useState(''); const [supplier, setSupplier] = useState('')
+  const [expDate, setExpDate] = useState(dr.expiry_date || ''); const [handler, setHandler] = useState('이정화'); const [approver, setApprover] = useState(''); const [memo, setMemo] = useState(''); const [procStatus, setProcStatus] = useState('처리완료')
   const [amtRaw, setAmtRaw] = useState(''); const [amtTouched, setAmtTouched] = useState(false)
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null)
   const q = Number(qty)
@@ -830,7 +831,7 @@ function DisposalModal({ drug: dr, onClose, onSaved }) {
     if (!canSave) { if (!reason && !qtyErr) setMsg('사유를 선택해주세요'); return }
     setSaving(true); setMsg(null)
     /* 저장 로직은 TxForm과 동일 규약: unit_price=purchase_price, total_amount=사용자 확정 금액(정수), 재고는 0009 트리거가 차감. 컬럼 재시도 루프 포함. */
-    const tx = { drug_code: dr.drug_code, type: txType, quantity: q, unit_price: pp, total_amount: amt, lot_no: lot || null, reason: reason || null, supplier: txType === TX_RETURN ? (supplier || null) : null, transaction_date: today }
+    const tx = { drug_code: dr.drug_code, type: txType, quantity: q, unit_price: pp, total_amount: amt, lot_no: lot || null, reason: reason || null, supplier: txType === TX_RETURN ? (supplier || null) : null, transaction_date: today, expiry_date: expDate || null, handler: handler || null, approver: approver || null, memo: memo || null, process_status: procStatus || null }
     let res = await supabase.from('transactions').insert([tx])
     for (let r = 0; r < 3 && res.error && res.error.message?.includes('column'); r++) { const m = res.error.message.match(/'([^']+)' column/); if (!m) break; console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]]; res = await supabase.from('transactions').insert([tx]) }
     setSaving(false)
@@ -857,6 +858,13 @@ function DisposalModal({ drug: dr, onClose, onSaved }) {
         <div style={{ marginBottom: 10 }}><label style={lb}>사유 *</label><select value={reason} onChange={e => setReason(e.target.value)} style={ip}><option value="">사유 선택</option>{reasons.map(r => <option key={r}>{r}</option>)}</select></div>
         {txType === TX_RETURN && <div style={{ marginBottom: 10 }}><label style={lb}>공급업체</label><input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="반품처" style={ip} /></div>}
         <div style={{ marginBottom: 10 }}><label style={lb}>금액 (자동 산출 · 수정 가능)</label><input type="number" value={amtTouched ? amtRaw : String(autoAmt)} onChange={e => { setAmtTouched(true); setAmtRaw(e.target.value) }} style={ip} /><div style={{ fontSize: 10, color: t.textL, marginTop: 3 }}>= 수량 × 개당 {pp.toLocaleString()}원 · 저장 {amt.toLocaleString()}원</div></div>
+                <div style={{ marginBottom: 10 }}><label style={lb}>유효기한</label><input type="date" value={expDate} onChange={e => setExpDate(e.target.value)} style={ip} /></div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div><label style={lb}>처리자</label><input value={handler} onChange={e => setHandler(e.target.value)} placeholder="처리자" style={ip} /></div>
+          <div><label style={lb}>승인자</label><input value={approver} onChange={e => setApprover(e.target.value)} placeholder="승인자" style={ip} /></div>
+        </div>
+        <div style={{ marginBottom: 10 }}><label style={lb}>처리상태</label><select value={procStatus} onChange={e => setProcStatus(e.target.value)} style={ip}>{TX_STATUS.map(s => <option key={s}>{s}</option>)}</select></div>
+        <div style={{ marginBottom: 10 }}><label style={lb}>비고</label><input value={memo} onChange={e => setMemo(e.target.value)} placeholder="비고" style={ip} /></div>
         <div style={{ background: t.blueL, borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 11, color: t.blue, display: 'flex', justifyContent: 'space-between' }}><span>거래일자</span><span style={{ fontWeight: 700 }}>{today} · 오늘 고정</span></div>
         <div style={{ display: 'flex', gap: 8 }}><button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, border: `1px solid ${t.border}`, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button><button onClick={save} disabled={!canSave} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: canSave ? 'pointer' : 'not-allowed', background: canSave ? t.amber : t.textL, color: '#fff', fontSize: 13, fontWeight: 700 }}>{saving ? '처리 중...' : txType + ' 처리'}</button></div>
       </div>
@@ -2459,6 +2467,10 @@ function TransactionForm({drugs,onReload,navFilter}){
     setBulkLd(false);setBulkMsg(`완료! ${ok}건 등록, ${fail}건 실패`);setBulkData([]);onReload?.();loadTxns()
     setTimeout(()=>setBulkMsg(null),4000)
   }
+  function dlHist(){
+    const rows=sorted.map(tx=>{const o={};cols.forEach(([k,h])=>{o[h]=tx[k]??''});return o})
+    const ws=XLSX.utils.json_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,tab);XLSX.writeFile(wb,`입출고_${tab}_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
   function dlTemplate(){
     const hdrs=tab==='입고'?['일자','약품코드','입고수량','단가','공급업체','비고']:tab==='출고'?['일자','약품코드','출고수량','단가','비고']:tab==='반품'?['일자','약품코드','반품수량','단가','로트번호','유효기한','반품사유','처리상태','비고']:['약품코드','폐기수량','단가','로트번호','유효기한','폐기사유','처리자','승인자','비고']
     const ws=XLSX.utils.aoa_to_sheet([hdrs]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,tab);XLSX.writeFile(wb,`${tab}_양식.xlsx`)
@@ -2511,7 +2523,7 @@ function TransactionForm({drugs,onReload,navFilter}){
       <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
         <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,display:'flex',justifyContent:'space-between',alignItems:'center',background:tc[tab]?.bg}}>
           <span style={{fontWeight:700,fontSize:13,color:tc[tab]?.c}}>{tab} 이력</span>
-          <span style={{fontSize:12,fontWeight:600,color:tc[tab]?.c}}>{txns.length}건</span>
+          <span style={{display:'flex',alignItems:'center',gap:8}}><button onClick={dlHist} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button><span style={{fontSize:12,fontWeight:600,color:tc[tab]?.c}}>{txns.length}건{txns.length>=200?' (최근 200)':''}</span></span>
         </div>
         <div style={{overflowX:'auto',maxHeight:500}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
           <thead><tr>{cols.map(([k,h])=><th key={h} style={{...TS(k),fontSize:10,whiteSpace:'nowrap'}} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}{canDel&&<th style={{fontSize:10,whiteSpace:'nowrap',textAlign:'center'}}>삭제</th>}</tr></thead>
