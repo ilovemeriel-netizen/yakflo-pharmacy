@@ -784,9 +784,9 @@ function AdjustModal({ drug: dr, onClose, onSaved }) {
     const d = Number(qty) - (dr.current_qty || 0)
     if (d === 0) { setSaving(false); setMsg('변동 없음'); setTimeout(() => { onSaved?.(); onClose() }, 500); return }
     /* 실사 조정도 거래로 일원화: transactions type='조정'(quantity=목표−현재) → 0009 트리거가 drugs+inventory 동기. 직접 update 제거. */
-    const tx = { drug_code: dr.drug_code, drug_name: dr.drug_name, type: TX_ADJUST, quantity: d, reason: `${reason} (${d > 0 ? '+' : ''}${d})`, transaction_date: new Date().toISOString().split('T')[0] }
+    const tx = { drug_code: dr.drug_code, type: TX_ADJUST, quantity: d, reason: `${reason} (${d > 0 ? '+' : ''}${d})`, transaction_date: new Date().toISOString().split('T')[0] }
     let res = await supabase.from('transactions').insert([tx])
-    for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
+    for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
     setSaving(false)
     if(res.error){setMsg(res.error.message);return}
     setMsg('OK'); setTimeout(() => { onSaved?.(); onClose() }, 500) }
@@ -830,9 +830,9 @@ function DisposalModal({ drug: dr, onClose, onSaved }) {
     if (!canSave) { if (!reason && !qtyErr) setMsg('사유를 선택해주세요'); return }
     setSaving(true); setMsg(null)
     /* 저장 로직은 TxForm과 동일 규약: unit_price=purchase_price, total_amount=사용자 확정 금액(정수), 재고는 0009 트리거가 차감. 컬럼 재시도 루프 포함. */
-    const tx = { drug_code: dr.drug_code, drug_name: dr.drug_name, type: txType, quantity: q, unit_price: pp, total_amount: amt, lot_no: lot || null, reason: reason || null, supplier: txType === TX_RETURN ? (supplier || null) : null, transaction_date: today }
+    const tx = { drug_code: dr.drug_code, type: txType, quantity: q, unit_price: pp, total_amount: amt, lot_no: lot || null, reason: reason || null, supplier: txType === TX_RETURN ? (supplier || null) : null, transaction_date: today }
     let res = await supabase.from('transactions').insert([tx])
-    for (let r = 0; r < 3 && res.error && res.error.message?.includes('column'); r++) { const m = res.error.message.match(/'([^']+)' column/); if (!m) break; delete tx[m[1]]; res = await supabase.from('transactions').insert([tx]) }
+    for (let r = 0; r < 3 && res.error && res.error.message?.includes('column'); r++) { const m = res.error.message.match(/'([^']+)' column/); if (!m) break; console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]]; res = await supabase.from('transactions').insert([tx]) }
     setSaving(false)
     if (res.error) { setMsg(dbErrorMsg(res.error)); return }  // 트리거 한글 메시지(마감월·재고 부족)는 dbErrorMsg가 원문 그대로 노출
     setMsg('OK'); setTimeout(() => { onSaved?.(); onClose() }, 500)
@@ -2411,7 +2411,7 @@ function TransactionForm({drugs,onReload,navFilter}){
     const q=parseInt(form.qty);const amt=q*(selDrug.purchase_price||0)
     const tx={drug_code:selDrug.drug_code,type:tab,quantity:q,unit_price:selDrug.purchase_price||0,total_amount:amt,memo:form.note||null,transaction_date:new Date().toISOString().split('T')[0],reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
     let res=await supabase.from('transactions').insert([tx])
-    for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
+    for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
     if(res.error){setMsg(dbErrorMsg(res.error));setSaving(false);return}
     /* 재고는 0009 트리거가 단일 기록(drugs+inventory 동기). 클라 직접 update·음수 절삭 제거 — 부족 시 트리거 RAISE가 위 res.error로 차단. */
     setMsg(`${tab} 완료! ${selDrug.drug_name} ${q}개`);setSelDrug(null);setSearch('');setForm(p=>({...p,qty:'',note:'',lot_no:'',expiry_date:'',reason:'',supplier:''}));setSaving(false);onReload?.();loadTxns()
@@ -2436,7 +2436,7 @@ function TransactionForm({drugs,onReload,navFilter}){
         const qtyVal=Number(r[tab==='입고'?'입고수량':tab==='출고'?'출고수량':tab==='반품'?'반품수량':'폐기수량']||r['수량']||r['quantity']||0)
         const price=Number(r['단가']||r['unit_price']||drug?.purchase_price||0)
         return{idx:i+1,drug_code:code,drug_name:drug?.drug_name||r['약품명']||'',found:!!drug,quantity:qtyVal,unit_price:price,total_amount:qtyVal*price,
-          sub_type:String(r['구분']||r['sub_type']||'').trim(),note:String(r['비고']||'').trim(),supplier:String(r['공급업체']||'').trim(),
+          note:String(r['비고']||'').trim(),supplier:String(r['공급업체']||'').trim(),
           lot_no:String(r['로트번호']||r['LOT번호']||'').trim(),expiry_date:String(r['유효기한']||'').trim(),
           reason:String(r[tab==='반품'?'반품사유':'폐기사유']||r['사유']||'').trim(),handler:String(r['처리자']||'이정화').trim(),approver:String(r['승인자']||'').trim(),
           process_status:String(r['처리상태']||'처리완료').trim(),transaction_date:String(r[tab+'일자']||r['일자']||new Date().toISOString().split('T')[0]).trim()}
@@ -2453,14 +2453,14 @@ function TransactionForm({drugs,onReload,navFilter}){
     for(const r of valid){
       const tx={drug_code:r.drug_code,type:tab,quantity:r.quantity,unit_price:r.unit_price,total_amount:r.total_amount,memo:r.note||null,transaction_date:r.transaction_date,reason:r.reason||null,handler:r.handler||null,approver:r.approver||null,process_status:r.process_status||null,supplier:r.supplier||null,lot_no:r.lot_no||null,expiry_date:r.expiry_date||null}
       let res=await supabase.from('transactions').insert([tx])
-      for(let rt=0;rt<3&&res.error&&res.error.message?.includes('column');rt++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
+      for(let rt=0;rt<3&&res.error&&res.error.message?.includes('column');rt++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
       if(!res.error){ ok++ /* 재고는 0009 트리거 단일기록. 음수는 트리거 RAISE로 차단(해당 행 fail). */ }else fail++
     }
     setBulkLd(false);setBulkMsg(`완료! ${ok}건 등록, ${fail}건 실패`);setBulkData([]);onReload?.();loadTxns()
     setTimeout(()=>setBulkMsg(null),4000)
   }
   function dlTemplate(){
-    const hdrs=tab==='입고'?['일자','약품코드','약품명','구분','입고수량','단가','공급업체','비고']:tab==='출고'?['일자','약품코드','약품명','구분','출고수량','단가','비고']:tab==='반품'?['일자','약품코드','약품명','구분','반품수량','단가','로트번호','유효기한','반품사유','처리상태','비고']:['약품코드','약품명','구분','폐기수량','단가','로트번호','유효기한','폐기사유','처리자','승인자','비고']
+    const hdrs=tab==='입고'?['일자','약품코드','입고수량','단가','공급업체','비고']:tab==='출고'?['일자','약품코드','출고수량','단가','비고']:tab==='반품'?['일자','약품코드','반품수량','단가','로트번호','유효기한','반품사유','처리상태','비고']:['약품코드','폐기수량','단가','로트번호','유효기한','폐기사유','처리자','승인자','비고']
     const ws=XLSX.utils.aoa_to_sheet([hdrs]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,tab);XLSX.writeFile(wb,`${tab}_양식.xlsx`)
   }
   /* 테이블 컬럼 정의 */
@@ -2477,7 +2477,7 @@ function TransactionForm({drugs,onReload,navFilter}){
         <input value={search} onChange={e=>{setSearch(e.target.value);setSelDrug(null)}} placeholder="약품 검색 (코드/이름)..." style={{...ip,marginBottom:6}}/>
         {search.trim()&&!selDrug&&filtered.length>0&&<div style={{border:`1px solid ${t.border}`,borderRadius:6,maxHeight:120,overflowY:'auto',marginBottom:6}}>{filtered.slice(0,8).map(d=><div key={d.drug_code} onClick={()=>{setSelDrug(d);setSearch(d.drug_name)}} style={{padding:'6px 10px',cursor:'pointer',fontSize:11,borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>{d.drug_name} <span style={{color:t.textL,fontSize:9}}>({d.drug_code})</span></div>)}</div>}
         {selDrug&&<div style={{background:tc[tab]?.bg,borderRadius:6,padding:'6px 10px',marginBottom:6,fontSize:11,color:tc[tab]?.c}}><strong>{selDrug.drug_name}</strong> · 재고:{selDrug.current_qty} · ₩{selDrug.purchase_price?.toLocaleString()}</div>}
-        {subs.length>0&&<select value={form.sub_type} onChange={e=>sf('sub_type',e.target.value)} style={{...ip,marginBottom:6}}><option value="">구분 선택</option>{subs.map(s=><option key={s}>{s}</option>)}</select>}
+        
         <input type="number" value={form.qty} onChange={e=>sf('qty',e.target.value)} placeholder="수량" style={{...ip,marginBottom:6}}/>
         {(tab==='입고')&&<input value={form.supplier} onChange={e=>sf('supplier',e.target.value)} placeholder="공급업체" style={{...ip,marginBottom:6}}/>}
         {(tab==='반품'||tab==='폐기')&&<>
