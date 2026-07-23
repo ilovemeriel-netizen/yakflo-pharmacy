@@ -83,6 +83,8 @@ function isN(d) { return getNT(d) !== '일반' }
 function isNonIns(d) { const v = (d?.insurance_type || '').toString(); return v === '비보험' || v === '비급여' }
 function NT({ d }) { const { t } = useTheme(); const n = getNT(d); if (n === '일반') return null; const c = n === '마약' ? t.red : t.purple; return <span style={{ marginLeft: 4, background: n === '마약' ? t.redL : t.purpleL, color: c, fontSize: 9, padding: '2px 6px', borderRadius: 6, fontWeight: 600 }}>{n}</span> }
 async function fetchAll() { let a = [], f = 0; while (true) { const { data, error } = await supabase.from('drugs').select('*').order('drug_name').range(f, f + 999); if (error || !data || !data.length) break; a = [...a, ...data]; if (data.length < 1000) break; f += 1000 }; return a }
+/* 월마감·사이드카 재기록 공용: 해당 월 transactions를 .range() 청크(1000)로 전량 조회. App txns prop(.limit(500)) 미사용 — 500건 한도 과소집계 방지. 실패 시 throw(빈배열 폴백 금지). */
+async function _fetchMonthTx(year, month) { const mm = String(month).padStart(2, '0'), nmm = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, '0')}`; let tx = [], f = 0; while (true) { const { data, error } = await supabase.from('transactions').select('drug_code,type,quantity,total_amount').gte('transaction_date', `${year}-${mm}-01`).lt('transaction_date', `${nmm}-01`).range(f, f + 999); if (error) throw new Error('거래 조회 실패: ' + error.message); if (!data || !data.length) break; tx = tx.concat(data); if (data.length < 1000) break; f += 1000 } return tx }
 async function searchDrugAPI(keyword, apiType = 'easy') {
   const maps = {
     easy: i => ({ name: i.itemName||'', efficacy: i.efcyQesitm||'', manufacturer: i.entpName||'', storage: i.depositMethodQesitm||'', usage: i.useMethodQesitm||'', warning: i.atpnWarnQesitm||'', sideEffect: i.seQesitm||'', image: i.itemImage||'', itemSeq: i.itemSeq||'' }),
@@ -1136,6 +1138,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
       </div>
       <div onClick={() => onNav({ menu: 'transaction', txTab: '반품' })} title="입출고관리(반품·폐기)로 이동" style={{ background: t.card, borderRadius: 14, padding: '18px 22px', border: `1px solid ${t.border}`, boxShadow: t.shadow, cursor: 'pointer', transition: 'all .15s' }} onMouseEnter={hv} onMouseLeave={hx}>
         {sT('▲', '반품/폐기 현황')}
+        {txns.length >= 500 && <div style={{ fontSize: 10, color: t.textM, marginTop: -2, marginBottom: 4 }}>· 최근 500건 기준 집계</div>}
         {sR('반품 건수', txS.retC, t.amber, '건')}{sR('반품 금액', txS.retA, t.amber, '원')}{sR('폐기 건수', txS.dspC, t.red, '건')}{sR('폐기 금액', txS.dspA, t.red, '원')}{sR('폐기 수량', txS.dspQ, t.red, '개')}
         <div style={{ marginTop: 8, padding: '8px 12px', background: t.redL, borderRadius: 8, display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 12, fontWeight: 700, color: t.red }}>손실 합계</span><span style={{ fontSize: 14, fontWeight: 800, color: t.red }}>{txS.lossT}건 / ₩{Math.round(txS.lossA).toLocaleString()}</span></div>
       </div>
@@ -2886,7 +2889,7 @@ function Report({drugs,txns,onNav}){
     const _n=_txCnt||0;const noTx=_n===0;
     setDialog({title:`${label} 마감`,
       body:noTx?`해당 월의 거래 기록이 없어 입고·사용·폐기·반품이 0으로 기록됩니다.\n계속하시겠습니까?`:`${label}을 마감합니다.\n이번 달 거래 ${_n.toLocaleString()}건을 집계합니다.\n계속하시겠습니까?`,
-      confirmLabel:'마감 실행',onConfirm:runClose});
+      confirmLabel:'마감 실행',onConfirm:()=>runClose(_n)});
   }
 
   /* 월마감 실제 반영 — 화면 선택 연/월(year·month) 기준. 집계 산식 무변경.
@@ -2914,15 +2917,18 @@ function Report({drugs,txns,onNav}){
     if(!isOwner)return;
     const label=`${year}년 ${month}월`;
     if(snapCount===0){setDialog({title:'재기록 불가',body:`${label}은 monthly_snapshots가 없어 집계할 원천이 없습니다.\n먼저 월마감을 실행하십시오.`});return;}
-    setDialog({title:`${label} 사이드카 재기록`,body:`${label}의 스냅샷(${snapCount.toLocaleString()}행)을 집계해 사이드카 총계를 재기록합니다.\n· monthly_snapshots는 읽기만 하며 변경하지 않습니다.\n· 결재본 정본(엑셀결재본)이 있으면 보호되어 중단됩니다.`,confirmLabel:'재기록 실행',onConfirm:rebuildSidecar});
+    const _rm=String(month).padStart(2,'0'),_rnm=month===12?`${year+1}-01`:`${year}-${String(month+1).padStart(2,'0')}`;
+    const{count:_rTx}=await supabase.from('transactions').select('id',{count:'exact',head:true}).gte('transaction_date',`${year}-${_rm}-01`).lt('transaction_date',`${_rnm}-01`);
+    const _rn=_rTx||0;
+    setDialog({title:`${label} 사이드카 재기록`,body:`${label}의 스냅샷(${snapCount.toLocaleString()}행)을 집계해 사이드카 총계를 재기록합니다.\n· 이번 달 거래 ${_rn.toLocaleString()}건을 집계합니다.\n· monthly_snapshots는 읽기만 하며 변경하지 않습니다.\n· 결재본 정본(엑셀결재본)이 있으면 보호되어 중단됩니다.`,confirmLabel:'재기록 실행',onConfirm:()=>rebuildSidecar(_rn)});
   }
   /* 사이드카 재기록 실행 — 선택 월 monthly_snapshots(읽기만)+transactions 집계 → _writeSidecar(runClose와 동일 식) */
-  async function rebuildSidecar(){
+  async function rebuildSidecar(expectN){
     if(!isOwner)return;
     setDialog(null);const label=`${year}년 ${month}월`;setClosing(true);setCloseMsg(null);
     try{
-      const ym=`${year}-${String(month).padStart(2,'0')}`;
-      const mTx=txns.filter(tx=>tx.transaction_date?.startsWith(ym));
+      const mTx=await _fetchMonthTx(year,month);
+      if(expectN!=null&&mTx.length!==expectN){setCloseMsg(`⚠ 거래 건수 불일치 — 확인 시 ${expectN.toLocaleString()}건 → 집계 시 ${mTx.length.toLocaleString()}건. 동시 입력 가능성이 있어 재기록을 중단합니다. 다시 시도해 주세요`);setClosing(false);return;}
       const ms=snaps.filter(s=>Number(s.snap_month)===month);
       if(ms.length===0){setCloseMsg(`❌ ${label} 집계할 스냅샷이 없습니다.`);setClosing(false);return;}
       const{data:_tm}=await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle();
@@ -2934,14 +2940,14 @@ function Report({drugs,txns,onNav}){
     }catch(err){setCloseMsg(`❌ ${label} 사이드카 재기록 실패: ${err.message}`)}
     setClosing(false)
   }
-  async function runClose(){
+  async function runClose(expectN){
     if(!isOwner)return; // 실행부 이중 확인
     setDialog(null);const label=`${year}년 ${month}월`;
     setClosing(true);setCloseMsg(null);
     try{
-      // 마감 집계 소스: App txns prop(.limit(500))이 아니라 해당 월 거래를 청크(.range) 전량 조회 — loadLive/fetchAll과 동일 패턴(500건 한도 과소집계 방지)
-      const _mm=String(month).padStart(2,'0'),_nmm=month===12?`${year+1}-01`:`${year}-${String(month+1).padStart(2,'0')}`;
-      let mTx=[],_tf=0; while(true){const{data:_td,error:_te}=await supabase.from('transactions').select('drug_code,type,quantity,total_amount').gte('transaction_date',`${year}-${_mm}-01`).lt('transaction_date',`${_nmm}-01`).range(_tf,_tf+999); if(_te)throw new Error('거래 조회 실패: '+_te.message); if(!_td||!_td.length)break; mTx=mTx.concat(_td); if(_td.length<1000)break; _tf+=1000;}
+      // 마감 집계 소스: 공통 _fetchMonthTx로 해당 월 거래 청크 전량 조회(App txns prop .limit(500) 미사용 — 500건 한도 과소집계 방지)
+      const mTx=await _fetchMonthTx(year,month);
+      if(expectN!=null&&mTx.length!==expectN){setCloseMsg(`⚠ 거래 건수 불일치 — 확인 시 ${expectN.toLocaleString()}건 → 집계 시 ${mTx.length.toLocaleString()}건. 동시 입력 가능성이 있어 마감을 중단합니다. 다시 시도해 주세요`);setClosing(false);return;}
       const{data:prevData}=await supabase.from('monthly_snapshots').select('*').eq('snap_year',month===1?year-1:year).eq('snap_month',month===1?12:month-1);
       const{data:_prevSide}=await supabase.from('monthly_report_totals').select('actual_closing').eq('snap_year',month===1?year-1:year).eq('snap_month',month===1?12:month-1).limit(1).maybeSingle();
       const prevMap={};(prevData||[]).forEach(s=>{prevMap[s.drug_code]=s});
