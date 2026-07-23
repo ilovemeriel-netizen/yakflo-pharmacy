@@ -1134,6 +1134,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
       <div onClick={() => onNav({ menu: 'transaction' })} style={{ background: t.card, borderRadius: 14, padding: '18px 22px', border: `1px solid ${t.border}`, boxShadow: t.shadow, cursor: 'pointer', transition: 'all .15s' }} onMouseEnter={hv} onMouseLeave={hx}>
         {sT('▶◀', '당월 입출고')}
+        {txns.length >= 500 && <div style={{ fontSize: 10, color: t.textM, marginTop: -2, marginBottom: 4 }}>· 최근 500건 기준 집계</div>}
         {sR('입고 건수', txS.inC, t.green, '건')}{sR('입고 금액', txS.inA, t.green, '원')}{sR('출고 건수', txS.outC, t.blue, '건')}{sR('출고 금액', txS.outA, t.blue, '원')}{sR('순 입출고', txS.inA - txS.outA, txS.inA >= txS.outA ? t.green : t.red, '원')}
       </div>
       <div onClick={() => onNav({ menu: 'transaction', txTab: '반품' })} title="입출고관리(반품·폐기)로 이동" style={{ background: t.card, borderRadius: 14, padding: '18px 22px', border: `1px solid ${t.border}`, boxShadow: t.shadow, cursor: 'pointer', transition: 'all .15s' }} onMouseEnter={hv} onMouseLeave={hx}>
@@ -2802,7 +2803,7 @@ const mpTd={border:'1px solid #bbb',padding:'6px 10px'};
 function MSec({title,children}){return <div style={{marginBottom:9}}><div style={{background:'#019748',color:'#fff',fontWeight:800,fontSize:13.5,padding:'5px 10px'}}>{title}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><tbody>{children}</tbody></table></div>}
 function MRow({label,value,bg}){return <tr><td style={{...mpTd,background:bg||'#eee',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',fontWeight:800,color:'#804A87'}}>{value}</td></tr>}
 function MRow2({label,cnt,amt,bg,fg}){return <tr><td style={{...mpTd,background:bg||'#eee',color:fg||'#222',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',width:'29%'}}>{cnt}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontWeight:700}}>{amt}</td></tr>}
-function Report({drugs,txns,onNav}){
+function Report({drugs,onNav}){
   const{t,memberRole}=useTheme();
   const isOwner=memberRole==='owner'; // 마감·업로드 권한(고위험 체크박스와 동일 패턴)
   const cy=new Date().getFullYear(),cm=new Date().getMonth()+1;
@@ -3995,7 +3996,7 @@ export default function App() {
         {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
         {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
-        {menu === 'report' && <Report drugs={drugs} txns={txns} onNav={handleNav} />}
+        {menu === 'report' && <Report drugs={drugs} onNav={handleNav} />}
         {menu === 'emergency' && <EmergencyDispense />}
         {menu === 'register' && <DrugRegister onRefresh={load} drugs={drugs} />}
         {menu === 'mypage' && <MyPage profile={profile} onProfileUpdated={loadProfile} />}

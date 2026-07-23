@@ -1,0 +1,16 @@
+# EditorConfig — 개행/인코딩 통일 (기존 파일 일괄 변환 아님, 신규 편집/파일에 적용)
+# https://editorconfig.org
+root = true
+
+[*]
+end_of_line = lf
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{js,jsx,ts,tsx,css,html,json,sql,md,yml,yaml}]
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
