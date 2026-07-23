@@ -2881,10 +2881,11 @@ function Report({drugs,txns,onNav}){
       setDialog({title:'재마감 제한',body:`${label}은 이미 스냅샷이 있습니다(${n.toLocaleString()}행).\n현재 값을 보호하기 위해 재마감이 제한됩니다.\n결산 재구축은 '스냅샷 업로드'를 사용하십시오.`});
       return;
     }
-    const ym=`${year}-${String(month).padStart(2,'0')}`;
-    const noTx=!txns.some(tx=>tx.transaction_date?.startsWith(ym));
+    const _cm=String(month).padStart(2,'0'),_cn=month===12?`${year+1}-01`:`${year}-${String(month+1).padStart(2,'0')}`;
+    const{count:_txCnt}=await supabase.from('transactions').select('id',{count:'exact',head:true}).gte('transaction_date',`${year}-${_cm}-01`).lt('transaction_date',`${_cn}-01`);
+    const _n=_txCnt||0;const noTx=_n===0;
     setDialog({title:`${label} 마감`,
-      body:noTx?`해당 월의 거래 기록이 없어 입고·사용·폐기·반품이 0으로 기록됩니다.\n계속하시겠습니까?`:`${label}을 마감합니다. 계속하시겠습니까?`,
+      body:noTx?`해당 월의 거래 기록이 없어 입고·사용·폐기·반품이 0으로 기록됩니다.\n계속하시겠습니까?`:`${label}을 마감합니다.\n이번 달 거래 ${_n.toLocaleString()}건을 집계합니다.\n계속하시겠습니까?`,
       confirmLabel:'마감 실행',onConfirm:runClose});
   }
 
@@ -2938,8 +2939,9 @@ function Report({drugs,txns,onNav}){
     setDialog(null);const label=`${year}년 ${month}월`;
     setClosing(true);setCloseMsg(null);
     try{
-      const ym=`${year}-${String(month).padStart(2,'0')}`;
-      const mTx=txns.filter(tx=>tx.transaction_date?.startsWith(ym));
+      // 마감 집계 소스: App txns prop(.limit(500))이 아니라 해당 월 거래를 청크(.range) 전량 조회 — loadLive/fetchAll과 동일 패턴(500건 한도 과소집계 방지)
+      const _mm=String(month).padStart(2,'0'),_nmm=month===12?`${year+1}-01`:`${year}-${String(month+1).padStart(2,'0')}`;
+      let mTx=[],_tf=0; while(true){const{data:_td,error:_te}=await supabase.from('transactions').select('drug_code,type,quantity,total_amount').gte('transaction_date',`${year}-${_mm}-01`).lt('transaction_date',`${_nmm}-01`).range(_tf,_tf+999); if(_te)throw new Error('거래 조회 실패: '+_te.message); if(!_td||!_td.length)break; mTx=mTx.concat(_td); if(_td.length<1000)break; _tf+=1000;}
       const{data:prevData}=await supabase.from('monthly_snapshots').select('*').eq('snap_year',month===1?year-1:year).eq('snap_month',month===1?12:month-1);
       const{data:_prevSide}=await supabase.from('monthly_report_totals').select('actual_closing').eq('snap_year',month===1?year-1:year).eq('snap_month',month===1?12:month-1).limit(1).maybeSingle();
       const prevMap={};(prevData||[]).forEach(s=>{prevMap[s.drug_code]=s});
