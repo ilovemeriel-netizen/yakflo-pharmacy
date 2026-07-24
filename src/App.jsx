@@ -921,7 +921,7 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 }
 
 /* ═══ 헤더 — 반응형 (모바일 햄버거) ═══ */
-function Header({ menu: m, setMenu: sm }) {
+function Header({ menu: m, setMenu: sm, onRegister }) {
   const { t, dark, toggle, user, profile, logout, openSearch, open360 } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tenant, setTenant] = useState('')
@@ -934,7 +934,7 @@ function Header({ menu: m, setMenu: sm }) {
     <div className="no-print" style={{ position: 'sticky', top: 0, zIndex: 900 }}>
       <div className="cnc-header" style={{ background: t.nav, padding: '0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 54 }}>
       <div className="brand-area" style={{ cursor: 'pointer', flex: '0 0 auto' }} onClick={() => nav('dashboard')}>
-        <div onClick={e => { e.stopPropagation(); nav('register') }} className="cnc-plus" style={{ width: 34, height: 34, borderRadius: 9, background: m === 'register' ? 'rgba(128, 74, 135, 0.85)' : 'rgba(128, 74, 135, 0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, cursor: 'pointer', color: '#BFA6D9', border: '1px solid rgba(128, 74, 135, 0.7)', flexShrink: 0, transition: 'background 0.15s', boxShadow: '0 2px 6px rgba(0,0,0,0.18)' }} title="신규 약품 등록">+</div>
+        <div onClick={e => { e.stopPropagation(); if (onRegister) onRegister(); else nav('register') }} className="cnc-plus" style={{ width: 34, height: 34, borderRadius: 9, background: m === 'register' ? 'rgba(128, 74, 135, 0.85)' : 'rgba(128, 74, 135, 0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, cursor: 'pointer', color: '#BFA6D9', border: '1px solid rgba(128, 74, 135, 0.7)', flexShrink: 0, transition: 'background 0.15s', boxShadow: '0 2px 6px rgba(0,0,0,0.18)' }} title="신규 약품 등록">+</div>
         <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <div className="brand-title cnc-title" style={{ fontSize: 17, color: '#ffffff', letterSpacing: 0.3, lineHeight: 1.15, fontWeight: 700 }}>약플로 · <span style={{ color: '#BFA6D9' }}>Yakflo</span></div>
           <div className="brand-sub" style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: 0.2, lineHeight: 1.2 }}>약품 통합 관리 솔루션</div>
@@ -3986,7 +3986,7 @@ export default function App() {
         }
       `}</style>
       <div style={{ minHeight: '100vh', background: t.bg }}>
-        <Header menu={menu} setMenu={setMenu} />
+        <Header menu={menu} setMenu={setMenu} onRegister={() => setEditDrug({ __register: true })} />
         {menu === 'dashboard' && <Dashboard drugs={drugs} inv={inv} txns={txns} onNav={handleNav} onEdit={setEditDrug} />}
         {menu === 'alerts' && <AlertCenter drugs={drugs} onNav={handleNav} />}
         {menu === 'ordering' && <Ordering drugs={drugs} />}
