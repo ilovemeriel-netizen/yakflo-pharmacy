@@ -158,6 +158,9 @@ export default function BulkUploadModal({ t, isOwner, drugs, onClose, onReload }
 
           {/* ── 단계 1: 파일 선택 ── */}
           {step === 1 && <div>
+            <div style={{ marginBottom: 12 }}>
+              <button onClick={() => { const a = document.createElement('a'); a.href = '/templates/drug-upload-template.xlsx'; a.download = '약품등록_양식.xlsx'; document.body.appendChild(a); a.click(); a.remove() }} style={btn(false)}>양식 내려받기</button>
+            </div>
             <label style={{ display: 'block', border: `2px dashed ${t.border}`, borderRadius: 12, padding: '38px 20px', textAlign: 'center', cursor: 'pointer', background: t.bg }}>
               <input type="file" accept=".xlsx,.xls,.csv" onChange={onFile} style={{ display: 'none' }} />
               <div style={{ fontSize: 30, marginBottom: 8 }}>📄</div>
