@@ -50,14 +50,25 @@ export default function BulkUploadModal({ t, isOwner, drugs, onClose, onReload }
     } catch (ex) { setErr('파일 읽기 오류: ' + (ex && ex.message)) }
   }
 
-  /* 미리보기 분류(신규/갱신/오류) — DB 쓰기 아님, 화면 계산만 */
-  const classified = useMemo(() => rawRows.map((raw, i) => {
-    const codeCell = String((mapping.drug_code ? raw[mapping.drug_code] : '') || '').trim()
-    const ex = existing.get(codeCell) || null
-    const { code, errors, fields } = normalizeDrugRow(raw, mapping, ex, isOwner)
-    const status = errors.length ? 'error' : (ex ? 'update' : 'new')
-    return { i, code, name: fields.drug_name || (ex && ex.drug_name) || '', status, errors, fields, ex }
-  }), [rawRows, mapping, existing, isOwner])
+  /* 미리보기 분류(신규/갱신/오류) — DB 쓰기 아님, 화면 계산만.
+     파일 내 drug_code 중복은 두 번째 등장부터 오류로 분류(첫 행은 정상 처리).
+     중복 키는 trim + 소문자 정규화(대소문자·공백 차이는 동일 코드로 간주). */
+  const classified = useMemo(() => {
+    const firstSeen = new Map()   // 정규화 코드 → 첫 등장 행의 원본 인덱스(i)
+    return rawRows.map((raw, i) => {
+      const codeCell = String((mapping.drug_code ? raw[mapping.drug_code] : '') || '').trim()
+      const ex = existing.get(codeCell) || null
+      const { code, errors, fields } = normalizeDrugRow(raw, mapping, ex, isOwner)
+      const dupKey = code ? code.toLowerCase() : ''
+      if (dupKey && firstSeen.has(dupKey)) {
+        const dupErrors = [...errors, `파일 내 약품코드 중복 (${firstSeen.get(dupKey) + 2}행과 동일)`]
+        return { i, code, name: fields.drug_name || (ex && ex.drug_name) || '', status: 'error', errors: dupErrors, fields, ex }
+      }
+      if (dupKey) firstSeen.set(dupKey, i)
+      const status = errors.length ? 'error' : (ex ? 'update' : 'new')
+      return { i, code, name: fields.drug_name || (ex && ex.drug_name) || '', status, errors, fields, ex }
+    })
+  }, [rawRows, mapping, existing, isOwner])
 
   const counts = useMemo(() => ({
     new: classified.filter(r => r.status === 'new').length,
@@ -82,14 +93,14 @@ export default function BulkUploadModal({ t, isOwner, drugs, onClose, onReload }
       for (let rt = 0; rt < 4 && e && e.message && e.message.includes('column'); rt++) { const m = e.message.match(/'([^']+)' column/); if (!m) break; console.warn('[BulkUpload INSERT] 미존재 컬럼 자동 제거:', m[1], '/ 원인:', e.message); delete o[m[1]]; e = (await supabase.from('drugs').insert([o])).error }
       return e || null
     }
-    async function insertChunk(chunk) {
+    async function insertChunk(chunk, rows) {
       let c = chunk.map(o => ({ ...o }))
       let res = await supabase.from('drugs').insert(c)
       for (let rt = 0; rt < 4 && res.error && res.error.message && res.error.message.includes('column'); rt++) {
         const m = res.error.message.match(/'([^']+)' column/); if (!m) break; console.warn('[BulkUpload INSERT chunk] 미존재 컬럼 자동 제거:', m[1], '/ 원인:', res.error.message)
         c = c.map(o => { const x = { ...o }; delete x[m[1]]; return x }); res = await supabase.from('drugs').insert(c)
       }
-      if (res.error) { for (const o of c) { const e = await insertOne(o); if (e) fail.push({ code: o.drug_code, reason: e.message }) } }
+      if (res.error) { for (let k = 0; k < c.length; k++) { const e = await insertOne(c[k]); if (e) fail.push({ i: rows[k].i, code: c[k].drug_code, reason: e.message }) } }
     }
     async function updateOne(r) {
       let patch = { ...r.fields }; delete patch.drug_code
@@ -99,11 +110,11 @@ export default function BulkUploadModal({ t, isOwner, drugs, onClose, onReload }
       return e || null
     }
 
-    for (let s = 0; s < news.length; s += CHUNK) { const chunk = news.slice(s, s + CHUNK).map(r => ({ ...r.fields })); await insertChunk(chunk); done += chunk.length; setProgress(done) }
+    for (let s = 0; s < news.length; s += CHUNK) { const rows = news.slice(s, s + CHUNK); const chunk = rows.map(r => ({ ...r.fields })); await insertChunk(chunk, rows); done += chunk.length; setProgress(done) }
     const CONC = 10                                                    // 갱신 동시성 제한
     for (let s = 0; s < upds.length; s += CONC) {
       const batch = upds.slice(s, s + CONC)
-      await Promise.all(batch.map(async r => { const e = await updateOne(r); if (e) fail.push({ code: r.code, reason: e.message }) }))
+      await Promise.all(batch.map(async r => { const e = await updateOne(r); if (e) fail.push({ i: r.i, code: r.code, reason: e.message }) }))
       done += batch.length; setProgress(done)
     }
 
@@ -114,9 +125,9 @@ export default function BulkUploadModal({ t, isOwner, drugs, onClose, onReload }
 
   function downloadFailCsv() {
     if (!result) return
-    const rows = [['구분', '약품코드', '사유']]
-    result.errorRows.forEach(r => rows.push(['검증오류', r.code, r.errors.join(' / ')]))
-    result.fail.forEach(f => rows.push(['반영실패', f.code, f.reason]))
+    const rows = [['구분', '행', '약품코드', '사유']]   // '행' = 원본 엑셀 행번호(헤더 1행 + 0-based 인덱스 → i+2)
+    result.errorRows.forEach(r => rows.push(['검증오류', r.i + 2, r.code, r.errors.join(' / ')]))
+    result.fail.forEach(f => rows.push(['반영실패', f.i + 2, f.code, f.reason]))
     const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\r\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)

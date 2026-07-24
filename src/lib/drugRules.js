@@ -108,7 +108,7 @@ export function normalizeDrugRow(raw, mapping, existing, isOwner) {
     if (isBlank(rv)) continue                            // 빈 셀 → 기존값 미덮어씀
     const v = String(rv).trim()
     if (fd.type === 'vocab') {
-      if (!VOCAB[fd.vocab].includes(v)) { errors.push(`${fd.label} 통제어휘 이탈: "${v}"`); continue }
+      if (!VOCAB[fd.vocab].includes(v)) { errors.push(`${fd.label} 통제어휘 이탈: "${v}" (허용: ${VOCAB[fd.vocab].join('/')})`); continue }
       fields[fd.col] = v
     } else if (fd.type === 'number') {
       if (fd.owner && !isOwner) continue                 // 단가류: owner 아니면 무시(트리거 거부 회피)
