@@ -2349,7 +2349,7 @@ function DrugRegister({onRefresh, drugs}) {
         <div style={{background:'#fff',borderRadius:12,border:`0.5px solid ${C.grayB}`,padding:'22px 24px'}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:18,paddingBottom:12,borderBottom:`0.5px solid ${C.grayB}`}}>
             <div style={{fontSize:15,fontWeight:700}}>기초정보 엑셀 대량 등록</div>
-            <button onClick={dlTemplate} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${C.purple}`,background:C.purpleL,color:C.purple,cursor:'pointer',fontSize:12,fontWeight:500}}>양식 다운로드</button>
+            <button onClick={()=>{const a=document.createElement('a');a.href='/templates/drug-upload-template.xlsx';a.download='drug-upload-template.xlsx';document.body.appendChild(a);a.click();a.remove()}} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${C.purple}`,background:C.purpleL,color:C.purple,cursor:'pointer',fontSize:12,fontWeight:500}}>양식 다운로드</button>
           </div>
           <div style={{background:C.grayL,border:`2px dashed ${C.grayB}`,borderRadius:10,padding:'36px',textAlign:'center',marginBottom:16,cursor:'pointer'}}
             onClick={()=>fileRef.current.click()}
