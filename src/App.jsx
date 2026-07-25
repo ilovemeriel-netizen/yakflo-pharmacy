@@ -2084,7 +2084,6 @@ function DrugRegister({onRefresh, drugs}) {
       efficacy:item.efficacy||f.efficacy,
       storage_method:item.storage?stdStorage(item.storage):f.storage_method,
       unit:item.unit||f.unit,
-      specification:item.packUnit||f.specification,
       insurance_code:item.insuranceCode||f.insurance_code,
     }))
     setApiResults([]);setApiQuery('');setApiMsg(null)
