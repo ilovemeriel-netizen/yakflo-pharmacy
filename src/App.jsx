@@ -1881,7 +1881,7 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
 /* ═══ 기초정보 등록 ═══ */
 function DrugRegister({onRefresh, drugs}) {
   const { memberRole, profile } = useTheme(); const isOwner = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
-  const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:''}
+  const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',standard_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:''}
   const[form,setForm]=useState(initForm)
   const[msg,setMsg]=useState(null)
   const[saving,setSaving]=useState(false)
@@ -2125,7 +2125,7 @@ function DrugRegister({onRefresh, drugs}) {
       unit:form.unit||null,
       edi_price:Number(form.insurance_price)||0,
       insurance_type:form.insurance_type,
-      insurance_code:form.insurance_code||null,
+      insurance_code:form.insurance_code||null,standard_code:form.standard_code||null,
       current_qty:Number(form.current_qty)||0,
       expiry_date:form.expiry_date||null,
       lot_no:form.lot_no||null,
@@ -2307,7 +2307,7 @@ function DrugRegister({onRefresh, drugs}) {
             <div style={{marginBottom:12}}><label style={lbl}>제조사</label><input value={form.manufacturer} onChange={e=>set('manufacturer',e.target.value)} placeholder="API 자동입력" style={inp}/></div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
               <div><label style={lbl}>제형</label><input value={form.specification} onChange={e=>set('specification',e.target.value)} placeholder="포장단위 (API 자동입력)" style={inp}/></div>
-              <div><label style={lbl}>단위</label><input value={form.unit} onChange={e=>set('unit',e.target.value)} placeholder={form.unit||'API 조회 시 자동입력'} style={inp}/></div>
+              <div><label style={lbl}>포장</label><input value={form.unit} onChange={e=>set('unit',e.target.value)} placeholder={form.unit||'API 조회 시 자동입력'} style={inp}/></div>
             </div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
               <div><label style={lbl}>보험약가</label><input type="number" value={form.insurance_price} onChange={e=>set('insurance_price',e.target.value)} placeholder="API 자동입력" style={inp}/></div>
@@ -2317,6 +2317,7 @@ function DrugRegister({onRefresh, drugs}) {
               <div><label style={lbl}>급여구분</label><div style={{display:'flex',gap:4}}>{['급여','비급여'].map(x=><button key={x} onClick={()=>set('insurance_type',x)} style={{flex:1,padding:'8px',borderRadius:6,border:`2px solid ${form.insurance_type===x?C.green:'transparent'}`,cursor:'pointer',background:form.insurance_type===x?C.greenL:C.grayL,color:form.insurance_type===x?C.green:'#999',fontWeight:600,fontSize:12}}>{x}</button>)}</div></div>
               <div><label style={lbl}>보험코드</label><input value={form.insurance_code} onChange={e=>set('insurance_code',e.target.value)} placeholder="API 자동입력" style={inp}/></div>
             </div>
+            <div style={{marginBottom:12}}><label style={lbl}>품목기준코드</label><input value={form.standard_code} onChange={e=>set('standard_code',e.target.value)} placeholder="9자리 코드" style={inp}/></div>
             <div style={{marginBottom:12}}><label style={lbl}>분류</label><div style={{display:'flex',gap:4,alignItems:'center'}}>{RX_TOGGLE.map(x=><button key={x} type="button" onClick={()=>set('prescription_type',form.prescription_type===x?'':x)} style={{flex:1,padding:'8px',borderRadius:6,border:'2px solid '+(form.prescription_type===x?C.purple:'transparent'),cursor:'pointer',background:form.prescription_type===x?C.purpleL:C.grayL,color:form.prescription_type===x?C.purple:'#999',fontWeight:600,fontSize:12}}>{x}</button>)}<select value={RX_MORE.includes(form.prescription_type)?form.prescription_type:''} onChange={e=>set('prescription_type',e.target.value)} style={{...inp,flex:1,background:'#fff'}}><option value="">기타…</option>{RX_MORE.map(x=><option key={x} value={x}>{x}</option>)}</select></div></div>
             <div style={{marginBottom:12}}><label style={lbl}>ATC코드</label><input value={form.atc_code} onChange={e=>set('atc_code',e.target.value.toUpperCase())} placeholder="예: N02BE01" style={inp}/>{(()=>{const _a=decomposeAtc(form.atc_code);return (form.atc_code&&(_a.atc_l1||_a.atc_l2||_a.atc_l3))?<div style={{display:'flex',gap:4,flexWrap:'wrap',marginTop:6}}>{[_a.atc_l1,_a.atc_l2,_a.atc_l3].filter(Boolean).map((v,i)=><span key={i} style={{padding:'2px 8px',borderRadius:8,fontSize:10,fontWeight:700,background:C.purpleL,color:C.purple,border:'1px solid '+C.purpleB}}>{v}</span>)}</div>:form.atc_code?<div style={{marginTop:6,fontSize:10,color:'#999'}}>매핑 없음 — 코드만 저장(분류 비움)</div>:null})()}</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
