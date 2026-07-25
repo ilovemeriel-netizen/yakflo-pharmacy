@@ -362,6 +362,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
 
   /* API 5종 조회 — 1차:허가정보 → 보조:e약은요+낱알식별+약가+성분약효 (신규등록과 동일 순서) */
   useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>({...p,specification:p.specification||dm.dosage_form||'',total_qty:p.total_qty||dm.total_qty||'',packaging:p.packaging||dm.package||'',standard_code:p.standard_code||dm.product_code||''})))},[f.insurance_code])
+  useEffect(()=>{ if(!isNew) return; sF(p=>((p.insurance_price!==''&&p.insurance_price!=null&&Number(p.insurance_price)>0&&(p.purchase_price===''||p.purchase_price==null))?{...p,purchase_price:p.insurance_price}:p)) },[f.insurance_price,isNew])
   async function lookupApi(overrideName) {
     const searchName = overrideName || f.drug_name.trim()
     if (!searchName) { setMsg('약품명이 필요합니다'); return }
