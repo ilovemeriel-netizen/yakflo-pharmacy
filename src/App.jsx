@@ -3986,7 +3986,7 @@ export default function App() {
         }
       `}</style>
       <div style={{ minHeight: '100vh', background: t.bg }}>
-        <Header menu={menu} setMenu={setMenu} onRegister={() => setEditDrug({ __register: true })} />
+        <Header menu={menu} setMenu={setMenu} onRegister={() => setMenu('register')} />
         {menu === 'dashboard' && <Dashboard drugs={drugs} inv={inv} txns={txns} onNav={handleNav} onEdit={setEditDrug} />}
         {menu === 'alerts' && <AlertCenter drugs={drugs} onNav={handleNav} />}
         {menu === 'ordering' && <Ordering drugs={drugs} />}
