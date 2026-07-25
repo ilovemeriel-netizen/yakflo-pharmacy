@@ -2196,17 +2196,6 @@ function DrugRegister({onRefresh, drugs}) {
     setBulk([]);onRefresh();setTimeout(()=>setBulkMsg(null),5000)
   }
 
-  function dlTemplate(){
-    const ws=XLSX.utils.aoa_to_sheet([
-      ['약품코드','약품명','구분','성분명(영문)','성분명(한글)','약효분류','효능','제조사','단위','제형','구입단가','보험약가','현재고','급여구분','보험코드','유효기한','LOT번호','보관','상태','향정'],
-      ['NEWDRUG001','신규약품정1mg','경구제','ingredient','성분명','소화기계질환','해열 진통 효능','제조사명','정','100',1000,1000,100,'급여','64XXXXXX','2028-12-31','LOT001','실온','사용','일반'],
-      ['','','','','','','','','','','','','','','','','','','','← 필수: 약품코드, 약품명만 입력하면 등록 가능'],
-    ])
-    ws['!cols']=Array(20).fill({wch:16})
-    const wb2=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb2,ws,'기초정보등록')
-    XLSX.writeFile(wb2,'기초정보_업로드_양식.xlsx')
-  }
-
   const inp={width:'100%',padding:'9px 12px',border:`1.5px solid ${C.grayB}`,borderRadius:8,fontSize:13,outline:'none',boxSizing:'border-box'}
   const lbl={fontSize:12,color:'#666',marginBottom:4,display:'block',fontWeight:500}
   const tabBtn=active=>({padding:'8px 20px',borderRadius:8,border:'none',cursor:'pointer',fontSize:13,fontWeight:600,background:active?C.purple:C.grayL,color:active?'#fff':'#888'})
@@ -2355,7 +2344,7 @@ function DrugRegister({onRefresh, drugs}) {
         <div style={{background:'#fff',borderRadius:12,border:`0.5px solid ${C.grayB}`,padding:'22px 24px'}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:18,paddingBottom:12,borderBottom:`0.5px solid ${C.grayB}`}}>
             <div style={{fontSize:15,fontWeight:700}}>기초정보 엑셀 대량 등록</div>
-            <button onClick={dlTemplate} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${C.purple}`,background:C.purpleL,color:C.purple,cursor:'pointer',fontSize:12,fontWeight:500}}>양식 다운로드</button>
+            <button onClick={() => { const a = document.createElement('a'); a.href = '/templates/drug-upload-template.xlsx'; a.download = '약품등록_양식.xlsx'; document.body.appendChild(a); a.click(); a.remove() }} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${C.purple}`,background:C.purpleL,color:C.purple,cursor:'pointer',fontSize:12,fontWeight:500}}>양식 다운로드</button>
           </div>
           <div style={{background:C.grayL,border:`2px dashed ${C.grayB}`,borderRadius:10,padding:'36px',textAlign:'center',marginBottom:16,cursor:'pointer'}}
             onClick={()=>fileRef.current.click()}
