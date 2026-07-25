@@ -1880,13 +1880,13 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
 }
 
 /* ═══ 기초정보 등록 ═══ */
-async function _fillFromDrugMaster(insCode, apply) {
-  const c = String(insCode || '').trim(); if (c.length < 8) return
-  try { const { data } = await supabase.from('drug_master').select('dosage_form,total_qty,package,product_code').eq('insurance_code', c).limit(1).maybeSingle(); if (data) apply(data) } catch (_) {}
+async function _fillFromDrugMaster(insCode, apply, drugName) {
+  const cols = 'dosage_form,total_qty,package,product_code,atc_code,ingredient_kr,ingredient_en,manufacturer,insurance_type,narcotic_type,edi_price'; const c = String(insCode || '').trim()
+  try { let data = null; if (c.length >= 8) { const r = await supabase.from('drug_master').select(cols).eq('insurance_code', c).limit(1).maybeSingle(); data = r.data } if (!data && drugName && String(drugName).trim().length >= 2) { const r = await supabase.from('drug_master').select(cols).ilike('drug_name', '%' + String(drugName).trim() + '%').limit(1).maybeSingle(); data = r.data } if (data) apply(data) } catch (_) {}
 }
 function DrugRegister({onRefresh, drugs}) {
   const { memberRole, profile } = useTheme(); const isOwner = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
-  const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:'',storage_location:''}
+  const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:'',purchase_price:'',storage_location:''}
   const[form,setForm]=useState(initForm)
   const[msg,setMsg]=useState(null)
   const[saving,setSaving]=useState(false)
@@ -2084,7 +2084,6 @@ function DrugRegister({onRefresh, drugs}) {
       efficacy:item.efficacy||f.efficacy,
       storage_method:item.storage?stdStorage(item.storage):f.storage_method,
       unit:item.unit||f.unit,
-      specification:item.packUnit||f.specification,
       insurance_code:item.insuranceCode||f.insurance_code,
     }))
     setApiResults([]);setApiQuery('');setApiMsg(null)
@@ -2109,7 +2108,8 @@ function DrugRegister({onRefresh, drugs}) {
     }))
   },[priceInfo])
 
-  useEffect(()=>{_fillFromDrugMaster(form.insurance_code,dm=>setForm(f=>({...f,specification:f.specification||dm.dosage_form||'',total_qty:f.total_qty||dm.total_qty||'',packaging:f.packaging||dm.package||'',standard_code:f.standard_code||dm.product_code||''})))},[form.insurance_code])
+  useEffect(()=>{_fillFromDrugMaster(form.insurance_code,dm=>setForm(f=>({...f,atc_code:f.atc_code||dm.atc_code||'',standard_code:f.standard_code||dm.product_code||'',specification:f.specification||dm.dosage_form||'',total_qty:f.total_qty||dm.total_qty||'',packaging:f.packaging||dm.package||'',ingredient_kr:f.ingredient_kr||dm.ingredient_kr||'',ingredient_en:f.ingredient_en||dm.ingredient_en||'',manufacturer:f.manufacturer||dm.manufacturer||'',insurance_type:f.insurance_type||dm.insurance_type,narcotic_type:f.narcotic_type||dm.narcotic_type,insurance_price:f.insurance_price||dm.edi_price||''})),form.drug_name)},[form.insurance_code])
+  useEffect(()=>{setForm(f=>((f.insurance_price!==''&&f.insurance_price!=null&&(f.purchase_price===''||f.purchase_price==null))?{...f,purchase_price:f.insurance_price}:f))},[form.insurance_price])
   function set(k,v){setForm(f=>({...f,[k]:v}))}
 
   async function submit(){
@@ -2127,7 +2127,7 @@ function DrugRegister({onRefresh, drugs}) {
       efficacy:form.efficacy||null,
       specification:form.specification||null,total_qty:Number(form.total_qty)||null,packaging:form.packaging||null,standard_code:form.standard_code||null,
       unit:form.unit||null,
-      edi_price:Number(form.insurance_price)||0,
+      purchase_price:Number(form.purchase_price||form.insurance_price)||null,edi_price:Number(form.insurance_price)||0,
       insurance_type:form.insurance_type,
       insurance_code:form.insurance_code||null,
       current_qty:Number(form.current_qty)||0,
@@ -2304,7 +2304,8 @@ function DrugRegister({onRefresh, drugs}) {
               <div><label style={lbl}>제형</label><input value={form.specification} onChange={e=>set('specification',e.target.value)} placeholder="예: 정제, 캡슐" style={inp}/></div>
               <div><label style={lbl}>포장</label><input value={form.packaging||''} onChange={e=>set('packaging',e.target.value)} placeholder="예: 병, PTP, Vial" style={inp}/></div>
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:12}}>
+              <div><label style={lbl}>구입단가</label><input type="number" value={form.purchase_price||''} onChange={e=>set('purchase_price',e.target.value)} placeholder="기본값=보험약가" style={inp}/></div>
               <div><label style={lbl}>보험약가</label><input type="number" value={form.insurance_price} onChange={e=>set('insurance_price',e.target.value)} placeholder="API 자동입력" style={inp}/></div>
               <div><label style={lbl}>현재고</label><input type="number" value={form.current_qty} onChange={e=>set('current_qty',e.target.value)} placeholder="0" style={inp}/></div>
             </div>
