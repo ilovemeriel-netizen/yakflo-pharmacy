@@ -361,7 +361,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   }, [dragging])
 
   /* API 5종 조회 — 1차:허가정보 → 보조:e약은요+낱알식별+약가+성분약효 (신규등록과 동일 순서) */
-  useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>({...p,specification:p.specification||dm.dosage_form||'',total_qty:p.total_qty||dm.total_qty||'',packaging:p.packaging||dm.package||'',standard_code:p.standard_code||dm.product_code||''})))},[f.insurance_code])
+  useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>({...p,atc_code:p.atc_code||dm.atc_code||'',standard_code:p.standard_code||dm.product_code||'',specification:p.specification||dm.dosage_form||'',total_qty:p.total_qty||dm.total_qty||'',packaging:p.packaging||dm.package||'',ingredient_kr:p.ingredient_kr||dm.ingredient_kr||'',ingredient_en:p.ingredient_en||dm.ingredient_en||'',manufacturer:p.manufacturer||dm.manufacturer||'',insurance_type:p.insurance_type||dm.insurance_type,narcotic_type:p.narcotic_type||dm.narcotic_type,insurance_price:p.insurance_price||dm.edi_price||''})))},[f.insurance_code])
   async function lookupApi(overrideName) {
     const searchName = overrideName || f.drug_name.trim()
     if (!searchName) { setMsg('약품명이 필요합니다'); return }
@@ -1886,7 +1886,7 @@ async function _fillFromDrugMaster(insCode, apply, drugName) {
 }
 function DrugRegister({onRefresh, drugs}) {
   const { memberRole, profile } = useTheme(); const isOwner = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
-  const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:'',purchase_price:'',storage_location:''}
+  const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:'',purchase_price:'',storage_location:'',memo:''}
   const[form,setForm]=useState(initForm)
   const[msg,setMsg]=useState(null)
   const[saving,setSaving]=useState(false)
@@ -2135,6 +2135,7 @@ function DrugRegister({onRefresh, drugs}) {
       lot_no:form.lot_no||null,
       storage_method:form.storage_method||null,
       storage_location:form.storage_location||null,
+      memo:form.memo||null,
       status:form.status,
       is_narcotic:form.narcotic_type==='향정'||form.narcotic_type==='마약',
       narcotic_type:form.narcotic_type==='해당없음'?null:form.narcotic_type,
@@ -2326,6 +2327,7 @@ function DrugRegister({onRefresh, drugs}) {
               <div><label style={lbl}>상태</label><select value={form.status} onChange={e=>set('status',e.target.value)} style={{...inp,background:'#fff'}}>{['사용','휴면','중지'].map(s=><option key={s}>{s}</option>)}</select></div>
               <div><label style={lbl}>마약구분</label><select value={form.narcotic_type} onChange={e=>set('narcotic_type',e.target.value)} style={{...inp,background:'#fff'}}>{['해당없음','향정','마약','한외마약'].map(s=><option key={s}>{s}</option>)}</select></div>
             </div>
+            <div style={{marginBottom:16}}><label style={lbl}>비고</label><textarea value={form.memo||''} onChange={e=>set('memo',e.target.value)} rows={2} style={{...inp,resize:'vertical'}}/></div>
             <button onClick={submit} disabled={saving} style={{width:'100%',padding:12,borderRadius:10,border:'none',cursor:saving?'not-allowed':'pointer',background:saving?C.grayB:C.purple,color:'#fff',fontSize:14,fontWeight:700}}>
               {saving?'등록 중...':'약품 등록'}
             </button>
