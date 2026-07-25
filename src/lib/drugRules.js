@@ -46,6 +46,7 @@ export const FIELD_DEFS = [
   { key: 'purchase_price', col: 'purchase_price', label: '구입단가', type: 'number', owner: true, input: 'number', section: 'detail', order: 30, aliases: ['구입단가', '개당단가', '매입가', 'purchase_price'] },
   { key: 'insurance_code', col: 'insurance_code', label: '보험코드', type: 'string', input: 'text', section: 'detail', order: 31, aliases: ['보험코드', '청구코드', 'insurance_code'] },
   { key: 'standard_code', col: 'standard_code', label: '품목기준코드', type: 'string', input: 'text', section: 'detail', order: 32, aliases: ['품목기준코드', '기준코드', '품목코드', 'standard_code'] },
+  { key: 'atc_code', col: 'atc_code', label: 'ATC번호', type: 'string', input: 'text', section: 'detail', order: 33, aliases: ['ATC번호', 'ATC코드', 'atc_code', 'atc'] },
   { key: 'current_qty', col: 'current_qty', label: '현재고', type: 'number', input: 'number', section: 'detail', order: 40, aliases: ['현재고', '재고', '수량', 'current_qty'] },
   { key: 'safety_stock', col: 'safety_stock', label: '안전재고', type: 'number', input: 'number', section: 'detail', order: 41, aliases: ['안전재고', 'safety_stock'] },
   { key: 'max_stock', col: 'max_stock', label: '최대재고', type: 'number', input: 'number', section: 'detail', order: 42, aliases: ['최대재고', 'max_stock'] },
@@ -53,7 +54,7 @@ export const FIELD_DEFS = [
   { key: 'lot_no', col: 'lot_no', label: 'LOT번호', type: 'string', input: 'text', section: 'detail', order: 44, aliases: ['lot번호', 'lot', '로트', 'lot_no'] },
   { key: 'storage_method', col: 'storage_method', label: '보관방법', type: 'vocab', vocab: 'storage_method', input: 'select', section: 'detail', order: 45, aliases: ['보관', '보관방법', 'storage_method'] },
   { key: 'storage_location', col: 'storage_location', label: '보관위치', type: 'string', input: 'text', section: 'detail', order: 46, aliases: ['보관위치', '위치', 'storage_location'] },
-  { key: 'notes', col: 'notes', label: '비고', type: 'string', input: 'textarea', section: 'detail', order: 47, aliases: ['비고', '메모', 'notes'] },
+  { key: 'notes', col: 'memo', label: '비고', type: 'string', input: 'textarea', section: 'detail', order: 47, aliases: ['비고', '메모', 'memo', 'notes'] },
   { key: 'is_high_alert', col: 'is_high_alert', label: '고위험', type: 'bool', owner: true, input: 'checkbox', section: 'detail', order: 48, aliases: ['고위험', '고위험의약품', 'high_alert', 'is_high_alert'] },
 ]
 
@@ -71,20 +72,23 @@ const isBlank = v => v == null || String(v).trim() === ''
 export function autoMap(headers) {
   const map = {}
   const used = new Set()
-  for (const fd of FIELD_DEFS) {
-    let best = '', bestScore = 0
-    for (const h of headers) {
-      if (used.has(h)) continue
-      const nh = norm(h); if (!nh) continue
-      let score = 0
-      for (const a of fd.aliases) {
-        const na = norm(a)
-        if (nh === na) { score = 3; break }
-        if (nh.includes(na) || na.includes(nh)) score = Math.max(score, 2)
+  for (const minScore of [3, 2]) {          // 1차 정확일치(3) 우선 → 2차 부분일치(2): exact가 substring보다 헤더 선점
+    for (const fd of FIELD_DEFS) {
+      if (map[fd.key]) continue
+      let best = "", bestScore = 0
+      for (const h of headers) {
+        if (used.has(h)) continue
+        const nh = norm(h); if (!nh) continue
+        let score = 0
+        for (const a of fd.aliases) {
+          const na = norm(a)
+          if (nh === na) { score = 3; break }
+          if (nh.includes(na) || na.includes(nh)) score = Math.max(score, 2)
+        }
+        if (score > bestScore) { bestScore = score; best = h }
       }
-      if (score > bestScore) { bestScore = score; best = h }
+      if (bestScore >= minScore) { map[fd.key] = best; used.add(best) }
     }
-    if (bestScore >= 2) { map[fd.key] = best; used.add(best) }
   }
   return map
 }
