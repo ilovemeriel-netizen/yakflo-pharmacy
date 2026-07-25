@@ -44,6 +44,7 @@ supabase/reference_data.sql
 supabase/seed_data.sql
 
 # � ������ (Ŀ�� ����)
-data/
+data/*
+!data/README.md
 
 .env
