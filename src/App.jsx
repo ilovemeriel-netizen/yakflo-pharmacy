@@ -361,11 +361,11 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   }, [dragging])
 
   /* API 5종 조회 — 1차:허가정보 → 보조:e약은요+낱알식별+약가+성분약효 (신규등록과 동일 순서) */
-  useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>({...p,specification:p.specification||dm.dosage_form||'',total_qty:p.total_qty||dm.total_qty||'',packaging:p.packaging||dm.package||'',standard_code:p.standard_code||dm.product_code||''})))},[f.insurance_code])
+  useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>({...p,atc_code:p.atc_code||dm.atc_code||'',specification:p.specification||dm.dosage_form||'',total_qty:p.total_qty||dm.total_qty||'',packaging:p.packaging||dm.package||'',standard_code:p.standard_code||dm.product_code||''})))},[f.insurance_code])
   async function lookupApi(overrideName) {
     const searchName = overrideName || f.drug_name.trim()
     if (!searchName) { setMsg('약품명이 필요합니다'); return }
-    setApiLd(true); setMsg(null); setApiResults([]); setLookupInfo(null)
+    setApiLd(true); setMsg(null); setApiResults([]); setLookupInfo(null); if (isNew) sF(p => ({ ...p, atc_code: '', standard_code: '', specification: '', total_qty: '', packaging: '' }))
     /* try/finally — 어떤 예외/타임아웃이 발생해도 setApiLd(false) 반드시 호출되어
        "조회중..." 영구 상태 방지 */
     try {
@@ -2084,7 +2084,7 @@ function DrugRegister({onRefresh, drugs}) {
       efficacy:item.efficacy||f.efficacy,
       storage_method:item.storage?stdStorage(item.storage):f.storage_method,
       unit:item.unit||f.unit,
-      insurance_code:item.insuranceCode||f.insurance_code,
+      insurance_code:item.insuranceCode||f.insurance_code,atc_code:'',standard_code:'',specification:'',total_qty:'',packaging:'',
     }))
     setApiResults([]);setApiQuery('');setApiMsg(null)
     fetchDrugPrice(item.name||'', item.ingredient||'')
