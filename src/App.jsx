@@ -330,7 +330,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   const canDelete = profile?.role === 'admin' || memberRole === 'owner' || memberRole === 'admin'
   const isNew = !!dr.__register
   const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [f, sF] = useState({ drug_code: oc, drug_name: dr.drug_name || '', category: dr.category || '', ingredient_en: dr.ingredient_en || '', ingredient_kr: dr.ingredient_kr || '', efficacy_class: dr.efficacy_class || '', efficacy: dr.efficacy || '', manufacturer: dr.manufacturer || '', specification: dr.specification || '', unit: dr.unit || '', packaging: dr.packaging || dr.unit || '', total_qty: dr.total_qty ?? '', price_unit: dr.price_unit || 0, insurance_price: dr.insurance_price || 0, purchase_price: dr.purchase_price ?? '', edi_price: dr.edi_price ?? '', insurance_code: dr.insurance_code || '', current_qty: dr.current_qty || 0, expiry_date: dr.expiry_date || '', status: dr.status || '사용', narcotic_type: (dr.narcotic_type === '한외마약' ? '한외마약' : getNT(dr)), safety_stock: dr.safety_stock || 0, max_stock: dr.max_stock || 0, lot_no: dr.lot_no || '', insurance_type: dr.insurance_type || '급여', prescription_type: dr.prescription_type || '', atc_code: dr.atc_code || '', storage_method: dr.storage_method || '실온', storage_location: dr.storage_location || '', notes: dr.notes || '', standard_code: dr.standard_code || '' })
+  const [f, sF] = useState({ drug_code: oc, drug_name: dr.drug_name || '', category: dr.category || '', ingredient_en: dr.ingredient_en || '', ingredient_kr: dr.ingredient_kr || '', efficacy_class: dr.efficacy_class || '', efficacy: dr.efficacy || '', manufacturer: dr.manufacturer || '', specification: dr.specification || '', unit: dr.unit || '', packaging: dr.packaging || dr.unit || '', total_qty: dr.total_qty ?? '', price_unit: dr.price_unit || 0, insurance_price: dr.insurance_price || 0, purchase_price: dr.purchase_price ?? '', edi_price: dr.edi_price ?? '', insurance_code: dr.insurance_code || '', current_qty: dr.current_qty || 0, expiry_date: dr.expiry_date || '', status: dr.status || '사용', narcotic_type: (dr.narcotic_type === '한외마약' ? '한외마약' : getNT(dr)), safety_stock: dr.safety_stock || 0, max_stock: dr.max_stock || 0, lot_no: dr.lot_no || '', insurance_type: dr.insurance_type || '급여', prescription_type: dr.prescription_type || '', atc_code: dr.atc_code || '', storage_method: dr.storage_method || '실온', storage_location: dr.storage_location || '', memo: dr.memo || '', standard_code: dr.standard_code || '' })
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null); const [apiLd, setApiLd] = useState(false)
   const [apiResults, setApiResults] = useState([])
   const [lookupInfo, setLookupInfo] = useState(null)
@@ -361,12 +361,12 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   }, [dragging])
 
   /* API 5종 조회 — 1차:허가정보 → 보조:e약은요+낱알식별+약가+성분약효 (신규등록과 동일 순서) */
-  useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>({...p,specification:p.specification||dm.dosage_form||'',total_qty:p.total_qty||dm.total_qty||'',packaging:p.packaging||dm.package||'',standard_code:p.standard_code||dm.product_code||''})))},[f.insurance_code])
+  useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>_mergeDrugMaster(p,dm)))},[f.insurance_code])
   useEffect(()=>{ if(!isNew) return; sF(p=>((p.insurance_price!==''&&p.insurance_price!=null&&Number(p.insurance_price)>0&&(p.purchase_price===''||p.purchase_price==null))?{...p,purchase_price:p.insurance_price}:p)) },[f.insurance_price,isNew])
   async function lookupApi(overrideName) {
     const searchName = overrideName || f.drug_name.trim()
     if (!searchName) { setMsg('약품명이 필요합니다'); return }
-    setApiLd(true); setMsg(null); setApiResults([]); setLookupInfo(null)
+    setApiLd(true); setMsg(null); setApiResults([]); setLookupInfo(null); if (isNew) sF(p => ({ ...p, atc_code: '', standard_code: '', specification: '', total_qty: '', packaging: '', ingredient_kr: '', ingredient_en: '', manufacturer: '', insurance_price: '' }))
     /* try/finally — 어떤 예외/타임아웃이 발생해도 setApiLd(false) 반드시 호출되어
        "조회중..." 영구 상태 방지 */
     try {
@@ -542,7 +542,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     if (!CATS.includes(f.category)) { setMsg('구분을 선택하세요'); return }
     if (dupCode) { setMsg('이미 존재하는 약품코드입니다.'); return }
     setSaving(true); setMsg(null)
-    const _atc = decomposeAtc(f.atc_code); const row = { drug_code: code, drug_name: f.drug_name.trim(), category: f.category, ingredient_en: f.ingredient_en || null, ingredient_kr: f.ingredient_kr || null, efficacy_class: f.efficacy_class || null, efficacy: f.efficacy || null, manufacturer: f.manufacturer || null, specification: f.specification || null, unit: f.packaging || null, packaging: f.packaging || null, total_qty: (f.total_qty === '' || f.total_qty == null) ? null : Number(f.total_qty), purchase_price: (f.purchase_price === '' || f.purchase_price == null) ? null : Number(f.purchase_price), edi_price: Number(f.insurance_price) || 0, insurance_type: f.insurance_type, insurance_code: f.insurance_code || null, standard_code: f.standard_code || null, compound_type: f.compound_type || '단일제', current_qty: Number(f.current_qty) || 0, safety_stock: Number(f.safety_stock) || 0, max_stock: Number(f.max_stock) || 0, expiry_date: f.expiry_date || null, lot_no: f.lot_no || null, storage_method: f.storage_method || null, storage_location: f.storage_location || null, status: f.status, notes: f.notes || null, is_narcotic: f.narcotic_type === '향정' || f.narcotic_type === '마약', narcotic_type: f.narcotic_type === '일반' ? null : f.narcotic_type, prescription_type: f.prescription_type || null, atc_code: f.atc_code ? f.atc_code.trim().toUpperCase() : null, atc_l1: _atc.atc_l1 || null, atc_l2: _atc.atc_l2 || null, atc_l3: _atc.atc_l3 || null }
+    const _atc = decomposeAtc(f.atc_code); const row = { drug_code: code, drug_name: f.drug_name.trim(), category: f.category, ingredient_en: f.ingredient_en || null, ingredient_kr: f.ingredient_kr || null, efficacy_class: f.efficacy_class || null, efficacy: f.efficacy || null, manufacturer: f.manufacturer || null, specification: f.specification || null, unit: f.packaging || null, packaging: f.packaging || null, total_qty: (f.total_qty === '' || f.total_qty == null) ? null : Number(f.total_qty), purchase_price: (f.purchase_price === '' || f.purchase_price == null) ? null : Number(f.purchase_price), edi_price: Number(f.insurance_price) || 0, insurance_type: f.insurance_type, insurance_code: f.insurance_code || null, standard_code: f.standard_code || null, compound_type: f.compound_type || '단일제', current_qty: Number(f.current_qty) || 0, safety_stock: Number(f.safety_stock) || 0, max_stock: Number(f.max_stock) || 0, expiry_date: f.expiry_date || null, lot_no: f.lot_no || null, storage_method: f.storage_method || null, storage_location: f.storage_location || null, status: f.status, memo: f.memo || null, is_narcotic: f.narcotic_type === '향정' || f.narcotic_type === '마약', narcotic_type: f.narcotic_type === '일반' ? null : f.narcotic_type, prescription_type: f.prescription_type || null, atc_code: f.atc_code ? f.atc_code.trim().toUpperCase() : null, atc_l1: _atc.atc_l1 || null, atc_l2: _atc.atc_l2 || null, atc_l3: _atc.atc_l3 || null }
     if (memberRole === 'owner') row.is_high_alert = !!f.is_high_alert
     let res = await supabase.from('drugs').insert([row])
     for (let retry = 0; retry < 3 && res.error && res.error.message.includes('column'); retry++) {
@@ -565,7 +565,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     const ud = { status: f.status, is_narcotic: f.narcotic_type === '향정' || f.narcotic_type === '마약' }
     if (_has(f.drug_name)) ud.drug_name = f.drug_name
     if (f.drug_code.trim() && f.drug_code.trim() !== oc) ud.drug_code = f.drug_code.trim()
-    ;['category', 'narcotic_type', 'insurance_type', 'storage_method', 'ingredient_kr', 'ingredient_en', 'manufacturer', 'lot_no', 'insurance_code', 'efficacy', 'efficacy_class', 'specification', 'storage_location', 'notes', 'prescription_type'].forEach(k => { if (_has(f[k])) ud[k] = f[k] }); ud.packaging = f.packaging || null; ud.unit = f.packaging || null; ud.total_qty = (f.total_qty === '' || f.total_qty == null) ? null : Number(f.total_qty); ud.standard_code = f.standard_code || null
+    ;['category', 'narcotic_type', 'insurance_type', 'storage_method', 'ingredient_kr', 'ingredient_en', 'manufacturer', 'lot_no', 'insurance_code', 'efficacy', 'efficacy_class', 'specification', 'storage_location', 'memo', 'prescription_type'].forEach(k => { if (_has(f[k])) ud[k] = f[k] }); ud.packaging = f.packaging || null; ud.unit = f.packaging || null; ud.total_qty = (f.total_qty === '' || f.total_qty == null) ? null : Number(f.total_qty); ud.standard_code = f.standard_code || null
     if (_has(f.expiry_date)) ud.expiry_date = f.expiry_date
     ;['safety_stock', 'max_stock', 'purchase_price', 'edi_price'].forEach(k => { if (_num(f[k])) ud[k] = Number(f[k]) })
     if (_has(f.atc_code)) { const _atc = decomposeAtc(f.atc_code); ud.atc_code = f.atc_code.trim().toUpperCase(); ud.atc_l1 = _atc.atc_l1 || null; ud.atc_l2 = _atc.atc_l2 || null; ud.atc_l3 = _atc.atc_l3 || null }
@@ -648,7 +648,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>보험코드</label><input value={f.insurance_code} onChange={e => set('insurance_code', e.target.value)} style={ip} /></div><div><label style={lb}>유효기한(대표)</label><input type="date" value={f.expiry_date} onChange={e => set('expiry_date', e.target.value)} style={ip} /></div></div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>품목기준코드</label><input value={f.standard_code} onChange={e => set('standard_code', e.target.value)} style={ip} /></div></div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>보관방법</label><select value={f.storage_method} onChange={e => set('storage_method', e.target.value)} style={ip}>{STORAGE_OPTS.map(s => <option key={s}>{s}</option>)}</select></div><div><label style={lb}>보관위치</label><input value={f.storage_location} onChange={e => set('storage_location', e.target.value)} style={ip} /></div></div>
-                <div style={{ marginBottom: 10 }}><label style={lb}>비고</label><textarea value={f.notes} onChange={e => set('notes', e.target.value)} rows={2} style={{ ...ip, resize: 'vertical' }} /></div>
+                <div style={{ marginBottom: 10 }}><label style={lb}>비고</label><textarea value={f.memo} onChange={e => set('memo', e.target.value)} rows={2} style={{ ...ip, resize: 'vertical' }} /></div>
                 {memberRole === 'owner' && <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }}><input type="checkbox" checked={!!f.is_high_alert} onChange={e => set('is_high_alert', e.target.checked)} style={{ width: 16, height: 16, accentColor: '#D9342B' }} /><span style={{ fontSize: 12, fontWeight: 700, color: '#D9342B' }}>⚠ 고위험 의약품으로 지정</span></label>}
               </div>}
             </div>
@@ -664,7 +664,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>현재고</label><input type="number" value={f.current_qty} onChange={e => set('current_qty', e.target.value)} style={ip} /></div><div><label style={lb}>안전재고</label><input type="number" value={f.safety_stock} onChange={e => set('safety_stock', e.target.value)} style={ip} /></div><div><label style={lb}>최대재고</label><input type="number" value={f.max_stock} onChange={e => set('max_stock', e.target.value)} style={ip} /></div></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>유효기한 (대표)</label><input type="date" value={f.expiry_date} onChange={e => set('expiry_date', e.target.value)} style={ip} /></div><div><label style={lb}>LOT번호 · 다중 유효기한</label><div style={{ display: 'flex', gap: 4 }}><input value={f.lot_no} onChange={e => set('lot_no', e.target.value)} placeholder="대표 LOT" style={{ ...ip, flex: 1 }} /><button onClick={() => onLotManage?.(dr)} style={{ padding: '0 14px', borderRadius: 6, border: `1px solid ${t.purple}`, background: t.purpleL, color: t.purple, cursor: 'pointer', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>LOT관리 →</button></div></div></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>보관방법</label><select value={f.storage_method} onChange={e => set('storage_method', e.target.value)} style={ip}>{STORAGE_OPTS.map(s=><option key={s}>{s}</option>)}</select></div><div><label style={lb}>보관위치</label><input value={f.storage_location} onChange={e => set('storage_location', e.target.value)} style={ip} /></div></div>
-          <div style={{ marginBottom: 10 }}><label style={lb}>비고</label><textarea value={f.notes} onChange={e => set('notes', e.target.value)} rows={2} style={{ ...ip, resize: 'vertical' }} /></div>
+          <div style={{ marginBottom: 10 }}><label style={lb}>비고</label><textarea value={f.memo} onChange={e => set('memo', e.target.value)} rows={2} style={{ ...ip, resize: 'vertical' }} /></div>
           <div><label style={lb}>마약구분</label><div style={{ display: 'flex', gap: 4 }}>{['일반', '향정', '마약', '한외마약'].map(x => { const a = f.narcotic_type === x, cl = x === '일반' ? t.green : x === '향정' ? t.purple : x === '마약' ? t.red : t.blue; return <button key={x} onClick={() => set('narcotic_type', x)} style={{ flex: 1, padding: '8px', borderRadius: 6, border: `1px solid ${a ? cl : t.border}`, cursor: 'pointer', fontSize: 12, fontWeight: 600, background: a ? cl + '18' : 'transparent', color: a ? cl : t.textL }}>{x}</button> })}</div></div>
           <div style={{ marginBottom: 10 }}><label style={lb}>분류</label><div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>{RX_TOGGLE.map(x => <button key={x} type="button" onClick={() => set('prescription_type', f.prescription_type === x ? '' : x)} style={{ flex: 1, padding: '8px', borderRadius: 6, border: '1px solid ' + (f.prescription_type === x ? t.accent : t.border), cursor: 'pointer', fontSize: 12, fontWeight: 600, background: f.prescription_type === x ? t.accent : 'transparent', color: f.prescription_type === x ? '#fff' : t.textL }}>{x}</button>)}<select value={RX_MORE.includes(f.prescription_type) ? f.prescription_type : ''} onChange={e => set('prescription_type', e.target.value)} style={{ ...ip, flex: 1 }}><option value="">기타…</option>{RX_MORE.map(x => <option key={x} value={x}>{x}</option>)}</select></div></div>
           <div style={{ marginBottom: 10 }}><label style={lb}>ATC코드</label><input value={f.atc_code} onChange={e => set('atc_code', e.target.value.toUpperCase())} placeholder="예: N02BE01" style={ip} />{(() => { const _a = decomposeAtc(f.atc_code); return (f.atc_code && (_a.atc_l1 || _a.atc_l2 || _a.atc_l3)) ? <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>{[_a.atc_l1, _a.atc_l2, _a.atc_l3].filter(Boolean).map((v, i) => <span key={i} style={{ padding: '2px 8px', borderRadius: 8, fontSize: 10, fontWeight: 700, background: t.purpleL, color: t.purple, border: '1px solid ' + t.purple + '33' }}>{v}</span>)}</div> : f.atc_code ? <div style={{ marginTop: 6, fontSize: 10, color: t.textL }}>매핑 없음 — 코드만 저장(분류 비움)</div> : null })()}</div>
@@ -1881,13 +1881,28 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
 }
 
 /* ═══ 기초정보 등록 ═══ */
-async function _fillFromDrugMaster(insCode, apply) {
-  const c = String(insCode || '').trim(); if (c.length < 8) return
-  try { const { data } = await supabase.from('drug_master').select('dosage_form,total_qty,package,product_code').eq('insurance_code', c).limit(1).maybeSingle(); if (data) apply(data) } catch (_) {}
+async function _fillFromDrugMaster(insCode, apply, drugName) {
+  const cols = 'dosage_form,total_qty,package,product_code,atc_code,ingredient_kr,ingredient_en,manufacturer,insurance_type,narcotic_type,edi_price'; const c = String(insCode || '').trim()
+  try { let data = null; if (c.length >= 8) { const r = await supabase.from('drug_master').select(cols).eq('insurance_code', c).limit(1).maybeSingle(); data = r.data } if (!data && drugName && String(drugName).trim().length >= 2) { const r = await supabase.from('drug_master').select(cols).ilike('drug_name', '%' + String(drugName).trim() + '%').limit(1).maybeSingle(); data = r.data } if (data) apply(data) } catch (_) {}
+}
+function _mergeDrugMaster(prev, dm) {
+  return { ...prev,
+    atc_code: prev.atc_code || dm.atc_code || '',
+    standard_code: prev.standard_code || dm.product_code || '',
+    specification: prev.specification || dm.dosage_form || '',
+    total_qty: prev.total_qty || dm.total_qty || '',
+    packaging: prev.packaging || dm.package || '',
+    ingredient_kr: prev.ingredient_kr || dm.ingredient_kr || '',
+    ingredient_en: prev.ingredient_en || dm.ingredient_en || '',
+    manufacturer: prev.manufacturer || dm.manufacturer || '',
+    insurance_type: prev.insurance_type || dm.insurance_type,
+    narcotic_type: prev.narcotic_type || dm.narcotic_type,
+    insurance_price: prev.insurance_price || dm.edi_price || '',
+  }
 }
 function DrugRegister({onRefresh, drugs}) {
   const { memberRole, profile } = useTheme(); const isOwner = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
-  const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:''}
+  const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:'',purchase_price:'',storage_location:'',memo:''}
   const[form,setForm]=useState(initForm)
   const[msg,setMsg]=useState(null)
   const[saving,setSaving]=useState(false)
@@ -2085,8 +2100,7 @@ function DrugRegister({onRefresh, drugs}) {
       efficacy:item.efficacy||f.efficacy,
       storage_method:item.storage?stdStorage(item.storage):f.storage_method,
       unit:item.unit||f.unit,
-      specification:item.packUnit||f.specification,
-      insurance_code:item.insuranceCode||f.insurance_code,
+      insurance_code:item.insuranceCode||f.insurance_code,atc_code:'',standard_code:'',specification:'',total_qty:'',packaging:'',
     }))
     setApiResults([]);setApiQuery('');setApiMsg(null)
     fetchDrugPrice(item.name||'', item.ingredient||'')
@@ -2110,7 +2124,8 @@ function DrugRegister({onRefresh, drugs}) {
     }))
   },[priceInfo])
 
-  useEffect(()=>{_fillFromDrugMaster(form.insurance_code,dm=>setForm(f=>({...f,specification:f.specification||dm.dosage_form||'',total_qty:f.total_qty||dm.total_qty||'',packaging:f.packaging||dm.package||'',standard_code:f.standard_code||dm.product_code||''})))},[form.insurance_code])
+  useEffect(()=>{_fillFromDrugMaster(form.insurance_code,dm=>setForm(f=>_mergeDrugMaster(f,dm)),form.drug_name)},[form.insurance_code])
+  useEffect(()=>{setForm(f=>((f.insurance_price!==''&&f.insurance_price!=null&&(f.purchase_price===''||f.purchase_price==null))?{...f,purchase_price:f.insurance_price}:f))},[form.insurance_price])
   function set(k,v){setForm(f=>({...f,[k]:v}))}
 
   async function submit(){
@@ -2128,13 +2143,15 @@ function DrugRegister({onRefresh, drugs}) {
       efficacy:form.efficacy||null,
       specification:form.specification||null,total_qty:Number(form.total_qty)||null,packaging:form.packaging||null,standard_code:form.standard_code||null,
       unit:form.unit||null,
-      edi_price:Number(form.insurance_price)||0,
+      purchase_price:Number(form.purchase_price||form.insurance_price)||null,edi_price:Number(form.insurance_price)||0,
       insurance_type:form.insurance_type,
       insurance_code:form.insurance_code||null,
       current_qty:Number(form.current_qty)||0,
       expiry_date:form.expiry_date||null,
       lot_no:form.lot_no||null,
       storage_method:form.storage_method||null,
+      storage_location:form.storage_location||null,
+      memo:form.memo||null,
       status:form.status,
       is_narcotic:form.narcotic_type==='향정'||form.narcotic_type==='마약',
       narcotic_type:form.narcotic_type==='해당없음'?null:form.narcotic_type,
@@ -2304,7 +2321,8 @@ function DrugRegister({onRefresh, drugs}) {
               <div><label style={lbl}>제형</label><input value={form.specification} onChange={e=>set('specification',e.target.value)} placeholder="예: 정제, 캡슐" style={inp}/></div>
               <div><label style={lbl}>포장</label><input value={form.packaging||''} onChange={e=>set('packaging',e.target.value)} placeholder="예: 병, PTP, Vial" style={inp}/></div>
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:12}}>
+              <div><label style={lbl}>구입단가</label><input type="number" value={form.purchase_price||''} onChange={e=>set('purchase_price',e.target.value)} placeholder="기본값=보험약가" style={inp}/></div>
               <div><label style={lbl}>보험약가</label><input type="number" value={form.insurance_price} onChange={e=>set('insurance_price',e.target.value)} placeholder="API 자동입력" style={inp}/></div>
               <div><label style={lbl}>현재고</label><input type="number" value={form.current_qty} onChange={e=>set('current_qty',e.target.value)} placeholder="0" style={inp}/></div>
             </div>
@@ -2320,10 +2338,12 @@ function DrugRegister({onRefresh, drugs}) {
               <div><label style={lbl}>LOT번호</label><input value={form.lot_no} onChange={e=>set('lot_no',e.target.value)} placeholder="LOT번호 입력" style={inp}/></div>
             </div>
             <div style={{marginBottom:12}}><label style={lbl}>보관방법</label><select value={form.storage_method} onChange={e=>set('storage_method',e.target.value)} style={{...inp,background:'#fff'}}>{STORAGE_OPTS.map(s=><option key={s}>{s}</option>)}</select></div>
+            <div style={{marginBottom:12}}><label style={lbl}>보관위치</label><input value={form.storage_location||''} onChange={e=>set('storage_location',e.target.value)} placeholder="예: A-3-2, 냉장-B-1" style={inp}/></div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
               <div><label style={lbl}>상태</label><select value={form.status} onChange={e=>set('status',e.target.value)} style={{...inp,background:'#fff'}}>{['사용','휴면','중지'].map(s=><option key={s}>{s}</option>)}</select></div>
               <div><label style={lbl}>마약구분</label><select value={form.narcotic_type} onChange={e=>set('narcotic_type',e.target.value)} style={{...inp,background:'#fff'}}>{['해당없음','향정','마약','한외마약'].map(s=><option key={s}>{s}</option>)}</select></div>
             </div>
+            <div style={{marginBottom:16}}><label style={lbl}>비고</label><textarea value={form.memo||''} onChange={e=>set('memo',e.target.value)} rows={2} style={{...inp,resize:'vertical'}}/></div>
             <button onClick={submit} disabled={saving} style={{width:'100%',padding:12,borderRadius:10,border:'none',cursor:saving?'not-allowed':'pointer',background:saving?C.grayB:C.purple,color:'#fff',fontSize:14,fontWeight:700}}>
               {saving?'등록 중...':'약품 등록'}
             </button>
