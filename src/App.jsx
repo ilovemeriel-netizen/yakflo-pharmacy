@@ -361,11 +361,11 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   }, [dragging])
 
   /* API 5종 조회 — 1차:허가정보 → 보조:e약은요+낱알식별+약가+성분약효 (신규등록과 동일 순서) */
-  useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>({...p,specification:p.specification||dm.dosage_form||'',total_qty:p.total_qty||dm.total_qty||'',packaging:p.packaging||dm.package||'',standard_code:p.standard_code||dm.product_code||''})))},[f.insurance_code])
+  useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>_mergeDrugMaster(p,dm)))},[f.insurance_code])
   async function lookupApi(overrideName) {
     const searchName = overrideName || f.drug_name.trim()
     if (!searchName) { setMsg('약품명이 필요합니다'); return }
-    setApiLd(true); setMsg(null); setApiResults([]); setLookupInfo(null)
+    setApiLd(true); setMsg(null); setApiResults([]); setLookupInfo(null); if (isNew) sF(p => ({ ...p, atc_code: '', standard_code: '', specification: '', total_qty: '', packaging: '', ingredient_kr: '', ingredient_en: '', manufacturer: '', insurance_price: '' }))
     /* try/finally — 어떤 예외/타임아웃이 발생해도 setApiLd(false) 반드시 호출되어
        "조회중..." 영구 상태 방지 */
     try {
@@ -1884,6 +1884,21 @@ async function _fillFromDrugMaster(insCode, apply, drugName) {
   const cols = 'dosage_form,total_qty,package,product_code,atc_code,ingredient_kr,ingredient_en,manufacturer,insurance_type,narcotic_type,edi_price'; const c = String(insCode || '').trim()
   try { let data = null; if (c.length >= 8) { const r = await supabase.from('drug_master').select(cols).eq('insurance_code', c).limit(1).maybeSingle(); data = r.data } if (!data && drugName && String(drugName).trim().length >= 2) { const r = await supabase.from('drug_master').select(cols).ilike('drug_name', '%' + String(drugName).trim() + '%').limit(1).maybeSingle(); data = r.data } if (data) apply(data) } catch (_) {}
 }
+function _mergeDrugMaster(prev, dm) {
+  return { ...prev,
+    atc_code: prev.atc_code || dm.atc_code || '',
+    standard_code: prev.standard_code || dm.product_code || '',
+    specification: prev.specification || dm.dosage_form || '',
+    total_qty: prev.total_qty || dm.total_qty || '',
+    packaging: prev.packaging || dm.package || '',
+    ingredient_kr: prev.ingredient_kr || dm.ingredient_kr || '',
+    ingredient_en: prev.ingredient_en || dm.ingredient_en || '',
+    manufacturer: prev.manufacturer || dm.manufacturer || '',
+    insurance_type: prev.insurance_type || dm.insurance_type,
+    narcotic_type: prev.narcotic_type || dm.narcotic_type,
+    insurance_price: prev.insurance_price || dm.edi_price || '',
+  }
+}
 function DrugRegister({onRefresh, drugs}) {
   const { memberRole, profile } = useTheme(); const isOwner = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
   const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:'',purchase_price:'',storage_location:''}
@@ -2084,7 +2099,7 @@ function DrugRegister({onRefresh, drugs}) {
       efficacy:item.efficacy||f.efficacy,
       storage_method:item.storage?stdStorage(item.storage):f.storage_method,
       unit:item.unit||f.unit,
-      insurance_code:item.insuranceCode||f.insurance_code,
+      insurance_code:item.insuranceCode||f.insurance_code,atc_code:'',standard_code:'',specification:'',total_qty:'',packaging:'',
     }))
     setApiResults([]);setApiQuery('');setApiMsg(null)
     fetchDrugPrice(item.name||'', item.ingredient||'')
@@ -2108,7 +2123,7 @@ function DrugRegister({onRefresh, drugs}) {
     }))
   },[priceInfo])
 
-  useEffect(()=>{_fillFromDrugMaster(form.insurance_code,dm=>setForm(f=>({...f,atc_code:f.atc_code||dm.atc_code||'',standard_code:f.standard_code||dm.product_code||'',specification:f.specification||dm.dosage_form||'',total_qty:f.total_qty||dm.total_qty||'',packaging:f.packaging||dm.package||'',ingredient_kr:f.ingredient_kr||dm.ingredient_kr||'',ingredient_en:f.ingredient_en||dm.ingredient_en||'',manufacturer:f.manufacturer||dm.manufacturer||'',insurance_type:f.insurance_type||dm.insurance_type,narcotic_type:f.narcotic_type||dm.narcotic_type,insurance_price:f.insurance_price||dm.edi_price||''})),form.drug_name)},[form.insurance_code])
+  useEffect(()=>{_fillFromDrugMaster(form.insurance_code,dm=>setForm(f=>_mergeDrugMaster(f,dm)),form.drug_name)},[form.insurance_code])
   useEffect(()=>{setForm(f=>((f.insurance_price!==''&&f.insurance_price!=null&&(f.purchase_price===''||f.purchase_price==null))?{...f,purchase_price:f.insurance_price}:f))},[form.insurance_price])
   function set(k,v){setForm(f=>({...f,[k]:v}))}
 
