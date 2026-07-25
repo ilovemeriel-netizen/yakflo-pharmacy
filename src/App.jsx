@@ -1880,9 +1880,9 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
 }
 
 /* ═══ 기초정보 등록 ═══ */
-async function _fillFromDrugMaster(insCode, apply) {
-  const c = String(insCode || '').trim(); if (c.length < 8) return
-  try { const { data } = await supabase.from('drug_master').select('dosage_form,total_qty,package,product_code').eq('insurance_code', c).limit(1).maybeSingle(); if (data) apply(data) } catch (_) {}
+async function _fillFromDrugMaster(insCode, apply, drugName) {
+  const cols = 'dosage_form,total_qty,package,product_code,atc_code,ingredient_kr,ingredient_en,manufacturer,category,narcotic_type'; const c = String(insCode || '').trim()
+  try { let data = null; if (c.length >= 8) { const r = await supabase.from('drug_master').select(cols).eq('insurance_code', c).limit(1).maybeSingle(); data = r.data } if (!data && drugName && String(drugName).trim().length >= 2) { const r = await supabase.from('drug_master').select(cols).ilike('drug_name', '%' + String(drugName).trim() + '%').limit(1).maybeSingle(); data = r.data } if (data) apply(data) } catch (_) {}
 }
 function DrugRegister({onRefresh, drugs}) {
   const { memberRole, profile } = useTheme(); const isOwner = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
@@ -2109,7 +2109,7 @@ function DrugRegister({onRefresh, drugs}) {
     }))
   },[priceInfo])
 
-  useEffect(()=>{_fillFromDrugMaster(form.insurance_code,dm=>setForm(f=>({...f,specification:f.specification||dm.dosage_form||'',total_qty:f.total_qty||dm.total_qty||'',packaging:f.packaging||dm.package||'',standard_code:f.standard_code||dm.product_code||''})))},[form.insurance_code])
+  useEffect(()=>{_fillFromDrugMaster(form.insurance_code,dm=>setForm(f=>({...f,atc_code:f.atc_code||dm.atc_code||'',standard_code:f.standard_code||dm.product_code||'',specification:f.specification||dm.dosage_form||'',total_qty:f.total_qty||dm.total_qty||'',packaging:f.packaging||dm.package||'',ingredient_kr:f.ingredient_kr||dm.ingredient_kr||'',ingredient_en:f.ingredient_en||dm.ingredient_en||'',manufacturer:f.manufacturer||dm.manufacturer||'',category:f.category||dm.category,narcotic_type:f.narcotic_type||dm.narcotic_type})),form.drug_name)},[form.insurance_code])
   function set(k,v){setForm(f=>({...f,[k]:v}))}
 
   async function submit(){
