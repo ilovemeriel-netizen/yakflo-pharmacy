@@ -2549,7 +2549,7 @@ function TransactionForm({drugs,onReload,navFilter}){
     const ws=XLSX.utils.json_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,tab);XLSX.writeFile(wb,`입출고_${tab}_${new Date().toISOString().split('T')[0]}.xlsx`)
   }
   function dlTemplate(){
-    const hdrs=tab==='입고'?['일자','약품코드','입고수량','단가','공급업체','비고']:tab==='출고'?['일자','약품코드','출고수량','단가','비고']:tab==='반품'?['일자','약품코드','반품수량','단가','로트번호','유효기한','반품사유','처리상태','비고']:['약품코드','폐기수량','단가','로트번호','유효기한','폐기사유','처리자','승인자','비고']
+    const hdrs=tab==='입고'?['일자','약품코드','약품명(참고용)','입고수량','단가','공급업체','비고']:tab==='출고'?['일자','약품코드','약품명(참고용)','출고수량','단가','비고']:tab==='반품'?['일자','약품코드','약품명(참고용)','반품수량','단가','로트번호','유효기한','반품사유','처리상태','비고']:['약품코드','약품명(참고용)','폐기수량','단가','로트번호','유효기한','폐기사유','처리자','승인자','비고']
     const ws=XLSX.utils.aoa_to_sheet([hdrs]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,tab);XLSX.writeFile(wb,`${tab}_양식.xlsx`)
   }
   /* 테이블 컬럼 정의 */
