@@ -1001,7 +1001,7 @@ function Ordering({ drugs }) {
   const [orders, setOrders] = useState([]);
   const [tid, setTid] = useState(null);
   const [msg, setMsg] = useState(null);
-  const [newSup, setNewSup] = useState('');
+  const [supForm, setSupForm] = useState({ name: '', contact: '', phone: '', email: '', memo: '', lead_time_days: '' }); const [editSupId, setEditSupId] = useState(null);
   const [busy, setBusy] = useState(false); const [fc, setFc] = useState([]); const [ut, setUt] = useState([]);
   async function refresh() {
     const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle();
@@ -1013,7 +1013,30 @@ function Ordering({ drugs }) {
   const cand = drugs.filter(d => MAIN_STATS.includes(d.status) && (d.safety_stock || 0) > 0 && (d.current_qty || 0) <= d.safety_stock);
   const supName = id => (suppliers.find(s => s.id === id) || {}).name || '미지정 도매사';
   const groups = {}; cand.forEach(d => { const k = d.supplier_id || '__none'; (groups[k] = groups[k] || []).push(d) });
-  async function addSupplier() { if (!newSup.trim() || !tid) return; const { error } = await supabase.from('suppliers').insert({ tenant_id: tid, name: newSup.trim() }); if (!error) { setNewSup(''); refresh() } else setMsg('도매사 추가 실패: ' + error.message) }
+  async function saveSupplier() {
+    const name = supForm.name.trim();
+    if (!name || !tid) { setMsg('도매사 이름을 입력하세요'); setTimeout(() => setMsg(null), 2500); return }
+    const lt = supForm.lead_time_days === '' ? 3 : Math.max(0, parseInt(supForm.lead_time_days, 10) || 0);
+    const row = { name, contact: supForm.contact || null, phone: supForm.phone || null, email: supForm.email || null, memo: supForm.memo || null, lead_time_days: lt };
+    let error;
+    if (editSupId) { ({ error } = await supabase.from('suppliers').update(row).eq('id', editSupId)) }
+    else { ({ error } = await supabase.from('suppliers').insert({ tenant_id: tid, ...row })) }
+    if (error) { setMsg('도매사 저장 실패: ' + error.message); return }
+    setSupForm({ name: '', contact: '', phone: '', email: '', memo: '', lead_time_days: '' }); const wasEdit = !!editSupId; setEditSupId(null);
+    setMsg(wasEdit ? '도매사 수정 완료' : '도매사 등록 완료'); refresh(); setTimeout(() => setMsg(null), 2500);
+  }
+  function editSupplier(su) { setEditSupId(su.id); setSupForm({ name: su.name || '', contact: su.contact || '', phone: su.phone || '', email: su.email || '', memo: su.memo || '', lead_time_days: su.lead_time_days == null ? '' : String(su.lead_time_days) }) }
+  function cancelSupEdit() { setEditSupId(null); setSupForm({ name: '', contact: '', phone: '', email: '', memo: '', lead_time_days: '' }) }
+  async function deleteSupplier(su) {
+    const { count } = await supabase.from('purchase_orders').select('id', { count: 'exact', head: true }).eq('supplier_id', su.id);
+    const ref = count || 0;
+    const ok = ref > 0 ? window.confirm("'" + su.name + "' 도매사는 발주서 " + ref + "건에서 참조 중입니다. 그래도 삭제할까요?") : window.confirm("'" + su.name + "' 도매사를 삭제할까요?");
+    if (!ok) return;
+    const { error } = await supabase.from('suppliers').delete().eq('id', su.id);
+    if (error) { setMsg('삭제 실패: ' + error.message); return }
+    if (editSupId === su.id) cancelSupEdit();
+    setMsg('도매사 삭제 완료'); refresh(); setTimeout(() => setMsg(null), 2500);
+  }
   async function createPO(key, items) {
     if (!tid) { setMsg('테넌트 확인 실패'); return } setBusy(true);
     const supplier_id = key === '__none' ? null : key;
@@ -1029,11 +1052,20 @@ function Ordering({ drugs }) {
     <div style={{ fontSize: 18, fontWeight: 800, color: t.text, marginBottom: 4 }}>🧾 발주 관리</div>
     <div style={{ fontSize: 11, color: t.textL, marginBottom: 14 }}>현재고 ≤ 안전재고 후보 · 사용·휴면 기준 · 사용량 비의존(발주제안 = 안전 − 현재고)</div>
     {msg && <div style={{ background: t.accentL, color: t.accent, padding: '8px 14px', borderRadius: 8, marginBottom: 12, fontSize: 12, fontWeight: 600 }}>{msg}</div>}
-    <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-      <input value={newSup} onChange={e => setNewSup(e.target.value)} placeholder='도매사 이름' style={{ padding: '7px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, background: t.bg, color: t.text }} />
-      <button onClick={addSupplier} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>+ 도매사 추가</button>
-      <span style={{ fontSize: 11, color: t.textL }}>등록 도매사 {suppliers.length}곳</span>
-    </div>
+    {(() => { const _si = { padding: '7px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, background: t.bg, color: t.text }; return <div style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: '14px 16px', marginBottom: 16, boxShadow: t.shadow }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: t.text, marginBottom: 10 }}>{editSupId ? '도매사 수정' : '도매사 등록'} <span style={{ fontWeight: 500, fontSize: 11, color: t.textL }}>· 리드타임(입고 소요일)까지 관리 · 등록 {suppliers.length}곳</span></div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: suppliers.length ? 12 : 0 }}>
+        <input value={supForm.name} onChange={e => setSupForm(f => ({ ...f, name: e.target.value }))} placeholder='도매사 이름 *' style={{ ..._si, minWidth: 150 }} />
+        <input type='number' value={supForm.lead_time_days} onChange={e => setSupForm(f => ({ ...f, lead_time_days: e.target.value }))} placeholder='리드타임(일, 기본3)' style={{ ..._si, width: 150 }} />
+        <input value={supForm.contact} onChange={e => setSupForm(f => ({ ...f, contact: e.target.value }))} placeholder='담당자' style={{ ..._si, width: 100 }} />
+        <input value={supForm.phone} onChange={e => setSupForm(f => ({ ...f, phone: e.target.value }))} placeholder='전화' style={{ ..._si, width: 120 }} />
+        <input value={supForm.email} onChange={e => setSupForm(f => ({ ...f, email: e.target.value }))} placeholder='이메일' style={{ ..._si, width: 150 }} />
+        <input value={supForm.memo} onChange={e => setSupForm(f => ({ ...f, memo: e.target.value }))} placeholder='메모' style={{ ..._si, minWidth: 120, flex: 1 }} />
+        <button onClick={saveSupplier} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>{editSupId ? '수정 저장' : '+ 등록'}</button>
+        {editSupId ? <button onClick={cancelSupEdit} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>취소</button> : null}
+      </div>
+      {suppliers.length ? <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr>{['도매사', '리드타임', '담당자', '전화', '메모', ''].map((h, hi) => <th key={hi} style={{ textAlign: hi === 1 || hi === 5 ? 'right' : 'left', padding: '7px 12px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11 }}>{h}</th>)}</tr></thead><tbody>{suppliers.map(su => <tr key={su.id} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '7px 12px', fontWeight: 600, color: t.text }}>{su.name}</td><td style={{ padding: '7px 12px', textAlign: 'right', color: t.textM }}>{(su.lead_time_days == null ? 3 : su.lead_time_days)}일</td><td style={{ padding: '7px 12px', color: t.textM }}>{su.contact || '-'}</td><td style={{ padding: '7px 12px', color: t.textM }}>{su.phone || '-'}</td><td style={{ padding: '7px 12px', color: t.textL, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{su.memo || '-'}</td><td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}><button onClick={() => editSupplier(su)} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid ' + t.border, background: t.bg, color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 600, marginRight: 4 }}>수정</button><button onClick={() => deleteSupplier(su)} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid ' + t.border, background: t.bg, color: t.red, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>삭제</button></td></tr>)}</tbody></table></div> : null}
+    </div>; })()}
     <div style={{ fontWeight: 700, fontSize: 14, color: t.text, marginBottom: 8 }}>발주점 미달 후보 {cand.length}품목 · 도매사별</div>
     {!cand.length ? <div style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 24, textAlign: 'center', color: t.textL }}>발주점 미달 약품 없음 (0건)</div> :
       Object.keys(groups).map(key => { const items = groups[key]; return <div key={key} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, marginBottom: 12, overflow: 'hidden', boxShadow: t.shadow }}>
