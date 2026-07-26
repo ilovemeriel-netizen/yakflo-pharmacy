@@ -88,7 +88,7 @@ async function _fetchMonthTx(year, month) { const mm = String(month).padStart(2,
 async function searchDrugAPI(keyword, apiType = 'easy') {
   const maps = {
     easy: i => ({ name: i.itemName||'', efficacy: i.efcyQesitm||'', manufacturer: i.entpName||'', storage: i.depositMethodQesitm||'', usage: i.useMethodQesitm||'', warning: i.atpnWarnQesitm||'', sideEffect: i.seQesitm||'', image: i.itemImage||'', itemSeq: i.itemSeq||'' }),
-    permit: i => { const raw=i.MAIN_ITEM_INGR||i.PRDUCT_NM||''; const isE=s=>s&&/^[a-zA-Z\s()[\]\-,.:;0-9]+$/.test(s); const parts=raw.split(/[;；,，/]/).map(s=>s.trim()).filter(Boolean); const en=parts.find(p=>isE(p))||''; const kr=parts.find(p=>!isE(p))||''; return { name:i.ITEM_NAME||'', manufacturer:i.ENTP_NAME||'', ingredient:raw, ingredientEn:en, ingredientKr:kr, storage:i.STORAGE_METHOD||'', unit:i.PACK_UNIT||'', insuranceCode:i.EDI_CODE||'', image:i.ITEM_IMAGE||'', packUnit:i.PACK_UNIT||'', route:i.INJC_PTH_NM||i.EE_DOC_DATA&&'', storageMethod:i.STORAGE_METHOD||'' } },
+    permit: i => { const raw=i.MAIN_ITEM_INGR||i.PRDUCT_NM||''; const isE=s=>s&&/^[a-zA-Z\s()[\]\-,.:;0-9]+$/.test(s); const parts=raw.split(/[;；,，/]/).map(s=>s.trim()).filter(Boolean); const en=parts.find(p=>isE(p))||''; const kr=parts.find(p=>!isE(p))||''; return { name:i.ITEM_NAME||'', manufacturer:i.ENTP_NAME||'', ingredient:raw, ingredientEn:en, ingredientKr:kr, storage:i.STORAGE_METHOD||'', unit:i.PACK_UNIT||'', insuranceCode:i.EDI_CODE||'', image:i.ITEM_IMAGE||'', packUnit:i.PACK_UNIT||'', route:i.INJC_PTH_NM||i.EE_DOC_DATA&&'', storageMethod:i.STORAGE_METHOD||'', itemSeq:i.ITEM_SEQ||i.PRDLST_STDR_CODE||'' } },
     ati: i => ({ name: i.ITEM_NAME||'', manufacturer: i.ENTP_NAME||'', ingredient: i.MAIN_ITEM_INGR||i.PRDUCT_NM||'', shape: i.DRUG_SHAPE||'', image: i.ITEM_IMAGE||'' }),
     identify: i => ({ name: i.ITEM_NAME||'', shape: i.DRUG_SHAPE||'', color: i.COLOR_CLASS1||'', mark: i.MARK_CODE_FRONT||'', image: i.ITEM_IMAGE||'', line: i.LINE_FRONT||'' }),
     dur: i => ({ name: i.ITEM_NAME||'', durType: i.DUR_SEQ||'', ingredient: i.INGR_NAME||'', manufacturer: i.ENTP_NAME||'', prohibit: i.PROHBT_CONTENT||'' }),
@@ -416,6 +416,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
                 unit: h.PACK_UNIT||p.unit,
                 specification: p.specification,
                 insurance_code: h.EDI_CODE||p.insurance_code,
+                standard_code: p.standard_code || (/^[0-9]{9}$/.test(String(h.ITEM_SEQ||h.PRDLST_STDR_CODE||'')) ? String(h.ITEM_SEQ||h.PRDLST_STDR_CODE) : ''),
                 ingredient_kr: info.ingredientKr||p.ingredient_kr,
                 ingredient_en: info.ingredientEn||p.ingredient_en,
               }))
@@ -528,7 +529,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   /* 리스트에서 다른 약품 선택 → 약품명 교체 후 재조회 */
   function selectApiResult(item) {
     const parenKr2=(item.name||'').match(/[(（]([가-힣\s]+)[)）]/)?.[1]||''
-    if (item.name) sF(p => ({ ...p, drug_name: item.name, manufacturer: item.manufacturer || p.manufacturer, efficacy: item.efficacy || p.efficacy, storage_method: item.storage ? stdStorage(item.storage) : p.storage_method, unit: item.unit || p.unit, insurance_code: item.insuranceCode || p.insurance_code, ingredient_en: item.ingredientEn || p.ingredient_en, ingredient_kr: item.ingredientKr || parenKr2 || p.ingredient_kr }))
+    if (item.name) sF(p => ({ ...p, drug_name: item.name, manufacturer: item.manufacturer || p.manufacturer, efficacy: item.efficacy || p.efficacy, storage_method: item.storage ? stdStorage(item.storage) : p.storage_method, unit: item.unit || p.unit, insurance_code: item.insuranceCode || p.insurance_code, ingredient_en: item.ingredientEn || p.ingredient_en, ingredient_kr: item.ingredientKr || parenKr2 || p.ingredient_kr, standard_code: p.standard_code || (/^[0-9]{9}$/.test(String(item.itemSeq||'')) ? String(item.itemSeq) : '') }))
     setApiResults([])
     lookupApi(item.name)
   }
@@ -2100,7 +2101,7 @@ function DrugRegister({onRefresh, drugs}) {
       efficacy:item.efficacy||f.efficacy,
       storage_method:item.storage?stdStorage(item.storage):f.storage_method,
       unit:item.unit||f.unit,
-      insurance_code:item.insuranceCode||f.insurance_code,atc_code:'',standard_code:'',specification:'',total_qty:'',packaging:'',
+      insurance_code:item.insuranceCode||f.insurance_code,atc_code:'',standard_code:(/^[0-9]{9}$/.test(String(item.itemSeq||''))?String(item.itemSeq):''),specification:'',total_qty:'',packaging:'',
     }))
     setApiResults([]);setApiQuery('');setApiMsg(null)
     fetchDrugPrice(item.name||'', item.ingredient||'')

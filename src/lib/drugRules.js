@@ -72,20 +72,23 @@ const isBlank = v => v == null || String(v).trim() === ''
 export function autoMap(headers) {
   const map = {}
   const used = new Set()
-  for (const fd of FIELD_DEFS) {
-    let best = '', bestScore = 0
-    for (const h of headers) {
-      if (used.has(h)) continue
-      const nh = norm(h); if (!nh) continue
-      let score = 0
-      for (const a of fd.aliases) {
-        const na = norm(a)
-        if (nh === na) { score = 3; break }
-        if (nh.includes(na) || na.includes(nh)) score = Math.max(score, 2)
+  for (const minScore of [3, 2]) {          // 1차 정확일치(3) 우선 → 2차 부분일치(2): exact가 substring보다 헤더 선점
+    for (const fd of FIELD_DEFS) {
+      if (map[fd.key]) continue
+      let best = '', bestScore = 0
+      for (const h of headers) {
+        if (used.has(h)) continue
+        const nh = norm(h); if (!nh) continue
+        let score = 0
+        for (const a of fd.aliases) {
+          const na = norm(a)
+          if (nh === na) { score = 3; break }
+          if (nh.includes(na) || na.includes(nh)) score = Math.max(score, 2)
+        }
+        if (score > bestScore) { bestScore = score; best = h }
       }
-      if (score > bestScore) { bestScore = score; best = h }
+      if (bestScore >= minScore) { map[fd.key] = best; used.add(best) }
     }
-    if (bestScore >= 2) { map[fd.key] = best; used.add(best) }
   }
   return map
 }
