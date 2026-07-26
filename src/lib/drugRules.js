@@ -36,6 +36,7 @@ export const FIELD_DEFS = [
   { key: 'prescription_type', col: 'prescription_type', label: '분류', type: 'string', input: 'toggle', toggle: RX_TOGGLE, more: RX_MORE, section: 'detail', order: 12, aliases: ['분류', '전문일반', '전문/일반', 'prescription_type'] },
   { key: 'narcotic_type', col: 'narcotic_type', label: '마약구분', type: 'vocab', vocab: 'narcotic_type', input: 'toggle', section: 'detail', order: 13, aliases: ['마약구분', '향정마약', '향정', '마약', 'narcotic_type'] },
   { key: 'compound_type', col: 'compound_type', label: '복합/단일', type: 'vocab', vocab: 'compound_type', input: 'select', section: 'detail', order: 14, aliases: ['복합/단일', '복합단일', '복합제', 'compound_type'] },
+  { key: 'additive', col: 'additive', label: '첨가제', type: 'string', input: 'text', section: 'detail', order: 15, aliases: ['첨가제', 'additive', 'excipient', '부형제'] },
   { key: 'ingredient_en', col: 'ingredient_en', label: '성분명(영문)', type: 'string', input: 'text', section: 'detail', order: 20, aliases: ['성분명(영문)', '성분명(영어)', '영문성분', 'ingredient_en'] },
   { key: 'ingredient_kr', col: 'ingredient_kr', label: '성분명(한글)', type: 'string', input: 'text', section: 'detail', order: 21, aliases: ['성분명(한글)', '성분명', '성분', 'ingredient_kr'] },
   { key: 'manufacturer', col: 'manufacturer', label: '제조사', type: 'string', input: 'text', section: 'detail', order: 22, aliases: ['제조사', '제조판매사', '제조/수입사', '업체', 'manufacturer'] },
