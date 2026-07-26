@@ -2515,7 +2515,7 @@ function TransactionForm({drugs,onReload,navFilter}){
         const drug=drugs.find(d=>d.drug_code===code)
         const qtyVal=Number(r[tab==='입고'?'입고수량':tab==='출고'?'출고수량':tab==='반품'?'반품수량':'폐기수량']||r['수량']||r['quantity']||0)
         const price=Number(r['단가']||r['unit_price']||drug?.purchase_price||0)
-        return{idx:i+1,drug_code:code,drug_name:drug?.drug_name||r['약품명']||'',found:!!drug,quantity:qtyVal,unit_price:price,total_amount:qtyVal*price,
+        return{idx:i+1,drug_code:code,drug_name:drug?.drug_name||r['약품명']||r['약품명(참고용)']||r['약품명(참고)']||r['품명']||r['drug_name']||'',found:!!drug,quantity:qtyVal,unit_price:price,total_amount:qtyVal*price,
           note:String(r['비고']||'').trim(),supplier:String(r['공급업체']||'').trim(),
           lot_no:String(r['로트번호']||r['LOT번호']||'').trim(),expiry_date:String(r['유효기한']||'').trim(),
           reason:String(r[tab==='반품'?'반품사유':'폐기사유']||r['사유']||'').trim(),handler:String(r['처리자']||'이정화').trim(),approver:String(r['승인자']||'').trim(),
@@ -2549,7 +2549,7 @@ function TransactionForm({drugs,onReload,navFilter}){
     const ws=XLSX.utils.json_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,tab);XLSX.writeFile(wb,`입출고_${tab}_${new Date().toISOString().split('T')[0]}.xlsx`)
   }
   function dlTemplate(){
-    const hdrs=tab==='입고'?['일자','약품코드','입고수량','단가','공급업체','비고']:tab==='출고'?['일자','약품코드','출고수량','단가','비고']:tab==='반품'?['일자','약품코드','반품수량','단가','로트번호','유효기한','반품사유','처리상태','비고']:['약품코드','폐기수량','단가','로트번호','유효기한','폐기사유','처리자','승인자','비고']
+    const hdrs=tab==='입고'?['일자','약품코드','약품명(참고용)','입고수량','단가','공급업체','비고']:tab==='출고'?['일자','약품코드','약품명(참고용)','출고수량','단가','비고']:tab==='반품'?['일자','약품코드','약품명(참고용)','반품수량','단가','로트번호','유효기한','반품사유','처리상태','비고']:['약품코드','약품명(참고용)','폐기수량','단가','로트번호','유효기한','폐기사유','처리자','승인자','비고']
     const ws=XLSX.utils.aoa_to_sheet([hdrs]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,tab);XLSX.writeFile(wb,`${tab}_양식.xlsx`)
   }
   /* 테이블 컬럼 정의 */
