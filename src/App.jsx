@@ -1003,6 +1003,7 @@ function Ordering({ drugs }) {
   const [msg, setMsg] = useState(null);
   const [supForm, setSupForm] = useState({ name: '', contact: '', phone: '', email: '', memo: '', lead_time_days: '' }); const [editSupId, setEditSupId] = useState(null);
   const [busy, setBusy] = useState(false); const [fc, setFc] = useState([]); const [ut, setUt] = useState([]);
+  const [supAssign, setSupAssign] = useState({});
   const [detailOrder, setDetailOrder] = useState(null); const [detailItems, setDetailItems] = useState([]); const [detailLoading, setDetailLoading] = useState(false);
   async function refresh() {
     const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle();
@@ -1013,7 +1014,8 @@ function Ordering({ drugs }) {
   useEffect(() => { let on = true; (async () => { const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle(); if (!on) return; setTid(tm?.tenant_id || null); const { data: sup } = await supabase.from('suppliers').select('*').order('name'); if (on) setSuppliers(sup || []); const { data: po } = await supabase.from('purchase_orders').select('*, suppliers(name)').order('created_at', { ascending: false }).limit(20); if (on) setOrders(po || []); const { data: fcd } = await supabase.rpc('drug_change_forecast', { p_weeks: 12 }); if (on) setFc(fcd || []); const { data: utd } = await supabase.rpc('usage_monthly_trend', { p_months: 6 }); if (on) setUt(utd || []) })(); return () => { on = false } }, []);
   const cand = drugs.filter(d => MAIN_STATS.includes(d.status) && (d.safety_stock || 0) > 0 && (d.current_qty || 0) <= d.safety_stock);
   const supName = id => (suppliers.find(s => s.id === id) || {}).name || '미지정 도매사';
-  const groups = {}; cand.forEach(d => { const k = d.supplier_id || '__none'; (groups[k] = groups[k] || []).push(d) });
+  const effSup = d => (d.drug_code in supAssign ? supAssign[d.drug_code] : d.supplier_id) || '__none';
+  const groups = {}; cand.forEach(d => { const k = effSup(d); (groups[k] = groups[k] || []).push(d) });
   async function saveSupplier() {
     const name = supForm.name.trim();
     if (!name || !tid) { setMsg('도매사 이름을 입력하세요'); setTimeout(() => setMsg(null), 2500); return }
@@ -1042,6 +1044,12 @@ function Ordering({ drugs }) {
     setDetailOrder(o); setDetailItems([]); setDetailLoading(true);
     const { data } = await supabase.from('order_items').select('drug_code,drug_name,order_qty,current_qty,safety_stock').eq('order_id', o.id).order('drug_name');
     setDetailItems(data || []); setDetailLoading(false);
+  }
+  async function assignSupplier(drugCode, supplierId) {
+    const { error } = await supabase.from('drugs').update({ supplier_id: supplierId || null }).eq('drug_code', drugCode);
+    if (error) { setMsg('도매사 지정 실패: ' + error.message); setTimeout(() => setMsg(null), 2500); return }
+    setSupAssign(prev => ({ ...prev, [drugCode]: supplierId || '' }));
+    setMsg('도매사 지정 완료'); setTimeout(() => setMsg(null), 1800);
   }
   async function createPO(key, items) {
     if (!tid) { setMsg('테넌트 확인 실패'); return } setBusy(true);
@@ -1079,8 +1087,8 @@ function Ordering({ drugs }) {
           <span style={{ fontWeight: 700, color: t.accent }}>{key === '__none' ? '미지정 도매사' : supName(key)} <span style={{ fontWeight: 500, color: t.textM, fontSize: 12 }}>· {items.length}품목</span></span>
           <button disabled={busy} onClick={() => createPO(key, items)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: busy ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, opacity: busy ? 0.6 : 1 }}>발주서 생성</button>
         </div>
-        <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr>{['약품', '현재고', '안전재고', '발주제안'].map((h, hi) => <th key={h} style={{ textAlign: hi ? 'right' : 'left', padding: '8px 14px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11 }}>{h}</th>)}</tr></thead>
-        <tbody>{items.map((d, i) => <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '7px 14px' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, fontWeight: 600, cursor: 'pointer' }}>{d.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.red, fontWeight: 600 }}>{(d.current_qty || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.textM }}>{(d.safety_stock || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', fontWeight: 700, color: t.green }}>{Math.max(0, (d.safety_stock || 0) - (d.current_qty || 0)).toLocaleString()}</td></tr>)}</tbody></table></div>
+        <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr>{['약품', '현재고', '안전재고', '발주제안', '도매사'].map((h, hi) => <th key={h} style={{ textAlign: (hi === 0 || hi === 4) ? 'left' : 'right', padding: '8px 14px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11 }}>{h}</th>)}</tr></thead>
+        <tbody>{items.map((d, i) => <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '7px 14px' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, fontWeight: 600, cursor: 'pointer' }}>{d.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.red, fontWeight: 600 }}>{(d.current_qty || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.textM }}>{(d.safety_stock || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', fontWeight: 700, color: t.green }}>{Math.max(0, (d.safety_stock || 0) - (d.current_qty || 0)).toLocaleString()}</td><td style={{ padding: '7px 14px' }}><select value={effSup(d) === '__none' ? '' : effSup(d)} onChange={e => assignSupplier(d.drug_code, e.target.value)} style={{ padding: '4px 8px', border: '1px solid ' + t.border, borderRadius: 6, fontSize: 11, background: t.bg, color: t.text }}><option value=''>미지정</option>{suppliers.map(su => <option key={su.id} value={su.id}>{su.name}</option>)}</select></td></tr>)}</tbody></table></div>
       </div> })}
     <div style={{ fontWeight: 700, fontSize: 14, color: t.text, margin: '20px 0 8px' }}>최근 발주서 {orders.length}건</div>
     {!orders.length ? <div style={{ color: t.textL, fontSize: 12, padding: 12 }}>발주서 없음</div> :
