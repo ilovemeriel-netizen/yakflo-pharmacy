@@ -1984,7 +1984,7 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
 
 /* ═══ 기초정보 등록 ═══ */
 async function _fillFromDrugMaster(insCode, apply, drugName) {
-  const cols = 'dosage_form,total_qty,package,product_code,atc_code,ingredient_kr,ingredient_en,manufacturer,insurance_type,narcotic_type,edi_price'; const c = String(insCode || '').trim()
+  const cols = 'dosage_form,total_qty,package,product_code,atc_code,ingredient_kr,ingredient_en,manufacturer,insurance_type,narcotic_type,edi_price,excipient,compound_type'; const c = String(insCode || '').trim()
   try { let data = null; if (c.length >= 8) { const r = await supabase.from('drug_master').select(cols).eq('insurance_code', c).limit(1).maybeSingle(); data = r.data } if (!data && drugName && String(drugName).trim().length >= 2) { const r = await supabase.from('drug_master').select(cols).ilike('drug_name', '%' + String(drugName).trim() + '%').limit(1).maybeSingle(); data = r.data } if (data) apply(data) } catch (_) {}
 }
 function _mergeDrugMaster(prev, dm) {
