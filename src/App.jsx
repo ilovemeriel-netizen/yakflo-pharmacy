@@ -1005,6 +1005,7 @@ function Ordering({ drugs }) {
   const [busy, setBusy] = useState(false); const [fc, setFc] = useState([]); const [ut, setUt] = useState([]);
   const [supAssign, setSupAssign] = useState({});
   const [qtyOverride, setQtyOverride] = useState({}); const [delOrderStage, setDelOrderStage] = useState(0);
+  const [createdKeys, setCreatedKeys] = useState({});
   const [detailOrder, setDetailOrder] = useState(null); const [detailItems, setDetailItems] = useState([]); const [detailLoading, setDetailLoading] = useState(false);
   async function refresh() {
     const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle();
@@ -1056,15 +1057,21 @@ function Ordering({ drugs }) {
   async function saveDetailQty(it) { if (!it || !it.id) return; const q = Math.max(0, Number(it.order_qty) || 0); const { error } = await supabase.from('order_items').update({ order_qty: q }).eq('id', it.id); if (error) { setMsg('수량 저장 실패: ' + error.message); setTimeout(() => setMsg(null), 2500); } }
   async function deleteOrder() { if (!detailOrder) return; const { error } = await supabase.from('purchase_orders').delete().eq('id', detailOrder.id); if (error) { setMsg('발주서 삭제 실패: ' + error.message); return } setDetailOrder(null); setDetailItems([]); setDelOrderStage(0); setMsg('발주서 삭제 완료'); refresh(); setTimeout(() => setMsg(null), 2500); }
   async function createPO(key, items) {
-    if (!tid) { setMsg('테넌트 확인 실패'); return } setBusy(true);
+    if (busy) return;
+    if (!tid) { setMsg('테넌트 확인 실패'); return }
     const supplier_id = key === '__none' ? null : key;
+    let dupQ = supabase.from('purchase_orders').select('id', { count: 'exact', head: true }).eq('status', '작성중');
+    dupQ = supplier_id === null ? dupQ.is('supplier_id', null) : dupQ.eq('supplier_id', supplier_id);
+    const { count: dupN } = await dupQ;
+    if ((dupN || 0) > 0 && !window.confirm('이미 작성중 발주서가 ' + dupN + '건 있습니다. 그래도 새로 생성할까요?')) return;
+    setBusy(true);
     const { data: po, error } = await supabase.from('purchase_orders').insert({ tenant_id: tid, supplier_id, status: '작성중' }).select().single();
     if (error || !po) { setMsg('발주서 생성 실패: ' + (error ? error.message : '')); setBusy(false); return }
     const rows = items.map(d => ({ tenant_id: tid, order_id: po.id, drug_code: d.drug_code, drug_name: d.drug_name, order_qty: (() => { const ov = d.drug_code in qtyOverride ? Number(qtyOverride[d.drug_code]) : NaN; return (Number.isFinite(ov) && ov > 0) ? ov : Math.max(0, (d.safety_stock || 0) - (d.current_qty || 0)); })(), current_qty: d.current_qty || 0, safety_stock: d.safety_stock || 0 }));
     const { error: e2 } = await supabase.from('order_items').insert(rows);
     setBusy(false);
     if (e2) { setMsg('발주항목 저장 실패: ' + e2.message); return }
-    setMsg('발주서 생성 완료 (' + rows.length + '품목)'); refresh(); setTimeout(() => setMsg(null), 3000);
+    setCreatedKeys(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 })); setMsg('발주서 생성 완료 (' + rows.length + '품목) · 아래 "최근 발주서" 목록에 추가됨'); refresh(); setTimeout(() => setMsg(null), 3500);
   }
   return <div style={{ padding: '20px 24px' }}>
     <div style={{ fontSize: 18, fontWeight: 800, color: t.text, marginBottom: 4 }}>🧾 발주 관리</div>
@@ -1088,8 +1095,8 @@ function Ordering({ drugs }) {
     {!cand.length ? <div style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 24, textAlign: 'center', color: t.textL }}>발주점 미달 약품 없음 (0건)</div> :
       Object.keys(groups).map(key => { const items = groups[key]; return <div key={key} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, marginBottom: 12, overflow: 'hidden', boxShadow: t.shadow }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid ' + t.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: t.accentL }}>
-          <span style={{ fontWeight: 700, color: t.accent }}>{key === '__none' ? '미지정 도매사' : supName(key)} <span style={{ fontWeight: 500, color: t.textM, fontSize: 12 }}>· {items.length}품목</span></span>
-          <button disabled={busy} onClick={() => createPO(key, items)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: busy ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, opacity: busy ? 0.6 : 1 }}>발주서 생성</button>
+          <span style={{ fontWeight: 700, color: t.accent, display: 'flex', alignItems: 'center', gap: 8 }}><span>{key === '__none' ? '미지정 도매사' : supName(key)} <span style={{ fontWeight: 500, color: t.textM, fontSize: 12 }}>· {items.length}품목</span></span>{createdKeys[key] ? <Bd bg={t.greenL} color={t.green}>발주서 생성됨{createdKeys[key] > 1 ? ' ×' + createdKeys[key] : ''}</Bd> : null}</span>
+          <button disabled={busy} onClick={() => createPO(key, items)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: busy ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, opacity: busy ? 0.6 : 1 }}>{createdKeys[key] ? '발주서 재생성' : '발주서 생성'}</button>
         </div>
         <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr>{['약품', '현재고', '안전재고', '발주제안', '도매사'].map((h, hi) => <th key={h} style={{ textAlign: (hi === 0 || hi === 4) ? 'left' : 'right', padding: '8px 14px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11 }}>{h}</th>)}</tr></thead>
         <tbody>{items.map((d, i) => <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '7px 14px' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, fontWeight: 600, cursor: 'pointer' }}>{d.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.red, fontWeight: 600 }}>{(d.current_qty || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.textM }}>{(d.safety_stock || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right' }}><input value={d.drug_code in qtyOverride ? qtyOverride[d.drug_code] : Math.max(0, (d.safety_stock || 0) - (d.current_qty || 0))} onChange={e => setQtyOverride(prev => ({ ...prev, [d.drug_code]: e.target.value.replace(/[^0-9]/g, '') }))} style={{ width: 70, padding: '4px 8px', border: '1px solid ' + t.border, borderRadius: 6, fontSize: 12, textAlign: 'right', background: t.bg, color: t.green, fontWeight: 700 }} /></td><td style={{ padding: '7px 14px' }}><select value={effSup(d) === '__none' ? '' : effSup(d)} onChange={e => assignSupplier(d.drug_code, e.target.value)} style={{ padding: '4px 8px', border: '1px solid ' + t.border, borderRadius: 6, fontSize: 11, background: t.bg, color: t.text }}><option value=''>미지정</option>{suppliers.map(su => <option key={su.id} value={su.id}>{su.name}</option>)}</select></td></tr>)}</tbody></table></div>
