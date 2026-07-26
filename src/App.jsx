@@ -2473,6 +2473,7 @@ function TransactionForm({drugs,onReload,navFilter}){
   const[saving,setSaving]=useState(false);const[msg,setMsg]=useState(null)
   const[txns,setTxns]=useState([]);const[txPage,setTxPage]=useState(1)
   const[bulkData,setBulkData]=useState([]);const[bulkMsg,setBulkMsg]=useState(null);const[bulkLd,setBulkLd]=useState(false)
+  const[bulkRepl,setBulkRepl]=useState(null);const[delAllOpen,setDelAllOpen]=useState(false);const[delAllStage,setDelAllStage]=useState(1);const[delAllMsg,setDelAllMsg]=useState(null);const[delAllBusy,setDelAllBusy]=useState(false)
   const fileRef=useRef()
   const{hs,so,SI,TS}=useSort('transaction_date','desc')
   useEffect(()=>{loadTxns()},[tab])
@@ -2504,9 +2505,17 @@ function TransactionForm({drugs,onReload,navFilter}){
     if(!data||data.length===0){setDelMsg(noRowMsg());return}
     setDelTx(null);onReload?.();loadTxns()
   }
+  async function _delAll(){
+    setDelAllBusy(true);setDelAllMsg(null)
+    const{data,error}=await supabase.from('transactions').delete().eq('type',tab).select('id')
+    setDelAllBusy(false)
+    if(error){setDelAllMsg(dbErrorMsg(error));return}
+    setDelAllOpen(false);setDelAllStage(1);setBulkMsg(tab+' 이력 '+(data?data.length:0)+'건 전체 삭제 완료');onReload?.();loadTxns()
+    setTimeout(()=>setBulkMsg(null),4000)
+  }
   /* 엑셀 대량 업로드 */
   function xlUpload(e){
-    const file=e.target.files[0];if(!file)return;setBulkMsg(null)
+    const file=e.target.files[0];if(!file)return;setBulkMsg(null);setBulkRepl(null)
     const reader=new FileReader();reader.onload=ev=>{
       try{const wb=XLSX.read(ev.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:false})
       if(!rows.length){setBulkMsg('데이터 없음');return}
@@ -2533,7 +2542,11 @@ function TransactionForm({drugs,onReload,navFilter}){
   async function bulkSubmit(){
     const valid=bulkData.filter(r=>r.found&&r.quantity>0)
     if(!valid.length){setBulkMsg('등록 가능한 데이터 없음');return}
+    const dates=[...new Set(valid.map(r=>r.transaction_date).filter(Boolean))]
+    if(!bulkRepl){let cnt=0;if(dates.length){const{count}=await supabase.from('transactions').select('id',{count:'exact',head:true}).eq('type',tab).in('transaction_date',dates);cnt=count||0}setBulkRepl({dates,n:cnt});if(cnt>0){setBulkMsg(null);return}}
     setBulkLd(true)
+    const dd=(bulkRepl&&bulkRepl.dates)||dates;let replaced=0
+    if(dd.length){const{data:delD,error:delE}=await supabase.from('transactions').delete().eq('type',tab).in('transaction_date',dd).select('id');if(!delE)replaced=delD?delD.length:0}
     let ok=0,fail=0
     for(const r of valid){
       const tx={drug_code:r.drug_code,type:tab,quantity:r.quantity,unit_price:r.unit_price,total_amount:r.total_amount,memo:r.note||null,transaction_date:r.transaction_date,reason:r.reason||null,handler:r.handler||null,approver:r.approver||null,process_status:r.process_status||null,supplier:r.supplier||null,lot_no:r.lot_no||null,expiry_date:r.expiry_date||null}
@@ -2541,7 +2554,7 @@ function TransactionForm({drugs,onReload,navFilter}){
       for(let rt=0;rt<3&&res.error&&res.error.message?.includes('column');rt++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
       if(!res.error){ ok++ /* 재고는 0009 트리거 단일기록. 음수는 트리거 RAISE로 차단(해당 행 fail). */ }else fail++
     }
-    setBulkLd(false);setBulkMsg(`완료! ${ok}건 등록, ${fail}건 실패`);setBulkData([]);onReload?.();loadTxns()
+    setBulkLd(false);setBulkRepl(null);setBulkMsg(`완료! ${ok}건 등록${replaced?` · 기존 ${replaced}건 교체`:''}${fail?` · ${fail}건 실패`:''}`);setBulkData([]);onReload?.();loadTxns()
     setTimeout(()=>setBulkMsg(null),4000)
   }
   function dlHist(){
@@ -2595,14 +2608,15 @@ function TransactionForm({drugs,onReload,navFilter}){
           {bulkMsg&&<div style={{marginTop:6,fontSize:10,color:bulkMsg.includes('완료')?t.green:bulkMsg.includes('오류')?t.red:t.blue,fontWeight:600}}>{bulkMsg}</div>}
           {bulkData.some(r=>!r.found)?<div style={{marginTop:8}}><div style={{color:t.amber,fontWeight:600,fontSize:11,marginBottom:4}}>매칭실패 {bulkData.filter(r=>!r.found).length}건 — 코드 정정 후 재매핑</div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:10}}><thead><tr>{['업로드코드','약품명','수량','단가',''].map((h,hi)=><th key={hi} style={{textAlign:(hi>=2&&hi<=3)?'right':'left',padding:'4px 6px',color:t.textM,borderBottom:'1px solid '+t.border}}>{h}</th>)}</tr></thead><tbody>{bulkData.filter(r=>!r.found).map(r=><tr key={r.idx} style={{borderBottom:'1px solid '+t.border}}><td style={{padding:'3px 6px'}}><input value={r.drug_code} onChange={e=>setBulkCode(r.idx,e.target.value)} style={{padding:'2px 6px',border:'1px solid '+(r._err?t.red:t.border),borderRadius:5,fontSize:10,background:t.bg,color:t.text,width:100}}/>{r._err?<span style={{marginLeft:4,color:t.red,fontSize:9}}>{r._err}</span>:null}</td><td style={{padding:'3px 6px',color:t.textM}}>{r.drug_name||'-'}</td><td style={{padding:'3px 6px',textAlign:'right',color:t.textM}}>{r.quantity}</td><td style={{padding:'3px 6px',textAlign:'right',color:t.textM}}>{r.unit_price}</td><td style={{padding:'3px 6px',whiteSpace:'nowrap'}}><button onClick={()=>remapBulk(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:600,marginRight:3}}>재매핑</button><button onClick={()=>cancelBulk(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>취소</button></td></tr>)}</tbody></table></div></div>:null}
           {bulkData.some(r=>r.found&&!(r.quantity>0))?<div style={{marginTop:8}}><div style={{color:t.red,fontWeight:600,fontSize:11,marginBottom:4}}>수량 오류 {bulkData.filter(r=>r.found&&!(r.quantity>0)).length}건 — 수량 수정 후 재검증 또는 취소</div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:10}}><thead><tr>{['코드','약품명','수량(수정)','사유',''].map((h,hi)=><th key={hi} style={{textAlign:hi===2?'right':'left',padding:'4px 6px',color:t.textM,borderBottom:'1px solid '+t.border}}>{h}</th>)}</tr></thead><tbody>{bulkData.filter(r=>r.found&&!(r.quantity>0)).map(r=><tr key={r.idx} style={{borderBottom:'1px solid '+t.border}}><td style={{padding:'3px 6px',color:t.text}}>{r.drug_code}</td><td style={{padding:'3px 6px',color:t.textM}}>{r.drug_name||'-'}</td><td style={{padding:'3px 6px',textAlign:'right'}}><input value={r.quantity} onChange={e=>setBulkQty(r.idx,e.target.value)} style={{padding:'2px 6px',border:'1px solid '+(r._qerr?t.red:t.border),borderRadius:5,fontSize:10,background:t.bg,color:t.text,width:64,textAlign:'right'}}/></td><td style={{padding:'3px 6px',color:t.red,fontSize:9}}>수량 0 이하/비숫자{r._qerr?' · '+r._qerr:''}</td><td style={{padding:'3px 6px',whiteSpace:'nowrap'}}><button onClick={()=>revalidateBulkQty(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:600,marginRight:3}}>재검증</button><button onClick={()=>cancelBulk(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>취소</button></td></tr>)}</tbody></table></div></div>:null}
-          {bulkData.length>0&&<button onClick={bulkSubmit} disabled={bulkLd} style={{width:'100%',marginTop:6,padding:'8px',borderRadius:6,border:'none',background:bulkLd?t.textL:tc[tab]?.c,color:'#fff',cursor:bulkLd?'not-allowed':'pointer',fontSize:11,fontWeight:700}}>{bulkLd?'등록 중...':bulkData.filter(r=>r.found&&r.quantity>0).length+'건 일괄 등록'}</button>}
+          {bulkRepl&&bulkRepl.n>0?<div style={{marginTop:8,padding:'8px 10px',borderRadius:6,border:'1px solid '+t.amber,background:t.amberL,color:t.amber,fontSize:10,fontWeight:600,lineHeight:1.5}}>해당 일자의 기존 {tab} {bulkRepl.n}건이 삭제되고 업로드분으로 교체됩니다(누적 아님). 계속하려면 아래 버튼을 다시 누르세요.<button onClick={()=>{setBulkRepl(null);setBulkMsg(null)}} style={{marginLeft:6,padding:'1px 6px',borderRadius:4,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>취소</button></div>:null}
+          {bulkData.length>0&&<button onClick={bulkSubmit} disabled={bulkLd} style={{width:'100%',marginTop:6,padding:'8px',borderRadius:6,border:'none',background:bulkLd?t.textL:tc[tab]?.c,color:'#fff',cursor:bulkLd?'not-allowed':'pointer',fontSize:11,fontWeight:700}}>{bulkLd?'등록 중...':(bulkRepl&&bulkRepl.n>0?'기존 '+bulkRepl.n+'건 교체하고 등록':bulkData.filter(r=>r.found&&r.quantity>0).length+'건 일괄 등록')}</button>}
         </div>
       </div>
       {/* 우: 이력 테이블 */}
       <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
         <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,display:'flex',justifyContent:'space-between',alignItems:'center',background:tc[tab]?.bg}}>
           <span style={{fontWeight:700,fontSize:13,color:tc[tab]?.c}}>{tab} 이력</span>
-          <span style={{display:'flex',alignItems:'center',gap:8}}><button onClick={dlHist} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button><span style={{fontSize:12,fontWeight:600,color:tc[tab]?.c}}>{txns.length}건 (전체)</span></span>
+          <span style={{display:'flex',alignItems:'center',gap:8}}><button onClick={dlHist} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>{canDel&&txns.length>0&&<button onClick={()=>{setDelAllOpen(true);setDelAllStage(1);setDelAllMsg(null)}} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.red,background:'transparent',color:t.red,cursor:'pointer',fontSize:11,fontWeight:600}}>전체삭제</button>}<span style={{fontSize:12,fontWeight:600,color:tc[tab]?.c}}>{txns.length}건 (전체)</span></span>
         </div>
         <div style={{overflowX:'auto',maxHeight:500}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
           <thead><tr>{cols.map(([k,h])=><th key={h} style={{...TS(k),fontSize:10,whiteSpace:'nowrap'}} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}{canDel&&<th style={{fontSize:10,whiteSpace:'nowrap',textAlign:'center'}}>삭제</th>}</tr></thead>
@@ -2612,6 +2626,17 @@ function TransactionForm({drugs,onReload,navFilter}){
         </table></div>
         <Pg page={txPage} setPage={setTxPage} tp={tp2} fl={sorted} pp={PP} ends/>
       </div>
+    {delAllOpen&&<div onClick={()=>{if(!delAllBusy){setDelAllOpen(false);setDelAllStage(1);setDelAllMsg(null)}}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:440,width:'100%',border:'1px solid '+t.border,boxShadow:t.shadowH}}>
+        <div style={{fontSize:14,fontWeight:700,color:t.red,marginBottom:10}}>{tab} 이력 전체 삭제</div>
+        {delAllStage===1?<div style={{fontSize:12,color:t.textM,lineHeight:1.7,marginBottom:14}}>현재 <strong style={{color:t.text}}>{tab}</strong> 이력 <strong style={{color:t.red}}>{txns.length}건</strong>을 전부 삭제합니다. 삭제분은 재고가 자동 복원됩니다. <strong style={{color:t.red}}>되돌릴 수 없습니다.</strong></div>:<div style={{fontSize:12,color:t.textM,lineHeight:1.7,marginBottom:14}}>정말로 <strong style={{color:t.red}}>{tab} {txns.length}건</strong>을 영구 삭제합니다. 마지막 확인입니다.</div>}
+        {delAllMsg&&<div style={{background:t.redL,color:t.red,borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:11,fontWeight:600}}>{delAllMsg}</div>}
+        <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
+          <button onClick={()=>{setDelAllOpen(false);setDelAllStage(1);setDelAllMsg(null)}} disabled={delAllBusy} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.border,background:'transparent',color:t.textM,cursor:delAllBusy?'not-allowed':'pointer',fontSize:12,fontWeight:700}}>취소</button>
+          {delAllStage===1?<button onClick={()=>setDelAllStage(2)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.red,background:'transparent',color:t.red,cursor:'pointer',fontSize:12,fontWeight:700}}>삭제 ({txns.length}건)</button>:<button onClick={_delAll} disabled={delAllBusy} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.red,background:t.red,color:'#fff',cursor:delAllBusy?'not-allowed':'pointer',fontSize:12,fontWeight:700}}>{delAllBusy?'삭제 중...':'영구 삭제'}</button>}
+        </div>
+      </div>
+    </div>}
     {delTx&&<div onClick={()=>{setDelTx(null);setDelMsg(null)}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
       <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:420,width:'100%',border:`1px solid ${t.border}`,boxShadow:t.shadowH}}>
         <div style={{fontSize:14,fontWeight:700,color:t.red,marginBottom:10}}>거래 삭제 확인</div>
