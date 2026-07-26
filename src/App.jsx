@@ -996,7 +996,7 @@ function AlertCenter({ drugs, onNav }) {
 
 /* ═══ 발주 관리 (현재고+safety 기반·사용량 비의존) ═══ */
 function Ordering({ drugs }) {
-  const { t, open360 } = useTheme();
+  const { t, open360, memberRole, profile } = useTheme(); const canDel = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin';
   const [suppliers, setSuppliers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [tid, setTid] = useState(null);
@@ -1004,6 +1004,7 @@ function Ordering({ drugs }) {
   const [supForm, setSupForm] = useState({ name: '', contact: '', phone: '', email: '', memo: '', lead_time_days: '' }); const [editSupId, setEditSupId] = useState(null);
   const [busy, setBusy] = useState(false); const [fc, setFc] = useState([]); const [ut, setUt] = useState([]);
   const [supAssign, setSupAssign] = useState({});
+  const [qtyOverride, setQtyOverride] = useState({}); const [delOrderStage, setDelOrderStage] = useState(0);
   const [detailOrder, setDetailOrder] = useState(null); const [detailItems, setDetailItems] = useState([]); const [detailLoading, setDetailLoading] = useState(false);
   async function refresh() {
     const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle();
@@ -1041,8 +1042,8 @@ function Ordering({ drugs }) {
     setMsg('도매사 삭제 완료'); refresh(); setTimeout(() => setMsg(null), 2500);
   }
   async function openOrderDetail(o) {
-    setDetailOrder(o); setDetailItems([]); setDetailLoading(true);
-    const { data } = await supabase.from('order_items').select('drug_code,drug_name,order_qty,current_qty,safety_stock').eq('order_id', o.id).order('drug_name');
+    setDetailOrder(o); setDetailItems([]); setDetailLoading(true); setDelOrderStage(0);
+    const { data } = await supabase.from('order_items').select('id,drug_code,drug_name,order_qty,current_qty,safety_stock').eq('order_id', o.id).order('drug_name');
     setDetailItems(data || []); setDetailLoading(false);
   }
   async function assignSupplier(drugCode, supplierId) {
@@ -1051,12 +1052,15 @@ function Ordering({ drugs }) {
     setSupAssign(prev => ({ ...prev, [drugCode]: supplierId || '' }));
     setMsg('도매사 지정 완료'); setTimeout(() => setMsg(null), 1800);
   }
+  function setDetailQty(i, v) { const q = Number(String(v).replace(/[^0-9]/g, '')); setDetailItems(items => items.map((it, j) => j === i ? { ...it, order_qty: Number.isFinite(q) ? q : 0 } : it)); }
+  async function saveDetailQty(it) { if (!it || !it.id) return; const q = Math.max(0, Number(it.order_qty) || 0); const { error } = await supabase.from('order_items').update({ order_qty: q }).eq('id', it.id); if (error) { setMsg('수량 저장 실패: ' + error.message); setTimeout(() => setMsg(null), 2500); } }
+  async function deleteOrder() { if (!detailOrder) return; const { error } = await supabase.from('purchase_orders').delete().eq('id', detailOrder.id); if (error) { setMsg('발주서 삭제 실패: ' + error.message); return } setDetailOrder(null); setDetailItems([]); setDelOrderStage(0); setMsg('발주서 삭제 완료'); refresh(); setTimeout(() => setMsg(null), 2500); }
   async function createPO(key, items) {
     if (!tid) { setMsg('테넌트 확인 실패'); return } setBusy(true);
     const supplier_id = key === '__none' ? null : key;
     const { data: po, error } = await supabase.from('purchase_orders').insert({ tenant_id: tid, supplier_id, status: '작성중' }).select().single();
     if (error || !po) { setMsg('발주서 생성 실패: ' + (error ? error.message : '')); setBusy(false); return }
-    const rows = items.map(d => ({ tenant_id: tid, order_id: po.id, drug_code: d.drug_code, drug_name: d.drug_name, order_qty: Math.max(0, (d.safety_stock || 0) - (d.current_qty || 0)), current_qty: d.current_qty || 0, safety_stock: d.safety_stock || 0 }));
+    const rows = items.map(d => ({ tenant_id: tid, order_id: po.id, drug_code: d.drug_code, drug_name: d.drug_name, order_qty: (() => { const ov = d.drug_code in qtyOverride ? Number(qtyOverride[d.drug_code]) : NaN; return (Number.isFinite(ov) && ov > 0) ? ov : Math.max(0, (d.safety_stock || 0) - (d.current_qty || 0)); })(), current_qty: d.current_qty || 0, safety_stock: d.safety_stock || 0 }));
     const { error: e2 } = await supabase.from('order_items').insert(rows);
     setBusy(false);
     if (e2) { setMsg('발주항목 저장 실패: ' + e2.message); return }
@@ -1088,7 +1092,7 @@ function Ordering({ drugs }) {
           <button disabled={busy} onClick={() => createPO(key, items)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: busy ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, opacity: busy ? 0.6 : 1 }}>발주서 생성</button>
         </div>
         <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr>{['약품', '현재고', '안전재고', '발주제안', '도매사'].map((h, hi) => <th key={h} style={{ textAlign: (hi === 0 || hi === 4) ? 'left' : 'right', padding: '8px 14px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11 }}>{h}</th>)}</tr></thead>
-        <tbody>{items.map((d, i) => <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '7px 14px' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, fontWeight: 600, cursor: 'pointer' }}>{d.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.red, fontWeight: 600 }}>{(d.current_qty || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.textM }}>{(d.safety_stock || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', fontWeight: 700, color: t.green }}>{Math.max(0, (d.safety_stock || 0) - (d.current_qty || 0)).toLocaleString()}</td><td style={{ padding: '7px 14px' }}><select value={effSup(d) === '__none' ? '' : effSup(d)} onChange={e => assignSupplier(d.drug_code, e.target.value)} style={{ padding: '4px 8px', border: '1px solid ' + t.border, borderRadius: 6, fontSize: 11, background: t.bg, color: t.text }}><option value=''>미지정</option>{suppliers.map(su => <option key={su.id} value={su.id}>{su.name}</option>)}</select></td></tr>)}</tbody></table></div>
+        <tbody>{items.map((d, i) => <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '7px 14px' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, fontWeight: 600, cursor: 'pointer' }}>{d.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.red, fontWeight: 600 }}>{(d.current_qty || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.textM }}>{(d.safety_stock || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right' }}><input value={d.drug_code in qtyOverride ? qtyOverride[d.drug_code] : Math.max(0, (d.safety_stock || 0) - (d.current_qty || 0))} onChange={e => setQtyOverride(prev => ({ ...prev, [d.drug_code]: e.target.value.replace(/[^0-9]/g, '') }))} style={{ width: 70, padding: '4px 8px', border: '1px solid ' + t.border, borderRadius: 6, fontSize: 12, textAlign: 'right', background: t.bg, color: t.green, fontWeight: 700 }} /></td><td style={{ padding: '7px 14px' }}><select value={effSup(d) === '__none' ? '' : effSup(d)} onChange={e => assignSupplier(d.drug_code, e.target.value)} style={{ padding: '4px 8px', border: '1px solid ' + t.border, borderRadius: 6, fontSize: 11, background: t.bg, color: t.text }}><option value=''>미지정</option>{suppliers.map(su => <option key={su.id} value={su.id}>{su.name}</option>)}</select></td></tr>)}</tbody></table></div>
       </div> })}
     <div style={{ fontWeight: 700, fontSize: 14, color: t.text, margin: '20px 0 8px' }}>최근 발주서 {orders.length}건</div>
     {!orders.length ? <div style={{ color: t.textL, fontSize: 12, padding: 12 }}>발주서 없음</div> :
@@ -1104,9 +1108,12 @@ function Ordering({ drugs }) {
           <button onClick={() => { setDetailOrder(null); setDetailItems([]) }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>닫기</button>
         </div>
         <div style={{ padding: '12px 20px', overflowY: 'auto' }}>
-          {detailLoading ? <div style={{ color: t.textL, fontSize: 12, padding: 16, textAlign: 'center' }}>불러오는 중...</div> : !detailItems.length ? <div style={{ color: t.textL, fontSize: 12, padding: 16, textAlign: 'center' }}>품목 없음</div> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr>{['약품', '발주수량', '현재고', '안전재고'].map((h, hi) => <th key={h} style={{ textAlign: hi ? 'right' : 'left', padding: '8px 12px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11 }}>{h}</th>)}</tr></thead><tbody>{detailItems.map((it, i) => <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '7px 12px' }}><span style={{ color: t.text, fontWeight: 600 }}>{it.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{it.drug_code}</span></td><td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700, color: t.green }}>{Number(it.order_qty || 0).toLocaleString()}</td><td style={{ padding: '7px 12px', textAlign: 'right', color: t.red, fontWeight: 600 }}>{Number(it.current_qty || 0).toLocaleString()}</td><td style={{ padding: '7px 12px', textAlign: 'right', color: t.textM }}>{Number(it.safety_stock || 0).toLocaleString()}</td></tr>)}</tbody></table></div>}
+          {detailLoading ? <div style={{ color: t.textL, fontSize: 12, padding: 16, textAlign: 'center' }}>불러오는 중...</div> : !detailItems.length ? <div style={{ color: t.textL, fontSize: 12, padding: 16, textAlign: 'center' }}>품목 없음</div> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr>{['약품', '발주수량', '현재고', '안전재고'].map((h, hi) => <th key={h} style={{ textAlign: hi ? 'right' : 'left', padding: '8px 12px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11 }}>{h}</th>)}</tr></thead><tbody>{detailItems.map((it, i) => <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '7px 12px' }}><span style={{ color: t.text, fontWeight: 600 }}>{it.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{it.drug_code}</span></td><td style={{ padding: '7px 12px', textAlign: 'right' }}>{canDel ? <input value={it.order_qty} onChange={e => setDetailQty(i, e.target.value)} onBlur={() => saveDetailQty(it)} style={{ width: 64, padding: '3px 6px', border: '1px solid ' + t.border, borderRadius: 6, fontSize: 12, textAlign: 'right', background: t.bg, color: t.green, fontWeight: 700 }} /> : <span style={{ fontWeight: 700, color: t.green }}>{Number(it.order_qty || 0).toLocaleString()}</span>}</td><td style={{ padding: '7px 12px', textAlign: 'right', color: t.red, fontWeight: 600 }}>{Number(it.current_qty || 0).toLocaleString()}</td><td style={{ padding: '7px 12px', textAlign: 'right', color: t.textM }}>{Number(it.safety_stock || 0).toLocaleString()}</td></tr>)}</tbody></table></div>}
         </div>
-        <div style={{ padding: '10px 20px', borderTop: '1px solid ' + t.border, fontSize: 11, color: t.textL }}>{detailLoading ? '' : detailItems.length + '품목'}</div>
+        <div style={{ padding: '10px 20px', borderTop: '1px solid ' + t.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, color: t.textL }}>{detailLoading ? '' : detailItems.length + '품목'}{canDel && detailItems.length ? ' · 발주수량 수정 가능' : ''}</span>
+          {canDel ? (delOrderStage === 0 ? <button onClick={() => setDelOrderStage(1)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>발주서 삭제</button> : <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: 11, color: t.red, fontWeight: 600 }}>되돌릴 수 없습니다</span><button onClick={() => setDelOrderStage(0)} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>취소</button><button onClick={deleteOrder} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.red, background: t.red, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>영구 삭제</button></span>) : null}
+        </div>
       </div>
     </div>}
   </div>;
