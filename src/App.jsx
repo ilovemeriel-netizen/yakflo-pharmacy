@@ -2508,9 +2508,11 @@ function TransactionForm({drugs,onReload,navFilter}){
   async function _delAll(){
     setDelAllBusy(true);setDelAllMsg(null)
     const{data,error}=await supabase.from('transactions').delete().eq('type',tab).select('id')
+    if(error){setDelAllBusy(false);setDelAllMsg(dbErrorMsg(error));return}
+    let usageMsg=''
+    if(tab==='출고'){/* 출고가 모두 삭제되면 직전1개월(recent_1m)=0. app_recompute_usage는 출고 없는 약품을 갱신 대상에서 제외(stale 잔존)하므로 recent_1m만 명시적으로 0 리셋. 월평균·안전재고(수기 보존)·recent_3m·prev_year 무변경. */await supabase.rpc('app_recompute_usage',{p_overwrite_manual:false});await supabase.from('drugs').update({recent_1m_usage:0}).gt('recent_1m_usage',0);usageMsg=' · 직전1개월 0 재집계'}
     setDelAllBusy(false)
-    if(error){setDelAllMsg(dbErrorMsg(error));return}
-    setDelAllOpen(false);setDelAllStage(1);setBulkMsg(tab+' 이력 '+(data?data.length:0)+'건 전체 삭제 완료');onReload?.();loadTxns()
+    setDelAllOpen(false);setDelAllStage(1);setBulkMsg(tab+' 이력 '+(data?data.length:0)+'건 전체 삭제 완료'+usageMsg);onReload?.();loadTxns()
     setTimeout(()=>setBulkMsg(null),4000)
   }
   /* 엑셀 대량 업로드 */
