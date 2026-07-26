@@ -48,3 +48,6 @@ data/*
 !data/README.md
 
 .env
+
+# 개인 export 백업(저장소 무관)
+html/
