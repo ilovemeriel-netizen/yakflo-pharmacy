@@ -2476,7 +2476,7 @@ function TransactionForm({drugs,onReload,navFilter}){
   const fileRef=useRef()
   const{hs,so,SI,TS}=useSort('transaction_date','desc')
   useEffect(()=>{loadTxns()},[tab])
-  async function loadTxns(){const{data}=await supabase.from('transactions').select('*').eq('type',tab).order('transaction_date',{ascending:false}).limit(200);setTxns(data||[]);setTxPage(1)}
+  async function loadTxns(){let all=[],f=0;while(true){const{data,error}=await supabase.from('transactions').select('*').eq('type',tab).order('transaction_date',{ascending:false}).range(f,f+999);if(error||!data||!data.length)break;all=all.concat(data);if(data.length<1000)break;f+=1000}setTxns(all);setTxPage(1)}
   const filtered=drugs.filter(d=>d.status==='사용'&&search.trim()&&(d.drug_name?.toLowerCase().includes(search.toLowerCase())||d.drug_code?.toLowerCase().includes(search.toLowerCase())))
   function sf(k,v){setForm(p=>({...p,[k]:v}))}
   const subs=tab==='입고'?IN_SUBS:tab==='출고'?OUT_SUBS:[]
@@ -2602,7 +2602,7 @@ function TransactionForm({drugs,onReload,navFilter}){
       <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
         <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,display:'flex',justifyContent:'space-between',alignItems:'center',background:tc[tab]?.bg}}>
           <span style={{fontWeight:700,fontSize:13,color:tc[tab]?.c}}>{tab} 이력</span>
-          <span style={{display:'flex',alignItems:'center',gap:8}}><button onClick={dlHist} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button><span style={{fontSize:12,fontWeight:600,color:tc[tab]?.c}}>{txns.length}건{txns.length>=200?' (최근 200)':''}</span></span>
+          <span style={{display:'flex',alignItems:'center',gap:8}}><button onClick={dlHist} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button><span style={{fontSize:12,fontWeight:600,color:tc[tab]?.c}}>{txns.length}건 (전체)</span></span>
         </div>
         <div style={{overflowX:'auto',maxHeight:500}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
           <thead><tr>{cols.map(([k,h])=><th key={h} style={{...TS(k),fontSize:10,whiteSpace:'nowrap'}} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}{canDel&&<th style={{fontSize:10,whiteSpace:'nowrap',textAlign:'center'}}>삭제</th>}</tr></thead>
@@ -2610,7 +2610,7 @@ function TransactionForm({drugs,onReload,navFilter}){
             {cols.map(([k])=><td key={k} style={{padding:'5px 8px',fontSize:10,color:k==='drug_name'?t.text:k==='total_amount'?tc[tab]?.c:t.textM,fontWeight:k==='drug_name'||k==='total_amount'?600:400,textAlign:k==='quantity'||k==='unit_price'||k==='total_amount'?'right':'left',whiteSpace:'nowrap'}}>{k==='total_amount'?'₩'+(tx[k]||0).toLocaleString():k==='unit_price'?(tx[k]||0).toLocaleString():k==='quantity'?(tx[k]||0).toLocaleString():k==='sub_type'&&tx[k]?<Bd bg={tc[tab]?.bg} color={tc[tab]?.c}>{tx[k]}</Bd>:tx[k]||'-'}</td>)}{canDel&&<td style={{padding:'5px 8px',textAlign:'center'}}><button onClick={()=>{setDelTx(tx);setDelMsg(null)}} style={{padding:'2px 8px',borderRadius:4,border:`1px solid ${t.red}`,background:'transparent',color:t.red,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>삭제</button></td>}
           </tr>)}</tbody>
         </table></div>
-        <Pg page={txPage} setPage={setTxPage} tp={tp2} fl={sorted} pp={PP}/>
+        <Pg page={txPage} setPage={setTxPage} tp={tp2} fl={sorted} pp={PP} ends/>
       </div>
     {delTx&&<div onClick={()=>{setDelTx(null);setDelMsg(null)}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
       <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:420,width:'100%',border:`1px solid ${t.border}`,boxShadow:t.shadowH}}>
