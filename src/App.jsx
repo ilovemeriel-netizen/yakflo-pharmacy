@@ -2610,7 +2610,7 @@ function TransactionForm({drugs,onReload,navFilter}){
             {cols.map(([k])=><td key={k} style={{padding:'5px 8px',fontSize:10,color:k==='drug_name'?t.text:k==='total_amount'?tc[tab]?.c:t.textM,fontWeight:k==='drug_name'||k==='total_amount'?600:400,textAlign:k==='quantity'||k==='unit_price'||k==='total_amount'?'right':'left',whiteSpace:'nowrap'}}>{k==='total_amount'?'₩'+(tx[k]||0).toLocaleString():k==='unit_price'?(tx[k]||0).toLocaleString():k==='quantity'?(tx[k]||0).toLocaleString():k==='sub_type'&&tx[k]?<Bd bg={tc[tab]?.bg} color={tc[tab]?.c}>{tx[k]}</Bd>:tx[k]||'-'}</td>)}{canDel&&<td style={{padding:'5px 8px',textAlign:'center'}}><button onClick={()=>{setDelTx(tx);setDelMsg(null)}} style={{padding:'2px 8px',borderRadius:4,border:`1px solid ${t.red}`,background:'transparent',color:t.red,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>삭제</button></td>}
           </tr>)}</tbody>
         </table></div>
-        <Pg page={txPage} setPage={setTxPage} tp={tp2} fl={sorted} pp={PP}/>
+        <Pg page={txPage} setPage={setTxPage} tp={tp2} fl={sorted} pp={PP} ends/>
       </div>
     {delTx&&<div onClick={()=>{setDelTx(null);setDelMsg(null)}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
       <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:420,width:'100%',border:`1px solid ${t.border}`,boxShadow:t.shadowH}}>
