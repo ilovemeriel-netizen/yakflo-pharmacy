@@ -2560,7 +2560,7 @@ function TransactionForm({drugs,onReload,navFilter}){
   const[tab,setTab]=useState(navFilter?.txTab||'입고')
   const[search,setSearch]=useState('');const[selDrug,setSelDrug]=useState(null)
   const[form,setForm]=useState({qty:'',purchase_price:'',sub_type:'',note:'',supplier:'',lot_no:'',expiry_date:'',reason:'',handler:'이정화',approver:'',process_status:'처리완료'})
-  const[saving,setSaving]=useState(false);const[msg,setMsg]=useState(null);const[ppConfirm,setPpConfirm]=useState(null)
+  const[saving,setSaving]=useState(false);const[msg,setMsg]=useState(null);const[ppConfirm,setPpConfirm]=useState(null);const[outlierConfirm,setOutlierConfirm]=useState(null)
   const[txns,setTxns]=useState([]);const[txPage,setTxPage]=useState(1)
   const[bulkData,setBulkData]=useState([]);const[bulkMsg,setBulkMsg]=useState(null);const[bulkLd,setBulkLd]=useState(false)
   const[bulkRepl,setBulkRepl]=useState(null);const[delAllOpen,setDelAllOpen]=useState(false);const[delAllStage,setDelAllStage]=useState(1);const[delAllMsg,setDelAllMsg]=useState(null);const[delAllBusy,setDelAllBusy]=useState(false)
@@ -2575,9 +2575,17 @@ function TransactionForm({drugs,onReload,navFilter}){
   const tc={'입고':{bg:t.greenL,c:t.green},'출고':{bg:t.blueL,c:t.blue},'반품':{bg:t.amberL,c:t.amber},'폐기':{bg:t.redL,c:t.red}}
   const ip={width:'100%',padding:'8px 10px',border:`1px solid ${t.border}`,borderRadius:6,fontSize:12,outline:'none',background:t.bg,color:t.text,boxSizing:'border-box'}
 
-  async function submit(){
+  async function submit(skipOutlier){
     if(!selDrug||!form.qty){setMsg('약품과 수량을 입력해주세요');return}
     if((tab==='반품'||tab==='폐기')&&!form.reason){setMsg('사유를 선택해주세요');return}
+    /* 출고 이상치 게이트(출고 탭 전용): 재고초과·평균3배초과·향정마약 중 하나라도 걸리면 확인. 정상 출고는 즉시 저장 */
+    if(tab==='출고'&&!skipOutlier){
+      const _q=parseInt(form.qty);const _rs=[]
+      if(_q>(selDrug.current_qty||0))_rs.push('현재고 '+(selDrug.current_qty||0).toLocaleString()+'보다 많습니다')
+      const _r3=Number(selDrug.recent_3m_usage)||0;if(_r3>0){const _avg=_r3/3;if(_q>_avg*3)_rs.push('최근 3개월 평균 사용량('+Math.round(_avg).toLocaleString()+')보다 많습니다')}
+      if(['향정','마약','한외마약'].includes(String(selDrug.narcotic_type||'').trim()))_rs.push(String(selDrug.narcotic_type).trim()+' 약품입니다')
+      if(_rs.length){setMsg(null);setOutlierConfirm({drugName:selDrug.drug_name,qty:_q,reasons:_rs});return}
+    }
     /* ③안: 입고 탭 구입단가 입력값 우선(비면 기존 마스터 단가) — 빈칸 경로는 기존과 동일 */
     const _rawPp=String(form.purchase_price??'').trim()
     const _hasPp=tab==='입고'&&_rawPp!==''
@@ -2702,7 +2710,7 @@ function TransactionForm({drugs,onReload,navFilter}){
         </>}
         <input value={form.note} onChange={e=>sf('note',e.target.value)} placeholder="비고" style={{...ip,marginBottom:10}}/>
         {msg&&<div style={{background:msg.includes('완료')?t.greenL:t.redL,borderRadius:6,padding:'6px 10px',marginBottom:6,color:msg.includes('완료')?t.green:t.red,fontSize:11}}>{msg}</div>}
-        <button onClick={submit} disabled={saving} style={{width:'100%',padding:10,borderRadius:8,border:'none',background:saving?t.textL:tc[tab]?.c,color:'#fff',cursor:saving?'not-allowed':'pointer',fontSize:13,fontWeight:700}}>{saving?'처리 중...':tab+' 등록'}</button>
+        <button onClick={()=>submit()} disabled={saving} style={{width:'100%',padding:10,borderRadius:8,border:'none',background:saving?t.textL:tc[tab]?.c,color:'#fff',cursor:saving?'not-allowed':'pointer',fontSize:13,fontWeight:700}}>{saving?'처리 중...':tab+' 등록'}</button>
         {/* 대량등록 */}
         <div style={{borderTop:`1px solid ${t.border}`,marginTop:14,paddingTop:12}}>
           <div style={{fontSize:12,fontWeight:600,color:t.textM,marginBottom:8}}>엑셀 대량 등록</div>
@@ -2740,6 +2748,16 @@ function TransactionForm({drugs,onReload,navFilter}){
         <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
           <button onClick={()=>{setDelAllOpen(false);setDelAllStage(1);setDelAllMsg(null)}} disabled={delAllBusy} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.border,background:'transparent',color:t.textM,cursor:delAllBusy?'not-allowed':'pointer',fontSize:12,fontWeight:700}}>취소</button>
           {delAllStage===1?<button onClick={()=>setDelAllStage(2)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.red,background:'transparent',color:t.red,cursor:'pointer',fontSize:12,fontWeight:700}}>삭제 ({txns.length}건)</button>:<button onClick={_delAll} disabled={delAllBusy} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.red,background:t.red,color:'#fff',cursor:delAllBusy?'not-allowed':'pointer',fontSize:12,fontWeight:700}}>{delAllBusy?'삭제 중...':'영구 삭제'}</button>}
+        </div>
+      </div>
+    </div>}
+    {outlierConfirm&&<div onClick={()=>{setOutlierConfirm(null)}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:420,width:'100%',border:`1px solid ${t.border}`,boxShadow:t.shadowH}}>
+        <div style={{fontSize:14,fontWeight:700,color:t.accent,marginBottom:10}}>출고 내용을 확인해 주세요</div>
+        <div style={{fontSize:12,color:t.textM,lineHeight:1.7,marginBottom:14}}><strong style={{color:t.text}}>{outlierConfirm.drugName}</strong><br/>출고수량 {outlierConfirm.qty.toLocaleString()}<br/>{outlierConfirm.reasons.map((r,i)=><span key={i}>· {r}<br/></span>)}</div>
+        <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
+          <button onClick={()=>setOutlierConfirm(null)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.border}`,background:'transparent',color:t.textM,cursor:'pointer',fontSize:12,fontWeight:700}}>취소</button>
+          <button onClick={()=>{setOutlierConfirm(null);submit(true)}} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>출고 등록</button>
         </div>
       </div>
     </div>}
