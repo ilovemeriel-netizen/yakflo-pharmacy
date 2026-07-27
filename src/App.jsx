@@ -1990,7 +1990,7 @@ function _normDrugName(s) {
   return String(s || '').replace(/[(（].*$/, '').replace(/[0-9]+(\.[0-9]+)?\s*(mg|ml|g|mcg|밀리그램|밀리리터|그램|정|캡슐|주사|시럽|주|병|앰플|밀리|단위|iu|%|퍼센트)/gi, '').replace(/\s+/g, '').toLowerCase()
 }
 async function _fillFromDrugMaster(insCode, apply, drugName) {
-  const cols = 'insurance_code,drug_name,dosage_form,total_qty,package,product_code,atc_code,ingredient_kr,ingredient_en,manufacturer,insurance_type,narcotic_type,edi_price,excipient,compound_type'; const c = String(insCode || '').trim()
+  const cols = 'dosage_form,total_qty,package,product_code,atc_code,ingredient_kr,ingredient_en,manufacturer,insurance_type,narcotic_type,edi_price,excipient,compound_type'; const c = String(insCode || '').trim()
   try {
     let data = null
     if (c.length >= 8) { const r = await supabase.from('drug_master').select(cols).eq('insurance_code', c).limit(1).maybeSingle(); data = r.data }
@@ -1999,7 +1999,7 @@ async function _fillFromDrugMaster(insCode, apply, drugName) {
       if (key.length >= 3) {
         const core = String(drugName).trim().replace(/[(（].*$/, '').replace(/[%_]/g, ' ').trim()
         if (core.length >= 2) {
-          const r = await supabase.from('drug_master').select(cols).ilike('drug_name', '%' + core + '%').limit(20)
+          const r = await supabase.from('drug_master').select(cols + ',insurance_code,drug_name').ilike('drug_name', '%' + core + '%').limit(20)
           const rows = (r.data || []).filter(x => _normDrugName(x.drug_name) === key)
           if (rows.length && new Set(rows.map(x => x.insurance_code)).size === 1) data = rows[0]  // 1:1(동일 품목)만 적용 — 1:N(동명이품) 제외
         }
