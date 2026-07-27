@@ -363,7 +363,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   }, [dragging])
 
   /* API 5종 조회 — 1차:허가정보 → 보조:e약은요+낱알식별+약가+성분약효 (신규등록과 동일 순서) */
-  useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>{const m=_mergeDrugMaster(p,dm);const _emp=v=>v==null||String(v).trim()==='';if(_emp(dr.compound_type)&&!_emp(dm.compound_type))m.compound_type=dm.compound_type;if(_emp(dr.additive)&&!_emp(dm.excipient))m.additive=m.additive||dm.excipient;return m}))},[f.insurance_code])
+  useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>{const m=_mergeDrugMaster(p,dm);const _emp=v=>v==null||String(v).trim()==='';if(_emp(dr.compound_type)&&!_emp(dm.compound_type))m.compound_type=dm.compound_type;if(_emp(dr.additive)&&!_emp(dm.excipient))m.additive=m.additive||dm.excipient;return m}),f.drug_name)},[f.insurance_code])
   useEffect(()=>{ if(!isNew) return; sF(p=>((p.insurance_price!==''&&p.insurance_price!=null&&Number(p.insurance_price)>0&&(p.purchase_price===''||p.purchase_price==null))?{...p,purchase_price:p.insurance_price}:p)) },[f.insurance_price,isNew])
   async function lookupApi(overrideName) {
     const searchName = overrideName || f.drug_name.trim()
@@ -1985,9 +1985,28 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
 }
 
 /* ═══ 기초정보 등록 ═══ */
+/* 약품명 정규화 — 용량·괄호·공백 제거 후 소문자화(폴백 1:1 매칭 키) */
+function _normDrugName(s) {
+  return String(s || '').replace(/[(（].*$/, '').replace(/[0-9]+(\.[0-9]+)?\s*(mg|ml|g|mcg|밀리그램|밀리리터|그램|정|캡슐|주사|시럽|주|병|앰플|밀리|단위|iu|%|퍼센트)/gi, '').replace(/\s+/g, '').toLowerCase()
+}
 async function _fillFromDrugMaster(insCode, apply, drugName) {
-  const cols = 'dosage_form,total_qty,package,product_code,atc_code,ingredient_kr,ingredient_en,manufacturer,insurance_type,narcotic_type,edi_price,excipient,compound_type'; const c = String(insCode || '').trim()
-  try { let data = null; if (c.length >= 8) { const r = await supabase.from('drug_master').select(cols).eq('insurance_code', c).limit(1).maybeSingle(); data = r.data } if (!data && drugName && String(drugName).trim().length >= 2) { const r = await supabase.from('drug_master').select(cols).ilike('drug_name', '%' + String(drugName).trim() + '%').limit(1).maybeSingle(); data = r.data } if (data) apply(data) } catch (_) {}
+  const cols = 'insurance_code,drug_name,dosage_form,total_qty,package,product_code,atc_code,ingredient_kr,ingredient_en,manufacturer,insurance_type,narcotic_type,edi_price,excipient,compound_type'; const c = String(insCode || '').trim()
+  try {
+    let data = null
+    if (c.length >= 8) { const r = await supabase.from('drug_master').select(cols).eq('insurance_code', c).limit(1).maybeSingle(); data = r.data }
+    if (!data && drugName && String(drugName).trim().length >= 2) {
+      const key = _normDrugName(drugName)
+      if (key.length >= 3) {
+        const core = String(drugName).trim().replace(/[(（].*$/, '').replace(/[%_]/g, ' ').trim()
+        if (core.length >= 2) {
+          const r = await supabase.from('drug_master').select(cols).ilike('drug_name', '%' + core + '%').limit(20)
+          const rows = (r.data || []).filter(x => _normDrugName(x.drug_name) === key)
+          if (rows.length && new Set(rows.map(x => x.insurance_code)).size === 1) data = rows[0]  // 1:1(동일 품목)만 적용 — 1:N(동명이품) 제외
+        }
+      }
+    }
+    if (data) apply(data)
+  } catch (_) {}
 }
 function _mergeDrugMaster(prev, dm) {
   return { ...prev,
