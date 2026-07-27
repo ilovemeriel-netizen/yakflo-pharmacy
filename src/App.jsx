@@ -284,7 +284,7 @@ function GnbNav({ ms, m, onFlat, navTo }) {
   </div>;
 }
 
-function Drug360Modal({ drug: dr, onClose, pos, setPos }) {
+function Drug360Modal({ drug: dr, onClose, pos, setPos, onSaved }) {
   const { t } = useTheme();
   const [tab, setTab] = useState('개요');
   const boxRef = useRef(null);
@@ -298,7 +298,7 @@ function Drug360Modal({ drug: dr, onClose, pos, setPos }) {
   const [txs, setTxs] = useState(null);
   const [lots, setLots] = useState(null);
   const [exEdit, setExEdit] = useState(false); const [exVal, setExVal] = useState({ additive: dr.additive || '', compound_type: dr.compound_type || '단일제' }); const [exSaving, setExSaving] = useState(false);
-  async function saveEx() { setExSaving(true); const { error } = await supabase.from('drugs').update({ additive: exVal.additive || null, compound_type: exVal.compound_type }).eq('drug_code', dr.drug_code); setExSaving(false); if (!error) setExEdit(false); }
+  async function saveEx() { setExSaving(true); const { error } = await supabase.from('drugs').update({ additive: exVal.additive || null, compound_type: exVal.compound_type }).eq('drug_code', dr.drug_code); setExSaving(false); if (!error) { setExEdit(false); onSaved?.({ drug_code: dr.drug_code, additive: exVal.additive || null, compound_type: exVal.compound_type }); } }
   useEffect(() => { let on = true;
     supabase.from('transactions').select('*').eq('drug_code', dr.drug_code).order('transaction_date', { ascending: false }).limit(100).then(({ data }) => { if (on) setTxs(data || []) });
     supabase.from('drug_lots').select('*').eq('drug_code', dr.drug_code).order('expiry_date').then(({ data }) => { if (on) setLots(data || []) });
@@ -4163,7 +4163,7 @@ export default function App() {
         {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
 
         {editDrug && <DrugEditModal drug={editDrug} onClose={() => setEditDrug(null)} onSaved={() => { setEditDrug(null); load() }} onLotManage={d => { setEditDrug(null); setLotDrug(d) }} />}
-        {d360 && <Drug360Modal drug={d360} pos={d360Pos} setPos={setD360Pos} onClose={() => setD360(null)} />}
+        {d360 && <Drug360Modal drug={d360} pos={d360Pos} setPos={setD360Pos} onClose={() => setD360(null)} onSaved={u => setDrugs(ds => ds.map(d => d.drug_code === u.drug_code ? { ...d, ...u } : d))} />}
         {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
         {adjustDrug && <AdjustModal drug={adjustDrug} onClose={() => setAdjustDrug(null)} onSaved={() => { setAdjustDrug(null); load() }} />}
         {disposeDrug && <DisposalModal drug={disposeDrug} onClose={() => setDisposeDrug(null)} onSaved={() => { setDisposeDrug(null); load() }} />}
