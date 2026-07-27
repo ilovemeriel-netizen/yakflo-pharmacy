@@ -2070,7 +2070,7 @@ function DrugRegister({onRefresh, drugs}) {
             if(!info.storageMethod&&h.STORAGE_METHOD)info.storageMethod=h.STORAGE_METHOD
             if(h.EDI_CODE)info.insuranceCode=h.EDI_CODE
             if(h.PACK_UNIT)info.packUnit=h.PACK_UNIT
-            const mainIngr=h.MAIN_ITEM_INGR||''
+            const mainIngr=h.ITEM_INGR_NAME||''
             const ingrParts=mainIngr.split(/[;；,，/]/).map(s=>s.trim()).filter(Boolean)
             const ingrEn=ingrParts.find(p=>isEng(p))||''
             const ingrKr=ingrParts.find(p=>!isEng(p))||''
