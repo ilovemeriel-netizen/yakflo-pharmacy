@@ -2559,8 +2559,8 @@ function TransactionForm({drugs,onReload,navFilter}){
   const{t,memberRole,profile}=useTheme();const canDel=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
   const[tab,setTab]=useState(navFilter?.txTab||'입고')
   const[search,setSearch]=useState('');const[selDrug,setSelDrug]=useState(null)
-  const[form,setForm]=useState({qty:'',sub_type:'',note:'',supplier:'',lot_no:'',expiry_date:'',reason:'',handler:'이정화',approver:'',process_status:'처리완료'})
-  const[saving,setSaving]=useState(false);const[msg,setMsg]=useState(null)
+  const[form,setForm]=useState({qty:'',purchase_price:'',sub_type:'',note:'',supplier:'',lot_no:'',expiry_date:'',reason:'',handler:'이정화',approver:'',process_status:'처리완료'})
+  const[saving,setSaving]=useState(false);const[msg,setMsg]=useState(null);const[ppConfirm,setPpConfirm]=useState(null)
   const[txns,setTxns]=useState([]);const[txPage,setTxPage]=useState(1)
   const[bulkData,setBulkData]=useState([]);const[bulkMsg,setBulkMsg]=useState(null);const[bulkLd,setBulkLd]=useState(false)
   const[bulkRepl,setBulkRepl]=useState(null);const[delAllOpen,setDelAllOpen]=useState(false);const[delAllStage,setDelAllStage]=useState(1);const[delAllMsg,setDelAllMsg]=useState(null);const[delAllBusy,setDelAllBusy]=useState(false)
@@ -2578,14 +2578,26 @@ function TransactionForm({drugs,onReload,navFilter}){
   async function submit(){
     if(!selDrug||!form.qty){setMsg('약품과 수량을 입력해주세요');return}
     if((tab==='반품'||tab==='폐기')&&!form.reason){setMsg('사유를 선택해주세요');return}
-    setSaving(true);setMsg(null)
-    const q=parseInt(form.qty);const amt=q*(selDrug.purchase_price||0)
-    const tx={drug_code:selDrug.drug_code,type:tab,quantity:q,unit_price:selDrug.purchase_price||0,total_amount:amt,memo:form.note||null,transaction_date:new Date().toISOString().split('T')[0],reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
+    /* ③안: 입고 탭 구입단가 입력값 우선(비면 기존 마스터 단가) — 빈칸 경로는 기존과 동일 */
+    const _rawPp=String(form.purchase_price??'').trim()
+    const _hasPp=tab==='입고'&&_rawPp!==''
+    if(_hasPp&&!(Number(_rawPp)>0)){setMsg('구입단가는 0보다 큰 숫자로 입력하세요 (비우면 기존 단가 사용)');return}
+    const inputPp=_hasPp?Math.round(Number(_rawPp)):null
+    const masterPp=selDrug.purchase_price||0
+    if(inputPp!==null&&inputPp!==masterPp){setMsg(null);setPpConfirm({inputPp,masterPp,drugName:selDrug.drug_name});return}
+    _doSave(inputPp!==null?inputPp:masterPp,false)
+  }
+  async function _doSave(pp,updateMaster){
+    setSaving(true);setMsg(null);setPpConfirm(null)
+    const q=parseInt(form.qty);const amt=q*(pp||0)
+    const tx={drug_code:selDrug.drug_code,type:tab,quantity:q,unit_price:pp||0,total_amount:amt,memo:form.note||null,transaction_date:new Date().toISOString().split('T')[0],reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
     let res=await supabase.from('transactions').insert([tx])
     for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
     if(res.error){setMsg(dbErrorMsg(res.error));setSaving(false);return}
     /* 재고는 0009 트리거가 단일 기록(drugs+inventory 동기). 클라 직접 update·음수 절삭 제거 — 부족 시 트리거 RAISE가 위 res.error로 차단. */
-    setMsg(`${tab} 완료! ${selDrug.drug_name} ${q}개`);setSelDrug(null);setSearch('');setForm(p=>({...p,qty:'',note:'',lot_no:'',expiry_date:'',reason:'',supplier:''}));setSaving(false);onReload?.();loadTxns()
+    let _mMsg=''
+    if(updateMaster){const _mr=await supabase.from('drugs').update({purchase_price:pp}).eq('drug_code',selDrug.drug_code);if(_mr.error){_mMsg=' · 단, 마스터 단가 변경 실패('+dbErrorMsg(_mr.error)+')'}else{_mMsg=' · 마스터 단가 갱신'}}
+    setMsg(`${tab} 완료! ${selDrug.drug_name} ${q}개`+_mMsg);setSelDrug(null);setSearch('');setForm(p=>({...p,qty:'',purchase_price:'',note:'',lot_no:'',expiry_date:'',reason:'',supplier:''}));setSaving(false);onReload?.();loadTxns()
     setTimeout(()=>setMsg(null),3000)
   }
   async function _delTx(tx){
@@ -2664,16 +2676,17 @@ function TransactionForm({drugs,onReload,navFilter}){
 
   return<div style={{padding:'20px 24px'}}>
     {/* 탭 */}
-    <div style={{display:'flex',gap:6,marginBottom:16}}>{TYPES.map(tp=><button key={tp} onClick={()=>{setTab(tp);setSelDrug(null);setSearch('');setBulkData([]);setBulkMsg(null);setMsg(null)}} style={{flex:1,padding:'10px',borderRadius:10,border:`1.5px solid ${tab===tp?(tc[tp]?.c||t.accent):t.border}`,background:tab===tp?(tc[tp]?.bg||t.accentL):t.card,color:tab===tp?(tc[tp]?.c||t.accent):t.textM,cursor:'pointer',fontSize:13,fontWeight:tab===tp?700:400,transition:'all .15s'}}>{tp}관리</button>)}</div>
+    <div style={{display:'flex',gap:6,marginBottom:16}}>{TYPES.map(tp=><button key={tp} onClick={()=>{setTab(tp);setSelDrug(null);setSearch('');setBulkData([]);setBulkMsg(null);setMsg(null);setForm(p=>({...p,purchase_price:''}));setPpConfirm(null)}} style={{flex:1,padding:'10px',borderRadius:10,border:`1.5px solid ${tab===tp?(tc[tp]?.c||t.accent):t.border}`,background:tab===tp?(tc[tp]?.bg||t.accentL):t.card,color:tab===tp?(tc[tp]?.c||t.accent):t.textM,cursor:'pointer',fontSize:13,fontWeight:tab===tp?700:400,transition:'all .15s'}}>{tp}관리</button>)}</div>
     <div style={{display:'grid',gridTemplateColumns:'340px 1fr',gap:16,marginBottom:16}}>
       {/* 좌: 개별 등록 */}
       <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'18px 20px'}}>
         <div style={{fontSize:14,fontWeight:700,color:tc[tab]?.c,marginBottom:12}}>{tab} 등록</div>
         <input value={search} onChange={e=>{setSearch(e.target.value);setSelDrug(null)}} placeholder="약품 검색 (코드/이름)..." style={{...ip,marginBottom:6}}/>
-        {search.trim()&&!selDrug&&filtered.length>0&&<div style={{border:`1px solid ${t.border}`,borderRadius:6,maxHeight:120,overflowY:'auto',marginBottom:6}}>{filtered.slice(0,8).map(d=><div key={d.drug_code} onClick={()=>{setSelDrug(d);setSearch(d.drug_name)}} style={{padding:'6px 10px',cursor:'pointer',fontSize:11,borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>{d.drug_name} <span style={{color:t.textL,fontSize:9}}>({d.drug_code})</span></div>)}</div>}
+        {search.trim()&&!selDrug&&filtered.length>0&&<div style={{border:`1px solid ${t.border}`,borderRadius:6,maxHeight:120,overflowY:'auto',marginBottom:6}}>{filtered.slice(0,8).map(d=><div key={d.drug_code} onClick={()=>{setSelDrug(d);setSearch(d.drug_name);sf('purchase_price','')}} style={{padding:'6px 10px',cursor:'pointer',fontSize:11,borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>{d.drug_name} <span style={{color:t.textL,fontSize:9}}>({d.drug_code})</span></div>)}</div>}
         {selDrug&&<div style={{background:tc[tab]?.bg,borderRadius:6,padding:'6px 10px',marginBottom:6,fontSize:11,color:tc[tab]?.c}}><strong>{selDrug.drug_name}</strong> · 재고:{selDrug.current_qty} · ₩{selDrug.purchase_price?.toLocaleString()}</div>}
         
         <input type="number" value={form.qty} onChange={e=>sf('qty',e.target.value)} placeholder="수량" style={{...ip,marginBottom:6}}/>
+        {(tab==='입고')&&<input type="number" value={form.purchase_price} onChange={e=>sf('purchase_price',e.target.value)} placeholder="구입단가 (비우면 기존 단가)" style={{...ip,marginBottom:6}}/>}
         {(tab==='입고')&&<input value={form.supplier} onChange={e=>sf('supplier',e.target.value)} placeholder="공급업체" style={{...ip,marginBottom:6}}/>}
         {(tab==='반품'||tab==='폐기')&&<>
           <select value={form.reason} onChange={e=>sf('reason',e.target.value)} style={{...ip,marginBottom:6}}><option value="">사유 선택 *</option>{reasons.map(r=><option key={r}>{r}</option>)}</select>
@@ -2727,6 +2740,16 @@ function TransactionForm({drugs,onReload,navFilter}){
         <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
           <button onClick={()=>{setDelAllOpen(false);setDelAllStage(1);setDelAllMsg(null)}} disabled={delAllBusy} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.border,background:'transparent',color:t.textM,cursor:delAllBusy?'not-allowed':'pointer',fontSize:12,fontWeight:700}}>취소</button>
           {delAllStage===1?<button onClick={()=>setDelAllStage(2)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.red,background:'transparent',color:t.red,cursor:'pointer',fontSize:12,fontWeight:700}}>삭제 ({txns.length}건)</button>:<button onClick={_delAll} disabled={delAllBusy} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.red,background:t.red,color:'#fff',cursor:delAllBusy?'not-allowed':'pointer',fontSize:12,fontWeight:700}}>{delAllBusy?'삭제 중...':'영구 삭제'}</button>}
+        </div>
+      </div>
+    </div>}
+    {ppConfirm&&<div onClick={()=>{setPpConfirm(null)}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:420,width:'100%',border:`1px solid ${t.border}`,boxShadow:t.shadowH}}>
+        <div style={{fontSize:14,fontWeight:700,color:t.accent,marginBottom:10}}>구입단가가 다릅니다</div>
+        <div style={{fontSize:12,color:t.textM,lineHeight:1.7,marginBottom:14}}><strong style={{color:t.text}}>{ppConfirm.drugName}</strong><br/>기존 {ppConfirm.masterPp.toLocaleString()}원 → 입력 {ppConfirm.inputPp.toLocaleString()}원<br/>약품마스터의 구입단가도 변경하시겠습니까?<br/>변경하면 현재 재고금액에 즉시 반영됩니다. <strong style={{color:t.textM}}>(과거 월마감 수치는 영향 없음)</strong></div>
+        <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
+          <button onClick={()=>_doSave(ppConfirm.inputPp,false)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.border}`,background:'transparent',color:t.textM,cursor:'pointer',fontSize:12,fontWeight:700}}>이번 입고만</button>
+          {canDel&&<button onClick={()=>_doSave(ppConfirm.inputPp,true)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>마스터도 변경</button>}
         </div>
       </div>
     </div>}
