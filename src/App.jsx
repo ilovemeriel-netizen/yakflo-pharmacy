@@ -2748,6 +2748,7 @@ function TransactionForm({drugs,onReload,navFilter}){
         <div style={{fontSize:14,fontWeight:700,color:t.accent,marginBottom:10}}>구입단가가 다릅니다</div>
         <div style={{fontSize:12,color:t.textM,lineHeight:1.7,marginBottom:14}}><strong style={{color:t.text}}>{ppConfirm.drugName}</strong><br/>기존 {ppConfirm.masterPp.toLocaleString()}원 → 입력 {ppConfirm.inputPp.toLocaleString()}원<br/>약품마스터의 구입단가도 변경하시겠습니까?<br/>변경하면 현재 재고금액에 즉시 반영됩니다. <strong style={{color:t.textM}}>(과거 월마감 수치는 영향 없음)</strong></div>
         <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
+          <button onClick={()=>setPpConfirm(null)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.border}`,background:'transparent',color:t.textM,cursor:'pointer',fontSize:12,fontWeight:700}}>취소</button>
           <button onClick={()=>_doSave(ppConfirm.inputPp,false)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.border}`,background:'transparent',color:t.textM,cursor:'pointer',fontSize:12,fontWeight:700}}>이번 입고만</button>
           {canDel&&<button onClick={()=>_doSave(ppConfirm.inputPp,true)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>마스터도 변경</button>}
         </div>
