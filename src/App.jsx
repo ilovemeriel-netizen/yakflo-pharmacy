@@ -1987,7 +1987,12 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
 /* ═══ 기초정보 등록 ═══ */
 /* 약품명 정규화 — 용량·괄호·공백 제거 후 소문자화(폴백 1:1 매칭 키) */
 function _normDrugName(s) {
-  return String(s || '').replace(/[(（].*$/, '').replace(/[0-9]+(\.[0-9]+)?\s*(mg|ml|g|mcg|밀리그램|밀리리터|그램|정|캡슐|주사|시럽|주|병|앰플|밀리|단위|iu|%|퍼센트)/gi, '').replace(/\s+/g, '').toLowerCase()
+  let base = String(s || '').replace(/[(（].*$/, '')
+  const doses = []
+  base = base.replace(/([0-9][0-9,]*(?:\.[0-9]+)?)\s*(밀리그램|밀리리터|그램|밀리|mcg|mg|ml|iu|단위|퍼센트|%|g)/gi, (mm, num) => { doses.push(String(num).replace(/,/g, '')); return '' })
+  base = base.replace(/[0-9][0-9,]*(?:\.[0-9]+)?\s*(정|캡슐|주사|시럽|주|병|앰플)/gi, '')
+  const key = base.replace(/[^0-9A-Za-z가-힣]+/g, '').toLowerCase()
+  return doses.length ? key + '|' + doses.join('|') : key
 }
 async function _fillFromDrugMaster(insCode, apply, drugName) {
   const cols = 'dosage_form,total_qty,package,product_code,atc_code,ingredient_kr,ingredient_en,manufacturer,insurance_type,narcotic_type,edi_price,excipient,compound_type'; const c = String(insCode || '').trim()
