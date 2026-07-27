@@ -363,7 +363,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   }, [dragging])
 
   /* API 5종 조회 — 1차:허가정보 → 보조:e약은요+낱알식별+약가+성분약효 (신규등록과 동일 순서) */
-  useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>_mergeDrugMaster(p,dm)))},[f.insurance_code])
+  useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>{const m=_mergeDrugMaster(p,dm);const _emp=v=>v==null||String(v).trim()==='';if(_emp(dr.compound_type)&&!_emp(dm.compound_type))m.compound_type=dm.compound_type;if(_emp(dr.additive)&&!_emp(dm.excipient))m.additive=m.additive||dm.excipient;return m}))},[f.insurance_code])
   useEffect(()=>{ if(!isNew) return; sF(p=>((p.insurance_price!==''&&p.insurance_price!=null&&Number(p.insurance_price)>0&&(p.purchase_price===''||p.purchase_price==null))?{...p,purchase_price:p.insurance_price}:p)) },[f.insurance_price,isNew])
   async function lookupApi(overrideName) {
     const searchName = overrideName || f.drug_name.trim()
@@ -419,6 +419,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
                 specification: p.specification,
                 insurance_code: h.EDI_CODE||p.insurance_code,
                 standard_code: p.standard_code || (/^[0-9]{9}$/.test(String(h.ITEM_SEQ||h.PRDLST_STDR_CODE||'')) ? String(h.ITEM_SEQ||h.PRDLST_STDR_CODE) : ''),
+                compound_type: (!(dr.compound_type && String(dr.compound_type).trim()) && Number.isFinite(parseInt(h.ITEM_INGR_CNT, 10))) ? (parseInt(h.ITEM_INGR_CNT, 10) >= 2 ? '복합제' : '단일제') : p.compound_type,
                 ingredient_kr: info.ingredientKr||p.ingredient_kr,
                 ingredient_en: info.ingredientEn||p.ingredient_en,
               }))
@@ -634,6 +635,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
             </div>
             <div style={{ marginBottom: 10 }}><label style={lb}>구분 *</label><select value={f.category} onChange={e => set('category', e.target.value)} style={ip}><option value="">— 선택 —</option>{CATS.map(c => <option key={c}>{c}</option>)}</select></div>
             <div style={{ marginBottom: 10 }}><label style={lb}>보험약가</label><input type="number" value={f.insurance_price} onChange={e => set('insurance_price', e.target.value)} placeholder="API 조회 시 자동입력" style={ip} /></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>첨가제</label><input value={f.additive || ''} onChange={e => set('additive', e.target.value)} placeholder="자동채움·수정 가능" style={ip} /></div><div><label style={lb}>복합/단일</label><select value={f.compound_type || '단일제'} onChange={e => set('compound_type', e.target.value)} style={ip}>{['단일제', '복합제'].map(s => <option key={s}>{s}</option>)}</select></div></div>
             {/* 상세 입력 (접이식·기본 접힘) */}
             <div style={{ border: `1px solid ${t.border}`, borderRadius: 8, marginBottom: 10 }}>
               <button type="button" onClick={() => setDetailOpen(o => !o)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: t.textM, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>상세 입력<span style={{ fontSize: 10, color: t.textL }}>{detailOpen ? '▲ 접기' : '▼ 펼치기'}</span></button>
