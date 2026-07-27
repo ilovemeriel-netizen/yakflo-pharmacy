@@ -2581,10 +2581,10 @@ function TransactionForm({drugs,onReload,navFilter}){
     /* ③안: 입고 탭 구입단가 입력값 우선(비면 기존 마스터 단가) — 빈칸 경로는 기존과 동일 */
     const _rawPp=String(form.purchase_price??'').trim()
     const _hasPp=tab==='입고'&&_rawPp!==''
-    if(_hasPp&&!(Number(_rawPp)>0)){setMsg('구입단가는 0보다 큰 숫자로 입력하세요 (비우면 기존 단가 사용)');return}
+    if(_hasPp&&!(Number(_rawPp)>=0)){setMsg('구입단가는 0 이상 숫자로 입력하세요 (비우면 기존 단가 사용)');return}
     const inputPp=_hasPp?Math.round(Number(_rawPp)):null
     const masterPp=selDrug.purchase_price||0
-    if(inputPp!==null&&inputPp!==masterPp){setMsg(null);setPpConfirm({inputPp,masterPp,drugName:selDrug.drug_name});return}
+    if(inputPp!==null&&inputPp!==0&&inputPp!==masterPp){setMsg(null);setPpConfirm({inputPp,masterPp,drugName:selDrug.drug_name});return}
     _doSave(inputPp!==null?inputPp:masterPp,false)
   }
   async function _doSave(pp,updateMaster){
