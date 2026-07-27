@@ -2583,7 +2583,7 @@ function TransactionForm({drugs,onReload,navFilter}){
       const _q=parseInt(form.qty);const _rs=[]
       if(_q>(selDrug.current_qty||0))_rs.push('현재고 '+(selDrug.current_qty||0).toLocaleString()+'보다 많습니다')
       const _r3=Number(selDrug.recent_3m_usage)||0;if(_r3>0){const _avg=_r3/3;if(_q>_avg*3)_rs.push('최근 3개월 평균 사용량('+Math.round(_avg).toLocaleString()+')보다 많습니다')}
-      if(['향정','마약','한외마약'].includes(String(selDrug.narcotic_type||'').trim()))_rs.push(String(selDrug.narcotic_type).trim()+' 약품입니다')
+      const _nt=String(selDrug.narcotic_type||'').trim();if(_nt!=='일반')_rs.push((_nt||'마약구분 미지정')+' 약품입니다')
       if(_rs.length){setMsg(null);setOutlierConfirm({drugName:selDrug.drug_name,qty:_q,reasons:_rs});return}
     }
     /* ③안: 입고 탭 구입단가 입력값 우선(비면 기존 마스터 단가) — 빈칸 경로는 기존과 동일 */
