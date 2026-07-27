@@ -402,7 +402,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
           try { const j = JSON.parse(txt); const b = j?.body||j?.response?.body; const its = b?.items?.item||b?.items||[]; const arr = Array.isArray(its)?its:[its].filter(Boolean)
             console.log(`[1차] 허가정보 검색 [${n}]:`, arr.length, '건')
             if (arr.length > 0) { const h = arr[0]
-              const mainIngr = h.MAIN_ITEM_INGR||''
+              const mainIngr = h.ITEM_INGR_NAME||''
               const ingrParts = mainIngr.split(/[;；,，/]/).map(s=>s.trim()).filter(Boolean)
               const ingrEn = ingrParts.find(p=>isEng(p))||''
               const ingrKr = ingrParts.find(p=>!isEng(p))||''
