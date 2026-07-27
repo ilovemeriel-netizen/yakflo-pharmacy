@@ -4163,7 +4163,7 @@ export default function App() {
         {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
 
         {editDrug && <DrugEditModal drug={editDrug} onClose={() => setEditDrug(null)} onSaved={() => { setEditDrug(null); load() }} onLotManage={d => { setEditDrug(null); setLotDrug(d) }} />}
-        {d360 && <Drug360Modal drug={d360} pos={d360Pos} setPos={setD360Pos} onClose={() => setD360(null)} onSaved={u => setDrugs(ds => ds.map(d => d.drug_code === u.drug_code ? { ...d, ...u } : d))} />}
+        {d360 && <Drug360Modal key={d360.drug_code} drug={d360} pos={d360Pos} setPos={setD360Pos} onClose={() => setD360(null)} onSaved={u => setDrugs(ds => ds.map(d => d.drug_code === u.drug_code ? { ...d, ...u } : d))} />}
         {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
         {adjustDrug && <AdjustModal drug={adjustDrug} onClose={() => setAdjustDrug(null)} onSaved={() => { setAdjustDrug(null); load() }} />}
         {disposeDrug && <DisposalModal drug={disposeDrug} onClose={() => setDisposeDrug(null)} onSaved={() => { setDisposeDrug(null); load() }} />}
