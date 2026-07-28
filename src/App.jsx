@@ -2600,6 +2600,8 @@ function TransactionForm({drugs,onReload,navFilter}){
     const _hasEdi=tab==='출고'&&_rawEdi!==''
     if(_hasEdi&&!(Number(_rawEdi)>=0)){setMsg('보험약가는 0 이상 숫자로 입력하세요 (비우면 기존 약가 사용)');return}
     if(tab==='출고'){_doSave(_hasEdi?Math.round(Number(_rawEdi)):(selDrug.edi_price||0),false);return}
+    /* 반품·폐기 구입단가: 입력값 우선(빈칸→selDrug.purchase_price, 0→명시적 0). 확인 모달·drugs update 없음 */
+    if(tab==='반품'||tab==='폐기'){if(_rawPp!==''&&!(Number(_rawPp)>=0)){setMsg('구입단가는 0 이상 숫자로 입력하세요 (비우면 기존 단가 사용)');return}_doSave(_rawPp!==''?Math.round(Number(_rawPp)):(selDrug.purchase_price||0),false);return}
     _doSave(inputPp!==null?inputPp:masterPp,false)
   }
   async function _doSave(pp,updateMaster){
@@ -2697,12 +2699,13 @@ function TransactionForm({drugs,onReload,navFilter}){
       <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'18px 20px'}}>
         <div style={{fontSize:14,fontWeight:700,color:tc[tab]?.c,marginBottom:12}}>{tab} 등록</div>
         <input value={search} onChange={e=>{setSearch(e.target.value);setSelDrug(null)}} placeholder="약품 검색 (코드/이름)..." style={{...ip,marginBottom:6}}/>
-        {search.trim()&&!selDrug&&filtered.length>0&&<div style={{border:`1px solid ${t.border}`,borderRadius:6,maxHeight:120,overflowY:'auto',marginBottom:6}}>{filtered.slice(0,8).map(d=><div key={d.drug_code} onClick={()=>{setSelDrug(d);setSearch(d.drug_name);sf('purchase_price','');sf('edi_price',d.edi_price?String(d.edi_price):'')}} style={{padding:'6px 10px',cursor:'pointer',fontSize:11,borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>{d.drug_name}{d.status!=='사용'?<span style={{color:t.textM,fontSize:9,marginLeft:4}}>({d.status})</span>:null} <span style={{color:t.textL,fontSize:9}}>({d.drug_code})</span></div>)}</div>}
+        {search.trim()&&!selDrug&&filtered.length>0&&<div style={{border:`1px solid ${t.border}`,borderRadius:6,maxHeight:120,overflowY:'auto',marginBottom:6}}>{filtered.slice(0,8).map(d=><div key={d.drug_code} onClick={()=>{setSelDrug(d);setSearch(d.drug_name);sf('purchase_price',(tab==='반품'||tab==='폐기')?(d.purchase_price?String(d.purchase_price):''):'');sf('edi_price',d.edi_price?String(d.edi_price):'')}} style={{padding:'6px 10px',cursor:'pointer',fontSize:11,borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>{d.drug_name}{d.status!=='사용'?<span style={{color:t.textM,fontSize:9,marginLeft:4}}>({d.status})</span>:null} <span style={{color:t.textL,fontSize:9}}>({d.drug_code})</span></div>)}</div>}
         {selDrug&&<div style={{background:tc[tab]?.bg,borderRadius:6,padding:'6px 10px',marginBottom:6,fontSize:11,color:tc[tab]?.c}}><strong>{selDrug.drug_name}</strong>{selDrug.status!=='사용'?<span style={{marginLeft:4,fontSize:10}}>({selDrug.status})</span>:null} · 재고:{selDrug.current_qty} · ₩{selDrug.purchase_price?.toLocaleString()}</div>}
         
         <input type="number" value={form.qty} onChange={e=>sf('qty',e.target.value)} placeholder="수량" style={{...ip,marginBottom:6}}/>
         {(tab==='출고')&&<input type="number" value={form.edi_price} onChange={e=>sf('edi_price',e.target.value)} placeholder="보험약가 (비우면 기존 약가)" style={{...ip,marginBottom:6}}/>}
         {(tab==='입고')&&<input type="number" value={form.purchase_price} onChange={e=>sf('purchase_price',e.target.value)} placeholder="구입단가 (비우면 기존 단가)" style={{...ip,marginBottom:6}}/>}
+        {(tab==='반품'||tab==='폐기')&&<input type="number" value={form.purchase_price} onChange={e=>sf('purchase_price',e.target.value)} placeholder="구입단가 (비우면 기존 단가)" style={{...ip,marginBottom:6}}/>}
         {(tab==='입고')&&<input value={form.supplier} onChange={e=>sf('supplier',e.target.value)} placeholder="공급업체" style={{...ip,marginBottom:6}}/>}
         {(tab==='반품'||tab==='폐기')&&<>
           <select value={form.reason} onChange={e=>sf('reason',e.target.value)} style={{...ip,marginBottom:6}}><option value="">사유 선택 *</option>{reasons.map(r=><option key={r}>{r}</option>)}</select>
