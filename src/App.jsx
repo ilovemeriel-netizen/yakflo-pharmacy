@@ -561,7 +561,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     if (isNew) return saveNew()
     if (!f.drug_name.trim()) { setMsg('약품명 필수'); return }
     setSaving(true); setMsg(null)
-    if (f.drug_code.trim() && f.drug_code.trim() !== oc) { const { count: _txn, error: _txe } = await supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('drug_code', oc); if (!_txe && _txn && _txn > 0) { setSaving(false); setMsg('거래 이력이 있어 약품코드를 변경할 수 없습니다. 신규 등록 후 기존 약품을 중지 처리해 주세요.'); return } }
+    if (f.drug_code.trim() && f.drug_code.trim() !== oc) { const { count: _txn, error: _txe } = await supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('drug_code', oc); if (_txe || _txn == null) { setSaving(false); setMsg('거래 이력을 확인할 수 없어 약품코드를 변경하지 않았습니다. 잠시 후 다시 시도해 주세요.'); return } if (_txn > 0) { setSaving(false); setMsg('거래 이력이 있어 약품코드를 변경할 수 없습니다. 신규 등록 후 기존 약품을 중지 처리해 주세요.'); return } }
     /* [빈칸=기존값 유지] A(saveNew)·D(BulkUpload)와 동일하게, 비운 칸은 UPDATE에서 제외해 기존 DB 값을 덮어쓰지 않는다.
        의도적 값 삭제는 별도 UI로 처리 예정 - 현재는 '기존값 유지'로 통일. price_unit(표시용 파생)·insurance_price(미존재 컬럼)는 기입하지 않는다.
        편집 모드엔 보험약가 입력칸이 없어 edi_price도 기입하지 않는다(빈 유령값으로 실제 edi_price를 0으로 덮어쓰는 것 방지). */
