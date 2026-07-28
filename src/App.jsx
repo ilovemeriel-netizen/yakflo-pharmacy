@@ -1200,7 +1200,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
   const today = new Date(), fmt = d => d.toISOString().split('T')[0], ym = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`, d30 = new Date(today), d90 = new Date(today); d30.setDate(d30.getDate() + 30); d90.setDate(d90.getDate() + 90)
   const active = drugs.filter(d => d.status === '사용'); const main = drugs.filter(d => MAIN_STATS.includes(d.status))
   const s = { total: main.length, active: active.length, stopped: drugs.filter(d => d.status === '중지').length, dormant: drugs.filter(d => d.status === '휴면').length, narc: drugs.filter(d => isN(d) && d.status === '사용').length, nonIns: drugs.filter(d => isNonIns(d) && MAIN_STATS.includes(d.status)).length, shortage: inv.filter(d => d.stock_status === '부족').length, e30: drugs.filter(d => d.expiry_date && d.expiry_date <= fmt(d30) && MAIN_STATS.includes(d.status)).length, e90: drugs.filter(d => d.expiry_date && d.expiry_date > fmt(d30) && d.expiry_date <= fmt(d90) && MAIN_STATS.includes(d.status)).length }
-  const totalAmt = main.reduce((a, d) => a + (d.current_qty || 0) * (d.purchase_price || 0), 0)
+  const totalAmt = drugs.filter(d => ['사용', '휴면', '중지'].includes(d.status)).reduce((a, d) => a + (d.current_qty || 0) * (d.purchase_price || 0), 0)
   const mTx = txns.filter(tx => tx.transaction_date?.startsWith(ym))
   const txS = { inC: mTx.filter(x => x.type === '입고').length, inA: mTx.filter(x => x.type === '입고').reduce((a, x) => a + (x.total_amount || 0), 0), outC: mTx.filter(x => x.type === '출고').length, outA: mTx.filter(x => x.type === '출고').reduce((a, x) => a + (x.total_amount || 0), 0), retC: mTx.filter(x => x.type === '반품').length, retA: mTx.filter(x => x.type === '반품').reduce((a, x) => a + (x.total_amount || 0), 0), dspC: mTx.filter(x => x.type === '폐기').length, dspA: mTx.filter(x => x.type === '폐기').reduce((a, x) => a + (x.total_amount || 0), 0), dspQ: mTx.filter(x => x.type === '폐기').reduce((a, x) => a + (x.quantity || 0), 0) }
   txS.lossT = txS.retC + txS.dspC; txS.lossA = txS.retA + txS.dspA
@@ -2568,7 +2568,7 @@ function TransactionForm({drugs,onReload,navFilter}){
   const{hs,so,SI,TS}=useSort('transaction_date','desc')
   useEffect(()=>{loadTxns()},[tab])
   async function loadTxns(){let all=[],f=0;while(true){const{data,error}=await supabase.from('transactions').select('*').eq('type',tab).order('transaction_date',{ascending:false}).range(f,f+999);if(error||!data||!data.length)break;all=all.concat(data);if(data.length<1000)break;f+=1000}setTxns(all);setTxPage(1)}
-  const filtered=drugs.filter(d=>d.status==='사용'&&search.trim()&&(d.drug_name?.toLowerCase().includes(search.toLowerCase())||d.drug_code?.toLowerCase().includes(search.toLowerCase())))
+  const filtered=drugs.filter(d=>search.trim()&&(d.drug_name?.toLowerCase().includes(search.toLowerCase())||d.drug_code?.toLowerCase().includes(search.toLowerCase()))).sort((a,b)=>(a.status==='사용'?0:1)-(b.status==='사용'?0:1))
   function sf(k,v){setForm(p=>({...p,[k]:v}))}
   const subs=tab==='입고'?IN_SUBS:tab==='출고'?OUT_SUBS:[]
   const reasons=tab==='반품'?RET_REASONS:tab==='폐기'?DSP_REASONS:[]
@@ -2584,6 +2584,7 @@ function TransactionForm({drugs,onReload,navFilter}){
       if(_q>(selDrug.current_qty||0))_rs.push('현재고 '+(selDrug.current_qty||0).toLocaleString()+'보다 많습니다')
       const _r3=Number(selDrug.recent_3m_usage)||0;if(_r3>0){const _avg=_r3/3;if(_q>_avg*3)_rs.push('최근 3개월 평균 사용량('+Math.round(_avg).toLocaleString()+')보다 많습니다')}
       const _nt=String(selDrug.narcotic_type||'').trim();if(_nt!=='일반')_rs.push((_nt||'마약구분 미지정')+' 약품입니다')
+      if(selDrug.status!=='사용')_rs.push(selDrug.status+' 상태 약품입니다')
       if(_rs.length){setMsg(null);setOutlierConfirm({drugName:selDrug.drug_name,qty:_q,reasons:_rs});return}
     }
     /* ③안: 입고 탭 구입단가 입력값 우선(비면 기존 마스터 단가) — 빈칸 경로는 기존과 동일 */
@@ -2695,8 +2696,8 @@ function TransactionForm({drugs,onReload,navFilter}){
       <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'18px 20px'}}>
         <div style={{fontSize:14,fontWeight:700,color:tc[tab]?.c,marginBottom:12}}>{tab} 등록</div>
         <input value={search} onChange={e=>{setSearch(e.target.value);setSelDrug(null)}} placeholder="약품 검색 (코드/이름)..." style={{...ip,marginBottom:6}}/>
-        {search.trim()&&!selDrug&&filtered.length>0&&<div style={{border:`1px solid ${t.border}`,borderRadius:6,maxHeight:120,overflowY:'auto',marginBottom:6}}>{filtered.slice(0,8).map(d=><div key={d.drug_code} onClick={()=>{setSelDrug(d);setSearch(d.drug_name);sf('purchase_price','');sf('edi_price',d.edi_price?String(d.edi_price):'')}} style={{padding:'6px 10px',cursor:'pointer',fontSize:11,borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>{d.drug_name} <span style={{color:t.textL,fontSize:9}}>({d.drug_code})</span></div>)}</div>}
-        {selDrug&&<div style={{background:tc[tab]?.bg,borderRadius:6,padding:'6px 10px',marginBottom:6,fontSize:11,color:tc[tab]?.c}}><strong>{selDrug.drug_name}</strong> · 재고:{selDrug.current_qty} · ₩{selDrug.purchase_price?.toLocaleString()}</div>}
+        {search.trim()&&!selDrug&&filtered.length>0&&<div style={{border:`1px solid ${t.border}`,borderRadius:6,maxHeight:120,overflowY:'auto',marginBottom:6}}>{filtered.slice(0,8).map(d=><div key={d.drug_code} onClick={()=>{setSelDrug(d);setSearch(d.drug_name);sf('purchase_price','');sf('edi_price',d.edi_price?String(d.edi_price):'')}} style={{padding:'6px 10px',cursor:'pointer',fontSize:11,borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>{d.drug_name}{d.status!=='사용'?<span style={{color:t.textM,fontSize:9,marginLeft:4}}>({d.status})</span>:null} <span style={{color:t.textL,fontSize:9}}>({d.drug_code})</span></div>)}</div>}
+        {selDrug&&<div style={{background:tc[tab]?.bg,borderRadius:6,padding:'6px 10px',marginBottom:6,fontSize:11,color:tc[tab]?.c}}><strong>{selDrug.drug_name}</strong>{selDrug.status!=='사용'?<span style={{marginLeft:4,fontSize:10}}>({selDrug.status})</span>:null} · 재고:{selDrug.current_qty} · ₩{selDrug.purchase_price?.toLocaleString()}</div>}
         
         <input type="number" value={form.qty} onChange={e=>sf('qty',e.target.value)} placeholder="수량" style={{...ip,marginBottom:6}}/>
         {(tab==='출고')&&<input type="number" value={form.edi_price} onChange={e=>sf('edi_price',e.target.value)} placeholder="보험약가 (비우면 기존 약가)" style={{...ip,marginBottom:6}}/>}
