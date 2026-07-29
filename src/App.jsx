@@ -2565,15 +2565,15 @@ function TransactionForm({drugs,onReload,navFilter}){
   const{t,memberRole,profile}=useTheme();const canDel=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
   const[tab,setTab]=useState(navFilter?.txTab||'입고')
   const[search,setSearch]=useState('');const[selDrug,setSelDrug]=useState(null)
-  const[form,setForm]=useState({qty:'',purchase_price:'',edi_price:'',sub_type:'',note:'',supplier:'',lot_no:'',expiry_date:'',reason:'',handler:'이정화',approver:'',process_status:'처리완료'})
+  const[form,setForm]=useState({qty:'',purchase_price:'',edi_price:'',sub_type:'',note:'',supplier:'',lot_no:'',expiry_date:'',reason:'',handler:'이정화',approver:'',process_status:'처리완료',transaction_date:new Date().toISOString().split('T')[0]})
   const[saving,setSaving]=useState(false);const[msg,setMsg]=useState(null);const[ppConfirm,setPpConfirm]=useState(null);const[outlierConfirm,setOutlierConfirm]=useState(null)
-  const[txns,setTxns]=useState([]);const[txPage,setTxPage]=useState(1);const[selIds,setSelIds]=useState([]);const[closedM,setClosedM]=useState(null);const[selDelStage,setSelDelStage]=useState(0);const[selDelBusy,setSelDelBusy]=useState(false);const[selDelMsg,setSelDelMsg]=useState(null)
+  const[txns,setTxns]=useState([]);const[txPage,setTxPage]=useState(1);const[selIds,setSelIds]=useState([]);const[closedM,setClosedM]=useState(null);const[selDelStage,setSelDelStage]=useState(0);const[selDelBusy,setSelDelBusy]=useState(false);const[selDelMsg,setSelDelMsg]=useState(null);const[txSearch,setTxSearch]=useState('')
   const[bulkData,setBulkData]=useState([]);const[bulkMsg,setBulkMsg]=useState(null);const[bulkLd,setBulkLd]=useState(false)
   const[bulkRepl,setBulkRepl]=useState(null);const[delAllOpen,setDelAllOpen]=useState(false);const[delAllStage,setDelAllStage]=useState(1);const[delAllMsg,setDelAllMsg]=useState(null);const[delAllBusy,setDelAllBusy]=useState(false)
   const fileRef=useRef()
   const{hs,so,SI,TS}=useSort('transaction_date','desc')
   useEffect(()=>{loadTxns()},[tab])
-  useEffect(()=>{let on=true;supabase.from('monthly_snapshots').select('snap_year,snap_month').then(({data})=>{if(on)setClosedM(new Set((data||[]).map(r=>r.snap_year+'-'+r.snap_month)))});return()=>{on=false}},[])
+  useEffect(()=>{let on=true;(async()=>{let ss=new Set(),f=0;while(true){const{data,error}=await supabase.from('monthly_snapshots').select('snap_year,snap_month').range(f,f+999);if(error||!data||!data.length)break;data.forEach(r=>ss.add(r.snap_year+'-'+r.snap_month));if(data.length<1000)break;f+=1000}if(on)setClosedM(ss)})();return()=>{on=false}},[])
   async function loadTxns(){let all=[],f=0;while(true){const{data,error}=await supabase.from('transactions').select('*').eq('type',tab).order('transaction_date',{ascending:false}).range(f,f+999);if(error||!data||!data.length)break;all=all.concat(data);if(data.length<1000)break;f+=1000}setTxns(all);setTxPage(1)}
   const _isClosed=d=>{if(!closedM||!d)return false;const p=String(d).split('-');return closedM.has(Number(p[0])+'-'+Number(p[1]))}
   function toggleSel(id){setSelIds(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])}
@@ -2585,10 +2585,12 @@ function TransactionForm({drugs,onReload,navFilter}){
   const reasons=tab==='반품'?RET_REASONS:tab==='폐기'?DSP_REASONS:[]
   const tc={'입고':{bg:t.greenL,c:t.green},'출고':{bg:t.blueL,c:t.blue},'반품':{bg:t.amberL,c:t.amber},'폐기':{bg:t.redL,c:t.red}}
   const ip={width:'100%',padding:'8px 10px',border:`1px solid ${t.border}`,borderRadius:6,fontSize:12,outline:'none',background:t.bg,color:t.text,boxSizing:'border-box'}
+  const _today=new Date().toISOString().split('T')[0]
 
   async function submit(skipOutlier){
     if(!selDrug||!form.qty){setMsg('약품과 수량을 입력해주세요');return}
     if((tab==='반품'||tab==='폐기')&&!form.reason){setMsg('사유를 선택해주세요');return}
+    const _td=form.transaction_date||_today;if(_td>_today){setMsg('미래 날짜는 등록할 수 없습니다');return}if(_isClosed(_td)){setMsg('해당 월은 마감되어 등록할 수 없습니다.');return}
     /* 출고 이상치 게이트(출고 탭 전용): 재고초과·평균3배초과·향정마약 중 하나라도 걸리면 확인. 정상 출고는 즉시 저장 */
     if(tab==='출고'&&!skipOutlier){
       const _q=parseInt(form.qty);const _rs=[]
@@ -2617,7 +2619,7 @@ function TransactionForm({drugs,onReload,navFilter}){
   async function _doSave(pp,updateMaster){
     setSaving(true);setMsg(null);setPpConfirm(null)
     const q=parseInt(form.qty);const amt=q*(pp||0)
-    const tx={drug_code:selDrug.drug_code,type:tab,quantity:q,unit_price:pp||0,total_amount:amt,memo:form.note||null,transaction_date:new Date().toISOString().split('T')[0],reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
+    const tx={drug_code:selDrug.drug_code,type:tab,quantity:q,unit_price:pp||0,total_amount:amt,memo:form.note||null,transaction_date:form.transaction_date||new Date().toISOString().split('T')[0],reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
     let res=await supabase.from('transactions').insert([tx])
     for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
     if(res.error){setMsg(dbErrorMsg(res.error));setSaving(false);return}
@@ -2699,11 +2701,11 @@ function TransactionForm({drugs,onReload,navFilter}){
   }
   /* 테이블 컬럼 정의 */
   const cols=tab==='입고'?[['transaction_date','일자'],['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['quantity','수량'],['unit_price','거래단가'],['total_amount','금액'],['supplier','공급업체'],['memo','비고']]:tab==='출고'?[['transaction_date','일자'],['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['quantity','수량'],['unit_price','거래단가'],['total_amount','금액'],['memo','비고']]:tab==='반품'?[['transaction_date','일자'],['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['quantity','수량'],['unit_price','거래단가'],['total_amount','금액'],['lot_no','LOT'],['expiry_date','유효기한'],['reason','사유'],['process_status','처리상태'],['memo','비고']]:[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['quantity','수량'],['unit_price','거래단가'],['total_amount','금액'],['lot_no','LOT'],['expiry_date','유효기한'],['reason','사유'],['handler','처리자'],['approver','승인자'],['memo','비고']]
-  const _dmap={};(drugs||[]).forEach(d=>{_dmap[d.drug_code]=d});const _enr=txns.map(x=>({...x,drug_name:_dmap[x.drug_code]?.drug_name||'',category:_dmap[x.drug_code]?.category||''}));const sorted=so(_enr);const tp2=Math.ceil(sorted.length/PP),pagedTx=sorted.slice((txPage-1)*PP,txPage*PP)
+  const _dmap={};(drugs||[]).forEach(d=>{_dmap[d.drug_code]=d});const _enr=txns.map(x=>({...x,drug_name:_dmap[x.drug_code]?.drug_name||'',category:_dmap[x.drug_code]?.category||''}));const _tq=txSearch.trim().toLowerCase();const _filt=_tq?_enr.filter(x=>(x.drug_code||'').toLowerCase().includes(_tq)||(x.drug_name||'').toLowerCase().includes(_tq)):_enr;const sorted=so(_filt);const tp2=Math.ceil(sorted.length/PP),pagedTx=sorted.slice((txPage-1)*PP,txPage*PP)
 
   return<div style={{padding:'20px 24px'}}>
     {/* 탭 */}
-    <div style={{display:'flex',gap:6,marginBottom:16}}>{TYPES.map(tp=><button key={tp} onClick={()=>{setTab(tp);setSelDrug(null);setSearch('');setBulkData([]);setBulkMsg(null);setMsg(null);setForm(p=>({...p,purchase_price:'',edi_price:''}));setPpConfirm(null);setSelIds([]);setSelDelStage(0)}} style={{flex:1,padding:'10px',borderRadius:10,border:`1.5px solid ${tab===tp?(tc[tp]?.c||t.accent):t.border}`,background:tab===tp?(tc[tp]?.bg||t.accentL):t.card,color:tab===tp?(tc[tp]?.c||t.accent):t.textM,cursor:'pointer',fontSize:13,fontWeight:tab===tp?700:400,transition:'all .15s'}}>{tp}관리</button>)}</div>
+    <div style={{display:'flex',gap:6,marginBottom:16}}>{TYPES.map(tp=><button key={tp} onClick={()=>{setTab(tp);setSelDrug(null);setSearch('');setBulkData([]);setBulkMsg(null);setMsg(null);setForm(p=>({...p,purchase_price:'',edi_price:'',transaction_date:new Date().toISOString().split('T')[0]}));setPpConfirm(null);setSelIds([]);setSelDelStage(0);setTxSearch('')}} style={{flex:1,padding:'10px',borderRadius:10,border:`1.5px solid ${tab===tp?(tc[tp]?.c||t.accent):t.border}`,background:tab===tp?(tc[tp]?.bg||t.accentL):t.card,color:tab===tp?(tc[tp]?.c||t.accent):t.textM,cursor:'pointer',fontSize:13,fontWeight:tab===tp?700:400,transition:'all .15s'}}>{tp}관리</button>)}</div>
     <div style={{display:'grid',gridTemplateColumns:'340px 1fr',gap:16,marginBottom:16}}>
       {/* 좌: 개별 등록 */}
       <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'18px 20px'}}>
@@ -2712,6 +2714,7 @@ function TransactionForm({drugs,onReload,navFilter}){
         {search.trim()&&!selDrug&&filtered.length>0&&<div style={{border:`1px solid ${t.border}`,borderRadius:6,maxHeight:120,overflowY:'auto',marginBottom:6}}>{filtered.slice(0,8).map(d=><div key={d.drug_code} onClick={()=>{setSelDrug(d);setSearch(d.drug_name);sf('purchase_price',(tab==='반품'||tab==='폐기')?(d.purchase_price?String(d.purchase_price):''):'');sf('edi_price',d.edi_price?String(d.edi_price):'')}} style={{padding:'6px 10px',cursor:'pointer',fontSize:11,borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>{d.drug_name}{d.status!=='사용'?<span style={{color:t.textM,fontSize:9,marginLeft:4}}>({d.status})</span>:null} <span style={{color:t.textL,fontSize:9}}>({d.drug_code})</span></div>)}</div>}
         {selDrug&&<div style={{background:tc[tab]?.bg,borderRadius:6,padding:'6px 10px',marginBottom:6,fontSize:11,color:tc[tab]?.c}}><strong>{selDrug.drug_name}</strong>{selDrug.status!=='사용'?<span style={{marginLeft:4,fontSize:10}}>({selDrug.status})</span>:null} · 재고:{selDrug.current_qty} · ₩{selDrug.purchase_price?.toLocaleString()}</div>}
         
+        <div style={{marginBottom:6}}><div style={{fontSize:10,color:t.textM,marginBottom:2}}>일자</div><input type="date" max={_today} value={form.transaction_date} onChange={e=>sf('transaction_date',e.target.value)} style={ip}/></div>
         <input type="number" value={form.qty} onChange={e=>sf('qty',e.target.value)} placeholder="수량" style={{...ip,marginBottom:6}}/>
         {(tab==='출고')&&<input type="number" value={form.edi_price} onChange={e=>sf('edi_price',e.target.value)} placeholder="보험약가 (비우면 기존 약가)" style={{...ip,marginBottom:6}}/>}
         {(tab==='입고')&&<input type="number" value={form.purchase_price} onChange={e=>sf('purchase_price',e.target.value)} placeholder="구입단가 (비우면 기존 단가)" style={{...ip,marginBottom:6}}/>}
@@ -2751,7 +2754,7 @@ function TransactionForm({drugs,onReload,navFilter}){
       <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
         <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,display:'flex',justifyContent:'space-between',alignItems:'center',background:tc[tab]?.bg}}>
           <span style={{fontWeight:700,fontSize:13,color:tc[tab]?.c}}>{tab} 이력</span>
-          <span style={{display:'flex',alignItems:'center',gap:8}}><button onClick={dlHist} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>{canDel&&<button onClick={()=>{setDelAllOpen(true);setDelAllStage(1);setDelAllMsg(null)}} disabled={txns.length===0} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+(txns.length===0?t.border:t.red),background:'transparent',color:txns.length===0?t.textL:t.red,cursor:txns.length===0?'not-allowed':'pointer',fontSize:11,fontWeight:600}}>전체삭제</button>}<span style={{fontSize:12,fontWeight:600,color:tc[tab]?.c}}>{txns.length}건 (전체)</span></span>
+          <span style={{display:'flex',alignItems:'center',gap:8}}><input value={txSearch} onChange={e=>{setTxSearch(e.target.value);setTxPage(1);setSelIds([])}} placeholder="약품코드 · 약품명 검색" style={{...ip,width:180,marginBottom:0,fontSize:11,padding:'6px 10px'}} /><button onClick={dlHist} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>{canDel&&<button onClick={()=>{setDelAllOpen(true);setDelAllStage(1);setDelAllMsg(null)}} disabled={txns.length===0} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+(txns.length===0?t.border:t.red),background:'transparent',color:txns.length===0?t.textL:t.red,cursor:txns.length===0?'not-allowed':'pointer',fontSize:11,fontWeight:600}}>전체삭제</button>}<span style={{fontSize:12,fontWeight:600,color:tc[tab]?.c}}>{txSearch.trim()?_filt.length+'건 (검색)':txns.length+'건 (전체)'}</span></span>
         </div>
         {canDel&&selIds.length>0&&<div style={{margin:'10px 18px 0',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',background:t.purpleL,border:'1px solid '+t.purple,borderRadius:10,padding:'8px 14px'}}><span style={{fontWeight:700,color:t.purple,fontSize:13}}>선택 {selIds.length}개</span><button onClick={()=>setSelDelStage(1)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid '+t.red,background:'transparent',color:t.red,cursor:'pointer',fontSize:12,fontWeight:700}}>선택 삭제</button><button onClick={()=>setSelIds([])} style={{padding:'6px 12px',borderRadius:8,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:12,fontWeight:600}}>선택 해제</button></div>}
         <div style={{overflowX:'auto',maxHeight:500}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
