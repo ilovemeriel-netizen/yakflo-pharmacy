@@ -1,2 +1,39 @@
+# EOL 정책 — 저장소(blob)는 LF로 정규화, Windows 워킹트리는 CRLF로 체크아웃
+# (기존 파일이 CRLF 기준이므로 eol=crlf 로 통일. 코드 내용 불변, 개행만 관리)
+
+# 기본: 텍스트 자동 감지
+* text=auto eol=crlf
+
+# 소스/문서 (명시적 텍스트)
+*.jsx  text eol=crlf
+*.js   text eol=crlf
+*.mjs  text eol=crlf
+*.cjs  text eol=crlf
+*.ts   text eol=crlf
+*.tsx  text eol=crlf
+*.json text eol=crlf
+*.md   text eol=crlf
+*.sql  text eol=crlf
+*.css  text eol=crlf
+*.html text eol=crlf
+*.yml  text eol=crlf
+*.yaml text eol=crlf
+*.toml text eol=crlf
+*.txt  text eol=crlf
+*.example text eol=crlf
+
+# 바이너리 (변환 금지)
 *.xlsx binary
 *.xls  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.svg  binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.eot  binary
+*.pdf  binary
