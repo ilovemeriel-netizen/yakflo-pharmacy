@@ -139,7 +139,7 @@ async function searchDrugAPI(keyword, apiType = 'easy') {
 }
 
 /* ── 재고 상태 3단계 판정(단일 소스: drugs.safety_stock, 발주점=ceil(safety×1.2)) ── */
-function stockStat(d){const q=Number(d&&d.current_qty)||0,sf=Number(d&&d.safety_stock)||0;if(q===0)return'재고없음';if(sf<=0)return'기준미설정';if(q<=sf)return'긴급';if(q<=Math.ceil(sf*1.2))return'주문필요';return'정상'}
+function stockStat(d){const q=Number(d&&d.current_qty)||0,sf=Number(d&&d.safety_stock)||0;if(sf<=0)return q===0?'재고없음':'기준미설정';if(q<=sf)return'긴급';if(q<=Math.ceil(sf*1.2))return'주문필요';return'정상'}
 
 /* ── Sort Hook ── */
 function useSort(ik = '', id = 'asc') {
