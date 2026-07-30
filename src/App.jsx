@@ -138,8 +138,9 @@ async function searchDrugAPI(keyword, apiType = 'easy') {
   } catch (e) { return { ok: false, msg: e.message === 'Failed to fetch' ? '서버 호출 실패 — dev 서버 재시작 필요 (Ctrl+C → npm run dev)' : e.message, data: [] } }
 }
 
-/* ── 재고 상태 3단계 판정(단일 소스: drugs.safety_stock, 발주점=ceil(safety×1.2)) ── */
-function stockStat(d){const q=Number(d&&d.current_qty)||0,sf=Number(d&&d.safety_stock)||0;if(sf<=0)return q===0?'재고없음':'기준미설정';if(q<=sf)return'긴급';if(q<=Math.ceil(sf*1.2))return'주문필요';return'정상'}
+/* ── 재고 상태 3단계 판정(단일 소스: drugs.safety_stock, 발주점=max(ceil(safety+일평균×리드타임),1)) ── */
+const LEAD_TIME=7 /* 발주 리드타임(일). 향후 suppliers.lead_time_days로 도매사별 확장 가능(이번엔 고정 7) */
+function stockStat(d){const q=Number(d&&d.current_qty)||0,sf=Number(d&&d.safety_stock)||0;if(sf<=0)return q===0?'재고없음':'기준미설정';if(q<=sf)return'긴급';const mavg=Number(d&&d.monthly_avg)||0;const rop=Math.max(Math.ceil(sf+(mavg/30)*LEAD_TIME),1);if(q<=rop)return'주문필요';return'정상'}
 
 /* ── Sort Hook ── */
 function useSort(ik = '', id = 'asc') {
