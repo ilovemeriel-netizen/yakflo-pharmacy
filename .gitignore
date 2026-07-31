@@ -51,3 +51,8 @@ data/*
 
 # 개인 export 백업(저장소 무관)
 html/
+
+# ── 안전재고·사용량 로컬 백업 CSV (약품 데이터 포함, 커밋 금지) ──
+*_backup_*.csv
+drugs_usage_backup_*.csv
+safety_stock_backup_*.csv
