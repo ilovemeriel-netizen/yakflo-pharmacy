@@ -3096,7 +3096,7 @@ function Report({drugs,onNav}){
   const[search,setSearch]=useState('');const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(STATS);
   const[page,setPage]=useState(1);const RPP=100; // 상세표 페이지네이션(화면 전용) — 한 페이지 100행
   const[closing,setClosing]=useState(false);const[closeMsg,setCloseMsg]=useState(null);
-  const[uploadOpen,setUploadOpen]=useState(false);const[dialog,setDialog]=useState(null); // 스냅샷 업로드 모달 · 앱 내 확인/안내 모달
+  const[uploadOpen,setUploadOpen]=useState(false);const[dialog,setDialog]=useState(null);const[closeReason,setCloseReason]=useState('단가 정정에 따른 재고 재평가'); // 스냅샷 업로드 모달 · 앱 내 확인/안내 모달 · 마감 잔차 사유
   const{hs,so,SI,TS,sk,sd}=useSort('drug_code');
 
   /* 마감 버튼 파생값 — 대상은 화면 선택 연/월(year·month). cy/cm은 미래월 차단용 현재값 */
@@ -3170,7 +3170,7 @@ function Report({drugs,onNav}){
     const _n=_txCnt||0;const noTx=_n===0;const _cext=' · [보정 구성] 조정거래분 ₩'+Math.round(_adjTxA||0).toLocaleString()+' 잔차분 '+(_residualA!=null?('₩'+Math.round(_residualA).toLocaleString()):'-');
     setDialog({title:`${label} 마감`,
       body:noTx?`해당 월의 거래 기록이 없어 입고·사용·폐기·반품이 0으로 기록됩니다.\n계속하시겠습니까?`:`${label}을 마감합니다.\n이번 달 거래 ${_n.toLocaleString()}건을 집계합니다.\n계속하시겠습니까?`+_cext,
-      confirmLabel:'마감 실행',onConfirm:()=>runClose(_n)});
+      reasonInput:true,confirmLabel:'마감 실행',onConfirm:()=>runClose(_n)});
   }
 
   /* 월마감 실제 반영 — 화면 선택 연/월(year·month) 기준. 집계 산식 무변경.
@@ -3186,7 +3186,7 @@ function Report({drugs,onNav}){
     const{error}=await supabase.from('monthly_report_totals').upsert({tenant_id:tid,snap_year:y,snap_month:m,
       opening_amount:_f4(a.openA),in_amount:_f4(a.inA),out_amount:_f4(a.outA),
       disposal_amount:_f4(a.dispA),return_amount:_f4(a.retA),
-      calc_closing:_f4(calc),actual_closing:_f4(a.closeA),audit_adjust:_f4(a.closeA-calc),reason_note:'조정거래분='+Math.round(a.adjA||0)+' / 잔차분='+Math.round((a.closeA-calc)-(a.adjA||0)),
+      calc_closing:_f4(calc),actual_closing:_f4(a.closeA),audit_adjust:_f4(a.closeA-calc),reason_note:'조정거래분='+Math.round(a.adjA||0)+' / 잔차분='+Math.round((a.closeA-calc)-(a.adjA||0))+(a.reason?' / 사유:'+a.reason:''),
       item_count:a.itemCount,in_count:a.inC,out_count:a.outC,disposal_count:a.dispC,return_count:a.retC,
       exp_expired:a.expE,exp_urgent30:a.expU,exp_caution60:a.expW,exp_check90:a.expC,
       source:'시스템'},{onConflict:'tenant_id,snap_year,snap_month'});
@@ -3257,7 +3257,7 @@ function Report({drugs,onNav}){
         const _openA=rows.reduce((a,r)=>a+(r.opening_amount||0),0),_inA=rows.reduce((a,r)=>a+(r.total_in_amount||0),0),
               _outA=rows.reduce((a,r)=>a+(r.total_out_amount||0),0),_closeA=rows.reduce((a,r)=>a+(r.closing_amount||0),0),
               _dispA=_sum('폐기','total_amount'),_retA=_sum('반품','total_amount');
-        const _res=await _writeSidecar(_tm?.tenant_id||null,year,month,{openA:(_prevSide?Number(_prevSide.actual_closing):_openA),inA:_inA,outA:_outA,closeA:_closeA,dispA:_dispA,retA:_retA,adjA:mTx.filter(x=>x.type==='조정').reduce((a,x)=>a+(Number(x.quantity)||0)*((drugMap[x.drug_code]||{}).purchase_price||0),0),itemCount:rows.length,inC:mTx.filter(x=>x.type==='입고').length,outC:mTx.filter(x=>x.type==='출고').length,dispC:mTx.filter(x=>x.type==='폐기').length,retC:mTx.filter(x=>x.type==='반품').length,expE:expExpired,expU:expU30,expW:expW60,expC:expC90});
+        const _res=await _writeSidecar(_tm?.tenant_id||null,year,month,{openA:(_prevSide?Number(_prevSide.actual_closing):_openA),inA:_inA,outA:_outA,closeA:_closeA,dispA:_dispA,retA:_retA,adjA:mTx.filter(x=>x.type==='조정').reduce((a,x)=>a+(Number(x.quantity)||0)*((drugMap[x.drug_code]||{}).purchase_price||0),0),reason:closeReason,itemCount:rows.length,inC:mTx.filter(x=>x.type==='입고').length,outC:mTx.filter(x=>x.type==='출고').length,dispC:mTx.filter(x=>x.type==='폐기').length,retC:mTx.filter(x=>x.type==='반품').length,expE:expExpired,expU:expU30,expW:expW60,expC:expC90});
         if(!_res.ok)throw new Error(_res.protected?'결재본 정본이 존재해 사이드카를 덮어쓸 수 없습니다':(_res.error?.message||'사이드카 기록 실패'));
       }catch(_sideErr){
         setCloseMsg(`⚠ ${label} 스냅샷은 저장됐으나 사이드카 총계 기록 실패: ${_sideErr.message} — 다시 시도해 주세요`);loadS();setClosing(false);return;
@@ -3327,7 +3327,7 @@ function Report({drugs,onNav}){
       ['[재고 현황]'],['관리 품목수',itemCnt],['현재고',Math.round(tot.ca)],['전월재고',Math.round(tot.oa)],['증감',Math.round(tot.ca-tot.oa)],[],
       ['[입출고 현황]','건수','금액'],['입고',inCnt,Math.round(tot.ia)],['출고',outCnt,Math.round(tot.oua)],['순입고',inCnt-outCnt,Math.round(tot.ia-tot.oua)],[],
       ['[손실 현황]','건수','금액'],['폐기',dispCnt,Math.round(tot.da)],['반품',retCnt,Math.round(tot.ra)],[],
-      ['[유효기간 관리]'],['만료',expExpired],['긴급(30일)',expU30],['주의(60일)',expW60],['확인(90일)',expC90],[],
+      ['[마감 보정]'],['보정값',Math.round(sideTot?Number(sideTot.audit_adjust):(liveAudit||0))],['잔차 사유',(sideTot&&sideTot.reason_note?(String(sideTot.reason_note).split('/').map(x=>x.trim()).find(x=>x.startsWith('사유:'))||'').replace('사유:',''):'')],[],['[유효기간 관리]'],['만료',expExpired],['긴급(30일)',expU30],['주의(60일)',expW60],['확인(90일)',expC90],[],
       [nowStamp()],['Copyright © 2026 Jeonghwa Lee. All rights reserved.']];
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'요약');
     const list=filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,전월재고수:d.opening_qty,전월재고금액:Math.round(d.opening_amount||0),입고수량:d.total_in_qty,입고금액:Math.round(d.total_in_amount||0),출고수량:d.total_out_qty,출고금액:Math.round(d.total_out_amount||0),폐기수량:d.total_disp_qty,반품수량:d.total_ret_qty,기말재고수:d.closing_qty,기말재고금액:Math.round(d.closing_amount||0)}));
@@ -3365,7 +3365,7 @@ function Report({drugs,onNav}){
     {dialog&&<div onClick={()=>setDialog(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
       <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:420,width:'100%',border:`1px solid ${t.border}`,boxShadow:t.shadowH}}>
         <div style={{fontSize:14,fontWeight:700,color:t.text,marginBottom:10}}>{dialog.title}</div>
-        <div style={{fontSize:12,color:t.textM,lineHeight:1.6,whiteSpace:'pre-line',marginBottom:18}}>{dialog.body}</div>
+        <div style={{fontSize:12,color:t.textM,lineHeight:1.6,whiteSpace:'pre-line',marginBottom:18}}>{dialog.body}</div>{dialog.reasonInput&&<div style={{marginBottom:16}}><label style={{fontSize:11,color:t.textM,display:'block',marginBottom:4,fontWeight:600}}>잔차 사유 (선택 · 비워도 마감 진행)</label><input value={closeReason} onChange={e=>setCloseReason(e.target.value)} placeholder='단가 정정에 따른 재고 재평가' style={{width:'100%',padding:'8px 12px',border:'1px solid '+t.border,borderRadius:8,fontSize:12,boxSizing:'border-box',background:t.bg,color:t.text,outline:'none'}} /></div>}
         <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
           {dialog.onConfirm&&<button onClick={()=>setDialog(null)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.border}`,background:'transparent',color:t.textM,cursor:'pointer',fontSize:12,fontWeight:700}}>취소</button>}
           <button onClick={()=>{const fn=dialog.onConfirm;if(fn)fn();else setDialog(null)}} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>{dialog.confirmLabel||'확인'}</button>
@@ -3481,7 +3481,7 @@ function Report({drugs,onNav}){
       </div>)}
       {(sideTot||live)&&<div style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`}}>
         <div style={{fontSize:10,color:t.textM}}>보정값</div>
-        <div style={{fontSize:20,fontWeight:700,color:t.textM,marginTop:4}}>{_aWon(sideTot?sideTot.audit_adjust:liveAudit)}</div>
+        <div style={{fontSize:20,fontWeight:700,color:t.textM,marginTop:4}}>{_aWon(sideTot?sideTot.audit_adjust:liveAudit)}</div>{sideTot&&sideTot.reason_note&&(()=>{const _r=String(sideTot.reason_note).split('/').map(x=>x.trim()).find(x=>x.startsWith('사유:'));return _r?<div style={{fontSize:10,color:t.textL,marginTop:4}}>{_r}</div>:null})()}
       </div>}
     </div>}
 
