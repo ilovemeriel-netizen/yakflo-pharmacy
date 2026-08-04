@@ -324,7 +324,7 @@ function Drug360Modal({ drug: dr, onClose, pos, setPos, onSaved }) {
       <div style={{ display: 'flex', gap: 2, padding: '8px 12px 0', borderBottom: '1px solid ' + t.border, background: t.bg }}>{TABS.map(x => <button key={x} onClick={() => setTab(x)} style={{ padding: '8px 14px', border: 'none', borderBottom: tab === x ? '2px solid ' + t.accent : '2px solid transparent', background: 'transparent', color: tab === x ? t.accent : t.textM, fontWeight: tab === x ? 700 : 500, fontSize: 12, cursor: 'pointer' }}>{x}</button>)}</div>
       <div style={{ padding: '16px 20px', maxHeight: '60vh', overflowY: 'auto' }}>
         {tab === '개요' && <div><div style={{ marginBottom: 10 }}>{chip(dr.atc_l1)}{chip(dr.atc_l2)}{chip(dr.atc_l3)}{!dr.atc_l1 && <span style={{ color: t.textL, fontSize: 12 }}>ATC 미분류</span>}</div>{row('상태', <SB s={dr.status} />)}{row('구분', dr.category || '-')}{row('구입단가', dr.purchase_price ? Number(dr.purchase_price).toLocaleString() + '원' : '-')}{row('성분명', dr.ingredient_kr || '-')}{row('제조사', dr.manufacturer || '-')}{row('제형 / 단위', (dr.specification || '-') + ' / ' + (dr.unit || '-'))}{row('현재고', q.toLocaleString() + '  (' + st + ')')}<div style={{ marginTop: 4 }}>{!exEdit ? <>{row('첨가제', <span style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}><span style={{ maxWidth: 320, textAlign: 'right' }}>{exVal.additive || '-'}</span><button onClick={() => setExEdit(true)} style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid ' + t.border, background: t.bg, color: t.accent, cursor: 'pointer', fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap' }}>편집</button></span>)}{row('복합/단일', exVal.compound_type || '-')}</> : <div style={{ padding: '8px 0', borderBottom: '1px solid ' + t.border }}><div style={{ fontSize: 11, color: t.textM, marginBottom: 4 }}>첨가제</div><input value={exVal.additive} onChange={e => setExVal(v => ({ ...v, additive: e.target.value }))} style={{ width: '100%', padding: '7px 10px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, boxSizing: 'border-box', background: t.bg, color: t.text }} /><div style={{ fontSize: 11, color: t.textM, margin: '8px 0 4px' }}>복합/단일</div><select value={exVal.compound_type} onChange={e => setExVal(v => ({ ...v, compound_type: e.target.value }))} style={{ width: '100%', padding: '7px 10px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, background: t.bg, color: t.text }}>{['단일제', '복합제'].map(s => <option key={s}>{s}</option>)}</select><div style={{ display: 'flex', gap: 6, marginTop: 10, justifyContent: 'flex-end' }}><button onClick={() => { setExVal({ additive: dr.additive || '', compound_type: dr.compound_type || '단일제' }); setExEdit(false) }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>취소</button><button onClick={saveEx} disabled={exSaving} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: t.accent, color: '#fff', cursor: exSaving ? 'default' : 'pointer', fontSize: 12, fontWeight: 700 }}>{exSaving ? '저장 중...' : '저장'}</button></div></div>}</div></div>}
-        {tab === '입출고' && <div>{txs === null ? <div style={{ color: t.textL, textAlign: 'center', padding: 20 }}>불러오는 중...</div> : !txs.length ? <div style={{ color: t.textL, textAlign: 'center', padding: 20, fontSize: 12 }}>거래 내역 없음</div> : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}><thead><tr>{['일자', '유형', '수량', '금액'].map((h, hi) => <th key={h} style={{ textAlign: hi < 2 ? 'left' : 'right', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border }}>{h}</th>)}</tr></thead><tbody>{txs.map((x, i) => { const tcl = x.type === '입고' ? t.green : x.type === '출고' ? t.blue : x.type === '폐기' ? t.red : t.amber; return <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '6px 8px', color: t.textM }}>{x.transaction_date}</td><td style={{ padding: '6px 8px' }}><Bd bg={tcl + '18'} color={tcl}>{x.type}</Bd></td><td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{x.quantity?.toLocaleString()}</td><td style={{ padding: '6px 8px', textAlign: 'right', color: t.textM }}>{x.total_amount ? '₩' + x.total_amount.toLocaleString() : '-'}</td></tr> })}</tbody></table>}</div>}
+        {tab === '입출고' && <div>{txs === null ? <div style={{ color: t.textL, textAlign: 'center', padding: 20 }}>불러오는 중...</div> : !txs.length ? <div style={{ color: t.textL, textAlign: 'center', padding: 20, fontSize: 12 }}>거래 내역 없음</div> : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}><thead><tr>{['일자', '유형', '수량', '금액'].map((h, hi) => <th key={h} style={{ textAlign: hi < 2 ? 'left' : 'right', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border }}>{h}</th>)}</tr></thead><tbody>{txs.map((x, i) => { const tcl = x.type === '입고' ? t.green : x.type === '출고' ? t.blue : x.type === '폐기' ? t.red : t.amber; return <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '6px 8px', color: t.textM }}>{x.transaction_date}</td><td style={{ padding: '6px 8px' }}><Bd bg={tcl + '18'} color={tcl}>{x.type}</Bd></td><td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{x.quantity?.toLocaleString()}</td><td style={{ padding: '6px 8px', textAlign: 'right', color: t.textM }}>{x.total_amount ? '₩' + x.total_amount.toLocaleString() : (x.type === '조정' && dr.purchase_price ? '₩' + ((Number(x.quantity)||0)*Number(dr.purchase_price)).toLocaleString() : '-')}</td></tr> })}</tbody></table>}</div>}
         {tab === '재고' && <div>{row('현재고', <span style={{ color: stc, fontWeight: 700 }}>{q.toLocaleString()}</span>)}{row('재고상태', <Bd bg={stc + '18'} color={stc}>{st}</Bd>)}{row('안전재고', sf || '-')}{row('최대재고', mx || '-')}{row('월평균 사용', dr.monthly_avg || '-')}{row('재고금액', dr.purchase_price ? '₩' + (q * Number(dr.purchase_price)).toLocaleString() : '-')}</div>}
         {tab === '유효기한' && <div>{row('대표 유효기한', <span style={exS(dr.expiry_date, t)}>{(dr.expiry_date || '-') + (dday !== null ? '  (' + dstr(dday) + ')' : '')}</span>)}<div style={{ marginTop: 12, marginBottom: 6, fontSize: 11, color: t.textM, fontWeight: 700 }}>LOT 목록</div>{lots === null ? <div style={{ color: t.textL, padding: 12 }}>불러오는 중...</div> : !lots.length ? <div style={{ color: t.textL, padding: 12, fontSize: 12 }}>등록된 LOT 없음</div> : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}><thead><tr>{['LOT', '유효기한', '수량', 'D-day'].map(h => <th key={h} style={{ textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border }}>{h}</th>)}</tr></thead><tbody>{lots.map((l, i) => { const dd = exD(l.expiry_date); return <tr key={i} style={{ borderBottom: '1px solid ' + t.border, opacity: l.is_active ? 1 : 0.5 }}><td style={{ padding: '6px 8px', fontWeight: 600 }}>{l.lot_no}</td><td style={{ padding: '6px 8px', ...exS(l.expiry_date, t) }}>{l.expiry_date}</td><td style={{ padding: '6px 8px' }}>{l.quantity?.toLocaleString()}</td><td style={{ padding: '6px 8px' }}>{dstr(dd)}</td></tr> })}</tbody></table>}</div>}
         {tab === '향정' && <div>{row('규제 구분', getNT(dr) === '일반' ? <span style={{ color: t.textL }}>일반 (비규제)</span> : <Bd bg={getNT(dr) === '마약' ? t.redL : t.purpleL} color={getNT(dr) === '마약' ? t.red : t.purple}>{getNT(dr)}</Bd>)}{row('마약류 여부', isN(dr) ? '해당' : '비해당')}{row('유효기한 D-day', dstr(dday))}{row('보관 방법', dr.storage_method || '-')}{getNT(dr) === '일반' && <div style={{ marginTop: 12, fontSize: 12, color: t.textL }}>향정·마약류가 아닌 일반 약품입니다.</div>}</div>}
@@ -802,7 +802,7 @@ function AdjustModal({ drug: dr, onClose, onSaved }) {
     const d = Number(qty) - (dr.current_qty || 0)
     if (d === 0) { setSaving(false); setMsg('변동 없음'); setTimeout(() => { onSaved?.(); onClose() }, 500); return }
     /* 실사 조정도 거래로 일원화: transactions type='조정'(quantity=목표−현재) → 0009 트리거가 drugs+inventory 동기. 직접 update 제거. */
-    const tx = { drug_code: dr.drug_code, type: TX_ADJUST, quantity: d, reason: `${reason} (${d > 0 ? '+' : ''}${d})`, transaction_date: new Date().toISOString().split('T')[0] }
+    const tx = { drug_code: dr.drug_code, type: TX_ADJUST, quantity: d, total_amount: d * (Number(dr.purchase_price) || 0), reason: `${reason} (${d > 0 ? '+' : ''}${d})`, transaction_date: new Date().toISOString().split('T')[0] }
     let res = await supabase.from('transactions').insert([tx])
     for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
     setSaving(false)
@@ -2710,7 +2710,7 @@ function TransactionForm({drugs,onReload,navFilter}){
     setTimeout(()=>setBulkMsg(null),4000)
   }
   function dlHist(){
-    const rows=sorted.map(tx=>{const o={};cols.forEach(([k,h])=>{o[h]=tx[k]??''});return o})
+    const rows=sorted.map(tx=>{const o={};cols.forEach(([k,h])=>{o[h]=(k==='total_amount'&&!tx[k]&&tx.type==='조정')?(Number(tx.quantity)||0)*((drugs.find(dd=>dd.drug_code===tx.drug_code)||{}).purchase_price||0):(tx[k]??'')});return o})
     const ws=XLSX.utils.json_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,tab);XLSX.writeFile(wb,`입출고_${tab}_${new Date().toISOString().split('T')[0]}.xlsx`)
   }
   function dlTemplate(){
@@ -2778,7 +2778,7 @@ function TransactionForm({drugs,onReload,navFilter}){
         <div style={{overflowX:'auto',maxHeight:500}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
           <thead><tr>{canDel&&<th style={{width:30,textAlign:'center'}}><input type="checkbox" checked={pagedTx.filter(x=>!_isClosed(x.transaction_date)).length>0&&pagedTx.filter(x=>!_isClosed(x.transaction_date)).every(x=>selIds.includes(x.id))} onChange={()=>toggleGroupSel(pagedTx)} style={{accentColor:t.purple,cursor:'pointer'}} /></th>}{cols.map(([k,h])=><th key={h} style={{...TS(k),fontSize:10,whiteSpace:'nowrap'}} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}{canDel&&<th style={{fontSize:10,whiteSpace:'nowrap',textAlign:'center'}}>삭제</th>}</tr></thead>
           <tbody>{!pagedTx.length?<tr><td colSpan={cols.length+(canDel?2:0)} style={{padding:30,textAlign:'center',color:t.textL}}>이력 없음</td></tr>:pagedTx.map((tx,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>{canDel&&<td style={{padding:'5px 8px',textAlign:'center'}} onClick={e=>e.stopPropagation()}><input type="checkbox" disabled={_isClosed(tx.transaction_date)} checked={selIds.includes(tx.id)} onChange={()=>toggleSel(tx.id)} style={{accentColor:t.purple,cursor:'pointer'}} /></td>}
-            {cols.map(([k])=><td key={k} style={{padding:'5px 8px',fontSize:10,color:k==='drug_name'?t.text:k==='total_amount'?tc[tab]?.c:t.textM,fontWeight:k==='drug_name'||k==='total_amount'?600:400,textAlign:k==='quantity'||k==='unit_price'||k==='total_amount'?'right':'left',whiteSpace:'nowrap'}}>{k==='total_amount'?'₩'+(tx[k]||0).toLocaleString():k==='unit_price'?(tx[k]||0).toLocaleString():k==='quantity'?(tx[k]||0).toLocaleString():k==='sub_type'&&tx[k]?<Bd bg={tc[tab]?.bg} color={tc[tab]?.c}>{tx[k]}</Bd>:tx[k]||'-'}</td>)}{canDel&&<td style={{padding:'5px 8px',textAlign:'center'}}><button onClick={()=>{setDelTx(tx);setDelMsg(null)}} style={{padding:'2px 8px',borderRadius:4,border:`1px solid ${t.red}`,background:'transparent',color:t.red,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>삭제</button></td>}
+            {cols.map(([k])=><td key={k} style={{padding:'5px 8px',fontSize:10,color:k==='drug_name'?t.text:k==='total_amount'?tc[tab]?.c:t.textM,fontWeight:k==='drug_name'||k==='total_amount'?600:400,textAlign:k==='quantity'||k==='unit_price'||k==='total_amount'?'right':'left',whiteSpace:'nowrap'}}>{k==='total_amount'?'₩'+((tx[k]||(tx.type==='조정'?(Number(tx.quantity)||0)*((drugs.find(dd=>dd.drug_code===tx.drug_code)||{}).purchase_price||0):0))).toLocaleString():k==='unit_price'?(tx[k]||0).toLocaleString():k==='quantity'?(tx[k]||0).toLocaleString():k==='sub_type'&&tx[k]?<Bd bg={tc[tab]?.bg} color={tc[tab]?.c}>{tx[k]}</Bd>:tx[k]||'-'}</td>)}{canDel&&<td style={{padding:'5px 8px',textAlign:'center'}}><button onClick={()=>{setDelTx(tx);setDelMsg(null)}} style={{padding:'2px 8px',borderRadius:4,border:`1px solid ${t.red}`,background:'transparent',color:t.red,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>삭제</button></td>}
           </tr>)}</tbody>
         </table></div>
         <Pg page={txPage} setPage={setTxPage} tp={tp2} fl={sorted} pp={PP} ends/>
@@ -3093,7 +3093,7 @@ function Report({drugs,onNav}){
   const[sideTot,setSideTot]=useState(null); // 정본 사이드카(월 총계) 단일행 — 월간 KPI 표시용
   const[sideY,setSideY]=useState({}); // 정본 사이드카(연도 전체 월 맵) — 연간 표 표시용
   const[live,setLive]=useState(null); // 미마감 당월 실시간 집계({rows,oa,da,ra,dispCnt,retCnt}) — 없으면 null
-  const[search,setSearch]=useState('');const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(['사용']);
+  const[search,setSearch]=useState('');const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(STATS);
   const[page,setPage]=useState(1);const RPP=100; // 상세표 페이지네이션(화면 전용) — 한 페이지 100행
   const[closing,setClosing]=useState(false);const[closeMsg,setCloseMsg]=useState(null);
   const[uploadOpen,setUploadOpen]=useState(false);const[dialog,setDialog]=useState(null); // 스냅샷 업로드 모달 · 앱 내 확인/안내 모달
@@ -3134,9 +3134,9 @@ function Report({drugs,onNav}){
       const sa=(a,ty)=>(a||[]).filter(x=>x.type===ty).reduce((s,x)=>s+(Number(x.total_amount)||0),0);
       const codes=new Set(); drugs.forEach(d=>codes.add(d.drug_code)); ps.forEach(s=>codes.add(s.drug_code));
       const rows=[...codes].map(code=>{const d=drugMap[code]||{},prev=pmap[code]||{},a=txByCode[code];const cq=Number(d.current_qty)||0,pp=Number(d.purchase_price)||0;
-        return{drug_code:code,drug_name:d.drug_name||code,category:d.category||'-',opening_qty:Number(prev.closing_qty)||0,opening_amount:Number(prev.closing_amount)||0,total_in_qty:sq(a,'입고'),total_in_amount:sa(a,'입고'),total_out_qty:sq(a,'출고'),total_out_amount:sa(a,'출고'),total_disp_qty:sq(a,'폐기'),total_ret_qty:sq(a,'반품'),closing_qty:cq,closing_amount:cq*pp};
+        return{drug_code:code,drug_name:d.drug_name||code,category:d.category||'-',opening_qty:Number(prev.closing_qty)||0,opening_amount:Number(prev.closing_amount)||0,total_in_qty:sq(a,'입고'),total_in_amount:sq(a,'입고')*pp,total_out_qty:sq(a,'출고'),total_out_amount:sq(a,'출고')*pp,total_disp_qty:sq(a,'폐기'),total_ret_qty:sq(a,'반품'),closing_qty:cq,closing_amount:cq*pp};
       }).filter(r=>r.opening_qty!==0||r.closing_qty!==0||r.total_in_qty||r.total_out_qty||r.total_disp_qty||r.total_ret_qty); // 거래 없어도 전월/현재고 있으면 포함
-      setLive({rows,oa,da:sa(tx,'폐기'),ra:sa(tx,'반품'),dispCnt:tx.filter(x=>x.type==='폐기').length,retCnt:tx.filter(x=>x.type==='반품').length});
+      setLive({rows,oa,da:sa(tx,'폐기'),ra:sa(tx,'반품'),adjA:tx.filter(x=>x.type==='조정').reduce((s,x)=>s+(Number(x.quantity)||0)*((drugMap[x.drug_code]||{}).purchase_price||0),0),dispCnt:tx.filter(x=>x.type==='폐기').length,retCnt:tx.filter(x=>x.type==='반품').length});
     }catch(e){setCloseMsg('❌ 실시간 집계 오류: '+e.message);setLive(null)}
   }
   async function loadS(){
@@ -3167,9 +3167,9 @@ function Report({drugs,onNav}){
     }
     const _cm=String(month).padStart(2,'0'),_cn=month===12?`${year+1}-01`:`${year}-${String(month+1).padStart(2,'0')}`;
     const{count:_txCnt}=await supabase.from('transactions').select('id',{count:'exact',head:true}).gte('transaction_date',`${year}-${_cm}-01`).lt('transaction_date',`${_cn}-01`);
-    const _n=_txCnt||0;const noTx=_n===0;
+    const _n=_txCnt||0;const noTx=_n===0;const _cext=' · [보정 구성] 조정거래분 ₩'+Math.round(_adjTxA||0).toLocaleString()+' 잔차분 '+(_residualA!=null?('₩'+Math.round(_residualA).toLocaleString()):'-');
     setDialog({title:`${label} 마감`,
-      body:noTx?`해당 월의 거래 기록이 없어 입고·사용·폐기·반품이 0으로 기록됩니다.\n계속하시겠습니까?`:`${label}을 마감합니다.\n이번 달 거래 ${_n.toLocaleString()}건을 집계합니다.\n계속하시겠습니까?`,
+      body:noTx?`해당 월의 거래 기록이 없어 입고·사용·폐기·반품이 0으로 기록됩니다.\n계속하시겠습니까?`:`${label}을 마감합니다.\n이번 달 거래 ${_n.toLocaleString()}건을 집계합니다.\n계속하시겠습니까?`+_cext,
       confirmLabel:'마감 실행',onConfirm:()=>runClose(_n)});
   }
 
@@ -3186,7 +3186,7 @@ function Report({drugs,onNav}){
     const{error}=await supabase.from('monthly_report_totals').upsert({tenant_id:tid,snap_year:y,snap_month:m,
       opening_amount:_f4(a.openA),in_amount:_f4(a.inA),out_amount:_f4(a.outA),
       disposal_amount:_f4(a.dispA),return_amount:_f4(a.retA),
-      calc_closing:_f4(calc),actual_closing:_f4(a.closeA),audit_adjust:_f4(a.closeA-calc),
+      calc_closing:_f4(calc),actual_closing:_f4(a.closeA),audit_adjust:_f4(a.closeA-calc),reason_note:'조정거래분='+Math.round(a.adjA||0)+' / 잔차분='+Math.round((a.closeA-calc)-(a.adjA||0)),
       item_count:a.itemCount,in_count:a.inC,out_count:a.outC,disposal_count:a.dispC,return_count:a.retC,
       exp_expired:a.expE,exp_urgent30:a.expU,exp_caution60:a.expW,exp_check90:a.expC,
       source:'시스템'},{onConflict:'tenant_id,snap_year,snap_month'});
@@ -3236,9 +3236,9 @@ function Report({drugs,onNav}){
         const prev=prevMap[d.drug_code]||{};
         const dTx=mTx.filter(tx=>tx.drug_code===d.drug_code);
         const inQ=dTx.filter(x=>x.type==='입고').reduce((a,x)=>a+(x.quantity||0),0);
-        const inA=dTx.filter(x=>x.type==='입고').reduce((a,x)=>a+(x.total_amount||0),0);
+        const inA=dTx.filter(x=>x.type==='입고').reduce((a,x)=>a+(Number(x.quantity)||0)*(Number(d.purchase_price)||0),0);
         const outQ=dTx.filter(x=>x.type==='출고').reduce((a,x)=>a+(x.quantity||0),0);
-        const outA=dTx.filter(x=>x.type==='출고').reduce((a,x)=>a+(x.total_amount||0),0);
+        const outA=dTx.filter(x=>x.type==='출고').reduce((a,x)=>a+(Number(x.quantity)||0)*(Number(d.purchase_price)||0),0);
         const dispQ=dTx.filter(x=>x.type==='폐기').reduce((a,x)=>a+(x.quantity||0),0);
         const retQ=dTx.filter(x=>x.type==='반품').reduce((a,x)=>a+(x.quantity||0),0);
         return{drug_code:d.drug_code,snap_year:year,snap_month:month,
@@ -3257,7 +3257,7 @@ function Report({drugs,onNav}){
         const _openA=rows.reduce((a,r)=>a+(r.opening_amount||0),0),_inA=rows.reduce((a,r)=>a+(r.total_in_amount||0),0),
               _outA=rows.reduce((a,r)=>a+(r.total_out_amount||0),0),_closeA=rows.reduce((a,r)=>a+(r.closing_amount||0),0),
               _dispA=_sum('폐기','total_amount'),_retA=_sum('반품','total_amount');
-        const _res=await _writeSidecar(_tm?.tenant_id||null,year,month,{openA:(_prevSide?Number(_prevSide.actual_closing):_openA),inA:_inA,outA:_outA,closeA:_closeA,dispA:_dispA,retA:_retA,itemCount:rows.length,inC:mTx.filter(x=>x.type==='입고').length,outC:mTx.filter(x=>x.type==='출고').length,dispC:mTx.filter(x=>x.type==='폐기').length,retC:mTx.filter(x=>x.type==='반품').length,expE:expExpired,expU:expU30,expW:expW60,expC:expC90});
+        const _res=await _writeSidecar(_tm?.tenant_id||null,year,month,{openA:(_prevSide?Number(_prevSide.actual_closing):_openA),inA:_inA,outA:_outA,closeA:_closeA,dispA:_dispA,retA:_retA,adjA:mTx.filter(x=>x.type==='조정').reduce((a,x)=>a+(Number(x.quantity)||0)*((drugMap[x.drug_code]||{}).purchase_price||0),0),itemCount:rows.length,inC:mTx.filter(x=>x.type==='입고').length,outC:mTx.filter(x=>x.type==='출고').length,dispC:mTx.filter(x=>x.type==='폐기').length,retC:mTx.filter(x=>x.type==='반품').length,expE:expExpired,expU:expU30,expW:expW60,expC:expC90});
         if(!_res.ok)throw new Error(_res.protected?'결재본 정본이 존재해 사이드카를 덮어쓸 수 없습니다':(_res.error?.message||'사이드카 기록 실패'));
       }catch(_sideErr){
         setCloseMsg(`⚠ ${label} 스냅샷은 저장됐으나 사이드카 총계 기록 실패: ${_sideErr.message} — 다시 시도해 주세요`);loadS();setClosing(false);return;
@@ -3301,7 +3301,7 @@ function Report({drugs,onNav}){
   /* 구분별 */
   const catSum=CATS.map(cat=>{const items=filtered.filter(d=>d.category===cat);if(!items.length)return null;return{cat,count:items.length,inA:items.reduce((a,d)=>a+(d.total_in_amount||0),0),outA:items.reduce((a,d)=>a+(d.total_out_amount||0),0),closeA:items.reduce((a,d)=>a+(d.closing_amount||0),0)}}).filter(Boolean);
   const inCnt=filtered.filter(d=>(d.total_in_qty||0)>0).length,outCnt=filtered.filter(d=>(d.total_out_qty||0)>0).length,dispCnt=filtered.filter(d=>(d.total_disp_qty||0)>0).length,retCnt=filtered.filter(d=>(d.total_ret_qty||0)>0).length,itemCnt=filtered.filter(d=>(d.closing_qty||0)!==0).length;
-  const liveAudit=live?(tot.ca-(live.oa+tot.ia-tot.oua-live.da-live.ra)):null; // 미마감 당월 보정값 = 기말 - (전월사이드카+입-출-폐-반)
+  const liveAudit=live?(tot.ca-(live.oa+tot.ia-tot.oua-tot.da-tot.ra)):null; const _adjTxA=live?(Number(live.adjA)||0):0; const _residualA=(liveAudit!=null)?(liveAudit-_adjTxA):null; // 보정값=잔차(항등식·filtered pp) · 조정거래분/잔차분 분리
   const _pn=new Date(),_pf=x=>{const z=new Date(_pn);z.setDate(z.getDate()+x);return z.toISOString().slice(0,10)},_pt=_pn.toISOString().slice(0,10);
   const _pe=drugs.filter(d=>d.status!=='중지'&&d.expiry_date);
   const expExpired=_pe.filter(d=>d.expiry_date<_pt).length,expU30=_pe.filter(d=>d.expiry_date>=_pt&&d.expiry_date<_pf(30)).length,expW60=_pe.filter(d=>d.expiry_date>=_pf(30)&&d.expiry_date<_pf(60)).length,expC90=_pe.filter(d=>d.expiry_date>=_pf(60)&&d.expiry_date<_pf(90)).length;
@@ -3455,9 +3455,9 @@ function Report({drugs,onNav}){
           <MRow2 label="순입고" bg="#ececec" cnt={(sideTot?(Number(sideTot.in_count)-Number(sideTot.out_count)):(inCnt-outCnt))+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.in_amount)-Number(sideTot.out_amount)):(tot.ia-tot.oua)).toLocaleString()} />
         </MSec>
         <MSec title="■ 손실 현황">
-          <MRow2 label="폐기" bg="#f6dede" cnt={(sideTot?Number(sideTot.disposal_count):(live?live.dispCnt:dispCnt))+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.disposal_amount):(live?live.da:tot.da)).toLocaleString()} />
-          <MRow2 label="반품" bg="#f7f3d6" cnt={(sideTot?Number(sideTot.return_count):(live?live.retCnt:retCnt))+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.return_amount):(live?live.ra:tot.ra)).toLocaleString()} />
-          <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(sideTot?(Number(sideTot.disposal_count)+Number(sideTot.return_count)):(live?(live.dispCnt+live.retCnt):(dispCnt+retCnt)))+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.disposal_amount)+Number(sideTot.return_amount)):(live?(live.da+live.ra):(tot.da+tot.ra))).toLocaleString()} />
+          <MRow2 label="폐기" bg="#f6dede" cnt={(sideTot?Number(sideTot.disposal_count):dispCnt)+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.disposal_amount):tot.da).toLocaleString()} />
+          <MRow2 label="반품" bg="#f7f3d6" cnt={(sideTot?Number(sideTot.return_count):retCnt)+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.return_amount):tot.ra).toLocaleString()} />
+          <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(sideTot?(Number(sideTot.disposal_count)+Number(sideTot.return_count)):(dispCnt+retCnt))+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.disposal_amount)+Number(sideTot.return_amount)):(tot.da+tot.ra)).toLocaleString()} />
         </MSec>
         <MSec title="■ 유효기간 관리">
           <MRow label="★ 만료" bg="#f6dede" value={(sideTot?Number(sideTot.exp_expired):expExpired)+'건'} />
