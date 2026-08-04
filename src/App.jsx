@@ -3330,7 +3330,7 @@ function Report({drugs,onNav}){
       ['[유효기간 관리]'],['만료',expExpired],['긴급(30일)',expU30],['주의(60일)',expW60],['확인(90일)',expC90],[],
       [nowStamp()],['Copyright © 2026 Jeonghwa Lee. All rights reserved.']];
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'요약');
-    const list=filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,전월재고수:d.opening_qty,전월재고금액:d.opening_amount,입고수량:d.total_in_qty,입고금액:d.total_in_amount,출고수량:d.total_out_qty,출고금액:d.total_out_amount,폐기수량:d.total_disp_qty,반품수량:d.total_ret_qty,기말재고수:d.closing_qty,기말재고금액:d.closing_amount}));
+    const list=filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,전월재고수:d.opening_qty,전월재고금액:Math.round(d.opening_amount||0),입고수량:d.total_in_qty,입고금액:Math.round(d.total_in_amount||0),출고수량:d.total_out_qty,출고금액:Math.round(d.total_out_amount||0),폐기수량:d.total_disp_qty,반품수량:d.total_ret_qty,기말재고수:d.closing_qty,기말재고금액:Math.round(d.closing_amount||0)}));
     const HDR=['약품코드','약품명','구분','전월재고수','전월재고금액','입고수량','입고금액','출고수량','출고금액','폐기수량','반품수량','기말재고수','기말재고금액'];
     const ws=list.length?XLSX.utils.json_to_sheet(list):XLSX.utils.aoa_to_sheet([HDR]);
     if(rtype==='annual'){const _mr=annR.filter(r=>r.has).map(r=>({'월':r.m+'월','전월재고':Math.round(r.prevA),'입고':Math.round(r.inA),'사용':Math.round(r.outA),'폐기':Math.round(r.dispA),'반품':Math.round(r.retA),'현재고':Math.round(r.closeA),'보정값':r.adj!=null?Math.round(r.adj):''}));_mr.push({'월':'합계','전월재고':Math.round(annRSum.prevA),'입고':Math.round(annRSum.inA),'사용':Math.round(annRSum.outA),'폐기':Math.round(annRSum.dispA),'반품':Math.round(annRSum.retA),'현재고':Math.round(annRSum.closeA),'보정값':Math.round(annRSum.adj)});XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(_mr),'월별집계');}
@@ -3495,9 +3495,9 @@ function Report({drugs,onNav}){
             <span style={{background:cc+'15',color:cc,padding:'2px 10px',borderRadius:12,fontSize:11,fontWeight:700}}>{c.count}개</span>
           </div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:11}}>
-            <div><div style={{color:t.textL,fontSize:9,marginBottom:2}}>입고</div><div style={{color:'#019748',fontWeight:600}}>₩{c.inA.toLocaleString()}</div></div>
-            <div><div style={{color:t.textL,fontSize:9,marginBottom:2}}>출고</div><div style={{color:'#2E4A62',fontWeight:600}}>₩{c.outA.toLocaleString()}</div></div>
-            <div><div style={{color:t.textL,fontSize:9,marginBottom:2}}>기말재고</div><div style={{color:'#804A87',fontWeight:700}}>₩{c.closeA.toLocaleString()}</div></div>
+            <div><div style={{color:t.textL,fontSize:9,marginBottom:2}}>입고</div><div style={{color:'#019748',fontWeight:600}}>₩{Math.round(c.inA).toLocaleString()}</div></div>
+            <div><div style={{color:t.textL,fontSize:9,marginBottom:2}}>출고</div><div style={{color:'#2E4A62',fontWeight:600}}>₩{Math.round(c.outA).toLocaleString()}</div></div>
+            <div><div style={{color:t.textL,fontSize:9,marginBottom:2}}>기말재고</div><div style={{color:'#804A87',fontWeight:700}}>₩{Math.round(c.closeA).toLocaleString()}</div></div>
           </div>
         </div>})}
       </div>
