@@ -3096,7 +3096,7 @@ function Report({drugs,onNav}){
   const[search,setSearch]=useState('');const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(STATS);
   const[page,setPage]=useState(1);const RPP=100; // 상세표 페이지네이션(화면 전용) — 한 페이지 100행
   const[closing,setClosing]=useState(false);const[closeMsg,setCloseMsg]=useState(null);
-  const[uploadOpen,setUploadOpen]=useState(false);const[dialog,setDialog]=useState(null); // 스냅샷 업로드 모달 · 앱 내 확인/안내 모달
+  const[uploadOpen,setUploadOpen]=useState(false);const[dialog,setDialog]=useState(null);const[closeReason,setCloseReason]=useState('단가 정정'); // 스냅샷 업로드 모달 · 앱 내 확인/안내 모달 · 마감 잔차 사유
   const{hs,so,SI,TS,sk,sd}=useSort('drug_code');
 
   /* 마감 버튼 파생값 — 대상은 화면 선택 연/월(year·month). cy/cm은 미래월 차단용 현재값 */
@@ -3136,7 +3136,7 @@ function Report({drugs,onNav}){
       const rows=[...codes].map(code=>{const d=drugMap[code]||{},prev=pmap[code]||{},a=txByCode[code];const cq=Number(d.current_qty)||0,pp=Number(d.purchase_price)||0;
         return{drug_code:code,drug_name:d.drug_name||code,category:d.category||'-',opening_qty:Number(prev.closing_qty)||0,opening_amount:Number(prev.closing_amount)||0,total_in_qty:sq(a,'입고'),total_in_amount:sq(a,'입고')*pp,total_out_qty:sq(a,'출고'),total_out_amount:sq(a,'출고')*pp,total_disp_qty:sq(a,'폐기'),total_ret_qty:sq(a,'반품'),closing_qty:cq,closing_amount:cq*pp};
       }).filter(r=>r.opening_qty!==0||r.closing_qty!==0||r.total_in_qty||r.total_out_qty||r.total_disp_qty||r.total_ret_qty); // 거래 없어도 전월/현재고 있으면 포함
-      setLive({rows,oa,da:sa(tx,'폐기'),ra:sa(tx,'반품'),adjA:tx.filter(x=>x.type==='조정').reduce((s,x)=>s+(Number(x.quantity)||0)*((drugMap[x.drug_code]||{}).purchase_price||0),0),dispCnt:tx.filter(x=>x.type==='폐기').length,retCnt:tx.filter(x=>x.type==='반품').length});
+      setLive({rows,oa,da:sa(tx,'폐기'),ra:sa(tx,'반품'),adjA:tx.filter(x=>x.type==='조정').reduce((s,x)=>s+(Number(x.quantity)||0)*((drugMap[x.drug_code]||{}).purchase_price||0),0),adjCnt:tx.filter(x=>x.type==='조정').length,dispCnt:tx.filter(x=>x.type==='폐기').length,retCnt:tx.filter(x=>x.type==='반품').length});
     }catch(e){setCloseMsg('❌ 실시간 집계 오류: '+e.message);setLive(null)}
   }
   async function loadS(){
@@ -3170,7 +3170,7 @@ function Report({drugs,onNav}){
     const _n=_txCnt||0;const noTx=_n===0;const _cext=' · [보정 구성] 조정거래분 ₩'+Math.round(_adjTxA||0).toLocaleString()+' 잔차분 '+(_residualA!=null?('₩'+Math.round(_residualA).toLocaleString()):'-');
     setDialog({title:`${label} 마감`,
       body:noTx?`해당 월의 거래 기록이 없어 입고·사용·폐기·반품이 0으로 기록됩니다.\n계속하시겠습니까?`:`${label}을 마감합니다.\n이번 달 거래 ${_n.toLocaleString()}건을 집계합니다.\n계속하시겠습니까?`+_cext,
-      confirmLabel:'마감 실행',onConfirm:()=>runClose(_n)});
+      reasonInput:true,confirmLabel:'마감 실행',onConfirm:()=>runClose(_n)});
   }
 
   /* 월마감 실제 반영 — 화면 선택 연/월(year·month) 기준. 집계 산식 무변경.
@@ -3186,7 +3186,7 @@ function Report({drugs,onNav}){
     const{error}=await supabase.from('monthly_report_totals').upsert({tenant_id:tid,snap_year:y,snap_month:m,
       opening_amount:_f4(a.openA),in_amount:_f4(a.inA),out_amount:_f4(a.outA),
       disposal_amount:_f4(a.dispA),return_amount:_f4(a.retA),
-      calc_closing:_f4(calc),actual_closing:_f4(a.closeA),audit_adjust:_f4(a.closeA-calc),reason_note:'조정거래분='+Math.round(a.adjA||0)+' / 잔차분='+Math.round((a.closeA-calc)-(a.adjA||0)),
+      calc_closing:_f4(calc),actual_closing:_f4(a.closeA),audit_adjust:_f4(a.closeA-calc),reason_note:'조정거래분='+Math.round(a.adjA||0)+' · '+(a.adjCnt||0)+'건 / 잔차분='+Math.round((a.closeA-calc)-(a.adjA||0))+(a.reason?' / 사유:'+a.reason:''),
       item_count:a.itemCount,in_count:a.inC,out_count:a.outC,disposal_count:a.dispC,return_count:a.retC,
       exp_expired:a.expE,exp_urgent30:a.expU,exp_caution60:a.expW,exp_check90:a.expC,
       source:'시스템'},{onConflict:'tenant_id,snap_year,snap_month'});
@@ -3257,7 +3257,7 @@ function Report({drugs,onNav}){
         const _openA=rows.reduce((a,r)=>a+(r.opening_amount||0),0),_inA=rows.reduce((a,r)=>a+(r.total_in_amount||0),0),
               _outA=rows.reduce((a,r)=>a+(r.total_out_amount||0),0),_closeA=rows.reduce((a,r)=>a+(r.closing_amount||0),0),
               _dispA=_sum('폐기','total_amount'),_retA=_sum('반품','total_amount');
-        const _res=await _writeSidecar(_tm?.tenant_id||null,year,month,{openA:(_prevSide?Number(_prevSide.actual_closing):_openA),inA:_inA,outA:_outA,closeA:_closeA,dispA:_dispA,retA:_retA,adjA:mTx.filter(x=>x.type==='조정').reduce((a,x)=>a+(Number(x.quantity)||0)*((drugMap[x.drug_code]||{}).purchase_price||0),0),itemCount:rows.length,inC:mTx.filter(x=>x.type==='입고').length,outC:mTx.filter(x=>x.type==='출고').length,dispC:mTx.filter(x=>x.type==='폐기').length,retC:mTx.filter(x=>x.type==='반품').length,expE:expExpired,expU:expU30,expW:expW60,expC:expC90});
+        const _res=await _writeSidecar(_tm?.tenant_id||null,year,month,{openA:(_prevSide?Number(_prevSide.actual_closing):_openA),inA:_inA,outA:_outA,closeA:_closeA,dispA:_dispA,retA:_retA,adjA:mTx.filter(x=>x.type==='조정').reduce((a,x)=>a+(Number(x.quantity)||0)*((drugMap[x.drug_code]||{}).purchase_price||0),0),adjCnt:mTx.filter(x=>x.type==='조정').length,reason:closeReason,itemCount:rows.length,inC:mTx.filter(x=>x.type==='입고').length,outC:mTx.filter(x=>x.type==='출고').length,dispC:mTx.filter(x=>x.type==='폐기').length,retC:mTx.filter(x=>x.type==='반품').length,expE:expExpired,expU:expU30,expW:expW60,expC:expC90});
         if(!_res.ok)throw new Error(_res.protected?'결재본 정본이 존재해 사이드카를 덮어쓸 수 없습니다':(_res.error?.message||'사이드카 기록 실패'));
       }catch(_sideErr){
         setCloseMsg(`⚠ ${label} 스냅샷은 저장됐으나 사이드카 총계 기록 실패: ${_sideErr.message} — 다시 시도해 주세요`);loadS();setClosing(false);return;
@@ -3306,7 +3306,7 @@ function Report({drugs,onNav}){
   const _pe=drugs.filter(d=>d.status!=='중지'&&d.expiry_date);
   const expExpired=_pe.filter(d=>d.expiry_date<_pt).length,expU30=_pe.filter(d=>d.expiry_date>=_pt&&d.expiry_date<_pf(30)).length,expW60=_pe.filter(d=>d.expiry_date>=_pf(30)&&d.expiry_date<_pf(60)).length,expC90=_pe.filter(d=>d.expiry_date>=_pf(60)&&d.expiry_date<_pf(90)).length;
   /* ── 연간 월별 추이(이전: 구 AnnualReport). 전체 고정 — cats/stats/검색 미연동(연간 정본). 폐기/반품액=Σ(수량×구입단가). 전월재고[m]=현재고[m-1] 연쇄, 1월=opening_amount. ── */
-  const _aWon=v=>'₩'+Math.round(v||0).toLocaleString();const _aNoop=()=>{};const _aEmpty=<span style={{color:t.textL}}>–</span>;
+  const _aWon=v=>'₩'+Math.round(v||0).toLocaleString();const _negWon=v=>{const _n=Number(v)||0;return _n<0?'('+_aWon(Math.abs(_n))+')':_aWon(_n);};const _aNoop=()=>{};const _aEmpty=<span style={{color:t.textL}}>–</span>;
   const _aTd={padding:'8px 12px',textAlign:'right',fontSize:12,color:t.text,borderBottom:`1px solid ${t.border}`};const _aTdM={..._aTd,textAlign:'center',color:t.textM,fontWeight:700};
   const _aCols=[{k:'',h:'월',plain:true,th:{textAlign:'center'}},{k:'',h:'전월재고',plain:true,th:{textAlign:'right'}},{k:'',h:'입고',plain:true,th:{textAlign:'right'}},{k:'',h:'사용',plain:true,th:{textAlign:'right'}},{k:'',h:'폐기',plain:true,th:{textAlign:'right'}},{k:'',h:'반품',plain:true,th:{textAlign:'right'}},{k:'',h:'현재고',plain:true,th:{textAlign:'right'}},{k:'',h:'보정값',plain:true,th:{textAlign:'right'}}];
   const annM=[];{let pc=null;for(let m=1;m<=12;m++){const rs=snaps.filter(s=>s.snap_month===m);const has=rs.length>0;const inA=rs.reduce((a,s)=>a+(s.total_in_amount||0),0);const outA=rs.reduce((a,s)=>a+(s.total_out_amount||0),0);const dispA=rs.reduce((a,s)=>a+(s.total_disp_qty||0)*(drugMap[s.drug_code]?.purchase_price||0),0);const retA=rs.reduce((a,s)=>a+(s.total_ret_qty||0)*(drugMap[s.drug_code]?.purchase_price||0),0);const closeA=rs.reduce((a,s)=>a+(s.closing_amount||0),0);const openA=rs.reduce((a,s)=>a+(s.opening_amount||0),0);const prevA=has?(pc!=null?pc:openA):null;annM.push({m,has,prevA,inA,outA,dispA,retA,closeA});if(has)pc=closeA}}
@@ -3327,7 +3327,7 @@ function Report({drugs,onNav}){
       ['[재고 현황]'],['관리 품목수',itemCnt],['현재고',Math.round(tot.ca)],['전월재고',Math.round(tot.oa)],['증감',Math.round(tot.ca-tot.oa)],[],
       ['[입출고 현황]','건수','금액'],['입고',inCnt,Math.round(tot.ia)],['출고',outCnt,Math.round(tot.oua)],['순입고',inCnt-outCnt,Math.round(tot.ia-tot.oua)],[],
       ['[손실 현황]','건수','금액'],['폐기',dispCnt,Math.round(tot.da)],['반품',retCnt,Math.round(tot.ra)],[],
-      ['[유효기간 관리]'],['만료',expExpired],['긴급(30일)',expU30],['주의(60일)',expW60],['확인(90일)',expC90],[],
+      ['[마감 보정]'],['보정값',Math.round(sideTot?Number(sideTot.audit_adjust):(liveAudit||0))],['재평가',(()=>{const _sy=(sideTot&&sideTot.reason_note?(String(sideTot.reason_note).split('/').map(x=>x.trim()).find(x=>x.startsWith('사유:'))||'').replace('사유:',''):'').trim();return _sy?'재고 재평가 — '+_sy:'재고 재평가'})()],[],['[유효기간 관리]'],['만료',expExpired],['긴급(30일)',expU30],['주의(60일)',expW60],['확인(90일)',expC90],[],
       [nowStamp()],['Copyright © 2026 Jeonghwa Lee. All rights reserved.']];
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'요약');
     const list=filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,전월재고수:d.opening_qty,전월재고금액:Math.round(d.opening_amount||0),입고수량:d.total_in_qty,입고금액:Math.round(d.total_in_amount||0),출고수량:d.total_out_qty,출고금액:Math.round(d.total_out_amount||0),폐기수량:d.total_disp_qty,반품수량:d.total_ret_qty,기말재고수:d.closing_qty,기말재고금액:Math.round(d.closing_amount||0)}));
@@ -3365,7 +3365,7 @@ function Report({drugs,onNav}){
     {dialog&&<div onClick={()=>setDialog(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
       <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:420,width:'100%',border:`1px solid ${t.border}`,boxShadow:t.shadowH}}>
         <div style={{fontSize:14,fontWeight:700,color:t.text,marginBottom:10}}>{dialog.title}</div>
-        <div style={{fontSize:12,color:t.textM,lineHeight:1.6,whiteSpace:'pre-line',marginBottom:18}}>{dialog.body}</div>
+        <div style={{fontSize:12,color:t.textM,lineHeight:1.6,whiteSpace:'pre-line',marginBottom:18}}>{dialog.body}</div>{dialog.reasonInput&&Math.round(_residualA||0)!==0&&<div style={{marginBottom:16}}><label style={{fontSize:11,color:t.textM,display:'block',marginBottom:4,fontWeight:600}}>재평가 사유</label><input value={closeReason} onChange={e=>setCloseReason(e.target.value)} maxLength={200} placeholder='단가 정정' style={{width:'100%',padding:'8px 12px',border:'1px solid '+t.border,borderRadius:8,fontSize:12,boxSizing:'border-box',background:t.bg,color:t.text,outline:'none'}} /><div style={{fontSize:10,color:t.textM,marginTop:4}}>짧게 입력하면 보고서에 한 줄로 표시됩니다</div></div>}
         <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
           {dialog.onConfirm&&<button onClick={()=>setDialog(null)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.border}`,background:'transparent',color:t.textM,cursor:'pointer',fontSize:12,fontWeight:700}}>취소</button>}
           <button onClick={()=>{const fn=dialog.onConfirm;if(fn)fn();else setDialog(null)}} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>{dialog.confirmLabel||'확인'}</button>
@@ -3470,7 +3470,7 @@ function Report({drugs,onNav}){
           <div>Copyright © 2026 Jeonghwa Lee. All rights reserved.</div>
         </div>
       </div>
-      <style>{'.cnc-print-month{display:none}.cnc-rpt-prn{display:none}@media print{.cnc-rpt-hide{display:none!important}.cnc-print-month{display:block!important;page-break-after:always;max-width:680px;margin:0 auto}.cnc-print-month table{font-size:12.5px!important}.cnc-print-month td,.cnc-print-month th{padding:6px 10px!important;font-size:12.5px!important}.cnc-report-table table{font-size:9px!important}.cnc-rpt-scr{display:none!important}.cnc-rpt-prn{display:table-row-group!important}.cnc-report-table tfoot{display:table-row-group!important}}'}</style>
+      <style>{'.cnc-print-month{display:none}.cnc-rpt-prn{display:none}.cnc-rvsep::before{content:" "}@media print{.cnc-rvsep::before{content:" — "}.cnc-rpt-hide{display:none!important}.cnc-print-month{display:block!important;page-break-after:always;max-width:680px;margin:0 auto}.cnc-print-month table{font-size:12.5px!important}.cnc-print-month td,.cnc-print-month th{padding:6px 10px!important;font-size:12.5px!important}.cnc-report-table table{font-size:9px!important}.cnc-rpt-scr{display:none!important}.cnc-rpt-prn{display:table-row-group!important}.cnc-report-table tfoot{display:table-row-group!important}}'}</style>
     {/* 요약 카드 — 연간 탭에서는 연 KPI 5장과 지표가 중복되어 숨김(월간 전용) */}
     {rtype==='monthly'&&<div className="cnc-rpt-hide" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:12}}>
       {[{l:'전월재고',v:sideTot?Number(sideTot.opening_amount):(live?live.oa:tot.oa),c:t.purple,nav:'stock'},{l:'입고 금액',v:sideTot?Number(sideTot.in_amount):tot.ia,c:t.green,nav:'transaction'},{l:'출고 금액',v:sideTot?Number(sideTot.out_amount):tot.oua,c:t.blue,nav:'transaction'},{l:'폐기',v:tot.dq,sub:sideTot?Number(sideTot.disposal_amount):(live?live.da:tot.da),cnt:live?live.dispCnt:dispCnt,cN:sideTot?Number(sideTot.disposal_count):null,c:t.red,nav:'transaction'},{l:'반품',v:tot.rq,sub:sideTot?Number(sideTot.return_amount):(live?live.ra:tot.ra),cnt:live?live.retCnt:retCnt,cN:sideTot?Number(sideTot.return_count):null,c:t.amber,nav:'transaction'},{l:'기말재고',v:sideTot?Number(sideTot.actual_closing):tot.ca,c:t.accent,nav:'stock'}].map((x,i)=><div key={i} onClick={()=>onNav?.({menu:x.nav})} style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`,cursor:'pointer',transition:'all .15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor=x.c;e.currentTarget.style.transform='translateY(-1px)'}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.transform=''}}>
@@ -3481,7 +3481,7 @@ function Report({drugs,onNav}){
       </div>)}
       {(sideTot||live)&&<div style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`}}>
         <div style={{fontSize:10,color:t.textM}}>보정값</div>
-        <div style={{fontSize:20,fontWeight:700,color:t.textM,marginTop:4}}>{_aWon(sideTot?sideTot.audit_adjust:liveAudit)}</div>
+        <div style={{fontSize:20,fontWeight:700,color:t.textM,marginTop:4,fontVariantNumeric:'tabular-nums'}}>{_negWon(sideTot?sideTot.audit_adjust:liveAudit)}</div>{(()=>{const _live=!sideTot&&live;const _rn=sideTot?String(sideTot.reason_note||''):'';const _seg=k=>{const m=_rn.split('/').map(x=>x.trim()).find(x=>x.startsWith(k));return m?m.slice(k.length):''};const _adjAmt=_live?_adjTxA:(Number((_seg('조정거래분=').split('·')[0]||'').replace(/[^0-9-]/g,''))||0);const _adjN=_live?(live.adjCnt||0):(parseInt((_seg('조정거래분=').match(/(\d+)\s*건/)||[])[1])||0);const _boret=sideTot?Number(sideTot.audit_adjust||0):liveAudit;const _resAmt=(_boret||0)-_adjAmt;const _resSy=String(sideTot?_seg('사유:'):(closeReason||'')).trim();const _openA=sideTot?Number(sideTot.opening_amount||0):(live?Number(live.oa||0):0);const _r1=_adjN>0,_r2=Math.round(_resAmt||0)!==0;if(_openA<=0||(!_r1&&!_r2))return null;const _rs={display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,padding:'2px 0',lineHeight:1.35,fontSize:10,color:t.textL};const _amt={whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'};return<div style={{marginTop:5,borderTop:'1px solid '+t.border,paddingTop:8,listStyle:'none'}}>{_r1&&<div style={_rs}><span style={{flex:1,minWidth:0,wordBreak:'break-word'}}>실사 조정 {_adjN}건</span><span style={_amt}>{_negWon(_adjAmt)}</span></div>}{_r2&&<div style={_rs}><span style={{flex:1,minWidth:0,wordBreak:'break-word'}}>재고 재평가{_resSy?<span className="cnc-rvsep">{_resSy}</span>:null}</span><span style={_amt}>{_negWon(_resAmt)}</span></div>}</div>})()}
       </div>}
     </div>}
 
