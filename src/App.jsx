@@ -3081,8 +3081,8 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
 function nowStamp(){const n=new Date();const p=x=>String(x).padStart(2,'0');return n.getFullYear()+'-'+p(n.getMonth()+1)+'-'+p(n.getDate())+' '+p(n.getHours())+':'+p(n.getMinutes())+' 작성'}
 const mpTd={border:'1px solid #bbb',padding:'6px 10px'};
 function MSec({title,children}){return <div style={{marginBottom:9}}><div style={{background:'#019748',color:'#fff',fontWeight:800,fontSize:13.5,padding:'5px 10px'}}>{title}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><tbody>{children}</tbody></table></div>}
-function MRow({label,value,bg}){return <tr><td style={{...mpTd,background:bg||'#eee',fontWeight:700,width:'42%',textAlign:'center'}}>{label}</td><td style={{...mpTd,textAlign:'right',fontWeight:800,color:'#804A87',fontVariantNumeric:'tabular-nums'}}>{value}</td></tr>}
-function MRow2({label,cnt,amt,bg,fg}){return <tr><td style={{...mpTd,background:bg||'#eee',color:fg||'#222',fontWeight:700,width:'42%',textAlign:'center'}}>{label}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontVariantNumeric:'tabular-nums'}}>{cnt}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{amt}</td></tr>}
+function MRow({label,value,bg}){return <tr><td style={{...mpTd,background:bg||'#eee',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',fontWeight:800,color:'#804A87',fontVariantNumeric:'tabular-nums'}}>{value}</td></tr>}
+function MRow2({label,cnt,amt,bg,fg}){return <tr><td style={{...mpTd,background:bg||'#eee',color:fg||'#222',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontVariantNumeric:'tabular-nums'}}>{cnt}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{amt}</td></tr>}
 function Report({drugs,onNav}){
   const{t,memberRole}=useTheme();
   const isOwner=memberRole==='owner'; // 마감·업로드 권한(고위험 체크박스와 동일 패턴)
