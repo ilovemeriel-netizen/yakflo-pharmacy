@@ -3079,10 +3079,10 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
 }
 
 function nowStamp(){const n=new Date();const p=x=>String(x).padStart(2,'0');return n.getFullYear()+'-'+p(n.getMonth()+1)+'-'+p(n.getDate())+' '+p(n.getHours())+':'+p(n.getMinutes())+' 작성'}
-const mpTd={border:'1px solid #bbb',padding:'6px 10px'};
-function MSec({title,children}){return <div style={{marginBottom:9}}><div style={{background:'#019748',color:'#fff',fontWeight:800,fontSize:13.5,padding:'5px 10px'}}>{title}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><tbody>{children}</tbody></table></div>}
-function MRow({label,value,bg}){return <tr><td style={{...mpTd,background:bg||'#eee',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',fontWeight:800,color:'#804A87'}}>{value}</td></tr>}
-function MRow2({label,cnt,amt,bg,fg}){return <tr><td style={{...mpTd,background:bg||'#eee',color:fg||'#222',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',width:'29%'}}>{cnt}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontWeight:700}}>{amt}</td></tr>}
+const mpTd={borderBottom:'0.5px solid #bbb',padding:'4px'};
+function MSec({title,children}){return <div style={{marginBottom:9}}><div style={{color:'#019748',fontWeight:600,fontSize:'10pt',padding:'2px 0',borderBottom:'1.5px solid #019748',textAlign:'left'}}>{title}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><tbody>{children}</tbody></table></div>}
+function MRow({label,value,sub}){const _b=sub?{background:'rgba(191,166,217,0.05)'}:{};return <tr><td style={{...mpTd,..._b,textAlign:'left',fontWeight:700,width:'30%'}}>{label}</td><td style={{...mpTd,..._b,textAlign:'right',fontWeight:800,color:'#804A87',fontVariantNumeric:'tabular-nums'}}>{value}</td></tr>}
+function MRow2({label,cnt,amt,sub}){const _b=sub?{background:'rgba(191,166,217,0.05)'}:{};return <tr><td style={{...mpTd,..._b,textAlign:'left',fontWeight:700,width:'30%'}}>{label}</td><td style={{...mpTd,..._b,textAlign:'right',width:'35%',fontVariantNumeric:'tabular-nums'}}>{cnt}</td><td style={{...mpTd,..._b,textAlign:'right',width:'35%',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{amt}</td></tr>}
 function Report({drugs,onNav}){
   const{t,memberRole}=useTheme();
   const isOwner=memberRole==='owner'; // 마감·업로드 권한(고위험 체크박스와 동일 패턴)
@@ -3444,34 +3444,34 @@ function Report({drugs,onNav}){
       <div className={"cnc-print-month"+(rtype==='annual'?' cnc-hide-print':'')} style={{color:'#222',background:'#fff',fontSize:13,lineHeight:1.4}}>
         <div style={{background:'#804A87',color:'#fff',padding:'12px 16px',textAlign:'center',fontSize:19,fontWeight:800}}>🏥 씨엔씨재활의학과병원 약품관리 월간보고서</div>
         <div style={{textAlign:'center',color:'#804A87',fontWeight:700,margin:'8px 0 14px'}}>▶ 보고월: {year}년 {rtype==='monthly'?month+'월':'연간'}</div>
-        <MSec title="■ 재고 현황">
-          <MRow label="관리 품목수" bg="#e3f0e3" value={(sideTot?Number(sideTot.item_count):itemCnt).toLocaleString()+'개'} />
-          <MRow label="현재고" bg="#e3f0e3" value={'₩'+Math.round(sideTot?Number(sideTot.actual_closing):tot.ca).toLocaleString()} />
-          <MRow label="전월재고" bg="#e3f0e3" value={'₩'+Math.round(sideTot?Number(sideTot.opening_amount):(live?live.oa:tot.oa)).toLocaleString()} />
-          <MRow label="증감" bg="#e3f0e3" value={'₩'+Math.round(sideTot?(Number(sideTot.actual_closing)-Number(sideTot.opening_amount)):(tot.ca-(live?live.oa:tot.oa))).toLocaleString()} />
-        </MSec>
+        <div style={{borderLeft:'3px solid #804A87',paddingLeft:12,marginBottom:10}}>
+          <div style={{fontSize:'10pt',color:'#2E4A62'}}>현재고 ({year}년 {month}월말)</div>
+          <div style={{fontSize:'26pt',fontWeight:600,color:'#804A87',fontVariantNumeric:'tabular-nums',lineHeight:1.1}}>{'₩'+Math.round(sideTot?Number(sideTot.actual_closing):tot.ca).toLocaleString()}</div>
+          <div style={{fontSize:'10pt',color:'#2E4A62',marginTop:2}}>{'전월 ₩'+Math.round(sideTot?Number(sideTot.opening_amount):(live?live.oa:tot.oa)).toLocaleString()+' · 증감 '+_negWon(sideTot?(Number(sideTot.actual_closing)-Number(sideTot.opening_amount)):(tot.ca-(live?live.oa:tot.oa)))+' · 관리 '+(sideTot?Number(sideTot.item_count):itemCnt).toLocaleString()+'품목 (사용·사용예정)'}</div>
+        </div>
         <MSec title="■ 입출고 현황">
-          <MRow2 label="입고" bg="#ece4f1" cnt={_inRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.in_amount):tot.ia).toLocaleString()} />
-          <MRow2 label="출고" bg="#f1e4ee" cnt={_outRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.out_amount):tot.oua).toLocaleString()} />
-          <MRow2 label="순입고" bg="#ececec" cnt={''} amt={'₩'+Math.round(sideTot?(Number(sideTot.in_amount)-Number(sideTot.out_amount)):(tot.ia-tot.oua)).toLocaleString()} />
+          <MRow2 label="입고" cnt={_inRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.in_amount):tot.ia).toLocaleString()} />
+          <MRow2 label="출고" cnt={_outRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.out_amount):tot.oua).toLocaleString()} />
+          <MRow2 label="순입고" sub cnt={''} amt={'₩'+Math.round(sideTot?(Number(sideTot.in_amount)-Number(sideTot.out_amount)):(tot.ia-tot.oua)).toLocaleString()} />
         </MSec>
         <MSec title="■ 손실 현황">
-          <MRow2 label="폐기" bg="#f6dede" cnt={_dispRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.disposal_amount):tot.da).toLocaleString()} />
-          <MRow2 label="반품" bg="#f7f3d6" cnt={_retRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.return_amount):tot.ra).toLocaleString()} />
-          <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(_dispRows+_retRows)+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.disposal_amount)+Number(sideTot.return_amount)):(tot.da+tot.ra)).toLocaleString()} />
+          <MRow2 label="폐기" cnt={_dispRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.disposal_amount):tot.da).toLocaleString()} />
+          <MRow2 label="반품" cnt={_retRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.return_amount):tot.ra).toLocaleString()} />
+          <MRow2 label="손실(단순합)" sub cnt={(_dispRows+_retRows)+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.disposal_amount)+Number(sideTot.return_amount)):(tot.da+tot.ra)).toLocaleString()} />
         </MSec>
         <MSec title="■ 유효기간 관리">
-          <MRow label="★ 만료" bg="#f6dede" value={(sideTot?Number(sideTot.exp_expired):expExpired)+'건'} />
-          <MRow label="▲ 긴급 (30일)" bg="#fce6cf" value={(sideTot?Number(sideTot.exp_urgent30):expU30)+'건'} />
-          <MRow label="◆ 주의 (60일)" bg="#f7f3d6" value={(sideTot?Number(sideTot.exp_caution60):expW60)+'건'} />
-          <MRow label="● 확인 (90일)" bg="#e3f0e3" value={(sideTot?Number(sideTot.exp_check90):expC90)+'건'} />
+          <MRow label="★ 만료" value={(sideTot?Number(sideTot.exp_expired):expExpired)+'건'} />
+          <MRow label="▲ 긴급 (30일)" value={(sideTot?Number(sideTot.exp_urgent30):expU30)+'건'} />
+          <MRow label="◆ 주의 (60일)" value={(sideTot?Number(sideTot.exp_caution60):expW60)+'건'} />
+          <MRow label="● 확인 (90일)" value={(sideTot?Number(sideTot.exp_check90):expC90)+'건'} />
         </MSec>
+        <div style={{color:'#999',fontSize:'9pt',lineHeight:1.4,marginTop:12}}>관리 품목수는 사용·사용예정 상태 기준이며, 명세 및 금액은 해당 월 중 재고 또는 거래가 있었던 전 약품(중지 포함)을 대상으로 합니다.</div>
         <div style={{textAlign:'center',color:'#999',fontSize:11,marginTop:22}}>
           <div>{nowStamp()}</div>
           <div>Copyright © 2026 Jeonghwa Lee. All rights reserved.</div>
         </div>
       </div>
-      <style>{'.cnc-print-month{display:none}.cnc-rpt-prn{display:none}.cnc-rvsep::before{content:" "}@media print{.cnc-rvsep::before{content:" — "}.cnc-rpt-hide{display:none!important}.cnc-print-month{display:block!important;page-break-after:always;max-width:680px;margin:0 auto}.cnc-print-month table{font-size:12.5px!important}.cnc-print-month td,.cnc-print-month th{padding:6px 10px!important;font-size:12.5px!important}.cnc-report-table table{font-size:9px!important}.cnc-rpt-scr{display:none!important}.cnc-rpt-prn{display:table-row-group!important}.cnc-report-table tfoot{display:table-row-group!important}}'}</style>
+      <style>{'.cnc-print-month{display:none}.cnc-rpt-prn{display:none}.cnc-rvsep::before{content:" "}@media print{.cnc-rvsep::before{content:" — "}.cnc-rpt-hide{display:none!important}.cnc-print-month{display:block!important;page-break-after:always;max-width:680px;margin:0 auto}.cnc-print-month table{font-size:9.5pt!important}.cnc-print-month td,.cnc-print-month th{padding:4px!important;font-size:9.5pt!important}.cnc-report-table table{font-size:9px!important}.cnc-rpt-scr{display:none!important}.cnc-rpt-prn{display:table-row-group!important}.cnc-report-table tfoot{display:table-row-group!important}}'}</style>
     {/* 요약 카드 — 연간 탭에서는 연 KPI 5장과 지표가 중복되어 숨김(월간 전용) */}
     {rtype==='monthly'&&<div className="cnc-rpt-hide" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:12}}>
       {[{l:'전월재고',v:sideTot?Number(sideTot.opening_amount):(live?live.oa:tot.oa),c:t.purple,nav:'stock'},{l:'입고 금액',v:sideTot?Number(sideTot.in_amount):tot.ia,c:t.green,nav:'transaction'},{l:'출고 금액',v:sideTot?Number(sideTot.out_amount):tot.oua,c:t.blue,nav:'transaction'},{l:'폐기',v:tot.dq,sub:sideTot?Number(sideTot.disposal_amount):(live?live.da:tot.da),cnt:live?live.dispCnt:dispCnt,cN:sideTot?Number(sideTot.disposal_count):null,c:t.red,nav:'transaction'},{l:'반품',v:tot.rq,sub:sideTot?Number(sideTot.return_amount):(live?live.ra:tot.ra),cnt:live?live.retCnt:retCnt,cN:sideTot?Number(sideTot.return_count):null,c:t.amber,nav:'transaction'},{l:'기말재고',v:sideTot?Number(sideTot.actual_closing):tot.ca,c:t.accent,nav:'stock'}].map((x,i)=><div key={i} onClick={()=>onNav?.({menu:x.nav})} style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`,cursor:'pointer',transition:'all .15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor=x.c;e.currentTarget.style.transform='translateY(-1px)'}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.transform=''}}>
@@ -3514,7 +3514,7 @@ function Report({drugs,onNav}){
 
     {/* 상세 테이블 — 연간 탭 미표시(월간 전용) */}
     {rtype==='monthly'&&<div className="cnc-report-table" style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
-      <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.accent}}>{rtype==='monthly'?`${year}년 ${month}월`:`${year}년 연간`} 보고서 ({filtered.length}품목) {ld&&<span style={{fontSize:11,color:t.textL}}>로딩...</span>}</div>
+      <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.accent}}>{rtype==='monthly'?`${year}년 ${month}월`:`${year}년 연간`} 보고서 ({filtered.length}품목 · 중지 포함) {ld&&<span style={{fontSize:11,color:t.textL}}>로딩...</span>}</div>
       <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
         <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['opening_qty','전월재고'],['total_in_qty','입고'],['total_out_qty','출고'],['total_disp_qty','폐기'],['total_ret_qty','반품'],['closing_qty','기말재고'],['closing_amount','기말금액']].map(([k,h])=><th key={k} style={{ ...TS(k), background: t.bg, fontWeight: 700 }} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}</tr></thead>
         <tbody className="cnc-rpt-scr">{filtered.length===0?<tr><td colSpan={10} style={{padding:40,textAlign:'center',color:t.textL}}>{ld?'로딩 중...':(live?'실시간 집계 중 — 거래·재고 기준(미마감 당월)':'데이터 없음 — 월마감을 실행해주세요')}</td></tr>:filtered.slice((page-1)*RPP,page*RPP).map((d,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
@@ -4209,7 +4209,7 @@ export default function App() {
         .brand-title { font-weight: 700; white-space: nowrap; color: #804A87; }
         .brand-sub   { font-size: 12px; color: #5b6776; }
         @media print {
-          @page { size: landscape; margin: 8mm; }
+          @page { size: landscape; margin: 15mm; }
           body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .no-print { display: none !important; }
           table { font-size: 9px !important; }
