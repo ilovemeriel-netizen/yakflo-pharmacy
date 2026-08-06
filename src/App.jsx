@@ -3475,7 +3475,7 @@ function Report({drugs,onNav}){
           <div>Copyright © 2026 Jeonghwa Lee. All rights reserved.</div>
         </div>
       </div>
-      <style>{'.cnc-print-month{display:none}.cnc-rpt-prn{display:none}.cnc-rvsep::before{content:" "}@media print{.cnc-rvsep::before{content:" — "}.cnc-rpt-hide{display:none!important}.cnc-print-month{display:block!important;page-break-after:always;max-width:680px;margin:0 auto}.cnc-print-month table{font-size:9.5pt!important}.cnc-print-month td,.cnc-print-month th{padding:4px!important;font-size:9.5pt!important}.cnc-report-table table{font-size:9px!important}.cnc-rpt-scr{display:none!important}.cnc-rpt-prn{display:table-row-group!important}.cnc-report-table tfoot{display:table-row-group!important}}'}</style>
+      <style>{'.cnc-print-month{display:none}.cnc-rpt-prn{display:none}.cnc-rvsep::before{content:" "}@media print{.cnc-rvsep::before{content:" — "}.cnc-rpt-hide{display:none!important}.cnc-print-month{display:block!important;page-break-after:always;width:100%;max-width:680px;margin:0 auto;padding:0;box-sizing:border-box;background:#fff}.cnc-print-month table{font-size:9.5pt!important}.cnc-print-month td,.cnc-print-month th{padding:4px!important;font-size:9.5pt!important}.cnc-report-table table{font-size:9px!important}.cnc-rpt-scr{display:none!important}.cnc-rpt-prn{display:table-row-group!important}.cnc-report-table tfoot{display:table-row-group!important}}'}</style>
     {/* 요약 카드 — 연간 탭에서는 연 KPI 5장과 지표가 중복되어 숨김(월간 전용) */}
     {rtype==='monthly'&&<div className="cnc-rpt-hide" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:12}}>
       {[{l:'전월재고',v:sideTot?Number(sideTot.opening_amount):(live?live.oa:tot.oa),c:t.purple,nav:'stock'},{l:'입고 금액',v:sideTot?Number(sideTot.in_amount):tot.ia,c:t.green,nav:'transaction'},{l:'출고 금액',v:sideTot?Number(sideTot.out_amount):tot.oua,c:t.blue,nav:'transaction'},{l:'폐기',v:tot.dq,sub:sideTot?Number(sideTot.disposal_amount):(live?live.da:tot.da),cnt:live?live.dispCnt:dispCnt,cN:sideTot?Number(sideTot.disposal_count):null,c:t.red,nav:'transaction'},{l:'반품',v:tot.rq,sub:sideTot?Number(sideTot.return_amount):(live?live.ra:tot.ra),cnt:live?live.retCnt:retCnt,cN:sideTot?Number(sideTot.return_count):null,c:t.amber,nav:'transaction'},{l:'기말재고',v:sideTot?Number(sideTot.actual_closing):tot.ca,c:t.accent,nav:'stock'}].map((x,i)=><div key={i} onClick={()=>onNav?.({menu:x.nav})} style={{background:t.card,borderRadius:12,padding:'14px 18px',border:`1px solid ${t.border}`,cursor:'pointer',transition:'all .15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor=x.c;e.currentTarget.style.transform='translateY(-1px)'}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.transform=''}}>
@@ -4214,7 +4214,9 @@ export default function App() {
         .brand-sub   { font-size: 12px; color: #5b6776; }
         @media print {
           @page { size: landscape; margin: 15mm; }
-          body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .cnc-app-root { background: #fff !important; }
+          div[style*="padding: 20px 24px"], div[style*="padding:'20px 24px'"] { padding: 0 !important; background: #fff !important; }
           .no-print { display: none !important; }
           table { font-size: 9px !important; }
           th, td { padding: 4px 6px !important; }
@@ -4269,7 +4271,7 @@ export default function App() {
           .no-print[style*="position: 'fixed', inset: 0"] { padding: 12px !important; }
         }
       `}</style>
-      <div style={{ minHeight: '100vh', background: t.bg }}>
+      <div className="cnc-app-root" style={{ minHeight: '100vh', background: t.bg }}>
         <Header menu={menu} setMenu={setMenu} onRegister={() => setMenu('register')} />
         {menu === 'dashboard' && <Dashboard drugs={drugs} inv={inv} txns={txns} onNav={handleNav} onEdit={setEditDrug} />}
         {menu === 'alerts' && <AlertCenter drugs={drugs} onNav={handleNav} />}
