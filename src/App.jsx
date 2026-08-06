@@ -3079,10 +3079,10 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
 }
 
 function nowStamp(){const n=new Date();const p=x=>String(x).padStart(2,'0');return n.getFullYear()+'-'+p(n.getMonth()+1)+'-'+p(n.getDate())+' '+p(n.getHours())+':'+p(n.getMinutes())+' 작성'}
-const mpTd={borderBottom:'0.5px solid #bbb',padding:'4px'};
-function MSec({title,children}){return <div style={{marginBottom:9}}><div style={{color:'#019748',fontWeight:600,fontSize:'10pt',padding:'2px 0',borderBottom:'1.5px solid #019748',textAlign:'left'}}>{title}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><tbody>{children}</tbody></table></div>}
-function MRow({label,value,sub}){const _b=sub?{background:'rgba(191,166,217,0.05)'}:{};return <tr><td style={{...mpTd,..._b,textAlign:'left',fontWeight:700,width:'30%'}}>{label}</td><td style={{...mpTd,..._b,textAlign:'right',fontWeight:800,color:'#804A87',fontVariantNumeric:'tabular-nums'}}>{value}</td></tr>}
-function MRow2({label,cnt,amt,sub}){const _b=sub?{background:'rgba(191,166,217,0.05)'}:{};return <tr><td style={{...mpTd,..._b,textAlign:'left',fontWeight:700,width:'30%'}}>{label}</td><td style={{...mpTd,..._b,textAlign:'right',width:'35%',fontVariantNumeric:'tabular-nums'}}>{cnt}</td><td style={{...mpTd,..._b,textAlign:'right',width:'35%',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{amt}</td></tr>}
+const mpTd={border:'1px solid #bbb',padding:'6px 10px'};
+function MSec({title,children}){return <div style={{marginBottom:9}}><div style={{background:'#019748',color:'#fff',fontWeight:800,fontSize:13.5,padding:'5px 10px'}}>{title}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><tbody>{children}</tbody></table></div>}
+function MRow({label,value,bg}){return <tr><td style={{...mpTd,background:bg||'#eee',fontWeight:700,width:'42%',textAlign:'center'}}>{label}</td><td style={{...mpTd,textAlign:'right',fontWeight:800,color:'#804A87',fontVariantNumeric:'tabular-nums'}}>{value}</td></tr>}
+function MRow2({label,cnt,amt,bg,fg}){return <tr><td style={{...mpTd,background:bg||'#eee',color:fg||'#222',fontWeight:700,width:'42%',textAlign:'center'}}>{label}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontVariantNumeric:'tabular-nums'}}>{cnt}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{amt}</td></tr>}
 function Report({drugs,onNav}){
   const{t,memberRole}=useTheme();
   const isOwner=memberRole==='owner'; // 마감·업로드 권한(고위험 체크박스와 동일 패턴)
@@ -3445,25 +3445,29 @@ function Report({drugs,onNav}){
         <div style={{background:'#804A87',color:'#fff',padding:'12px 16px',textAlign:'center',fontSize:19,fontWeight:800}}>🏥 씨엔씨재활의학과병원 약품관리 월간보고서</div>
         <div style={{textAlign:'center',color:'#804A87',fontWeight:700,margin:'8px 0 14px'}}>▶ 보고월: {year}년 {rtype==='monthly'?month+'월':'연간'}</div>
         <div style={{borderLeft:'3px solid #804A87',paddingLeft:12,marginBottom:10}}>
-          <div style={{fontSize:'10pt',color:'#2E4A62'}}>현재고 ({year}년 {month}월말)</div>
+          <div style={{fontSize:'10pt',color:'#2E4A62'}}>현재고</div>
           <div style={{fontSize:'26pt',fontWeight:600,color:'#804A87',fontVariantNumeric:'tabular-nums',lineHeight:1.1}}>{'₩'+Math.round(sideTot?Number(sideTot.actual_closing):tot.ca).toLocaleString()}</div>
-          <div style={{fontSize:'10pt',color:'#2E4A62',marginTop:2}}>{'전월 ₩'+Math.round(sideTot?Number(sideTot.opening_amount):(live?live.oa:tot.oa)).toLocaleString()+' · 증감 '+_negWon(sideTot?(Number(sideTot.actual_closing)-Number(sideTot.opening_amount)):(tot.ca-(live?live.oa:tot.oa)))+' · 관리 '+(sideTot?Number(sideTot.item_count):itemCnt).toLocaleString()+'품목 (사용·사용예정)'}</div>
         </div>
+        <MSec title="■ 재고 현황">
+          <MRow label="관리 품목수 (사용·사용예정)" bg="#e3f0e3" value={(sideTot?Number(sideTot.item_count):itemCnt).toLocaleString()+'품목'} />
+          <MRow label="전월재고" bg="#e3f0e3" value={'₩'+Math.round(sideTot?Number(sideTot.opening_amount):(live?live.oa:tot.oa)).toLocaleString()} />
+          <MRow label="증감" bg="#e3f0e3" value={_negWon(sideTot?(Number(sideTot.actual_closing)-Number(sideTot.opening_amount)):(tot.ca-(live?live.oa:tot.oa)))} />
+        </MSec>
         <MSec title="■ 입출고 현황">
-          <MRow2 label="입고" cnt={_inRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.in_amount):tot.ia).toLocaleString()} />
-          <MRow2 label="출고" cnt={_outRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.out_amount):tot.oua).toLocaleString()} />
-          <MRow2 label="순입고" sub cnt={''} amt={'₩'+Math.round(sideTot?(Number(sideTot.in_amount)-Number(sideTot.out_amount)):(tot.ia-tot.oua)).toLocaleString()} />
+          <MRow2 label="입고" bg="#ece4f1" cnt={_inRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.in_amount):tot.ia).toLocaleString()} />
+          <MRow2 label="출고" bg="#f1e4ee" cnt={_outRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.out_amount):tot.oua).toLocaleString()} />
+          <MRow2 label="순입고" bg="#ececec" cnt={''} amt={'₩'+Math.round(sideTot?(Number(sideTot.in_amount)-Number(sideTot.out_amount)):(tot.ia-tot.oua)).toLocaleString()} />
         </MSec>
         <MSec title="■ 손실 현황">
-          <MRow2 label="폐기" cnt={_dispRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.disposal_amount):tot.da).toLocaleString()} />
-          <MRow2 label="반품" cnt={_retRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.return_amount):tot.ra).toLocaleString()} />
-          <MRow2 label="손실(단순합)" sub cnt={(_dispRows+_retRows)+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.disposal_amount)+Number(sideTot.return_amount)):(tot.da+tot.ra)).toLocaleString()} />
+          <MRow2 label="폐기" bg="#f6dede" cnt={_dispRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.disposal_amount):tot.da).toLocaleString()} />
+          <MRow2 label="반품" bg="#f7f3d6" cnt={_retRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.return_amount):tot.ra).toLocaleString()} />
+          <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(_dispRows+_retRows)+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.disposal_amount)+Number(sideTot.return_amount)):(tot.da+tot.ra)).toLocaleString()} />
         </MSec>
         <MSec title="■ 유효기간 관리">
-          <MRow label="★ 만료" value={(sideTot?Number(sideTot.exp_expired):expExpired)+'건'} />
-          <MRow label="▲ 긴급 (30일)" value={(sideTot?Number(sideTot.exp_urgent30):expU30)+'건'} />
-          <MRow label="◆ 주의 (60일)" value={(sideTot?Number(sideTot.exp_caution60):expW60)+'건'} />
-          <MRow label="● 확인 (90일)" value={(sideTot?Number(sideTot.exp_check90):expC90)+'건'} />
+          <MRow label="★ 만료" bg="#f6dede" value={(sideTot?Number(sideTot.exp_expired):expExpired)+'건'} />
+          <MRow label="▲ 긴급 (30일)" bg="#fce6cf" value={(sideTot?Number(sideTot.exp_urgent30):expU30)+'건'} />
+          <MRow label="◆ 주의 (60일)" bg="#f7f3d6" value={(sideTot?Number(sideTot.exp_caution60):expW60)+'건'} />
+          <MRow label="● 확인 (90일)" bg="#e3f0e3" value={(sideTot?Number(sideTot.exp_check90):expC90)+'건'} />
         </MSec>
         <div style={{color:'#999',fontSize:'9pt',lineHeight:1.4,marginTop:12}}>관리 품목수는 사용·사용예정 상태 기준이며, 명세 및 금액은 해당 월 중 재고 또는 거래가 있었던 전 약품(중지 포함)을 대상으로 합니다.</div>
         <div style={{textAlign:'center',color:'#999',fontSize:11,marginTop:22}}>
