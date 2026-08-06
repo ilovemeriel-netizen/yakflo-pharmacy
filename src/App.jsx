@@ -3325,17 +3325,19 @@ function Report({drugs,onNav}){
 
   function dl(){
     const wb=XLSX.utils.book_new();const sn=rtype==='monthly'?`${year}년${month}월보고서`:`${year}년연간보고서`;
+    const _clo=sideTot?Number(sideTot.actual_closing):tot.ca;const _opn=sideTot?Number(sideTot.opening_amount):(live?live.oa:tot.oa);const _ia=sideTot?Number(sideTot.in_amount):tot.ia;const _oua=sideTot?Number(sideTot.out_amount):tot.oua;const _da=sideTot?Number(sideTot.disposal_amount):tot.da;const _ra=sideTot?Number(sideTot.return_amount):tot.ra;
+    const _fmtNums=(ws)=>{const rng=XLSX.utils.decode_range(ws['!ref']);for(let R=rng.s.r;R<=rng.e.r;R++)for(let C=rng.s.c;C<=rng.e.c;C++){const _ad=XLSX.utils.encode_cell({r:R,c:C});const _cl=ws[_ad];if(_cl&&_cl.t==='n')_cl.z='#,##0;(#,##0)';}};
     const sum=[['씨엔씨재활의학과병원 약품관리 월간보고서'],['보고월',`${year}년 ${rtype==='monthly'?month+'월':'연간'}`],[],
-      ['[재고 현황]'],['관리 품목수',itemCnt],['현재고',Math.round(tot.ca)],['전월재고',Math.round(tot.oa)],['증감',Math.round(tot.ca-tot.oa)],[],
-      ['[입출고 현황]','건수','금액'],['입고',_inRows,Math.round(tot.ia)],['출고',_outRows,Math.round(tot.oua)],['순입고','',Math.round(tot.ia-tot.oua)],[],
-      ['[손실 현황]','건수','금액'],['폐기',_dispRows,Math.round(tot.da)],['반품',_retRows,Math.round(tot.ra)],[],
-      ['[마감 보정]'],...(()=>{const _live=!sideTot&&live;const _rn=sideTot?String(sideTot.reason_note||''):'';const _seg=k=>{const m=_rn.split('/').map(x=>x.trim()).find(x=>x.startsWith(k));return m?m.slice(k.length):''};const _adjAmt=_live?_adjTxA:(Number((_seg('조정거래분=').split('·')[0]||'').replace(/[^0-9-]/g,''))||0);const _adjN=_live?(live.adjCnt||0):(parseInt((_seg('조정거래분=').match(/(\d+)\s*건/)||[])[1])||0);const _boret=sideTot?Number(sideTot.audit_adjust):(liveAudit||0);const _resAmt=Math.round(_boret||0)-Math.round(_adjAmt);const _resSy=String(sideTot?_seg('사유:'):(closeReason||'')).trim();const _r=[['보정값',Math.round(_boret||0)]];if(_adjN>0)_r.push(['실사 조정 '+_adjN+'건',Math.round(_adjAmt)]);_r.push(['재고 재평가'+(_resSy?' — '+_resSy:''),_resAmt]);return _r;})(),[],['[유효기간 관리]'],['만료',expExpired],['긴급(30일)',expU30],['주의(60일)',expW60],['확인(90일)',expC90],[],
+      ['[재고 현황]'],['관리 품목수',sideTot?Number(sideTot.item_count):itemCnt],['현재고',Math.round(_clo)],['전월재고',Math.round(_opn)],['증감',Math.round(_clo-_opn)],[],
+      ['[입출고 현황]','건수','금액'],['입고',_inRows,Math.round(_ia)],['출고',_outRows,Math.round(_oua)],['순입고','',Math.round(_ia-_oua)],[],
+      ['[손실 현황]','건수','금액'],['폐기',_dispRows,Math.round(_da)],['반품',_retRows,Math.round(_ra)],[],
+      ['[유효기간 관리]'],['만료',sideTot?Number(sideTot.exp_expired):expExpired],['긴급(30일)',sideTot?Number(sideTot.exp_urgent30):expU30],['주의(60일)',sideTot?Number(sideTot.exp_caution60):expW60],['확인(90일)',sideTot?Number(sideTot.exp_check90):expC90],[],
       [nowStamp()],['Copyright © 2026 Jeonghwa Lee. All rights reserved.']];
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'요약');
-    const list=filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,전월재고수:d.opening_qty,전월재고금액:Math.round(d.opening_amount||0),입고수량:d.total_in_qty,입고금액:Math.round(d.total_in_amount||0),출고수량:d.total_out_qty,출고금액:Math.round(d.total_out_amount||0),폐기수량:d.total_disp_qty,반품수량:d.total_ret_qty,기말재고수:d.closing_qty,기말재고금액:Math.round(d.closing_amount||0)}));
-    const HDR=['약품코드','약품명','구분','전월재고수','전월재고금액','입고수량','입고금액','출고수량','출고금액','폐기수량','반품수량','기말재고수','기말재고금액'];
-    const ws=list.length?XLSX.utils.json_to_sheet(list):XLSX.utils.aoa_to_sheet([HDR]);
-    if(rtype==='annual'){const _mr=annR.filter(r=>r.has).map(r=>({'월':r.m+'월','전월재고':Math.round(r.prevA),'입고':Math.round(r.inA),'사용':Math.round(r.outA),'폐기':Math.round(r.dispA),'반품':Math.round(r.retA),'현재고':Math.round(r.closeA),'보정값':r.adj!=null?Math.round(r.adj):''}));_mr.push({'월':'합계','전월재고':Math.round(annRSum.prevA),'입고':Math.round(annRSum.inA),'사용':Math.round(annRSum.outA),'폐기':Math.round(annRSum.dispA),'반품':Math.round(annRSum.retA),'현재고':Math.round(annRSum.closeA),'보정값':Math.round(annRSum.adj)});XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(_mr),'월별집계');}
+    const _ws0=XLSX.utils.aoa_to_sheet(sum);_fmtNums(_ws0);_ws0['!cols']=[{wch:28},{wch:16},{wch:16}];XLSX.utils.book_append_sheet(wb,_ws0,'요약');
+    const list=filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,전월재고수:d.opening_qty,전월재고금액:Math.round(d.opening_amount||0),입고수량:d.total_in_qty,입고금액:Math.round(d.total_in_amount||0),출고수량:d.total_out_qty,출고금액:Math.round(d.total_out_amount||0),폐기수량:d.total_disp_qty,반품수량:d.total_ret_qty,기말재고수:d.closing_qty,기말재고금액:Math.round(d.closing_amount||0),유효기한:(()=>{const _e=drugMap[d.drug_code]?.expiry_date;return _e?String(_e).slice(0,10):''})()}));
+    const HDR=['약품코드','약품명','구분','전월재고수','전월재고금액','입고수량','입고금액','출고수량','출고금액','폐기수량','반품수량','기말재고수','기말재고금액','유효기한'];
+    const ws=list.length?XLSX.utils.json_to_sheet(list):XLSX.utils.aoa_to_sheet([HDR]);_fmtNums(ws);ws['!cols']=[{wch:14},{wch:40},{wch:8},{wch:11},{wch:14},{wch:11},{wch:14},{wch:11},{wch:14},{wch:9},{wch:9},{wch:12},{wch:14},{wch:12}];
+    if(rtype==='annual'){const _mr=annR.filter(r=>r.has).map(r=>({'월':r.m+'월','전월재고':Math.round(r.prevA),'입고':Math.round(r.inA),'사용':Math.round(r.outA),'폐기':Math.round(r.dispA),'반품':Math.round(r.retA),'현재고':Math.round(r.closeA),'보정값':r.adj!=null?Math.round(r.adj):''}));_mr.push({'월':'합계','전월재고':Math.round(annRSum.prevA),'입고':Math.round(annRSum.inA),'사용':Math.round(annRSum.outA),'폐기':Math.round(annRSum.dispA),'반품':Math.round(annRSum.retA),'현재고':Math.round(annRSum.closeA),'보정값':Math.round(annRSum.adj)});const _wsm=XLSX.utils.json_to_sheet(_mr);_fmtNums(_wsm);_wsm['!cols']=[{wch:8},{wch:14},{wch:13},{wch:13},{wch:12},{wch:12},{wch:14},{wch:14}];XLSX.utils.book_append_sheet(wb,_wsm,'월별집계');}
     XLSX.utils.book_append_sheet(wb,ws,'약품목록');XLSX.writeFile(wb,`${sn}.xlsx`)
   }
 
