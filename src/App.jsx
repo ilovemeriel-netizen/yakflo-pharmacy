@@ -1804,11 +1804,14 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
           const r1=num(r1Raw)
           if(Number.isNaN(py)){invalid.push({ln,code,name,col:'전년사용량',val:String(pyRaw),pyRaw:String(pyRaw),r3Raw:String(r3Raw)});return}
           if(Number.isNaN(r3)){invalid.push({ln,code,name,col:'최근3개월사용량',val:String(r3Raw),pyRaw:String(pyRaw),r3Raw:String(r3Raw)});return}
-          if(py===undefined&&r3===undefined)return
+          if(!Number.isFinite(py)&&!Number.isFinite(r3)&&!Number.isFinite(r1))return
           if(!codes.has(code)){unmatched.push({code,name,py:py===undefined?null:py,r3:r3===undefined?null:r3});return}
-          const pv=py===undefined?null:py,rv=r3===undefined?null:r3
-          let m=null;if(rv!=null)m=Math.round(rv/3);else if(pv!=null)m=Math.round(pv/12)
-          updates.push({code,upd:{prev_year_usage:pv,recent_3m_usage:rv,monthly_avg:m,safety_stock:m!=null?Math.ceil(m*SAFETY_FACTOR):null,max_stock:m!=null?Math.round(m*3):null,usage_source:'manual',...(Number.isFinite(r1)?{recent_1m_usage:r1}:{})}})
+          const _upd={usage_source:'manual'}
+          if(Number.isFinite(py))_upd.prev_year_usage=py
+          if(Number.isFinite(r3))_upd.recent_3m_usage=r3
+          if(Number.isFinite(r1))_upd.recent_1m_usage=r1
+          if(Number.isFinite(py)||Number.isFinite(r3)){const _rv=Number.isFinite(r3)?r3:null,_pv=Number.isFinite(py)?py:null;let m=null;if(_rv!=null)m=Math.round(_rv/3);else if(_pv!=null)m=Math.round(_pv/12);_upd.monthly_avg=m;_upd.safety_stock=m!=null?Math.ceil(m*SAFETY_FACTOR):null;_upd.max_stock=m!=null?Math.round(m*3):null}
+          updates.push({code,upd:_upd})
         })
         setURep({phase:'review',updates,unmatched,invalid})
       }catch(err){setURep({phase:'error',msg:err.message,updates:[],unmatched:[],invalid:[]})}
