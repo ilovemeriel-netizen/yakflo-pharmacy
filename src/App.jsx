@@ -1800,13 +1800,18 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
           const pyRaw=r['전년사용량']??r['전년도사용량']??r['prev_year_usage']??''
           const r3Raw=r['최근3개월사용량']??r['최근3개월']??r['recent_3m_usage']??''
           const py=num(pyRaw),r3=num(r3Raw)
+          const r1Raw=r['직전1개월사용량']??r['직전1개월']??r['recent_1m_usage']??''
+          const r1=num(r1Raw)
           if(Number.isNaN(py)){invalid.push({ln,code,name,col:'전년사용량',val:String(pyRaw),pyRaw:String(pyRaw),r3Raw:String(r3Raw)});return}
           if(Number.isNaN(r3)){invalid.push({ln,code,name,col:'최근3개월사용량',val:String(r3Raw),pyRaw:String(pyRaw),r3Raw:String(r3Raw)});return}
-          if(py===undefined&&r3===undefined)return
+          if(!Number.isFinite(py)&&!Number.isFinite(r3)&&!Number.isFinite(r1))return
           if(!codes.has(code)){unmatched.push({code,name,py:py===undefined?null:py,r3:r3===undefined?null:r3});return}
-          const pv=py===undefined?null:py,rv=r3===undefined?null:r3
-          let m=null;if(rv!=null)m=Math.round(rv/3);else if(pv!=null)m=Math.round(pv/12)
-          updates.push({code,upd:{prev_year_usage:pv,recent_3m_usage:rv,monthly_avg:m,safety_stock:m!=null?Math.ceil(m*SAFETY_FACTOR):null,max_stock:m!=null?Math.round(m*3):null,usage_source:'manual'}})
+          const _upd={usage_source:'manual'}
+          if(Number.isFinite(py))_upd.prev_year_usage=py
+          if(Number.isFinite(r3))_upd.recent_3m_usage=r3
+          if(Number.isFinite(r1))_upd.recent_1m_usage=r1
+          if(Number.isFinite(py)||Number.isFinite(r3)){const _rv=Number.isFinite(r3)?r3:null,_pv=Number.isFinite(py)?py:null;let m=null;if(_rv!=null)m=Math.round(_rv/3);else if(_pv!=null)m=Math.round(_pv/12);_upd.monthly_avg=m;_upd.safety_stock=m!=null?Math.ceil(m*SAFETY_FACTOR):null;_upd.max_stock=m!=null?Math.round(m*3):null}
+          updates.push({code,upd:_upd})
         })
         setURep({phase:'review',updates,unmatched,invalid})
       }catch(err){setURep({phase:'error',msg:err.message,updates:[],unmatched:[],invalid:[]})}
@@ -1815,17 +1820,17 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
   async function applyUsage(){
     if(!uRep||!uRep.updates.length)return
     setURep({...uRep,phase:'applying'})
-    let ok=0;const failed=[]
-    for(const u of uRep.updates){const{error}=await supabase.from('drugs').update(u.upd).eq('drug_code',u.code);if(error)failed.push(u.code);else ok++}
+    let ok=0;const failed=[];let cPy=0,cR3=0,cR1=0
+    for(const u of uRep.updates){const{error}=await supabase.from('drugs').update(u.upd).eq('drug_code',u.code);if(error){failed.push(u.code)}else{ok++;if(u.upd.prev_year_usage!=null)cPy++;if(u.upd.recent_3m_usage!=null)cR3++;if('recent_1m_usage' in u.upd)cR1++}}
     onReload?.()
-    setURep({phase:'done',ok,failed,unmatched:uRep.unmatched,invalid:uRep.invalid,updates:uRep.updates})
+    setURep({phase:'done',ok,failed,unmatched:uRep.unmatched,invalid:uRep.invalid,updates:uRep.updates,counts:{py:cPy,r3:cR3,r1:cR1}})
   }
   function setUnmatchedCode(i,v){setURep(p=>({...p,unmatched:p.unmatched.map((x,j)=>j===i?{...x,newCode:v,err:null}:x)}))}
   function remapUnmatched(i){setURep(p=>{const it=p.unmatched[i];const nc=String(it.newCode??it.code).trim();const cs=new Set(drugs.map(d=>d.drug_code));if(!cs.has(nc))return{...p,unmatched:p.unmatched.map((x,j)=>j===i?{...x,err:'여전히 미매칭'}:x)};const pv=it.py??null,rv=it.r3??null;let m=null;if(rv!=null)m=Math.round(rv/3);else if(pv!=null)m=Math.round(pv/12);const upd={prev_year_usage:pv,recent_3m_usage:rv,monthly_avg:m,safety_stock:m!=null?Math.ceil(m*SAFETY_FACTOR):null,max_stock:m!=null?Math.round(m*3):null,usage_source:'manual'};return{...p,updates:[...p.updates,{code:nc,upd}],unmatched:p.unmatched.filter((_,j)=>j!==i)}})}
   function cancelRow(kind,i){setURep(p=>({...p,[kind]:p[kind].filter((_,j)=>j!==i)}))}
   function setInvalidVal(i,field,v){setURep(p=>({...p,invalid:p.invalid.map((x,j)=>j===i?{...x,[field]:v,err2:null}:x)}))}
   function revalidateInvalid(i){setURep(p=>{const it=p.invalid[i];const nm=v=>{const x=String(v).trim();if(x==='')return undefined;const n=Number(x.replace(/,/g,''));return(Number.isFinite(n)&&n>=0)?n:NaN};const py=nm(it.pyRaw),r3=nm(it.r3Raw);if(Number.isNaN(py)||Number.isNaN(r3))return{...p,invalid:p.invalid.map((x,j)=>j===i?{...x,err2:'숫자(0 이상)만'}:x)};if(py===undefined&&r3===undefined)return{...p,invalid:p.invalid.map((x,j)=>j===i?{...x,err2:'값 없음'}:x)};const cs=new Set(drugs.map(d=>d.drug_code));if(!cs.has(it.code))return{...p,invalid:p.invalid.map((x,j)=>j===i?{...x,err2:'코드 미매칭'}:x)};const pv=py===undefined?null:py,rv=r3===undefined?null:r3;let m=null;if(rv!=null)m=Math.round(rv/3);else if(pv!=null)m=Math.round(pv/12);const upd={prev_year_usage:pv,recent_3m_usage:rv,monthly_avg:m,safety_stock:m!=null?Math.ceil(m*SAFETY_FACTOR):null,max_stock:m!=null?Math.round(m*3):null,usage_source:'manual'};return{...p,updates:[...p.updates,{code:it.code,upd}],invalid:p.invalid.filter((_,j)=>j!==i)}})}
-  function dlUsageTemplate(){const ws=XLSX.utils.aoa_to_sheet([['약품코드','약품명(참고용)','전년사용량','최근3개월사용량'],['SGBRONNC10','가바로닌캡슐100mg',1592,974],['GRD2','게리드정2밀리그램',330,105]]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'사용량');XLSX.writeFile(wb,'사용량_업로드_양식.xlsx')}
+  function dlUsageTemplate(){const ws=XLSX.utils.aoa_to_sheet([['약품코드','약품명(참고용)','전년사용량','최근3개월사용량','직전1개월사용량'],['SGBRONNC10','가바로닌캡슐100mg',1592,974,320],['GRD2','게리드정2밀리그램',330,105,35]]);const _rg=XLSX.utils.decode_range(ws['!ref']);for(let R=1;R<=_rg.e.r;R++){const _a=XLSX.utils.encode_cell({r:R,c:0});if(ws[_a]){ws[_a].t='s';ws[_a].z='@'}for(const C of [2,3,4]){const _c=XLSX.utils.encode_cell({r:R,c:C});if(ws[_c]){ws[_c].t='n';ws[_c].z='0'}}}ws['!cols']=[{wch:14},{wch:22},{wch:12},{wch:16},{wch:16}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'사용량');XLSX.writeFile(wb,'사용량_업로드_양식.xlsx')}
   return<div style={{padding:'20px 24px'}}>
     <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:8,marginBottom:14}}>{[{k:'전체',c:t.text},{k:'긴급',c:t.red},{k:'주문필요',c:t.amber},{k:'재고없음',c:t.red},{k:'정상',c:t.green},{k:'과잉',c:t.blue}].map(f2=><div key={f2.k} onClick={()=>{setFilter(f2.k);setPage(1)}} style={{background:filter===f2.k?f2.c+'15':t.card,borderRadius:12,padding:'12px 16px',border:`1px solid ${filter===f2.k?f2.c:t.border}`,cursor:'pointer',backdropFilter:'blur(12px)'}}><div style={{fontSize:10,color:t.textM}}>{f2.k}</div><div style={{fontSize:24,fontWeight:700,color:f2.c}}>{sg[f2.k]}</div></div>)}</div>
     {uMsg&&<div style={{background:uMsg.includes('완료')?t.greenL:uMsg.includes('오류')?t.redL:t.blueL,border:`1px solid ${uMsg.includes('완료')?t.green:uMsg.includes('오류')?t.red:t.blue}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:uMsg.includes('완료')?t.green:uMsg.includes('오류')?t.red:t.blue,fontSize:12,fontWeight:600}}>{uMsg}</div>}
@@ -1834,7 +1839,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
       :uRep.phase==='applying'?<div style={{color:t.blue,fontWeight:600}}>반영 중...</div>
       :uRep.phase==='done'?<div>
         <div style={{fontWeight:700,color:t.green,marginBottom:6}}>업로드 완료</div>
-        <div style={{color:t.text}}>성공 {uRep.ok}건{uRep.failed.length?(' · 저장실패 '+uRep.failed.length+'건 ('+uRep.failed.join(', ')+')'):''}</div>
+        <div style={{color:t.text}}>성공 {uRep.ok}건{uRep.failed.length?(' · 저장실패 '+uRep.failed.length+'건 ('+uRep.failed.join(', ')+')'):''}</div>{uRep.counts&&<div style={{color:t.textM,marginTop:2}}>전년 {uRep.counts.py}건 · 최근3개월 {uRep.counts.r3}건 · 직전1개월 {uRep.counts.r1}건 반영</div>}
         {uRep.unmatched.length?<div style={{color:t.amber,marginTop:4}}>매칭실패 {uRep.unmatched.length}건(미반영): {uRep.unmatched.map(x=>x.code).join(', ')}</div>:null}
         {uRep.invalid.length?<div style={{color:t.red,marginTop:4}}>형식오류 {uRep.invalid.length}건(미반영): {uRep.invalid.map(x=>'행'+x.ln+' '+x.col+':"'+x.val+'"').join(', ')}</div>:null}
         <button onClick={()=>setURep(null)} style={{marginTop:8,padding:'6px 14px',borderRadius:8,border:'1px solid '+t.border,background:t.bg,color:t.text,cursor:'pointer',fontSize:11,fontWeight:600}}>닫기</button>
