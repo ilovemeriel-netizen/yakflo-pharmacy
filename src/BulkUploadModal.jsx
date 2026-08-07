@@ -103,14 +103,14 @@ export default function BulkUploadModal({ t, isOwner, drugs, onClose, onReload }
       if (res.error) { for (let k = 0; k < c.length; k++) { const e = await insertOne(c[k]); if (e) fail.push({ i: rows[k].i, code: c[k].drug_code, reason: e.message }) } }
     }
     async function updateOne(r) {
-      let patch = { ...r.fields }; delete patch.drug_code
+      let patch = { ...r.fields }; delete patch.drug_code; delete patch.current_qty
       if (Object.keys(patch).length === 0) return null                 // 변경 없음
       let e = (await supabase.from('drugs').update(patch).eq('id', r.ex.id)).error
       for (let rt = 0; rt < 4 && e && e.message && e.message.includes('column'); rt++) { const m = e.message.match(/'([^']+)' column/); if (!m) break; console.warn('[BulkUpload UPDATE] 미존재 컬럼 자동 제거:', m[1], '/ 원인:', e.message); delete patch[m[1]]; e = (await supabase.from('drugs').update(patch).eq('id', r.ex.id)).error }
       return e || null
     }
 
-    for (let s = 0; s < news.length; s += CHUNK) { const rows = news.slice(s, s + CHUNK); const chunk = rows.map(r => ({ ...r.fields })); await insertChunk(chunk, rows); done += chunk.length; setProgress(done) }
+    for (let s = 0; s < news.length; s += CHUNK) { const rows = news.slice(s, s + CHUNK); const chunk = rows.map(r => ({ ...r.fields, current_qty: 0 })); await insertChunk(chunk, rows); done += chunk.length; setProgress(done) }
     const CONC = 10                                                    // 갱신 동시성 제한
     for (let s = 0; s < upds.length; s += CONC) {
       const batch = upds.slice(s, s + CONC)
@@ -118,7 +118,17 @@ export default function BulkUploadModal({ t, isOwner, drugs, onClose, onReload }
       done += batch.length; setProgress(done)
     }
 
-    setResult({ success: total - fail.length, fail, errorRows: classified.filter(r => r.status === 'error') })
+    // 재고(현재고 열)는 직접 UPDATE 대신 조정거래 RPC로 반영 — 실패는 결과에 합산(조용한 실패 방지)
+    const _failCodes = new Set(fail.map(x => x.code))
+    const _stockItems = targets.filter(r => r.fields.current_qty != null && String(r.fields.current_qty) !== '' && !_failCodes.has(r.code)).map(r => ({ drug_code: r.code, target_qty: Number(r.fields.current_qty) }))
+    let _adjusted = 0
+    if (_stockItems.length) {
+      const { data: _adjRes, error: _adjErr } = await supabase.rpc('bulk_stock_adjust', { p_items: _stockItems, p_date: new Date().toISOString().split('T')[0], p_reason: '엑셀 재고 조정' })
+      if (_adjErr) fail.push({ i: -1, code: '(재고조정)', reason: _adjErr.message })
+      else if (_adjRes && _adjRes.ok === false) (_adjRes.failed || []).forEach(f => fail.push({ i: -1, code: f.drug_code, reason: '재고조정: ' + f.reason }))
+      else if (_adjRes) _adjusted = _adjRes.adjusted || 0
+    }
+    setResult({ success: total - fail.length, adjusted: _adjusted, fail, errorRows: classified.filter(r => r.status === 'error') })
     setApplying(false); setStep(4)
     onReload && onReload()
   }
@@ -221,6 +231,7 @@ export default function BulkUploadModal({ t, isOwner, drugs, onClose, onReload }
               <div style={{ flex: 1, padding: '14px 16px', borderRadius: 10, background: t.greenL, border: `1px solid ${t.green}33` }}><div style={{ fontSize: 11, color: t.textM, fontWeight: 600 }}>성공(반영)</div><div style={{ fontSize: 24, fontWeight: 800, color: t.green }}>{result.success}</div></div>
               <div style={{ flex: 1, padding: '14px 16px', borderRadius: 10, background: ALERT + '12', border: `1px solid ${ALERT}33` }}><div style={{ fontSize: 11, color: t.textM, fontWeight: 600 }}>실패/제외</div><div style={{ fontSize: 24, fontWeight: 800, color: ALERT }}>{result.fail.length + result.errorRows.length}</div></div>
             </div>
+            {result.adjusted != null && <div style={{ fontSize: 12, color: t.textM, marginBottom: 12 }}>조정 거래 {result.adjusted}건 생성</div>}
             {(result.fail.length + result.errorRows.length) > 0 ? <>
               <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, maxHeight: 240, overflowY: 'auto', marginBottom: 12 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>

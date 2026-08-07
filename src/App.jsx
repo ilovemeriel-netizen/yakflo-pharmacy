@@ -553,7 +553,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     if (!CATS.includes(f.category)) { setMsg('구분을 선택하세요'); return }
     if (dupCode) { setMsg('이미 존재하는 약품코드입니다.'); return }
     setSaving(true); setMsg(null)
-    const _atc = decomposeAtc(f.atc_code); const row = { drug_code: code, drug_name: f.drug_name.trim(), category: f.category, ingredient_en: f.ingredient_en || null, ingredient_kr: f.ingredient_kr || null, efficacy_class: f.efficacy_class || null, efficacy: f.efficacy || null, manufacturer: f.manufacturer || null, specification: f.specification || null, unit: f.packaging || null, packaging: f.packaging || null, total_qty: (f.total_qty === '' || f.total_qty == null) ? null : Number(f.total_qty), purchase_price: (f.purchase_price === '' || f.purchase_price == null) ? null : Number(f.purchase_price), edi_price: Number(f.insurance_price) || 0, insurance_type: f.insurance_type, insurance_code: f.insurance_code || null, standard_code: f.standard_code || null, compound_type: f.compound_type || '단일제', additive: f.additive || null, current_qty: Number(f.current_qty) || 0, safety_stock: Number(f.safety_stock) || 0, max_stock: Number(f.max_stock) || 0, expiry_date: f.expiry_date || null, lot_no: f.lot_no || null, storage_method: f.storage_method || null, storage_location: f.storage_location || null, status: f.status, memo: f.memo || null, is_narcotic: f.narcotic_type === '향정' || f.narcotic_type === '마약', narcotic_type: f.narcotic_type === '일반' ? null : f.narcotic_type, prescription_type: f.prescription_type || null, atc_code: f.atc_code ? f.atc_code.trim().toUpperCase() : null, atc_l1: _atc.atc_l1 || null, atc_l2: _atc.atc_l2 || null, atc_l3: _atc.atc_l3 || null }
+    const _initQty = Number(f.current_qty) || 0; const _atc = decomposeAtc(f.atc_code); const row = { drug_code: code, drug_name: f.drug_name.trim(), category: f.category, ingredient_en: f.ingredient_en || null, ingredient_kr: f.ingredient_kr || null, efficacy_class: f.efficacy_class || null, efficacy: f.efficacy || null, manufacturer: f.manufacturer || null, specification: f.specification || null, unit: f.packaging || null, packaging: f.packaging || null, total_qty: (f.total_qty === '' || f.total_qty == null) ? null : Number(f.total_qty), purchase_price: (f.purchase_price === '' || f.purchase_price == null) ? null : Number(f.purchase_price), edi_price: Number(f.insurance_price) || 0, insurance_type: f.insurance_type, insurance_code: f.insurance_code || null, standard_code: f.standard_code || null, compound_type: f.compound_type || '단일제', additive: f.additive || null, current_qty: 0, safety_stock: Number(f.safety_stock) || 0, max_stock: Number(f.max_stock) || 0, expiry_date: f.expiry_date || null, lot_no: f.lot_no || null, storage_method: f.storage_method || null, storage_location: f.storage_location || null, status: f.status, memo: f.memo || null, is_narcotic: f.narcotic_type === '향정' || f.narcotic_type === '마약', narcotic_type: f.narcotic_type === '일반' ? null : f.narcotic_type, prescription_type: f.prescription_type || null, atc_code: f.atc_code ? f.atc_code.trim().toUpperCase() : null, atc_l1: _atc.atc_l1 || null, atc_l2: _atc.atc_l2 || null, atc_l3: _atc.atc_l3 || null }
     if (memberRole === 'owner') row.is_high_alert = !!f.is_high_alert
     let res = await supabase.from('drugs').insert([row])
     for (let retry = 0; retry < 3 && res.error && res.error.message.includes('column'); retry++) {
@@ -561,7 +561,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
       res = await supabase.from('drugs').insert([row])
     }
     setSaving(false)
-    if (res.error) { setMsg(res.error.message.includes('duplicate') || res.error.message.includes('unique') ? '이미 존재하는 약품코드입니다.' : res.error.message); return }
+    if (res.error) { setMsg(res.error.message.includes('duplicate') || res.error.message.includes('unique') ? '이미 존재하는 약품코드입니다.' : res.error.message); return } if (_initQty > 0) { const { data: _a, error: _ae } = await supabase.rpc('bulk_stock_adjust', { p_items: [{ drug_code: code, target_qty: _initQty }], p_date: new Date().toISOString().split('T')[0], p_reason: '초기재고 등록' }); if (_ae) { setMsg('등록됨 · 초기재고 반영 실패: ' + _ae.message); return } if (_a && _a.ok === false) { setMsg('등록됨 · 초기재고 실패: ' + (((_a.failed||[])[0]||{}).reason || '')); return } }
     setMsg('OK'); setTimeout(() => { onSaved?.(); onClose() }, 500)
   }
   async function save() {
@@ -2300,7 +2300,7 @@ function DrugRegister({onRefresh, drugs}) {
       purchase_price:Number(form.purchase_price||form.insurance_price)||null,edi_price:Number(form.insurance_price)||0,
       insurance_type:form.insurance_type,
       insurance_code:form.insurance_code||null,
-      current_qty:Number(form.current_qty)||0,
+      current_qty:0,
       expiry_date:form.expiry_date||null,
       lot_no:form.lot_no||null,
       storage_method:form.storage_method||null,
@@ -2326,6 +2326,7 @@ function DrugRegister({onRefresh, drugs}) {
       setMsg({type:'error',text:msg2});return
     }
     setMsg({type:'success',text:`${form.drug_name} 등록 완료!`})
+    { const _iq = Number(form.current_qty)||0; if (_iq>0) { const { data:_a, error:_ae } = await supabase.rpc('bulk_stock_adjust',{p_items:[{drug_code:row.drug_code,target_qty:_iq}],p_date:new Date().toISOString().split('T')[0],p_reason:'초기재고 등록'}); if(_ae||(_a&&_a.ok===false)){setMsg({type:'error',text:'약품 등록됨 · 초기재고 반영 실패: '+(_ae?_ae.message:(((_a.failed||[])[0]||{}).reason||''))});return} } }
     setForm(initForm);onRefresh()
     setTimeout(()=>setMsg(null),3000)
   }
