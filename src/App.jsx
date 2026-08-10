@@ -5,7 +5,7 @@ import { passesDrugFilters } from './lib/drugFilter'
 import { RX_TOGGLE, RX_MORE, autoMap } from './lib/drugRules'
 import { classifyDrugRows, applyDrugRows } from './lib/drugBulk'
 import { decomposeAtc } from './lib/atcMap'
-import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST } from './lib/txTypes'
+import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT } from './lib/txTypes'
 import { dbErrorMsg, noRowMsg } from './lib/dbError'
 import { ThemeCtx, useTheme } from './lib/theme'
 import EmergencyDispense from './EmergencyDispense'
@@ -52,6 +52,9 @@ const STATS = ['사용','중지','휴면']
 const MAIN_STATS = ['사용','휴면']
 const PP = 20
 const TYPES = TX_TAB_TYPES
+/* 입출고 4탭 <-> URL sub 키 매핑(영문키=공유 URL 가독). 값은 txTypes SSOT 참조 */
+const TX_URL_KEY = { [TX_IN]:'in', [TX_OUT]:'out', [TX_RETURN]:'return', [TX_DISPOSE]:'dispose' }
+const TX_KEY_TAB = { in:TX_IN, out:TX_OUT, return:TX_RETURN, dispose:TX_DISPOSE }
 // TX_DISPOSE·TX_RETURN 은 ./lib/txTypes 에서 import
 const STORAGE_OPTS = ['실온','실온/차광','냉장','냉장/차광']
 const REC_ACTIONS = ['','우선사용','재고이관','반품검토','폐기예정','약품변경','업체교환','사용중지','확인필요','긴급처리']
@@ -2588,7 +2591,7 @@ function DrugRegister({onRefresh, drugs}) {
 /* ═══ 입출고 관리 — 4탭 구조 (입고/출고/반품/폐기) ═══ */
 function TransactionForm({drugs,onReload,navFilter}){
   const{t,memberRole,profile}=useTheme();const canDel=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
-  const[tab,setTab]=useState(navFilter?.txTab||'입고')
+  const[tab,setTab]=useState(subFromHash()||'입고')
   const[search,setSearch]=useState('');const[selDrug,setSelDrug]=useState(null)
   const[form,setForm]=useState({qty:'',purchase_price:'',edi_price:'',sub_type:'',note:'',supplier:'',lot_no:'',expiry_date:'',reason:'',handler:'이정화',approver:'',process_status:'처리완료',transaction_date:new Date().toISOString().split('T')[0]})
   const[saving,setSaving]=useState(false);const[msg,setMsg]=useState(null);const[ppConfirm,setPpConfirm]=useState(null);const[outlierConfirm,setOutlierConfirm]=useState(null)
@@ -2598,6 +2601,7 @@ function TransactionForm({drugs,onReload,navFilter}){
   const fileRef=useRef()
   const{hs,so,SI,TS}=useSort('transaction_date','desc')
   useEffect(()=>{loadTxns()},[tab])
+  useEffect(()=>{function _onPop(){if(routeFromHash()==='transaction'){const s=subFromHash();setTab(s||'입고')}}window.addEventListener('popstate',_onPop);return()=>window.removeEventListener('popstate',_onPop)},[])
   useEffect(()=>{let on=true;(async()=>{let ss=new Set(),f=0;while(true){const{data,error}=await supabase.from('monthly_snapshots').select('snap_year,snap_month').range(f,f+999);if(error||!data||!data.length)break;data.forEach(r=>ss.add(r.snap_year+'-'+r.snap_month));if(data.length<1000)break;f+=1000}if(on)setClosedM(ss)})();return()=>{on=false}},[])
   async function loadTxns(){let all=[],f=0;while(true){const{data,error}=await supabase.from('transactions').select('*').eq('type',tab).order('transaction_date',{ascending:false}).range(f,f+999);if(error||!data||!data.length)break;all=all.concat(data);if(data.length<1000)break;f+=1000}setTxns(all);setTxPage(1)}
   const _isClosed=d=>{if(!closedM||!d)return false;const p=String(d).split('-');return closedM.has(Number(p[0])+'-'+Number(p[1]))}
@@ -2730,7 +2734,7 @@ function TransactionForm({drugs,onReload,navFilter}){
 
   return<div style={{padding:'20px 24px'}}>
     {/* 탭 */}
-    <div style={{display:'flex',gap:6,marginBottom:16}}>{TYPES.map(tp=><button key={tp} onClick={()=>{setTab(tp);setSelDrug(null);setSearch('');setBulkData([]);setBulkMsg(null);setMsg(null);setForm(p=>({...p,purchase_price:'',edi_price:'',transaction_date:new Date().toISOString().split('T')[0]}));setPpConfirm(null);setSelIds([]);setSelDelStage(0);setTxSearch('')}} style={{flex:1,padding:'10px',borderRadius:10,border:`1.5px solid ${tab===tp?(tc[tp]?.c||t.accent):t.border}`,background:tab===tp?(tc[tp]?.bg||t.accentL):t.card,color:tab===tp?(tc[tp]?.c||t.accent):t.textM,cursor:'pointer',fontSize:13,fontWeight:tab===tp?700:400,transition:'all .15s'}}>{tp}관리</button>)}</div>
+    <div style={{display:'flex',gap:6,marginBottom:16}}>{TYPES.map(tp=><button key={tp} onClick={()=>{window.history.replaceState({ykMenu:'transaction',ykSub:tp},'','#transaction/'+(TX_URL_KEY[tp]||encodeURIComponent(tp)));setTab(tp);setSelDrug(null);setSearch('');setBulkData([]);setBulkMsg(null);setMsg(null);setForm(p=>({...p,purchase_price:'',edi_price:'',transaction_date:new Date().toISOString().split('T')[0]}));setPpConfirm(null);setSelIds([]);setSelDelStage(0);setTxSearch('')}} style={{flex:1,padding:'10px',borderRadius:10,border:`1.5px solid ${tab===tp?(tc[tp]?.c||t.accent):t.border}`,background:tab===tp?(tc[tp]?.bg||t.accentL):t.card,color:tab===tp?(tc[tp]?.c||t.accent):t.textM,cursor:'pointer',fontSize:13,fontWeight:tab===tp?700:400,transition:'all .15s'}}>{tp}관리</button>)}</div>
     <div style={{display:'grid',gridTemplateColumns:'340px 1fr',gap:16,marginBottom:16}}>
       {/* 좌: 개별 등록 */}
       <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'18px 20px'}}>
@@ -4073,7 +4077,8 @@ function RecoveryPage({ onDone }) {
 /* ═══ 메인 App ═══ */
 /* SPA 라우트: 화면 식별자 ↔ URL 해시(#menu). 새로고침/직접진입 복원·뒤로가기 동기화와 일관. */
 const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'emergency', 'register', 'mypage', 'admin', 'archive'];
-function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); return ROUTES.includes(h) ? h : 'dashboard'; }
+function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); const m = h.split('/')[0]; return ROUTES.includes(m) ? m : 'dashboard'; }
+function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
 export default function App() {
   const [dark, setDark] = useState(false)
   const [user, setUser] = useState(null)
@@ -4113,7 +4118,7 @@ export default function App() {
      popstate→직전 약플로 화면 복원. URL 미변경(새로고침=대시보드, 기존 동작 유지). */
   useEffect(() => {
     const raw = (window.location.hash || '') + (window.location.search || '')
-    if (!/access_token|refresh_token|provider_token|type=recovery|[?&]code=|error=/.test(raw)) { const init = routeFromHash(); window.history.replaceState({ ykMenu: init }, '', '#' + init) }
+    if (!/access_token|refresh_token|provider_token|type=recovery|[?&]code=|error=/.test(raw)) { const init = routeFromHash(); const initSub = subFromHash(); const ih = '#' + init + (init === 'transaction' && initSub ? '/' + (TX_URL_KEY[initSub] || encodeURIComponent(initSub)) : ''); window.history.replaceState({ ykMenu: init, ykSub: initSub }, '', ih) }
     function onPop(e) { isPopRef.current = true; setMenu((e.state && e.state.ykMenu) || routeFromHash()) }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -4121,6 +4126,7 @@ export default function App() {
   useEffect(() => {
     if (isFirstRef.current) { isFirstRef.current = false; return }
     if (isPopRef.current) { isPopRef.current = false; return }
+    if (routeFromHash() === menu) return; // 딥링크가 sub 포함 해시를 이미 기록한 경우 덮어쓰지 않음(sub 보존)
     window.history.pushState({ ykMenu: menu }, '', '#' + menu)
   }, [menu])
 
@@ -4177,6 +4183,7 @@ export default function App() {
   }, [user])
 
   function handleNav(nav) {
+    if (nav.menu === 'transaction' && nav.txTab && TX_TAB_TYPES.indexOf(nav.txTab) !== -1) { window.history.pushState({ ykMenu: 'transaction', ykSub: nav.txTab }, '', '#transaction/' + (TX_URL_KEY[nav.txTab] || encodeURIComponent(nav.txTab))) } // 딥링크 진입 = pushState
     if (nav.menu) setMenu(nav.menu)
     setNf(nav)
   }
