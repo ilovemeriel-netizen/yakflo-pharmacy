@@ -1825,7 +1825,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
     if(!uRep||!uRep.updates.length)return
     setURep({...uRep,phase:'applying'})
     let ok=0;const failed=[];let cPy=0,cR3=0,cR1=0
-    for(const u of uRep.updates){const{error}=await supabase.from('drugs').update(u.upd).eq('drug_code',u.code);if(error){failed.push(u.code)}else{ok++;if(u.upd.prev_year_usage!=null)cPy++;if(u.upd.recent_3m_usage!=null)cR3++;if('recent_1m_usage' in u.upd)cR1++}}
+    for(const u of uRep.updates){const{error}=await supabase.from('drugs').update(u.upd).eq('drug_code',u.code);if(error){failed.push({code:u.code,msg:error.message||'알 수 없는 오류'})}else{ok++;if(u.upd.prev_year_usage!=null)cPy++;if(u.upd.recent_3m_usage!=null)cR3++;if('recent_1m_usage' in u.upd)cR1++}}
     onReload?.()
     setURep({phase:'done',ok,failed,unmatched:uRep.unmatched,invalid:uRep.invalid,updates:uRep.updates,counts:{py:cPy,r3:cR3,r1:cR1}})
   }
@@ -1843,7 +1843,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
       :uRep.phase==='applying'?<div style={{color:t.blue,fontWeight:600}}>반영 중...</div>
       :uRep.phase==='done'?<div>
         <div style={{fontWeight:700,color:t.green,marginBottom:6}}>업로드 완료</div>
-        <div style={{color:t.text}}>성공 {uRep.ok}건{uRep.failed.length?(' · 저장실패 '+uRep.failed.length+'건 ('+uRep.failed.join(', ')+')'):''}</div>{uRep.counts&&<div style={{color:t.textM,marginTop:2}}>전년 {uRep.counts.py}건 · 최근3개월 {uRep.counts.r3}건 · 직전1개월 {uRep.counts.r1}건 반영</div>}
+        <div style={{color:t.text}}>성공 {uRep.ok}건{uRep.failed.length?(' · 저장실패 '+uRep.failed.length+'건'):''}</div>{uRep.failed.length?<div style={{color:t.red,marginTop:4}}>{Object.entries(uRep.failed.reduce((a,f)=>{const k=f.msg||'알 수 없는 오류';(a[k]=a[k]||[]).push(f.code);return a},{})).map((e,i)=><div key={i}>{e[0]} — {e[1].length}건: {e[1].join(', ')}</div>)}</div>:null}{uRep.counts&&<div style={{color:t.textM,marginTop:2}}>전년 {uRep.counts.py}건 · 최근3개월 {uRep.counts.r3}건 · 직전1개월 {uRep.counts.r1}건 반영</div>}
         {uRep.unmatched.length?<div style={{color:t.amber,marginTop:4}}>매칭실패 {uRep.unmatched.length}건(미반영): {uRep.unmatched.map(x=>x.code).join(', ')}</div>:null}
         {uRep.invalid.length?<div style={{color:t.red,marginTop:4}}>형식오류 {uRep.invalid.length}건(미반영): {uRep.invalid.map(x=>'행'+x.ln+' '+x.col+':"'+x.val+'"').join(', ')}</div>:null}
         <button onClick={()=>setURep(null)} style={{marginTop:8,padding:'6px 14px',borderRadius:8,border:'1px solid '+t.border,background:t.bg,color:t.text,cursor:'pointer',fontSize:11,fontWeight:600}}>닫기</button>
