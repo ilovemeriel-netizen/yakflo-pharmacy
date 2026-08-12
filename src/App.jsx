@@ -1796,7 +1796,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
         const wb=XLSX.read(ev.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:false})
         const codes=new Set(drugs.map(d=>d.drug_code))
         const num=v=>{const x=String(v).trim();if(x==='')return undefined;const n=Number(x.replace(/,/g,''));return (Number.isFinite(n)&&n>=0)?n:NaN}
-        const updates=[],unmatched=[],invalid=[]
+        const updates=[],unmatched=[],invalid=[];let dec=0
         rows.forEach((r,i)=>{
           const ln=i+2
           const code=String(r['약품코드']??r['drug_code']??'').trim();if(!code)return
@@ -1811,13 +1811,13 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
           if(!Number.isFinite(py)&&!Number.isFinite(r3)&&!Number.isFinite(r1))return
           if(!codes.has(code)){unmatched.push({code,name,py:py===undefined?null:py,r3:r3===undefined?null:r3});return}
           const _upd={usage_source:'manual'}
-          if(Number.isFinite(py))_upd.prev_year_usage=py
-          if(Number.isFinite(r3))_upd.recent_3m_usage=r3
-          if(Number.isFinite(r1))_upd.recent_1m_usage=r1
+          if(Number.isFinite(py))_upd.prev_year_usage=Math.round(py)
+          if(Number.isFinite(r3))_upd.recent_3m_usage=Math.round(r3)
+          if(Number.isFinite(r1))_upd.recent_1m_usage=Math.round(r1)
           if(Number.isFinite(py)||Number.isFinite(r3)){const _rv=Number.isFinite(r3)?r3:null,_pv=Number.isFinite(py)?py:null;let m=null;if(_rv!=null)m=Math.round(_rv/3);else if(_pv!=null)m=Math.round(_pv/12);_upd.monthly_avg=m;_upd.safety_stock=m!=null?Math.ceil(m*SAFETY_FACTOR):null;_upd.max_stock=m!=null?Math.round(m*3):null}
-          updates.push({code,upd:_upd})
+          if((Number.isFinite(py)&&py%1!==0)||(Number.isFinite(r3)&&r3%1!==0)||(Number.isFinite(r1)&&r1%1!==0))dec++;updates.push({code,upd:_upd})
         })
-        setURep({phase:'review',updates,unmatched,invalid})
+        setURep({phase:'review',updates,unmatched,invalid,dec})
       }catch(err){setURep({phase:'error',msg:err.message,updates:[],unmatched:[],invalid:[]})}
     };reader.readAsArrayBuffer(file);e.target.value=''
   }
@@ -1825,7 +1825,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
     if(!uRep||!uRep.updates.length)return
     setURep({...uRep,phase:'applying'})
     let ok=0;const failed=[];let cPy=0,cR3=0,cR1=0
-    for(const u of uRep.updates){const{error}=await supabase.from('drugs').update(u.upd).eq('drug_code',u.code);if(error){failed.push(u.code)}else{ok++;if(u.upd.prev_year_usage!=null)cPy++;if(u.upd.recent_3m_usage!=null)cR3++;if('recent_1m_usage' in u.upd)cR1++}}
+    for(const u of uRep.updates){const{error}=await supabase.from('drugs').update(u.upd).eq('drug_code',u.code);if(error){failed.push({code:u.code,msg:error.message||'알 수 없는 오류'})}else{ok++;if(u.upd.prev_year_usage!=null)cPy++;if(u.upd.recent_3m_usage!=null)cR3++;if('recent_1m_usage' in u.upd)cR1++}}
     onReload?.()
     setURep({phase:'done',ok,failed,unmatched:uRep.unmatched,invalid:uRep.invalid,updates:uRep.updates,counts:{py:cPy,r3:cR3,r1:cR1}})
   }
@@ -1843,7 +1843,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
       :uRep.phase==='applying'?<div style={{color:t.blue,fontWeight:600}}>반영 중...</div>
       :uRep.phase==='done'?<div>
         <div style={{fontWeight:700,color:t.green,marginBottom:6}}>업로드 완료</div>
-        <div style={{color:t.text}}>성공 {uRep.ok}건{uRep.failed.length?(' · 저장실패 '+uRep.failed.length+'건 ('+uRep.failed.join(', ')+')'):''}</div>{uRep.counts&&<div style={{color:t.textM,marginTop:2}}>전년 {uRep.counts.py}건 · 최근3개월 {uRep.counts.r3}건 · 직전1개월 {uRep.counts.r1}건 반영</div>}
+        <div style={{color:t.text}}>성공 {uRep.ok}건{uRep.failed.length?(' · 저장실패 '+uRep.failed.length+'건'):''}</div>{uRep.failed.length?<div style={{color:t.red,marginTop:4}}>{Object.entries(uRep.failed.reduce((a,f)=>{const k=f.msg||'알 수 없는 오류';(a[k]=a[k]||[]).push(f.code);return a},{})).map((e,i)=><div key={i}>{e[0]} — {e[1].length}건: {e[1].join(', ')}</div>)}</div>:null}{uRep.counts&&<div style={{color:t.textM,marginTop:2}}>전년 {uRep.counts.py}건 · 최근3개월 {uRep.counts.r3}건 · 직전1개월 {uRep.counts.r1}건 반영</div>}
         {uRep.unmatched.length?<div style={{color:t.amber,marginTop:4}}>매칭실패 {uRep.unmatched.length}건(미반영): {uRep.unmatched.map(x=>x.code).join(', ')}</div>:null}
         {uRep.invalid.length?<div style={{color:t.red,marginTop:4}}>형식오류 {uRep.invalid.length}건(미반영): {uRep.invalid.map(x=>'행'+x.ln+' '+x.col+':"'+x.val+'"').join(', ')}</div>:null}
         <button onClick={()=>setURep(null)} style={{marginTop:8,padding:'6px 14px',borderRadius:8,border:'1px solid '+t.border,background:t.bg,color:t.text,cursor:'pointer',fontSize:11,fontWeight:600}}>닫기</button>
@@ -1852,6 +1852,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
         <div style={{fontWeight:700,color:t.text,marginBottom:6}}>업로드 검토 — 확정 전 미반영</div>
         <div style={{color:t.text}}>반영 대상 <b style={{color:t.green}}>{uRep.updates.length}</b>건 · 매칭실패 <b style={{color:t.amber}}>{uRep.unmatched.length}</b>건 · 형식오류 <b style={{color:t.red}}>{uRep.invalid.length}</b>건</div>
         {uRep.unmatched.length?<div style={{marginTop:8}}><div style={{color:t.amber,fontWeight:600,marginBottom:4}}>매칭실패 {uRep.unmatched.length}건 — 코드 정정 후 재매핑</div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr>{['업로드코드','약품명(참고)','전년','최근3M',''].map((h,hi)=><th key={hi} style={{textAlign:(hi>=2&&hi<=3)?'right':'left',padding:'5px 8px',color:t.textM,borderBottom:'1px solid '+t.border}}>{h}</th>)}</tr></thead><tbody>{uRep.unmatched.map((x,i)=><tr key={i} style={{borderBottom:'1px solid '+t.border}}><td style={{padding:'4px 8px'}}><input value={x.newCode??x.code} onChange={e=>setUnmatchedCode(i,e.target.value)} style={{padding:'3px 8px',border:'1px solid '+(x.err?t.red:t.border),borderRadius:6,fontSize:11,background:t.bg,color:t.text,width:120}}/>{x.err?<span style={{marginLeft:6,color:t.red,fontSize:9}}>{x.err}</span>:null}</td><td style={{padding:'4px 8px',color:t.textM}}>{x.name||'-'}</td><td style={{padding:'4px 8px',textAlign:'right',color:t.textM}}>{x.py??'-'}</td><td style={{padding:'4px 8px',textAlign:'right',color:t.textM}}>{x.r3??'-'}</td><td style={{padding:'4px 8px',whiteSpace:'nowrap'}}><button onClick={()=>remapUnmatched(i)} style={{padding:'3px 10px',borderRadius:6,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:10,fontWeight:600,marginRight:4}}>재매핑</button><button onClick={()=>cancelRow('unmatched',i)} style={{padding:'3px 10px',borderRadius:6,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:10,fontWeight:600}}>취소</button></td></tr>)}</tbody></table></div></div>:null}
+        {uRep.dec?<div style={{color:t.textM,marginTop:4}}>소수 {uRep.dec}건은 정수로 반올림되어 저장됩니다</div>:null}
         {uRep.invalid.length?<div style={{marginTop:8}}><div style={{color:t.red,fontWeight:600,marginBottom:4}}>형식오류 {uRep.invalid.length}건 — 값 수정 후 재검증 또는 취소</div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr>{['코드','약품명(참고)','사유','전년(수정)','최근3M(수정)',''].map((h,hi)=><th key={hi} style={{textAlign:(hi>=3&&hi<=4)?'right':'left',padding:'5px 8px',color:t.textM,borderBottom:'1px solid '+t.border}}>{h}</th>)}</tr></thead><tbody>{uRep.invalid.map((x,i)=><tr key={i} style={{borderBottom:'1px solid '+t.border}}><td style={{padding:'4px 8px',color:t.text}}>{x.code}</td><td style={{padding:'4px 8px',color:t.textM}}>{x.name||'-'}</td><td style={{padding:'4px 8px',color:t.red,fontSize:10}}>{'행'+x.ln+' '+x.col} 오류{x.err2?' · '+x.err2:''}</td><td style={{padding:'4px 8px',textAlign:'right'}}><input value={x.pyRaw} onChange={e=>setInvalidVal(i,'pyRaw',e.target.value)} style={{padding:'3px 6px',border:'1px solid '+(x.col==='전년사용량'?t.red:t.border),borderRadius:6,fontSize:11,background:t.bg,color:t.text,width:70,textAlign:'right'}}/></td><td style={{padding:'4px 8px',textAlign:'right'}}><input value={x.r3Raw} onChange={e=>setInvalidVal(i,'r3Raw',e.target.value)} style={{padding:'3px 6px',border:'1px solid '+(x.col==='최근3개월사용량'?t.red:t.border),borderRadius:6,fontSize:11,background:t.bg,color:t.text,width:70,textAlign:'right'}}/></td><td style={{padding:'4px 8px',whiteSpace:'nowrap'}}><button onClick={()=>revalidateInvalid(i)} style={{padding:'3px 10px',borderRadius:6,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:10,fontWeight:600,marginRight:4}}>재검증</button><button onClick={()=>cancelRow('invalid',i)} style={{padding:'3px 10px',borderRadius:6,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:10,fontWeight:600}}>취소</button></td></tr>)}</tbody></table></div></div>:null}
         <div style={{display:'flex',gap:8,marginTop:10}}>
           <button onClick={applyUsage} disabled={!uRep.updates.length} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+(uRep.updates.length?t.green:t.border),background:uRep.updates.length?t.greenL:t.bg,color:uRep.updates.length?t.green:t.textL,cursor:uRep.updates.length?'pointer':'default',fontSize:11,fontWeight:600}}>반영 {uRep.updates.length}건</button>
