@@ -4115,11 +4115,11 @@ function AtcView({ drugs, onReload }) {
   const badgeStyle = (bg, fg, bd) => ({ fontSize: 8, fontWeight: 700, padding: '0 4px', borderRadius: 3, background: bg, color: fg, border: bd ? '1px solid ' + bd : '1px solid transparent', whiteSpace: 'nowrap', lineHeight: 1.5, display: 'inline-block' });
   const B = (x, bg, fg, bd) => <span style={badgeStyle(bg, fg, bd)}>{x}</span>;
   const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }); if (d.storage_light) a.push({ x: '차광', bg: t.text, fg: t.navText }); if (d.lasa_type === '모양') a.push({ x: '모양', bg: t.coral, fg: t.text }); if (d.lasa_type === '용량') a.push({ x: '용량', bg: t.blueL, fg: t.blue, bd: t.blue }); if (d.lasa_type === '발음') a.push({ x: '발음', bg: t.amberL, fg: t.amber, bd: t.amber }); if (d.fsp_slot) a.push({ x: d.fsp_note || '0.5T', bg: t.greenL, fg: t.green, bd: t.green }); return a; };
-  const listRows = (() => { const a = assigned.filter(matches);
-    if (sortMode === '가나다') a.sort((x, y) => (x.drug_name || '').localeCompare(y.drug_name || '', 'ko'));
-    else if (sortMode === '사용량') a.sort((x, y) => usageScore(y) - usageScore(x));
-    else a.sort((x, y) => slotNum(x) - slotNum(y));
-    return a; })();
+  const listRows = (() => { const ent = []; assigned.filter(matches).forEach(d => { if (d.atc_slot) ent.push({ slot: d.atc_slot, d, fsp: false }); if (d.fsp_slot) ent.push({ slot: d.fsp_slot, d, fsp: true }); }); const sk = e => e.fsp ? 1000 + Number(String(e.slot).replace('FSP', '')) : Number(e.slot);
+    if (sortMode === '가나다') ent.sort((x, y) => ((x.d.drug_name || '').localeCompare(y.d.drug_name || '', 'ko')) || (sk(x) - sk(y)));
+    else if (sortMode === '사용량') ent.sort((x, y) => (usageScore(y.d) - usageScore(x.d)) || (sk(x) - sk(y)));
+    else ent.sort((x, y) => sk(x) - sk(y));
+    return ent; })();
   const slot91 = [];
   assigned.forEach(d => { if (d.atc_slot) slot91.push({ slot: d.atc_slot, d }); if (d.fsp_slot) slot91.push({ slot: d.fsp_slot, d }); });
   const slot91Ga = [...slot91].sort((x, y) => (x.d.drug_name || '').localeCompare(y.d.drug_name || '', 'ko'));
@@ -4216,8 +4216,8 @@ function AtcView({ drugs, onReload }) {
       </div>
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead><tr>{['슬롯', '약품코드', '약품명', '성분명', '유사', '차광', '최근3개월', '직전1개월', '월평균'].map(h => <th key={h} style={{ ...th, textAlign: (h === '최근3개월' || h === '직전1개월' || h === '월평균') ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
-        <tbody>{listRows.map((d, i) => <tr key={i} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
-          <td style={{ ...td, fontWeight: 700, color: t.accent, whiteSpace: 'nowrap' }}><span style={{ display: 'inline-flex', gap: 3, alignItems: 'center', flexWrap: 'wrap' }}>{slotLabel(d)}{d.atc_pinned && B('상비', t.accentL, t.accent, t.accent)}{d.fsp_slot && B(d.fsp_note || '0.5T', t.greenL, t.green, t.green)}</span></td>
+        <tbody>{listRows.map((e, i) => { const d = e.d; return <tr key={i} onMouseEnter={ev => ev.currentTarget.style.background = t.glass} onMouseLeave={ev => ev.currentTarget.style.background = ''}>
+          <td style={{ ...td, fontWeight: 700, color: t.accent, whiteSpace: 'nowrap' }}><span style={{ display: 'inline-flex', gap: 3, alignItems: 'center', flexWrap: 'wrap' }}>{e.slot}{!e.fsp && d.atc_pinned && B('상비', t.accentL, t.accent, t.accent)}{e.fsp && d.fsp_note && B(d.fsp_note, t.greenL, t.green, t.green)}</span></td>
           <td style={{ ...td, textAlign: 'left' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, cursor: 'pointer', fontWeight: 600 }}>{d.drug_code}</span></td>
           <td style={{ ...td, textAlign: 'left' }}>{d.drug_name}</td>
           <td style={{ ...td, textAlign: 'left', color: t.textM, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.ingredient_kr || '-'}</td>
@@ -4226,7 +4226,7 @@ function AtcView({ drugs, onReload }) {
           <td style={{ ...td, textAlign: 'right' }}>{Number(d.recent_3m_usage) || 0}</td>
           <td style={{ ...td, textAlign: 'right' }}>{d.recent_1m_usage == null ? '-' : Number(d.recent_1m_usage)}</td>
           <td style={{ ...td, textAlign: 'right' }}>{d.monthly_avg == null ? '-' : Number(d.monthly_avg)}</td>
-        </tr>)}</tbody>
+        </tr>; })}</tbody>
       </table></div>
     </div>
     <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
