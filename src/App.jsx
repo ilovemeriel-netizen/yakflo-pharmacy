@@ -4161,7 +4161,25 @@ function AtcView({ drugs, onReload }) {
   const top88b = candDesc.slice(0, 88); const top88bSet = new Set(top88b.map(d => d.drug_code));
   const curCodes = new Set(assigned.filter(d => d.atc_slot).map(d => d.drug_code));
   const newIn = top88b.filter(d => !curCodes.has(d.drug_code));
-  const pushOut = [...curCodes].filter(cc => !top88bSet.has(cc));  const th = { textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' };
+  const pushOut = [...curCodes].filter(cc => !top88bSet.has(cc));
+  const [viewMode, setViewMode] = useState('current');
+  const FIXSET = new Set(['SANTLTRPL', 'STCNE', 'AMNP5', 'LSX', 'SBCLP1', 'QROKEL125']);
+  const propCand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d) && !FIXSET.has(d.drug_code)).sort((a, b) => usageScore(b) - usageScore(a));
+  const byCode = cc => (drugs || []).find(d => d.drug_code === cc) || null;
+  const pIdeal = {}; pIdeal['1'] = byCode('SANTLTRPL'); pIdeal['2'] = byCode('STCNE'); pIdeal['3'] = byCode('AMNP5');
+  for (let x = 301; x <= 308; x++) pIdeal[String(x)] = propCand[x - 301] || null;
+  for (let sl = 4; sl <= 80; sl++) pIdeal[String(sl)] = propCand[88 - sl] || null;
+  const rowBand = r => { const u = []; for (let k = 1; k <= 16; k++) { const d = pIdeal[String(r * 16 + k)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; };
+  const bandMax = Math.max(1, rowBand(0).mx, rowBand(1).mx, rowBand(2).mx, rowBand(3).mx, rowBand(4).mx);
+  const expBand = (() => { const u = []; for (let x = 301; x <= 308; x++) { const d = pIdeal[String(x)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; })();
+  const top85p = propCand.slice(0, 85); const yebi12 = propCand.slice(85, 97);
+  const t88p = new Set([...top85p.map(d => d.drug_code), 'SANTLTRPL', 'STCNE', 'AMNP5']);
+  const curCodes2 = new Set((drugs || []).filter(d => d.atc_slot).map(d => d.drug_code));
+  const aNew = top85p.filter(d => !curCodes2.has(d.drug_code));
+  const bOut = [...curCodes2].filter(cc => !t88p.has(cc) && !['SANTLTRPL', 'STCNE', 'AMNP5'].includes(cc));
+  const cKeep = [...curCodes2].filter(cc => t88p.has(cc));
+  const pcs = (d, exp) => { if (!d) return { bg: t.card, bd: t.border, fg: t.textL }; if (d.atc_pinned) return { bg: t.greenL, bd: t.green, fg: t.green }; if (d.storage_light) return { bg: t.text, bd: t.text, fg: t.navText }; if (d.lasa_type === '모양') return { bg: t.coral, bd: t.coral, fg: t.text }; if (d.lasa_type === '용량') return { bg: t.blueL, bd: t.blue, fg: t.blue }; if (d.lasa_type === '발음') return { bg: t.amberL, bd: t.amber, fg: t.amber }; if (exp) return { bg: t.bg, bd: t.border, fg: t.textM }; return { bg: t.purpleL, bd: t.border, fg: t.accent }; };
+  const PCell = (slot, exp) => { const d = pIdeal[slot]; const s = pcs(d, exp); return <div key={slot} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : ''} style={{ border: '1px solid ' + s.bd, background: s.bg, color: s.fg, borderRadius: 4, padding: '2px 4px', height: 34, boxSizing: 'border-box', cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ fontSize: 9.5, opacity: 0.62 }}>{slot}</div><div style={{ fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d ? d.drug_name : ''}</div></div>; };  const th = { textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' };
   const td = { padding: '5px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border };
   async function runSwaps(pairs, desc) { const { data, error } = await supabase.rpc('swap_atc_slots', { p_pairs: pairs }); if (error) { setMsg('교환 실패: ' + error.message); return; } if (data && data.ok === false) { setMsg('교환 차단 - ' + (data.failed || []).map(f => f.slot_a + '<->' + f.slot_b + '(' + f.reason + ')').join(', ')); return; } setMsg('슬롯 교환 ' + (data && data.done != null ? data.done : pairs.length) + '건 완료' + (desc ? ' - ' + desc : '')); setSelSlot(null); setPending(null); setSelPairs({}); onReload && onReload(); setTimeout(() => setMsg(null), 4000); }
   function cellEdit(slot, d) { if (d && d.atc_pinned) { setMsg('상비 고정 품목입니다'); setTimeout(() => setMsg(null), 2500); return; } if (selSlot == null) { setSelSlot(slot); return; } if (selSlot === slot) { setSelSlot(null); return; } const da = byAtc[selSlot], db = d; setPending({ pairs: [{ slot_a: selSlot, slot_b: slot }], desc: '슬롯 ' + selSlot + ' ' + (da ? da.drug_name : '(빈 칸)') + '  <->  슬롯 ' + slot + ' ' + (db ? db.drug_name : '(빈 칸)') }); }
@@ -4170,6 +4188,8 @@ function AtcView({ drugs, onReload }) {
     {pending && <div className="no-print" onClick={() => setPending(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}><div onClick={e => e.stopPropagation()} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 20, maxWidth: 460, width: '100%' }}><div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 10 }}>슬롯 교환 확인</div><div style={{ fontSize: 12, color: t.textM, lineHeight: 1.6, marginBottom: 18, whiteSpace: 'pre-line' }}>{pending.desc}</div><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button onClick={() => setPending(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>취소</button><button onClick={() => runSwaps(pending.pairs, pending.desc)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent, color: t.navText, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>교환 실행</button></div></div></div>}
     <div className="no-print" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
       <div style={{ fontSize: 18, fontWeight: 800, color: t.text, marginRight: 8 }}>ATC 카세트 배치</div>
+      <button onClick={() => setViewMode('current')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (viewMode === 'current' ? t.accent : t.border), background: viewMode === 'current' ? t.accent : t.card, color: viewMode === 'current' ? t.navText : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>현재 배치</button>
+      <button onClick={() => setViewMode('proposal')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (viewMode === 'proposal' ? t.accent : t.border), background: viewMode === 'proposal' ? t.accent : t.card, color: viewMode === 'proposal' ? t.navText : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>사용량순 제안</button>
       <input value={q} onChange={e => setQ(e.target.value)} placeholder="약품코드·약품명·성분명 검색..." style={{ minWidth: 220, padding: '7px 12px', border: '1px solid ' + t.border, borderRadius: 10, fontSize: 12, outline: 'none', background: t.bg, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
       <button onClick={() => dlXlsx('가나다')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>엑셀(가나다)</button>
       <button onClick={() => dlXlsx('슬롯')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>엑셀(슬롯)</button>
@@ -4179,7 +4199,7 @@ function AtcView({ drugs, onReload }) {
       {msg && <span style={{ fontSize: 11, fontWeight: 600, color: t.accent }}>{msg}</span>}
       <span style={{ fontSize: 10, color: t.textL }}>색상 출력을 위해 인쇄 설정에서 「배경 그래픽」을 켜주세요</span>
     </div>
-    <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+    {viewMode === 'current' && <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 8 }}>상단 카세트 (1~80) · 좌측문 8 + 우측문 8</div>
       {[1, 17, 33, 49, 65].map(start => <div key={start} style={{ display: 'grid', gridTemplateColumns: '1fr 22px 1fr', gap: 4, marginBottom: 6 }}>
         {Door(start)}
@@ -4208,7 +4228,35 @@ function AtcView({ drugs, onReload }) {
         <span style={{ background: t.purpleL, color: t.text, padding: '1px 6px', borderRadius: 3, border: '1px solid ' + t.lavender, fontWeight: 700 }}>일반</span>
         <span style={{ color: t.textL }}>점선 = 유동</span>
       </div>
-    </div>
+    </div>}
+    {viewMode === 'proposal' && <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+      <style>{'@media(max-width:1100px){.atc-prop-row{grid-template-columns:1fr 22px 1fr!important}.atc-prop-row>*:last-child{grid-column:1/-1;margin-top:4px}}'}</style>
+      <div style={{ fontSize: 13, fontWeight: 700, color: t.accent, marginBottom: 8 }}>상단 카세트 1–80 · 위로 갈수록 저빈도</div>
+      {[0, 1, 2, 3, 4].map(r => { const bd = rowBand(r); return <div key={r} className="atc-prop-row" style={{ display: 'grid', gridTemplateColumns: '1fr 22px 1fr 132px', gap: 3, marginBottom: 3 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 3 }}>{Array.from({ length: 8 }, (_, i) => PCell(String(r * 16 + 1 + i), false))}</div>
+        <div style={{ display: 'flex', justifyContent: 'center' }}><div style={{ width: 5, background: t.lavender, borderRadius: 3 }} /></div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 3 }}>{Array.from({ length: 8 }, (_, i) => PCell(String(r * 16 + 9 + i), false))}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 6 }}><div style={{ fontSize: 12, fontWeight: 700, color: t.accent }}>월 {Math.round(bd.mn / 3)} ~ {Math.round(bd.mx / 3)}개</div><div style={{ fontSize: 10, opacity: 0.6 }}>3개월 {bd.mn} ~ {bd.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: (bd.mx / bandMax * 100) + '%', marginTop: 3 }} /></div>
+      </div>; })}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
+        <div><div style={{ fontSize: 12, fontWeight: 700, color: t.green, marginBottom: 6 }}>FSP 고정식</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 3 }}>{['FSP1', 'FSP2', 'FSP3', 'FSP4', 'FSP5'].map(f => { const d = byFsp[f]; const s = d ? { bg: t.greenL, bd: t.green, fg: t.green } : { bg: t.card, bd: t.textL, fg: t.textL }; return <div key={f} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : '유동'} style={{ border: (d ? '1px solid ' : '1px dashed ') + s.bd, background: s.bg, color: s.fg, borderRadius: 4, height: 34, padding: '2px 4px', boxSizing: 'border-box', cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ fontSize: 9.5, opacity: 0.62 }}>{f}{d && d.fsp_note ? ' ' + d.fsp_note : ''}</div><div style={{ fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d ? d.drug_name : '유동'}</div></div>; })}</div></div>
+        <div><div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>하단 확장 301–308 · 최다빈도</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 3 }}>{[301, 302, 303, 304, 305, 306, 307, 308].map(n => PCell(String(n), true))}</div>
+          <div style={{ marginTop: 4 }}><div style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>월 {Math.round(expBand.mn / 3)} ~ {Math.round(expBand.mx / 3)}개 / 3개월 {expBand.mn} ~ {expBand.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: '100%', marginTop: 3 }} /></div></div>
+      </div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10, fontSize: 11.5, opacity: 0.75, alignItems: 'center' }}>{[['모양', t.coral], ['용량', t.blueL], ['발음', t.amberL], ['차광', t.text], ['상비 고정', t.greenL], ['일반', t.purpleL]].map(([lb, cl]) => <span key={lb} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: cl, border: '1px solid ' + t.border }} />{lb}</span>)}</div>
+      <div style={{ fontSize: 11.5, color: t.textL, marginTop: 8 }}>기존 약품 간 교환은 카세트째 이동하므로 즉시 실행 가능합니다.</div>
+      <div style={{ fontSize: 11.5, color: t.textL }}>사용량에 수기 입력분이 포함되어 있습니다. 9월 마감 후 재산출을 권장합니다.</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 12 }}>
+        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.green, marginBottom: 4 }}>A. 신규 진입 ({aNew.length}) · 카세트 확보 필요</div><div style={{ fontSize: 10, color: t.textM, wordBreak: 'break-all' }}>{aNew.slice(0, 15).map(d => d.drug_name).join(', ')}{aNew.length > 15 ? ' 외 ' + (aNew.length - 15) : ''}</div></div>
+        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.red, marginBottom: 4 }}>B. 제외 ({bOut.length}) · 수동 조제 전환</div><div style={{ fontSize: 10, color: t.textM, wordBreak: 'break-all' }}>{bOut.join(', ')}</div></div>
+        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.accent, marginBottom: 4 }}>C. 슬롯 이동 ({cKeep.length}) · 즉시 실행</div><div style={{ fontSize: 10, color: t.textM }}>유지 품목 위치 조정</div></div>
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginTop: 6 }}>현재 88건 중 {cKeep.length} 유지 · {bOut.length} 제외 · {aNew.length} 신규</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginTop: 10, marginBottom: 4 }}>2차 예비 12 (89~100위) · 카세트 확보 시 투입 가능</div>
+      <div style={{ fontSize: 10, color: t.textM, wordBreak: 'break-all' }}>{yebi12.map(d => d.drug_name + '(' + usageScore(d) + ')').join(', ')}</div>
+    </div>}
     <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginRight: 8 }}>배치 목록 ({listRows.length})</div>
