@@ -4102,7 +4102,7 @@ function AtcView({ drugs, onReload }) {
     const d = byMap[key]; const s = cs(d); const dash = fluid && !d; const active = q.trim() !== ''; const hit = active && d && matches(d); const dim = active && !hit; const badge = (key === 'FSP2' || key === 'FSP4') ? '0.5T' : null; const sel = editMode && editable && selSlot === key;
     return <div key={key} onClick={() => { if (editMode && editable) cellEdit(key, d); else if (d && open360) open360(d); }} title={d ? d.drug_name : (fluid ? '유동(미배정)' : '')}
       style={{ border: (sel || hit) ? '2px solid ' + t.accent : ((dash ? '1px dashed ' : '1px solid ') + (dash ? t.textL : s.bd)), background: sel ? t.accentL : (dash ? t.card : s.bg), color: dash ? t.textL : s.fg, borderRadius: 6, padding: '3px 5px', minHeight: 40, opacity: dim ? 0.3 : 1, cursor: (d || (editMode && editable)) ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
-      <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.85, display: 'flex', justifyContent: 'space-between', gap: 3 }}><span>{label}</span>{badge && <span style={{ fontSize: 7.5, fontWeight: 700, padding: '0 3px', borderRadius: 3, border: '1px solid ' + t.accent, color: t.accent, background: t.card }}>{badge}</span>}</div>
+      <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.85, display: 'flex', justifyContent: 'space-between', gap: 3, alignItems: 'center' }}><span>{label}</span><span style={{ display: 'inline-flex', gap: 2, flexWrap: 'wrap' }}>{d && dBadges(d).map((b, bi) => <span key={bi} style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>)}</span></div>
       <div style={{ fontSize: 9.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d ? d.drug_name : (fluid ? '유동' : '')}</div>
     </div>;
   };
@@ -4111,7 +4111,10 @@ function AtcView({ drugs, onReload }) {
     {Array.from({ length: 8 }, (_, i) => Cell(String(start + i), String(start + i), byAtc, false, true))}
   </div>;
   const slotNum = d => d.atc_slot ? Number(d.atc_slot) : (d.fsp_slot ? 1000 + Number(String(d.fsp_slot).replace('FSP', '')) : 9999);
-  const slotLabel = d => (d.atc_slot && d.fsp_slot) ? (d.atc_slot + ' · ' + d.fsp_slot) : (d.atc_slot || d.fsp_slot || '');
+  const slotLabel = d => { const p = []; if (d.atc_slot) p.push(d.atc_slot + ' (1T)'); if (d.fsp_slot) p.push(d.fsp_slot + ' (' + (d.fsp_note || '0.5T') + ')'); return p.join(' · '); };
+  const badgeStyle = (bg, fg, bd) => ({ fontSize: 8, fontWeight: 700, padding: '0 4px', borderRadius: 3, background: bg, color: fg, border: bd ? '1px solid ' + bd : '1px solid transparent', whiteSpace: 'nowrap', lineHeight: 1.5, display: 'inline-block' });
+  const B = (x, bg, fg, bd) => <span style={badgeStyle(bg, fg, bd)}>{x}</span>;
+  const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }); if (d.storage_light) a.push({ x: '차광', bg: t.text, fg: t.navText }); if (d.lasa_type === '모양') a.push({ x: '모양', bg: t.coral, fg: t.text }); if (d.lasa_type === '용량') a.push({ x: '용량', bg: t.blueL, fg: t.blue, bd: t.blue }); if (d.lasa_type === '발음') a.push({ x: '발음', bg: t.amberL, fg: t.amber, bd: t.amber }); if (d.fsp_slot) a.push({ x: d.fsp_note || '0.5T', bg: t.greenL, fg: t.green, bd: t.green }); return a; };
   const listRows = (() => { const a = assigned.filter(matches);
     if (sortMode === '가나다') a.sort((x, y) => (x.drug_name || '').localeCompare(y.drug_name || '', 'ko'));
     else if (sortMode === '사용량') a.sort((x, y) => usageScore(y) - usageScore(x));
@@ -4163,7 +4166,7 @@ function AtcView({ drugs, onReload }) {
   async function runSwaps(pairs, desc) { const { data, error } = await supabase.rpc('swap_atc_slots', { p_pairs: pairs }); if (error) { setMsg('교환 실패: ' + error.message); return; } if (data && data.ok === false) { setMsg('교환 차단 - ' + (data.failed || []).map(f => f.slot_a + '<->' + f.slot_b + '(' + f.reason + ')').join(', ')); return; } setMsg('슬롯 교환 ' + (data && data.done != null ? data.done : pairs.length) + '건 완료' + (desc ? ' - ' + desc : '')); setSelSlot(null); setPending(null); setSelPairs({}); onReload && onReload(); setTimeout(() => setMsg(null), 4000); }
   function cellEdit(slot, d) { if (d && d.atc_pinned) { setMsg('상비 고정 품목입니다'); setTimeout(() => setMsg(null), 2500); return; } if (selSlot == null) { setSelSlot(slot); return; } if (selSlot === slot) { setSelSlot(null); return; } const da = byAtc[selSlot], db = d; setPending({ pairs: [{ slot_a: selSlot, slot_b: slot }], desc: '슬롯 ' + selSlot + ' ' + (da ? da.drug_name : '(빈 칸)') + '  <->  슬롯 ' + slot + ' ' + (db ? db.drug_name : '(빈 칸)') }); }
   return <div>
-    <style>{'.atc-print-only{display:none}@media print{.atc-print-only{display:block!important}.atc-print-cols{column-count:2;column-gap:8mm}.atc-print-cols>div{break-inside:avoid;-webkit-column-break-inside:avoid}}'}</style>
+    <style>{'.atc-print-only{display:none}@media print{.atc-print-only{display:block!important}.atc-page{page-break-after:always}.atc-page:last-child{page-break-after:auto}.atc-page tr{page-break-inside:avoid}}'}</style>
     {pending && <div className="no-print" onClick={() => setPending(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}><div onClick={e => e.stopPropagation()} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 20, maxWidth: 460, width: '100%' }}><div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 10 }}>슬롯 교환 확인</div><div style={{ fontSize: 12, color: t.textM, lineHeight: 1.6, marginBottom: 18, whiteSpace: 'pre-line' }}>{pending.desc}</div><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button onClick={() => setPending(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>취소</button><button onClick={() => runSwaps(pending.pairs, pending.desc)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent, color: t.navText, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>교환 실행</button></div></div></div>}
     <div className="no-print" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
       <div style={{ fontSize: 18, fontWeight: 800, color: t.text, marginRight: 8 }}>ATC 카세트 배치</div>
@@ -4213,12 +4216,12 @@ function AtcView({ drugs, onReload }) {
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead><tr>{['슬롯', '약품코드', '약품명', '성분명', '유사', '차광', '최근3개월', '직전1개월', '월평균'].map(h => <th key={h} style={{ ...th, textAlign: (h === '최근3개월' || h === '직전1개월' || h === '월평균') ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
         <tbody>{listRows.map((d, i) => <tr key={i} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
-          <td style={{ ...td, fontWeight: 700, color: t.accent, whiteSpace: 'nowrap' }}>{slotLabel(d)}</td>
+          <td style={{ ...td, fontWeight: 700, color: t.accent, whiteSpace: 'nowrap' }}><span style={{ display: 'inline-flex', gap: 3, alignItems: 'center', flexWrap: 'wrap' }}>{slotLabel(d)}{d.atc_pinned && B('상비', t.accentL, t.accent, t.accent)}{d.fsp_slot && B(d.fsp_note || '0.5T', t.greenL, t.green, t.green)}</span></td>
           <td style={{ ...td, textAlign: 'left' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, cursor: 'pointer', fontWeight: 600 }}>{d.drug_code}</span></td>
           <td style={{ ...td, textAlign: 'left' }}>{d.drug_name}</td>
           <td style={{ ...td, textAlign: 'left', color: t.textM, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.ingredient_kr || '-'}</td>
-          <td style={{ ...td, color: d.lasa_type === '모양' ? t.coral : d.lasa_type === '용량' ? t.blue : d.lasa_type === '발음' ? t.amber : t.textL, fontWeight: d.lasa_type ? 700 : 400 }}>{d.lasa_type || '-'}</td>
-          <td style={{ ...td, color: d.storage_light ? t.text : t.textL, fontWeight: d.storage_light ? 700 : 400 }}>{d.storage_light ? '차광' : '-'}</td>
+          <td style={{ ...td, textAlign: 'left' }}>{d.lasa_type === '모양' ? B('모양', t.coral, t.text) : d.lasa_type === '용량' ? B('용량', t.blueL, t.blue, t.blue) : d.lasa_type === '발음' ? B('발음', t.amberL, t.amber, t.amber) : <span style={{ color: t.textL }}>-</span>}</td>
+          <td style={{ ...td, textAlign: 'left' }}>{d.storage_light ? B('차광', t.text, t.navText) : <span style={{ color: t.textL }}>-</span>}</td>
           <td style={{ ...td, textAlign: 'right' }}>{Number(d.recent_3m_usage) || 0}</td>
           <td style={{ ...td, textAlign: 'right' }}>{d.recent_1m_usage == null ? '-' : Number(d.recent_1m_usage)}</td>
           <td style={{ ...td, textAlign: 'right' }}>{d.monthly_avg == null ? '-' : Number(d.monthly_avg)}</td>
@@ -4265,16 +4268,16 @@ function AtcView({ drugs, onReload }) {
       <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginBottom: 4 }}>현재 배정 역검증 (QROKEL125·SBCLP1·LSX)</div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead><tr>{['슬롯', '코드', '약품명', '최근3개월', '소수', '기준 부합'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
-        <tbody>{curFsp.map(({ s, d }, i) => { const r3 = d ? (Number(d.recent_3m_usage) || 0) : 0; const frac = d && (r3 % 1 !== 0); const inTop = d && fspCand.some(c => c.d.drug_code === d.drug_code); return <tr key={i}><td style={td}>{s}</td><td style={td}>{d ? d.drug_code : '-'}</td><td style={td}>{d ? d.drug_name : '-'}</td><td style={{ ...td, textAlign: 'right' }}>{d ? r3 : '-'}</td><td style={td}>{frac ? '소수' : '-'}</td><td style={{ ...td, color: (inTop || frac) ? t.green : t.amber, fontWeight: 700 }}>{d ? ((inTop || frac) ? '부합' : '검토') : '-'}</td></tr>; })}</tbody>
+        <tbody>{curFsp.map(({ s, d }, i) => { const r3 = d ? (Number(d.recent_3m_usage) || 0) : 0; const frac = d && (r3 % 1 !== 0); const inTop = d && fspCand.some(c => c.d.drug_code === d.drug_code); return <tr key={i}><td style={td}>{s}</td><td style={td}>{d ? d.drug_code : '-'}</td><td style={td}>{d ? d.drug_name : '-'}</td><td style={{ ...td, textAlign: 'right' }}>{d ? r3 : '-'}</td><td style={td}>{frac ? '소수' : '-'}</td><td style={{ ...td, color: t.green, fontWeight: 700 }}>{d ? '0.5T 운용 확인됨' : '-'}</td></tr>; })}</tbody>
       </table>
     </div>
     <div className="atc-print-only">
-      <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '4mm' }}>ATC 카세트 배치 목록 (91건 · 가나다순)</div>
-      <div className="atc-print-cols">
-        {slot91Ga.map(({ slot, d }, i) => <div key={i} style={{ fontSize: '8pt', padding: '0.6mm 0', borderBottom: '0.5px solid ' + t.border }}>
-          <b>{slot}</b> · {d.drug_name}{d.lasa_type ? ' [' + d.lasa_type + ']' : ''}{d.storage_light ? ' [차광]' : ''}
-        </div>)}
-      </div>
+      {[0, 1].map(pg => { const half = Math.ceil(slot91Ga.length / 2); const rows = pg === 0 ? slot91Ga.slice(0, half) : slot91Ga.slice(half); return <div key={pg} className="atc-page">
+        <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '3mm' }}>ATC 카세트 배치 목록 ({slot91Ga.length}건 · 가나다순) — {pg + 1}/2</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}><thead><tr>{['슬롯', '약품코드', '약품명', '성분명', '배지'].map(h => <th key={h} style={{ fontSize: '8pt', textAlign: 'left', borderBottom: '0.5pt solid ' + t.border, padding: '1mm 2mm' }}>{h}</th>)}</tr></thead>
+        <tbody>{rows.map(({ slot, d }, i) => <tr key={i}><td style={{ fontSize: '8pt', padding: '0.8mm 2mm', fontWeight: 700 }}>{slot}</td><td style={{ fontSize: '8pt', padding: '0.8mm 2mm' }}>{d.drug_code}</td><td style={{ fontSize: '8pt', padding: '0.8mm 2mm' }}>{d.drug_name}</td><td style={{ fontSize: '7pt', padding: '0.8mm 2mm', color: t.textM }}>{d.ingredient_kr || ''}</td><td style={{ padding: '0.8mm 2mm' }}><span style={{ display: 'inline-flex', gap: 2, flexWrap: 'wrap' }}>{dBadges(d).map((b, bi) => <span key={bi} style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>)}</span></td></tr>)}</tbody></table>
+        <div style={{ fontSize: '8pt', textAlign: 'center', marginTop: '4mm' }}>{pg + 1} / 2</div>
+      </div>; })}
     </div>
   </div>;
 }
