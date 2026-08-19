@@ -945,7 +945,7 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tenant, setTenant] = useState('')
   useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, [])
-  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'emergency', l: '비상조제' }]
+  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'emergency', l: '비상조제' }, { id: 'atc', l: 'ATC' }]
   function nav(id) { sm(id); setMobileOpen(false) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
@@ -4076,9 +4076,153 @@ function RecoveryPage({ onDone }) {
 
 /* ═══ 메인 App ═══ */
 /* SPA 라우트: 화면 식별자 ↔ URL 해시(#menu). 새로고침/직접진입 복원·뒤로가기 동기화와 일관. */
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'emergency', 'register', 'mypage', 'admin', 'archive'];
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'emergency', 'atc', 'register', 'mypage', 'admin', 'archive'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); const m = h.split('/')[0]; return ROUTES.includes(m) ? m : 'dashboard'; }
 function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
+/* ═══ ATC 카세트 배치 관리 (0064: atc_slot·fsp_slot·lasa_type·storage_light, drugs 단일 테이블·조인 없음) ═══ */
+function AtcView({ drugs }) {
+  const { t, open360 } = useTheme();
+  const [sortMode, setSortMode] = useState('슬롯');
+  const assigned = (drugs || []).filter(d => d.atc_slot || d.fsp_slot);
+  const byAtc = {}, byFsp = {};
+  assigned.forEach(d => { if (d.atc_slot) byAtc[String(d.atc_slot)] = d; if (d.fsp_slot) byFsp[String(d.fsp_slot)] = d; });
+  const cs = d => {
+    if (!d) return { bg: t.card, bd: t.border, fg: t.textL };
+    if (d.storage_light) return { bg: t.text, bd: t.text, fg: t.bg };
+    if (d.lasa_type === '모양') return { bg: t.coral, bd: t.coral, fg: t.text };
+    if (d.lasa_type === '용량') return { bg: t.blueL, bd: t.blue, fg: t.text };
+    if (d.lasa_type === '발음') return { bg: t.amberL, bd: t.amber, fg: t.text };
+    return { bg: t.purpleL, bd: t.lavender, fg: t.text };
+  };
+  const Cell = (label, key, byMap, fluid) => {
+    const d = byMap[key]; const s = cs(d); const dash = fluid && !d;
+    return <div key={key} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : (fluid ? '유동(미배정)' : '')}
+      style={{ border: (dash ? '1px dashed ' : '1px solid ') + (dash ? t.textL : s.bd), background: dash ? t.card : s.bg, color: dash ? t.textL : s.fg, borderRadius: 6, padding: '3px 5px', minHeight: 40, cursor: d ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
+      <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.85 }}>{label}</div>
+      <div style={{ fontSize: 9.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d ? d.drug_name : (fluid ? '유동' : '')}</div>
+    </div>;
+  };
+  const Door = (start) => <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 4, border: '1px solid ' + t.borderH, borderRadius: 8, padding: 5, position: 'relative' }}>
+    <div style={{ position: 'absolute', top: 3, left: 'calc(50% - 13px)', width: 26, height: 3, borderRadius: 2, background: t.borderH }} />
+    {Array.from({ length: 8 }, (_, i) => Cell(String(start + i), String(start + i), byAtc, false))}
+  </div>;
+  const slotNum = d => d.atc_slot ? Number(d.atc_slot) : (d.fsp_slot ? 1000 + Number(String(d.fsp_slot).replace('FSP', '')) : 9999);
+  const slotLabel = d => (d.atc_slot && d.fsp_slot) ? (d.atc_slot + ' · ' + d.fsp_slot) : (d.atc_slot || d.fsp_slot || '');
+  const listRows = (() => { const a = [...assigned];
+    if (sortMode === '가나다') a.sort((x, y) => (x.drug_name || '').localeCompare(y.drug_name || '', 'ko'));
+    else if (sortMode === '사용량') a.sort((x, y) => (Number(y.recent_3m_usage) || 0) - (Number(x.recent_3m_usage) || 0));
+    else a.sort((x, y) => slotNum(x) - slotNum(y));
+    return a; })();
+  const slot91 = [];
+  assigned.forEach(d => { if (d.atc_slot) slot91.push({ slot: d.atc_slot, d }); if (d.fsp_slot) slot91.push({ slot: d.fsp_slot, d }); });
+  const slot91Ga = [...slot91].sort((x, y) => (x.d.drug_name || '').localeCompare(y.d.drug_name || '', 'ko'));
+  function dlXlsx(mode) {
+    const src = mode === '슬롯' ? [...slot91].sort((x, y) => (Number(String(x.slot).replace('FSP', '999')) || 0) - (Number(String(y.slot).replace('FSP', '999')) || 0)) : slot91Ga;
+    const ws = XLSX.utils.json_to_sheet(src.map(({ slot, d }) => ({ 슬롯: slot, 약품코드: d.drug_code, 약품명: d.drug_name, 성분명: d.ingredient_kr || '', 유사: d.lasa_type || '', 차광: d.storage_light ? '차광' : '', 최근3개월: d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage), 직전1개월: d.recent_1m_usage == null ? '' : Number(d.recent_1m_usage) })));
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'ATC배치'); XLSX.writeFile(wb, 'ATC배치_' + mode + '_' + new Date().toISOString().split('T')[0] + '.xlsx');
+  }
+  const oral = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용').sort((a, b) => (Number(b.recent_3m_usage) || 0) - (Number(a.recent_3m_usage) || 0));
+  const top88 = oral.slice(0, 88), spare = oral.slice(88, 100);
+  const top88set = new Set(top88.map(d => d.drug_code));
+  const curAtc = new Set(assigned.filter(d => d.atc_slot).map(d => d.drug_code));
+  const excl = [...curAtc].filter(c => !top88set.has(c));
+  const add = top88.filter(d => !curAtc.has(d.drug_code));
+  const fspCand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용').map(d => ({ d, r3: Number(d.recent_3m_usage) || 0, frac: (Number(d.recent_3m_usage) || 0) % 1 !== 0 })).sort((a, b) => (Number(b.frac) - Number(a.frac)) || (b.r3 - a.r3)).slice(0, 3);
+  const curFsp = ['FSP5', 'FSP4', 'FSP2'].map(s => ({ s, d: byFsp[s] }));
+  const th = { textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' };
+  const td = { padding: '5px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border };
+  return <div>
+    <style>{'.atc-print-only{display:none}@media print{.atc-print-only{display:block!important}.atc-print-cols{column-count:2;column-gap:8mm}.atc-print-cols>div{break-inside:avoid;-webkit-column-break-inside:avoid}}'}</style>
+    <div className="no-print" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+      <div style={{ fontSize: 18, fontWeight: 800, color: t.text, marginRight: 8 }}>ATC 카세트 배치</div>
+      <button onClick={() => dlXlsx('가나다')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>엑셀(가나다)</button>
+      <button onClick={() => dlXlsx('슬롯')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>엑셀(슬롯)</button>
+      <button onClick={() => window.print()} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>인쇄</button>
+    </div>
+    <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 8 }}>상단 카세트 (1~80) · 좌측문 8 + 우측문 8</div>
+      {[1, 17, 33, 49, 65].map(start => <div key={start} style={{ display: 'grid', gridTemplateColumns: '1fr 22px 1fr', gap: 4, marginBottom: 6 }}>
+        {Door(start)}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: 5, height: '55%', borderRadius: 3, background: t.border }} /></div>
+        {Door(start + 8)}
+      </div>)}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>FSP 고정식 (FSP1~5)</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 4 }}>
+            {['FSP1', 'FSP2', 'FSP3', 'FSP4', 'FSP5'].map(f => Cell(f, f, byFsp, f === 'FSP1' || f === 'FSP3'))}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>하단 확장 (301~308)</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 4 }}>
+            {[301, 302, 303, 304, 305, 306, 307, 308].map(n => Cell(String(n), String(n), byAtc, false))}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10, fontSize: 10, color: t.textM, alignItems: 'center' }}>
+        <span style={{ background: t.text, color: t.bg, padding: '1px 6px', borderRadius: 3, fontWeight: 700 }}>차광</span>
+        <span style={{ background: t.coral, color: t.text, padding: '1px 6px', borderRadius: 3, fontWeight: 700 }}>모양</span>
+        <span style={{ background: t.blueL, color: t.text, padding: '1px 6px', borderRadius: 3, border: '1px solid ' + t.blue, fontWeight: 700 }}>용량</span>
+        <span style={{ background: t.amberL, color: t.text, padding: '1px 6px', borderRadius: 3, border: '1px solid ' + t.amber, fontWeight: 700 }}>발음</span>
+        <span style={{ background: t.purpleL, color: t.text, padding: '1px 6px', borderRadius: 3, border: '1px solid ' + t.lavender, fontWeight: 700 }}>일반</span>
+        <span style={{ color: t.textL }}>점선 = 유동</span>
+      </div>
+    </div>
+    <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginRight: 8 }}>배치 목록 ({listRows.length})</div>
+        {['가나다', '슬롯', '사용량'].map(m => <button key={m} onClick={() => setSortMode(m)} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + (sortMode === m ? t.accent : t.border), background: sortMode === m ? t.accentL : t.card, color: sortMode === m ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: sortMode === m ? 700 : 500 }}>{m}순</button>)}
+      </div>
+      <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead><tr>{['슬롯', '약품코드', '약품명', '성분명', '유사', '차광', '최근3개월', '직전1개월', '월평균'].map(h => <th key={h} style={{ ...th, textAlign: (h === '최근3개월' || h === '직전1개월' || h === '월평균') ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+        <tbody>{listRows.map((d, i) => <tr key={i} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
+          <td style={{ ...td, fontWeight: 700, color: t.accent, whiteSpace: 'nowrap' }}>{slotLabel(d)}</td>
+          <td style={td}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, cursor: 'pointer', fontWeight: 600 }}>{d.drug_code}</span></td>
+          <td style={td}>{d.drug_name}</td>
+          <td style={{ ...td, color: t.textM, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.ingredient_kr || '-'}</td>
+          <td style={{ ...td, color: d.lasa_type === '모양' ? t.coral : d.lasa_type === '용량' ? t.blue : d.lasa_type === '발음' ? t.amber : t.textL, fontWeight: d.lasa_type ? 700 : 400 }}>{d.lasa_type || '-'}</td>
+          <td style={{ ...td, color: d.storage_light ? t.text : t.textL, fontWeight: d.storage_light ? 700 : 400 }}>{d.storage_light ? '차광' : '-'}</td>
+          <td style={{ ...td, textAlign: 'right' }}>{Number(d.recent_3m_usage) || 0}</td>
+          <td style={{ ...td, textAlign: 'right' }}>{d.recent_1m_usage == null ? '-' : Number(d.recent_1m_usage)}</td>
+          <td style={{ ...td, textAlign: 'right' }}>{d.monthly_avg == null ? '-' : Number(d.monthly_avg)}</td>
+        </tr>)}</tbody>
+      </table></div>
+    </div>
+    <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>카세트 88 자동 제안 (경구제·사용 · 최근3개월 내림차순)</div>
+      <div style={{ fontSize: 11, color: t.textL, marginBottom: 8 }}>사용량 기준값에 수기 입력분이 포함되어 있습니다. 9월 마감 후 재산출을 권장합니다.</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.red, marginBottom: 4 }}>제외 후보 ({excl.length}) — 현재 배정이나 상위 88 밖</div>
+          <div style={{ fontSize: 11, color: t.textM, wordBreak: 'break-all' }}>{excl.length ? excl.join(', ') : '없음'}</div></div>
+        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.green, marginBottom: 4 }}>추가 후보 ({add.length}) — 상위 88인데 미배정</div>
+          <div style={{ fontSize: 11, color: t.textM, wordBreak: 'break-all' }}>{add.length ? (add.slice(0, 20).map(d => d.drug_code + '(' + (Number(d.recent_3m_usage) || 0) + ')').join(', ') + (add.length > 20 ? ' 외 ' + (add.length - 20) : '')) : '없음'}</div></div>
+      </div>
+      <div style={{ fontSize: 10, color: t.textL, marginTop: 6, wordBreak: 'break-all' }}>예비(89~100위): {spare.map(d => d.drug_code).join(', ')}</div>
+    </div>
+    <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>FSP 제안 (FSP2·4·5 · 소수 사용량 우선 → 최근3개월)</div>
+      <div style={{ fontSize: 11, color: t.textL, marginBottom: 8 }}>FSP1·FSP3은 유동이므로 제외.</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 10 }}>
+        <thead><tr>{['제안순위', '코드', '약품명', '최근3개월', '소수여부'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+        <tbody>{fspCand.map((x, i) => <tr key={i}><td style={td}>{i + 1}</td><td style={td}>{x.d.drug_code}</td><td style={td}>{x.d.drug_name}</td><td style={{ ...td, textAlign: 'right' }}>{x.r3}</td><td style={{ ...td, color: x.frac ? t.green : t.textL }}>{x.frac ? '소수' : '-'}</td></tr>)}</tbody>
+      </table>
+      <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginBottom: 4 }}>현재 배정 역검증 (QROKEL125·SBCLP1·LSX)</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead><tr>{['슬롯', '코드', '약품명', '최근3개월', '소수', '기준 부합'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+        <tbody>{curFsp.map(({ s, d }, i) => { const r3 = d ? (Number(d.recent_3m_usage) || 0) : 0; const frac = d && (r3 % 1 !== 0); const inTop = d && fspCand.some(c => c.d.drug_code === d.drug_code); return <tr key={i}><td style={td}>{s}</td><td style={td}>{d ? d.drug_code : '-'}</td><td style={td}>{d ? d.drug_name : '-'}</td><td style={{ ...td, textAlign: 'right' }}>{d ? r3 : '-'}</td><td style={td}>{frac ? '소수' : '-'}</td><td style={{ ...td, color: (inTop || frac) ? t.green : t.amber, fontWeight: 700 }}>{d ? ((inTop || frac) ? '부합' : '검토') : '-'}</td></tr>; })}</tbody>
+      </table>
+    </div>
+    <div className="atc-print-only">
+      <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '4mm' }}>ATC 카세트 배치 목록 (91건 · 가나다순)</div>
+      <div className="atc-print-cols">
+        {slot91Ga.map(({ slot, d }, i) => <div key={i} style={{ fontSize: '8pt', padding: '0.6mm 0', borderBottom: '0.5px solid ' + t.border }}>
+          <b>{slot}</b> · {d.drug_name}{d.lasa_type ? ' [' + d.lasa_type + ']' : ''}{d.storage_light ? ' [차광]' : ''}
+        </div>)}
+      </div>
+    </div>
+  </div>;
+}
 export default function App() {
   const [dark, setDark] = useState(false)
   const [user, setUser] = useState(null)
@@ -4308,6 +4452,7 @@ export default function App() {
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
         {menu === 'report' && <Report drugs={drugs} onNav={handleNav} />}
         {menu === 'emergency' && <EmergencyDispense />}
+        {menu === 'atc' && <AtcView drugs={drugs} />}
         {menu === 'register' && <DrugRegister onRefresh={load} drugs={drugs} />}
         {menu === 'mypage' && <MyPage profile={profile} onProfileUpdated={loadProfile} />}
         {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
