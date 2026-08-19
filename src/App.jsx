@@ -4177,6 +4177,7 @@ function AtcView({ drugs, onReload }) {
       {canEdit && <button onClick={() => { setEditMode(v => !v); setSelSlot(null); }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: editMode ? t.accentL : t.card, color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{editMode ? '편집 종료' : '편집'}</button>}
       {editMode && <span style={{ fontSize: 10, color: t.textM }}>칸을 두 번 클릭해 교환{selSlot ? ' · 선택 ' + selSlot : ''}</span>}
       {msg && <span style={{ fontSize: 11, fontWeight: 600, color: t.accent }}>{msg}</span>}
+      <span style={{ fontSize: 10, color: t.textL }}>색상 출력을 위해 인쇄 설정에서 「배경 그래픽」을 켜주세요</span>
     </div>
     <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 8 }}>상단 카세트 (1~80) · 좌측문 8 + 우측문 8</div>
@@ -4272,10 +4273,10 @@ function AtcView({ drugs, onReload }) {
       </table>
     </div>
     <div className="atc-print-only">
-      {[0, 1].map(pg => { const _sk = x => { const nn = Number(x.slot); return isNaN(nn) ? 9000 : nn; }; const _p1 = slot91.filter(x => { const nn = Number(x.slot); return nn >= 1 && nn <= 40; }).sort((a, b) => _sk(a) - _sk(b)); const _p2 = slot91.filter(x => { const nn = Number(x.slot); return !(nn >= 1 && nn <= 40); }).sort((a, b) => _sk(a) - _sk(b)); const rows = pg === 0 ? _p1 : _p2; return <div key={pg} className="atc-page">
-        <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '3mm' }}>ATC 카세트 배치 목록 ({slot91.length}건) — {pg === 0 ? '슬롯 1~40' : '슬롯 41~80·확장·FSP'} · {pg + 1}/2</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}><thead><tr>{['슬롯', '약품코드', '약품명', '성분명', '배지'].map(h => <th key={h} style={{ fontSize: '8pt', textAlign: 'left', borderBottom: '0.5pt solid ' + t.border, padding: '1mm 2mm' }}>{h}</th>)}</tr></thead>
-        <tbody>{rows.map(({ slot, d }, i) => <tr key={i}><td style={{ fontSize: '8pt', padding: '0.8mm 2mm', fontWeight: 700 }}>{slot}</td><td style={{ fontSize: '8pt', padding: '0.8mm 2mm' }}>{d.drug_code}</td><td style={{ fontSize: '8pt', padding: '0.8mm 2mm' }}>{d.drug_name}</td><td style={{ fontSize: '7pt', padding: '0.8mm 2mm', color: t.textM }}>{d.ingredient_kr || ''}</td><td style={{ padding: '0.8mm 2mm' }}><span style={{ display: 'inline-flex', gap: 2, flexWrap: 'wrap' }}>{dBadges(d).map((b, bi) => <span key={bi} style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>)}</span></td></tr>)}</tbody></table>
+      {[0, 1].map(pg => { const rows = pg === 0 ? slot91Ga.slice(0, 46) : slot91Ga.slice(46); return <div key={pg} className="atc-page">
+        <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '3mm' }}>ATC 카세트 배치 목록 ({slot91.length}건 · 가나다순) · {pg + 1}/2</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}><thead><tr>{[['약품명', '30%'], ['성분명', '34%'], ['슬롯', '14%'], ['배지', '22%']].map(([h, w]) => <th key={h} style={{ fontSize: '8pt', textAlign: 'left', borderBottom: '0.5pt solid ' + t.border, padding: '1mm 2mm', width: w }}>{h}</th>)}</tr></thead>
+        <tbody>{rows.map(({ slot, d }, i) => <tr key={i}><td style={{ fontSize: '9pt', padding: '1mm 2mm', fontWeight: 600 }}>{d.drug_name}</td><td style={{ fontSize: '8pt', padding: '1mm 2mm', color: t.textM }}>{d.ingredient_kr || ''}</td><td style={{ fontSize: '8pt', padding: '1mm 2mm', fontWeight: 700 }}>{slot}</td><td style={{ padding: '1mm 2mm' }}><span style={{ display: 'inline-flex', gap: 2, flexWrap: 'wrap' }}>{dBadges(d).map((b, bi) => <span key={bi} style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>)}</span></td></tr>)}</tbody></table>
         <div style={{ fontSize: '8pt', textAlign: 'center', marginTop: '4mm' }}>{pg + 1} / 2</div>
       </div>; })}
     </div>
