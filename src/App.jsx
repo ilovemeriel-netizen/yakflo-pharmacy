@@ -4163,20 +4163,20 @@ function AtcView({ drugs, onReload }) {
   const newIn = top88b.filter(d => !curCodes.has(d.drug_code));
   const pushOut = [...curCodes].filter(cc => !top88bSet.has(cc));
   const [viewMode, setViewMode] = useState('current');
-  const FIXSET = new Set(['SANTLTRPL', 'STCNE', 'AMNP5', 'LSX', 'SBCLP1', 'QROKEL125']);
+  const FIXSET = new Set(['LSX', 'SBCLP1', 'QROKEL125']); /* FSP만 제외 — 상비는 사용량순 산정 포함(잔류만 보장) */
   const propCand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d) && !FIXSET.has(d.drug_code)).sort((a, b) => usageScore(b) - usageScore(a));
-  const byCode = cc => (drugs || []).find(d => d.drug_code === cc) || null;
-  const pIdeal = {}; pIdeal['1'] = byCode('SANTLTRPL'); pIdeal['2'] = byCode('STCNE'); pIdeal['3'] = byCode('AMNP5');
-  for (let x = 301; x <= 308; x++) pIdeal[String(x)] = propCand[x - 301] || null;
-  for (let sl = 4; sl <= 80; sl++) pIdeal[String(sl)] = propCand[88 - sl] || null;
+  const ranked = [...propCand]; ['SANTLTRPL', 'STCNE', 'AMNP5'].forEach(pc => { const ix = ranked.findIndex(d => d.drug_code === pc); if (ix >= 88) { const mv = ranked.splice(ix, 1)[0]; ranked.splice(87, 0, mv); } }); /* top88 잔류 보장 */
+  const pIdeal = {};
+  for (let x = 301; x <= 308; x++) pIdeal[String(x)] = ranked[x - 301] || null;
+  for (let sl = 1; sl <= 80; sl++) pIdeal[String(sl)] = ranked[88 - sl] || null;
   const rowBand = r => { const u = []; for (let k = 1; k <= 16; k++) { const d = pIdeal[String(r * 16 + k)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; };
   const bandMax = Math.max(1, rowBand(0).mx, rowBand(1).mx, rowBand(2).mx, rowBand(3).mx, rowBand(4).mx);
   const expBand = (() => { const u = []; for (let x = 301; x <= 308; x++) { const d = pIdeal[String(x)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; })();
-  const top85p = propCand.slice(0, 85); const yebi12 = propCand.slice(85, 97);
-  const t88p = new Set([...top85p.map(d => d.drug_code), 'SANTLTRPL', 'STCNE', 'AMNP5']);
+  const top88r = ranked.slice(0, 88); const yebi12 = ranked.slice(88, 100);
+  const t88p = new Set(top88r.map(d => d.drug_code));
   const curCodes2 = new Set((drugs || []).filter(d => d.atc_slot).map(d => d.drug_code));
-  const aNew = top85p.filter(d => !curCodes2.has(d.drug_code));
-  const bOut = [...curCodes2].filter(cc => !t88p.has(cc) && !['SANTLTRPL', 'STCNE', 'AMNP5'].includes(cc));
+  const aNew = top88r.filter(d => !curCodes2.has(d.drug_code));
+  const bOut = [...curCodes2].filter(cc => !t88p.has(cc));
   const cKeep = [...curCodes2].filter(cc => t88p.has(cc));
   const pcs = (d, exp) => { if (!d) return { bg: t.card, bd: t.border, fg: t.textL }; if (d.atc_pinned) return { bg: t.greenL, bd: t.green, fg: t.green }; if (d.storage_light) return { bg: t.text, bd: t.text, fg: t.navText }; if (d.lasa_type === '모양') return { bg: t.coral, bd: t.coral, fg: t.text }; if (d.lasa_type === '용량') return { bg: t.blueL, bd: t.blue, fg: t.blue }; if (d.lasa_type === '발음') return { bg: t.amberL, bd: t.amber, fg: t.amber }; if (exp) return { bg: t.bg, bd: t.border, fg: t.textM }; return { bg: t.purpleL, bd: t.border, fg: t.accent }; };
   const PCell = (slot, exp) => { const d = pIdeal[slot]; const s = pcs(d, exp); return <div key={slot} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : ''} style={{ border: '1px solid ' + s.bd, background: s.bg, color: s.fg, borderRadius: 4, padding: '2px 4px', height: 34, boxSizing: 'border-box', cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ fontSize: 9.5, opacity: 0.62 }}>{slot}</div><div style={{ fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d ? d.drug_name : ''}</div></div>; };  const th = { textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' };
