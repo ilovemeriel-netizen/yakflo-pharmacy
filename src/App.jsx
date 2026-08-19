@@ -4083,6 +4083,10 @@ function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) ===
 function AtcView({ drugs }) {
   const { t, open360 } = useTheme();
   const [sortMode, setSortMode] = useState('슬롯');
+  const [q, setQ] = useState('');
+  const usageScore = d => Number(d && d.recent_3m_usage) || 0; /* 순위 지표 — 현재 recent_3m 단독. 향후 전환 대비 분리 */
+  const isSolid = d => { const n = String((d && d.drug_name) || ''); if (/시럽|현탁|드롭|엘릭서/.test(n)) return false; if (/(액|산|과립)$/.test(n)) return false; return /정|캡슐|캅셀/.test(n); };
+  const matches = d => { const kw = q.trim().toLowerCase(); if (!kw) return true; if (!d) return false; return String(d.drug_code||'').toLowerCase().includes(kw) || String(d.drug_name||'').toLowerCase().includes(kw) || String(d.ingredient_kr||'').toLowerCase().includes(kw); };
   const assigned = (drugs || []).filter(d => d.atc_slot || d.fsp_slot);
   const byAtc = {}, byFsp = {};
   assigned.forEach(d => { if (d.atc_slot) byAtc[String(d.atc_slot)] = d; if (d.fsp_slot) byFsp[String(d.fsp_slot)] = d; });
@@ -4095,10 +4099,10 @@ function AtcView({ drugs }) {
     return { bg: t.purpleL, bd: t.lavender, fg: t.text };
   };
   const Cell = (label, key, byMap, fluid) => {
-    const d = byMap[key]; const s = cs(d); const dash = fluid && !d;
+    const d = byMap[key]; const s = cs(d); const dash = fluid && !d; const active = q.trim() !== ''; const hit = active && d && matches(d); const dim = active && !hit; const badge = (key === 'FSP2' || key === 'FSP4') ? '0.5T' : null;
     return <div key={key} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : (fluid ? '유동(미배정)' : '')}
-      style={{ border: (dash ? '1px dashed ' : '1px solid ') + (dash ? t.textL : s.bd), background: dash ? t.card : s.bg, color: dash ? t.textL : s.fg, borderRadius: 6, padding: '3px 5px', minHeight: 40, cursor: d ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
-      <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.85 }}>{label}</div>
+      style={{ border: hit ? '2px solid ' + t.accent : ((dash ? '1px dashed ' : '1px solid ') + (dash ? t.textL : s.bd)), background: dash ? t.card : s.bg, color: dash ? t.textL : s.fg, borderRadius: 6, padding: '3px 5px', minHeight: 40, opacity: dim ? 0.3 : 1, cursor: d ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
+      <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.85, display: 'flex', justifyContent: 'space-between', gap: 3 }}><span>{label}</span>{badge && <span style={{ fontSize: 7.5, fontWeight: 700, padding: '0 3px', borderRadius: 3, border: '1px solid ' + t.accent, color: t.accent, background: t.card }}>{badge}</span>}</div>
       <div style={{ fontSize: 9.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d ? d.drug_name : (fluid ? '유동' : '')}</div>
     </div>;
   };
@@ -4108,9 +4112,9 @@ function AtcView({ drugs }) {
   </div>;
   const slotNum = d => d.atc_slot ? Number(d.atc_slot) : (d.fsp_slot ? 1000 + Number(String(d.fsp_slot).replace('FSP', '')) : 9999);
   const slotLabel = d => (d.atc_slot && d.fsp_slot) ? (d.atc_slot + ' · ' + d.fsp_slot) : (d.atc_slot || d.fsp_slot || '');
-  const listRows = (() => { const a = [...assigned];
+  const listRows = (() => { const a = assigned.filter(matches);
     if (sortMode === '가나다') a.sort((x, y) => (x.drug_name || '').localeCompare(y.drug_name || '', 'ko'));
-    else if (sortMode === '사용량') a.sort((x, y) => (Number(y.recent_3m_usage) || 0) - (Number(x.recent_3m_usage) || 0));
+    else if (sortMode === '사용량') a.sort((x, y) => usageScore(y) - usageScore(x));
     else a.sort((x, y) => slotNum(x) - slotNum(y));
     return a; })();
   const slot91 = [];
@@ -4121,13 +4125,13 @@ function AtcView({ drugs }) {
     const ws = XLSX.utils.json_to_sheet(src.map(({ slot, d }) => ({ 슬롯: slot, 약품코드: d.drug_code, 약품명: d.drug_name, 성분명: d.ingredient_kr || '', 유사: d.lasa_type || '', 차광: d.storage_light ? '차광' : '', 최근3개월: d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage), 직전1개월: d.recent_1m_usage == null ? '' : Number(d.recent_1m_usage) })));
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'ATC배치'); XLSX.writeFile(wb, 'ATC배치_' + mode + '_' + new Date().toISOString().split('T')[0] + '.xlsx');
   }
-  const oral = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용').sort((a, b) => (Number(b.recent_3m_usage) || 0) - (Number(a.recent_3m_usage) || 0));
+  const oral = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d)).sort((a, b) => usageScore(b) - usageScore(a));
   const top88 = oral.slice(0, 88), spare = oral.slice(88, 100);
   const top88set = new Set(top88.map(d => d.drug_code));
   const curAtc = new Set(assigned.filter(d => d.atc_slot).map(d => d.drug_code));
   const excl = [...curAtc].filter(c => !top88set.has(c));
   const add = top88.filter(d => !curAtc.has(d.drug_code));
-  const fspCand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용').map(d => ({ d, r3: Number(d.recent_3m_usage) || 0, frac: (Number(d.recent_3m_usage) || 0) % 1 !== 0 })).sort((a, b) => (Number(b.frac) - Number(a.frac)) || (b.r3 - a.r3)).slice(0, 3);
+  const fspCand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d)).map(d => ({ d, r3: usageScore(d), frac: usageScore(d) % 1 !== 0 })).sort((a, b) => (Number(b.frac) - Number(a.frac)) || (b.r3 - a.r3)).slice(0, 3);
   const curFsp = ['FSP5', 'FSP4', 'FSP2'].map(s => ({ s, d: byFsp[s] }));
   const th = { textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' };
   const td = { padding: '5px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border };
@@ -4135,6 +4139,7 @@ function AtcView({ drugs }) {
     <style>{'.atc-print-only{display:none}@media print{.atc-print-only{display:block!important}.atc-print-cols{column-count:2;column-gap:8mm}.atc-print-cols>div{break-inside:avoid;-webkit-column-break-inside:avoid}}'}</style>
     <div className="no-print" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
       <div style={{ fontSize: 18, fontWeight: 800, color: t.text, marginRight: 8 }}>ATC 카세트 배치</div>
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="약품코드·약품명·성분명 검색..." style={{ minWidth: 220, padding: '7px 12px', border: '1px solid ' + t.border, borderRadius: 10, fontSize: 12, outline: 'none', background: t.bg, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
       <button onClick={() => dlXlsx('가나다')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>엑셀(가나다)</button>
       <button onClick={() => dlXlsx('슬롯')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>엑셀(슬롯)</button>
       <button onClick={() => window.print()} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>인쇄</button>
@@ -4178,9 +4183,9 @@ function AtcView({ drugs }) {
         <thead><tr>{['슬롯', '약품코드', '약품명', '성분명', '유사', '차광', '최근3개월', '직전1개월', '월평균'].map(h => <th key={h} style={{ ...th, textAlign: (h === '최근3개월' || h === '직전1개월' || h === '월평균') ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
         <tbody>{listRows.map((d, i) => <tr key={i} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
           <td style={{ ...td, fontWeight: 700, color: t.accent, whiteSpace: 'nowrap' }}>{slotLabel(d)}</td>
-          <td style={td}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, cursor: 'pointer', fontWeight: 600 }}>{d.drug_code}</span></td>
-          <td style={td}>{d.drug_name}</td>
-          <td style={{ ...td, color: t.textM, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.ingredient_kr || '-'}</td>
+          <td style={{ ...td, textAlign: 'left' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, cursor: 'pointer', fontWeight: 600 }}>{d.drug_code}</span></td>
+          <td style={{ ...td, textAlign: 'left' }}>{d.drug_name}</td>
+          <td style={{ ...td, textAlign: 'left', color: t.textM, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.ingredient_kr || '-'}</td>
           <td style={{ ...td, color: d.lasa_type === '모양' ? t.coral : d.lasa_type === '용량' ? t.blue : d.lasa_type === '발음' ? t.amber : t.textL, fontWeight: d.lasa_type ? 700 : 400 }}>{d.lasa_type || '-'}</td>
           <td style={{ ...td, color: d.storage_light ? t.text : t.textL, fontWeight: d.storage_light ? 700 : 400 }}>{d.storage_light ? '차광' : '-'}</td>
           <td style={{ ...td, textAlign: 'right' }}>{Number(d.recent_3m_usage) || 0}</td>
