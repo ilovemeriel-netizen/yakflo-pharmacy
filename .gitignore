@@ -56,3 +56,7 @@ html/
 *_backup_*.csv
 drugs_usage_backup_*.csv
 safety_stock_backup_*.csv
+
+# ── ATC 카세트 배치 적재/검토 자료 (약품 데이터 포함, 커밋 금지) ──
+ATC_배치목록_*.csv
+ATC_배치목록_*.xlsx
