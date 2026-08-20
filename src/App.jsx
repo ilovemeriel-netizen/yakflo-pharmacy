@@ -1767,6 +1767,35 @@ function StandardTable({ cols, TS, sk, sd, setSort, hf, t, grid, layout, colWidt
     {children}
   </table></HScroll>;
 }
+/* ATC 슬롯 정렬키(숫자): 카세트 1~80 → 확장 301~308 → FSP5~1(1001~1005). 문자열정렬 금지 */
+function atcSlotKey(s) { s = String(s == null ? '' : s); if (/^FSP/i.test(s)) { const n = Number(s.replace(/FSP/i, '')); return Number.isFinite(n) ? 1000 + (6 - n) : 1099; } const n = Number(s); return Number.isFinite(n) ? n : 9999; }
+/* ATC 공통 표: 헤더 필터(고유값 자동수집)+삼각형 정렬(전 열)+table-layout:fixed. rows=데이터, cols=[{k,h,align,filter,sticky,plain,render}]. */
+function AtcTable({ t, cols, rows, minWidth, colWidths, resetable }) {
+  const first = (cols.find(c => c.k) || {}).k || '';
+  const { so, TS, sk, sd, setSort } = useSort(first);
+  const [filters, setFilters] = useState({});
+  const [page, setPage] = useState(1);
+  const PP = 50;
+  const _u = arr => [...new Set(arr.filter(v => v != null && String(v).trim() !== ''))];
+  const hf = {};
+  cols.forEach(c => { if (c.filter) hf[c.k] = { items: _u(rows.map(r => r[c.k])).map(String).sort((a, b) => a.localeCompare(b, 'ko')), value: filters[c.k] != null ? filters[c.k] : null, on: v => { setFilters(f => { const n = { ...f }; if (v) n[c.k] = v; else delete n[c.k]; return n; }); setPage(1); } }; });
+  let list = rows.filter(r => Object.keys(filters).every(k => String(r[k]) === String(filters[k])));
+  list = so(list);
+  const tp = Math.max(1, Math.ceil(list.length / PP));
+  const pg = Math.min(page, tp);
+  const paged = list.slice((pg - 1) * PP, pg * PP);
+  const active = Object.keys(filters).length + ((sk !== first || sd !== 'asc') ? 1 : 0);
+  const showReset = resetable && rows.length >= 10 && active > 0;
+  const stdCols = cols.map(c => ({ k: c.k, h: c.h, plain: c.plain, sticky: c.sticky, th: { textAlign: c.align || 'left', whiteSpace: 'nowrap', ...(c.th || {}) } }));
+  const td = { padding: '5px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border };
+  return <div>
+    {showReset && <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}><button onClick={() => { setFilters({}); setSort(first, 'asc'); setPage(1); }} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent + '12', color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>필터 초기화 ({active})</button></div>}
+    <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={(k, sdv) => { setSort(k, sdv); setPage(1); }} hf={hf} layout="fixed" minWidth={minWidth} colWidths={colWidths} hscroll={{ noLabel: true, ends: true }} cols={stdCols}>
+      <tbody>{!paged.length ? <tr><td colSpan={cols.length} style={{ padding: 20, textAlign: 'center', color: t.textL }}>없음</td></tr> : paged.map((r, i) => <tr key={i}>{cols.map(c => <td key={c.k} style={{ ...td, textAlign: c.align || 'left', ...(c.sticky ? { position: 'sticky', left: c.sticky.left, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border } : {}), ...(c.tdStyle || {}) }}>{c.render ? c.render(r) : (r[c.k] == null ? '-' : r[c.k])}</td>)}</tr>)}</tbody>
+    </StandardTable>
+    {tp > 1 && <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 8 }}><button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pg <= 1} style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: t.card, color: pg <= 1 ? t.textL : t.textM, cursor: pg <= 1 ? 'default' : 'pointer', fontSize: 11, fontWeight: 700 }}>이전</button><span style={{ fontSize: 11, color: t.textM }}>{pg} / {tp}</span><button onClick={() => setPage(p => Math.min(tp, p + 1))} disabled={pg >= tp} style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: t.card, color: pg >= tp ? t.textL : t.textM, cursor: pg >= tp ? 'default' : 'pointer', fontSize: 11, fontWeight: 700 }}>다음</button></div>}
+  </div>;
+}
 function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}){
   const{t,memberRole,profile}=useTheme();const canDispose=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
@@ -4082,7 +4111,11 @@ function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) ===
 /* ═══ ATC 카세트 배치 관리 (0064: atc_slot·fsp_slot·lasa_type·storage_light, drugs 단일 테이블·조인 없음) ═══ */
 function AtcView({ drugs, onReload }) {
   const { t, open360, memberRole, profile } = useTheme();
-  const [sortMode, setSortMode] = useState('슬롯');
+  const { so: atcSo, TS: atcTS, sk: atcSk, sd: atcSd, setSort: atcSetSort } = useSort('_slotkey', 'asc');
+  const [atcPage, setAtcPage] = useState(1);
+  const [atcLasa, setAtcLasa] = useState('전체');
+  const [atcLight, setAtcLight] = useState('전체');
+  const [atcKind, setAtcKind] = useState('전체');
   const [q, setQ] = useState('');
   const usageScore = d => Number(d && d.recent_3m_usage) || 0; /* 순위 지표 — 현재 recent_3m 단독. 향후 전환 대비 분리 */
   const isSolid = d => { const n = String((d && d.drug_name) || ''); if (/시럽|현탁|드롭|엘릭서/.test(n)) return false; if (/(액|산|과립)$/.test(n)) return false; return /정|캡슐|캅셀/.test(n); };
@@ -4101,9 +4134,9 @@ function AtcView({ drugs, onReload }) {
   const Cell = (label, key, byMap, fluid, editable) => {
     const d = byMap[key]; const s = cs(d); const dash = fluid && !d; const active = q.trim() !== ''; const hit = active && d && matches(d); const dim = active && !hit; const badge = (key === 'FSP2' || key === 'FSP4') ? '0.5T' : null; const sel = editMode && editable && selSlot === key;
     return <div key={key} onClick={() => { if (editMode && editable) cellEdit(key, d); else if (d && open360) open360(d); }} title={d ? d.drug_name : (fluid ? '유동(미배정)' : '')}
-      style={{ border: (sel || hit) ? '2px solid ' + t.accent : ((dash ? '1px dashed ' : '1px solid ') + (dash ? t.textL : s.bd)), background: sel ? t.accentL : (dash ? t.card : s.bg), color: dash ? t.textL : s.fg, borderRadius: 6, padding: '3px 5px', minHeight: 40, opacity: dim ? 0.3 : 1, cursor: (d || (editMode && editable)) ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
+      style={{ border: (sel || hit) ? '2px solid ' + t.accent : ((dash ? '1px dashed ' : '1px solid ') + (dash ? t.textL : s.bd)), background: sel ? t.accentL : (dash ? t.card : s.bg), color: dash ? t.textL : s.fg, borderRadius: 6, padding: '3px 5px', minHeight: 46, opacity: dim ? 0.3 : 1, cursor: (d || (editMode && editable)) ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
       <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.85, display: 'flex', justifyContent: 'space-between', gap: 3, alignItems: 'center' }}><span>{label}</span><span style={{ display: 'inline-flex', gap: 2, flexWrap: 'wrap' }}>{d && dBadges(d).map((b, bi) => <span key={bi} style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>)}</span></div>
-      <div style={{ fontSize: 9.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d ? d.drug_name : (fluid ? '유동' : '')}</div>
+      <div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflow: 'hidden' }}>{d ? d.drug_name : (fluid ? '유동' : '')}</div>
     </div>;
   };
   const Door = (start) => <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 4, border: '1px solid ' + t.borderH, borderRadius: 8, padding: 5, position: 'relative' }}>
@@ -4111,15 +4144,26 @@ function AtcView({ drugs, onReload }) {
     {Array.from({ length: 8 }, (_, i) => Cell(String(start + i), String(start + i), byAtc, false, true))}
   </div>;
   const slotNum = d => d.atc_slot ? Number(d.atc_slot) : (d.fsp_slot ? 1000 + Number(String(d.fsp_slot).replace('FSP', '')) : 9999);
-  const slotLabel = d => { const p = []; if (d.atc_slot) p.push(d.atc_slot + ' (1T)'); if (d.fsp_slot) p.push(d.fsp_slot + ' (' + (d.fsp_note || '0.5T') + ')'); return p.join(' · '); };
+  const slotLabel = d => { const p = []; if (d.atc_slot) p.push(d.atc_slot + ' (1T)'); if (d.fsp_slot) p.push(d.fsp_slot + (d.fsp_note ? ' (' + d.fsp_note + ')' : '')); return p.join(' · '); };
   const badgeStyle = (bg, fg, bd) => ({ fontSize: 8, fontWeight: 700, padding: '0 4px', borderRadius: 3, background: bg, color: fg, border: bd ? '1px solid ' + bd : '1px solid transparent', whiteSpace: 'nowrap', lineHeight: 1.5, display: 'inline-block' });
   const B = (x, bg, fg, bd) => <span style={badgeStyle(bg, fg, bd)}>{x}</span>;
-  const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }); if (d.storage_light) a.push({ x: '차광', bg: t.text, fg: t.navText }); if (d.lasa_type === '모양') a.push({ x: '모양', bg: t.coral, fg: t.text }); if (d.lasa_type === '용량') a.push({ x: '용량', bg: t.blueL, fg: t.blue, bd: t.blue }); if (d.lasa_type === '발음') a.push({ x: '발음', bg: t.amberL, fg: t.amber, bd: t.amber }); if (d.fsp_slot) a.push({ x: d.fsp_note || '0.5T', bg: t.greenL, fg: t.green, bd: t.green }); return a; };
-  const listRows = (() => { const ent = []; assigned.filter(matches).forEach(d => { if (d.atc_slot) ent.push({ slot: d.atc_slot, d, fsp: false }); if (d.fsp_slot) ent.push({ slot: d.fsp_slot, d, fsp: true }); }); const sk = e => e.fsp ? 1000 + Number(String(e.slot).replace('FSP', '')) : Number(e.slot);
-    if (sortMode === '가나다') ent.sort((x, y) => ((x.d.drug_name || '').localeCompare(y.d.drug_name || '', 'ko')) || (sk(x) - sk(y)));
-    else if (sortMode === '사용량') ent.sort((x, y) => (usageScore(y.d) - usageScore(x.d)) || (sk(x) - sk(y)));
-    else ent.sort((x, y) => sk(x) - sk(y));
-    return ent; })();
+  const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }); if (d.storage_light) a.push({ x: '차광', bg: t.text, fg: t.navText }); if (d.lasa_type === '모양') a.push({ x: '모양', bg: t.coral, fg: t.text }); if (d.lasa_type === '용량') a.push({ x: '용량', bg: t.blueL, fg: t.blue, bd: t.blue }); if (d.lasa_type === '발음') a.push({ x: '발음', bg: t.amberL, fg: t.amber, bd: t.amber }); if (d.fsp_slot && d.fsp_note) a.push({ x: d.fsp_note, bg: t.greenL, fg: t.green, bd: t.green }); return a; };
+  /* 슬롯 정렬키(숫자): 카세트 1~80 → 확장 301~308 → FSP5~1(1001~1005). 문자열정렬 금지 */
+  const mkRow = (slot, d, fsp) => ({ slot, d, fsp, _slotkey: fsp ? 1000 + (6 - Number(String(slot).replace('FSP', ''))) : Number(slot), drug_code: d.drug_code, drug_name: d.drug_name, ingredient_kr: d.ingredient_kr || '', lasa: d.lasa_type || '-', light: d.storage_light ? '차광' : '-', kind: fsp ? 'FSP' : '카세트', r3: Number(d.recent_3m_usage) || 0, r1: d.recent_1m_usage == null ? null : Number(d.recent_1m_usage), mavg: d.monthly_avg == null ? null : Number(d.monthly_avg) });
+  const atcRows = (() => { const ent = []; assigned.filter(matches).forEach(d => { if (d.atc_slot) ent.push(mkRow(d.atc_slot, d, false)); if (d.fsp_slot) ent.push(mkRow(d.fsp_slot, d, true)); }); return ent; })();
+  const _uA = arr => [...new Set(arr.filter(v => v != null && String(v).trim() !== ''))];
+  const atcHf = {
+    lasa: { items: _uA(atcRows.map(r => r.lasa)).sort(), value: atcLasa === '전체' ? null : atcLasa, on: v => { setAtcLasa(v || '전체'); setAtcPage(1); } },
+    light: { items: _uA(atcRows.map(r => r.light)).sort(), value: atcLight === '전체' ? null : atcLight, on: v => { setAtcLight(v || '전체'); setAtcPage(1); } },
+    kind: { items: _uA(atcRows.map(r => r.kind)).sort(), value: atcKind === '전체' ? null : atcKind, on: v => { setAtcKind(v || '전체'); setAtcPage(1); } },
+  };
+  const atcFiltered = atcSo(atcRows.filter(r => (atcLasa === '전체' || r.lasa === atcLasa) && (atcLight === '전체' || r.light === atcLight) && (atcKind === '전체' || r.kind === atcKind)));
+  const PP_ATC = 50;
+  const atcTp = Math.max(1, Math.ceil(atcFiltered.length / PP_ATC));
+  const atcPg = Math.min(atcPage, atcTp);
+  const atcPaged = atcFiltered.slice((atcPg - 1) * PP_ATC, atcPg * PP_ATC);
+  const atcDf = (atcLasa !== '전체' ? 1 : 0) + (atcLight !== '전체' ? 1 : 0) + (atcKind !== '전체' ? 1 : 0) + ((atcSk !== '_slotkey' || atcSd !== 'asc') ? 1 : 0);
+  const _atcReset = () => { setAtcLasa('전체'); setAtcLight('전체'); setAtcKind('전체'); atcSetSort('_slotkey', 'asc'); setAtcPage(1); };
   const slot91 = [];
   assigned.forEach(d => { if (d.atc_slot) slot91.push({ slot: d.atc_slot, d }); if (d.fsp_slot) slot91.push({ slot: d.fsp_slot, d }); });
   const slot91Ga = [...slot91].sort((x, y) => (x.d.drug_name || '').localeCompare(y.d.drug_name || '', 'ko'));
@@ -4151,45 +4195,48 @@ function AtcView({ drugs, onReload }) {
   const pinnedCodes = new Set(candDesc.filter(d => d.atc_pinned).map(d => d.drug_code));
   const orderSlots = []; for (let n = 301; n <= 308; n++) orderSlots.push(String(n)); for (let n = 80; n >= 4; n--) orderSlots.push(String(n));
   const slotRank = {}; orderSlots.forEach((sl, i) => slotRank[sl] = i);
-  const nonPinnedDesc = candDesc.filter(d => !pinnedCodes.has(d.drug_code));
-  const idealAt = {}; orderSlots.forEach((sl, i) => { if (nonPinnedDesc[i]) idealAt[sl] = nonPinnedDesc[i]; });
   const curAt = {}; assigned.forEach(d => { if (d.atc_slot) curAt[String(d.atc_slot)] = d; });
-  const gapRows = orderSlots.map(sl => { const cur = curAt[sl], ideal = idealAt[sl]; const cr = cur && usageRank.has(cur.drug_code) ? usageRank.get(cur.drug_code) : null; const gap = (cur && cr != null) ? Math.abs(slotRank[sl] - cr) : (cur ? 999 : 0); return { sl, cur, curU: cur ? usageScore(cur) : null, ideal, idealU: ideal ? usageScore(ideal) : null, gap }; }).filter(r => r.cur || r.ideal).sort((a, b) => b.gap - a.gap);
   const swapDrugs = orderSlots.map(sl => ({ sl, d: curAt[sl] })).filter(x => x.d && !pinnedCodes.has(x.d.drug_code) && usageRank.has(x.d.drug_code));
   const swapsAll = [];
   for (let i = 0; i < swapDrugs.length; i++) for (let j = i + 1; j < swapDrugs.length; j++) { const A = swapDrugs[i], B = swapDrugs[j]; const rA = usageRank.get(A.d.drug_code), rB = usageRank.get(B.d.drug_code); const cur = Math.abs(slotRank[A.sl] - rA) + Math.abs(slotRank[B.sl] - rB); const aft = Math.abs(slotRank[A.sl] - rB) + Math.abs(slotRank[B.sl] - rA); const imp = cur - aft; if (imp > 0) swapsAll.push({ a: A, b: B, imp }); }
   swapsAll.sort((x, y) => y.imp - x.imp);
   const swaps = swapsAll; const usedSwap = new Set(); const swapTop = [];
   for (const sw of swapsAll) { if (usedSwap.has(sw.a.d.drug_code) || usedSwap.has(sw.b.d.drug_code)) continue; usedSwap.add(sw.a.d.drug_code); usedSwap.add(sw.b.d.drug_code); swapTop.push(sw); if (swapTop.length >= swapN) break; }
-  const top88b = candDesc.slice(0, 88); const top88bSet = new Set(top88b.map(d => d.drug_code));
-  const curCodes = new Set(assigned.filter(d => d.atc_slot).map(d => d.drug_code));
-  const newIn = top88b.filter(d => !curCodes.has(d.drug_code));
-  const pushOut = [...curCodes].filter(cc => !top88bSet.has(cc));
   const [viewMode, setViewMode] = useState('current');
   const FIXSET = new Set(['LSX', 'SBCLP1', 'QROKEL125']); /* FSP만 제외 — 상비는 사용량순 산정 포함(잔류만 보장) */
   const propCand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d) && !FIXSET.has(d.drug_code)).sort((a, b) => usageScore(b) - usageScore(a));
-  const ranked = [...propCand]; ['SANTLTRPL', 'STCNE', 'AMNP5'].forEach(pc => { const ix = ranked.findIndex(d => d.drug_code === pc); if (ix >= 88) { const mv = ranked.splice(ix, 1)[0]; ranked.splice(87, 0, mv); } }); /* top88 잔류 보장 */
+  const fullRankCand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d)).sort((a, b) => usageScore(b) - usageScore(a)); /* 전체 기준(FSP·향정 포함) */
+  const rankFull = new Map(); fullRankCand.forEach((d, i) => rankFull.set(d.drug_code, i + 1)); /* 전체순위 유지 — 향정 포함 */
+  const narcEx = propCand.filter(d => isN(d)); /* 「가」안 — 향정·마약 배정 제외 대상 */
+  const assignable = propCand.filter(d => !isN(d)); /* 슬롯 배정 대상(향정 건너뛰기) */
+  ['SANTLTRPL', 'STCNE', 'AMNP5'].forEach(pc => { const ix = assignable.findIndex(d => d.drug_code === pc); if (ix >= 88) { const mv = assignable.splice(ix, 1)[0]; assignable.splice(87, 0, mv); } }); /* 상비 잔류 보장 */
   const pIdeal = {};
-  for (let x = 301; x <= 308; x++) pIdeal[String(x)] = ranked[x - 301] || null;
-  for (let sl = 1; sl <= 80; sl++) pIdeal[String(sl)] = ranked[88 - sl] || null;
+  for (let x = 301; x <= 308; x++) pIdeal[String(x)] = assignable[x - 301] || null;
+  for (let sl = 1; sl <= 80; sl++) pIdeal[String(sl)] = assignable[88 - sl] || null;
   const rowBand = r => { const u = []; for (let k = 1; k <= 16; k++) { const d = pIdeal[String(r * 16 + k)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; };
   const bandMax = Math.max(1, rowBand(0).mx, rowBand(1).mx, rowBand(2).mx, rowBand(3).mx, rowBand(4).mx);
   const expBand = (() => { const u = []; for (let x = 301; x <= 308; x++) { const d = pIdeal[String(x)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; })();
-  const top88r = ranked.slice(0, 88); const yebi12 = ranked.slice(88, 100);
+  const curRowBand = start => { const u = []; for (let k = 0; k < 16; k++) { const d = byAtc[String(start + k)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; }; /* 현재 배치 기준(실제 배정 약품) */
+  const curBandMax = Math.max(1, curRowBand(1).mx, curRowBand(17).mx, curRowBand(33).mx, curRowBand(49).mx, curRowBand(65).mx);
+  const curExpBand = (() => { const u = []; for (let x = 301; x <= 308; x++) { const d = byAtc[String(x)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; })();
+  const top88r = assignable.slice(0, 88); const yebi12 = assignable.slice(88, 100);
+  const propSlotOf = {}; for (const k in pIdeal) { const d = pIdeal[k]; if (d) propSlotOf[d.drug_code] = k; } /* 코드→제안 슬롯 */
+  const narcTop88 = narcEx.filter(d => (rankFull.get(d.drug_code) || 999) <= 88); /* 향정 중 원래 top88(리보트릴·아티반) */
   const t88p = new Set(top88r.map(d => d.drug_code));
   const curCodes2 = new Set((drugs || []).filter(d => d.atc_slot).map(d => d.drug_code));
-  const aNew = top88r.filter(d => !curCodes2.has(d.drug_code));
-  const bOut = [...curCodes2].filter(cc => !t88p.has(cc));
+  const nmOf = cc => { const d = (drugs || []).find(x => x.drug_code === cc); return (d && d.drug_name) || cc; };
+  const aNew = top88r.filter(d => !curCodes2.has(d.drug_code)).sort((a, b) => String(a.drug_name || '').localeCompare(String(b.drug_name || ''), 'ko'));
+  const bOut = [...curCodes2].filter(cc => !t88p.has(cc)).sort((a, b) => nmOf(a).localeCompare(nmOf(b), 'ko'));
   const cKeep = [...curCodes2].filter(cc => t88p.has(cc));
   const pcs = (d, exp) => { if (!d) return { bg: t.card, bd: t.border, fg: t.textL }; if (d.atc_pinned) return { bg: t.greenL, bd: t.green, fg: t.green }; if (d.storage_light) return { bg: t.text, bd: t.text, fg: t.navText }; if (d.lasa_type === '모양') return { bg: t.coral, bd: t.coral, fg: t.text }; if (d.lasa_type === '용량') return { bg: t.blueL, bd: t.blue, fg: t.blue }; if (d.lasa_type === '발음') return { bg: t.amberL, bd: t.amber, fg: t.amber }; if (exp) return { bg: t.bg, bd: t.border, fg: t.textM }; return { bg: t.purpleL, bd: t.border, fg: t.accent }; };
-  const PCell = (slot, exp) => { const d = pIdeal[slot]; const s = pcs(d, exp); return <div key={slot} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : ''} style={{ border: '1px solid ' + s.bd, background: s.bg, color: s.fg, borderRadius: 4, padding: '2px 4px', height: 34, boxSizing: 'border-box', cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ fontSize: 9.5, opacity: 0.62 }}>{slot}</div><div style={{ fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d ? d.drug_name : ''}</div></div>; };  const th = { textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' };
+  const PCell = (slot, exp) => { const d = pIdeal[slot]; const s = pcs(d, exp); return <div key={slot} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : ''} style={{ border: '1px solid ' + s.bd, background: s.bg, color: s.fg, borderRadius: 6, padding: '3px 5px', minHeight: 46, cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ fontSize: 9, opacity: 0.62 }}>{slot}</div><div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflow: 'hidden' }}>{d ? d.drug_name : ''}</div></div>; };  const th = { textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' };
   const td = { padding: '5px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border };
   async function runSwaps(pairs, desc) { const { data, error } = await supabase.rpc('swap_atc_slots', { p_pairs: pairs }); if (error) { setMsg('교환 실패: ' + error.message); return; } if (data && data.ok === false) { setMsg('교환 차단 - ' + (data.failed || []).map(f => f.slot_a + '<->' + f.slot_b + '(' + f.reason + ')').join(', ')); return; } setMsg('슬롯 교환 ' + (data && data.done != null ? data.done : pairs.length) + '건 완료' + (desc ? ' - ' + desc : '')); setSelSlot(null); setPending(null); setSelPairs({}); onReload && onReload(); setTimeout(() => setMsg(null), 4000); }
   function cellEdit(slot, d) { if (selSlot != null) { if (selSlot === slot) { setSelSlot(null); return; } const da = byAtc[selSlot], db = d; setPending({ pairs: [{ slot_a: selSlot, slot_b: slot }], desc: '슬롯 ' + selSlot + ' ' + (da ? da.drug_name : '(빈 칸)') + '  <->  슬롯 ' + slot + ' ' + (db ? db.drug_name : '(빈 칸)') }); return; } if (d) { setCellAct({ slot, d }); return; } setAssignSlot(slot); setAssignQ(''); }
   async function runAssign(slot, code) { const { data, error } = await supabase.rpc('assign_atc_slot', { p_code: code, p_slot: slot }); if (error) { setMsg('배정 실패: ' + error.message); return; } if (data && data.ok === false) { setMsg('배정 불가 — ' + data.reason); return; } setMsg('슬롯 ' + slot + ' 배정 완료'); setAssignSlot(null); onReload && onReload(); setTimeout(() => setMsg(null), 3500); }
   async function runClear(slot, d) { const { data, error } = await supabase.rpc('clear_atc_slot', { p_slot: slot }); if (error) { setMsg('제거 실패: ' + error.message); return; } if (data && data.ok === false) { setMsg('제거 불가 — ' + data.reason); return; } setMsg('슬롯 ' + slot + ' 비움'); setCellAct(null); onReload && onReload(); setTimeout(() => setMsg(null), 3500); }
   return <div>
-    <style>{'.atc-print-only{display:none}@media print{.atc-print-only{display:block!important}.atc-page{page-break-after:always}.atc-page:last-child{page-break-after:auto}.atc-page tr{page-break-inside:avoid}.atc-page table{table-layout:fixed;width:100%;border-collapse:collapse}.atc-page th,.atc-page td{padding:0.6mm 1.5mm!important;line-height:1.2!important;vertical-align:top}.atc-page .sl{font-size:9pt!important;text-align:center}.atc-page .nm{font-size:9pt!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atc-page .ig{font-size:8pt!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atc-page .bd{white-space:nowrap;text-align:center}.atc-page .bd span{font-size:7pt!important}}'}</style>
+    <style>{'.atc-print-only{display:none}@media print{.atc-print-only{display:block!important}.atc-page{page-break-after:always}.atc-page:last-child{page-break-after:auto}.atc-page tr{page-break-inside:avoid}.atc-page table{table-layout:fixed;width:100%;border-collapse:collapse}.atc-page th,.atc-page td{padding:0.6mm 1.5mm!important;line-height:1.2!important;vertical-align:top}.atc-page .sl{font-size:9pt!important;text-align:center}.atc-page .nm{font-size:9pt!important;text-align:left!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atc-page .ig{font-size:8pt!important;text-align:left!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atc-page .bd{white-space:nowrap;text-align:center}.atc-page .bd span{font-size:7pt!important}}'}</style>
     {cellAct && <div className="no-print" onClick={() => setCellAct(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}><div onClick={ev => ev.stopPropagation()} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 20, maxWidth: 420, width: '100%' }}><div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 8 }}>슬롯 {cellAct.slot} · {cellAct.d.drug_name}</div>{cellAct.d.atc_pinned && <div style={{ fontSize: 12, color: t.amber, marginBottom: 10, fontWeight: 600 }}>상비 품목입니다. 기계 안에 유지가 필요합니다.</div>}<div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}><button onClick={() => setCellAct(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>취소</button><button onClick={() => { setSelSlot(cellAct.slot); setCellAct(null); setMsg('교환할 다른 칸을 클릭하세요'); }} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>교환 시작</button><button onClick={() => runClear(cellAct.slot, cellAct.d)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>슬롯 비우기</button></div></div></div>}
     {assignSlot && <div className="no-print" onClick={() => setAssignSlot(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}><div onClick={ev => ev.stopPropagation()} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 20, maxWidth: 440, width: '100%' }}><div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 8 }}>슬롯 {assignSlot} 에 약품 배정</div><input value={assignQ} onChange={e => setAssignQ(e.target.value)} placeholder="약품코드·약품명·성분명 검색" style={{ width: '100%', padding: '8px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, boxSizing: 'border-box', background: t.bg, color: t.text, outline: 'none' }} /><div style={{ maxHeight: '42vh', overflowY: 'auto', marginTop: 8, border: '1px solid ' + t.border, borderRadius: 8 }}>{(drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d)).filter(d => { const kw = assignQ.trim().toLowerCase(); return !kw || String(d.drug_code || '').toLowerCase().includes(kw) || String(d.drug_name || '').toLowerCase().includes(kw) || String(d.ingredient_kr || '').toLowerCase().includes(kw); }).slice(0, 50).map((d, i) => <div key={i} onClick={() => runAssign(assignSlot, d.drug_code)} style={{ padding: '6px 10px', borderBottom: '1px solid ' + t.border, cursor: 'pointer', fontSize: 12 }} onMouseEnter={ev => ev.currentTarget.style.background = t.glass} onMouseLeave={ev => ev.currentTarget.style.background = ''}><b style={{ color: t.accent }}>{d.drug_name}</b> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}{d.atc_slot ? ' · 현재 ' + d.atc_slot : ''}</span></div>)}</div><div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}><button onClick={() => setAssignSlot(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>취소</button></div></div></div>}
     {pending && <div className="no-print" onClick={() => setPending(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}><div onClick={e => e.stopPropagation()} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 20, maxWidth: 460, width: '100%' }}><div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 10 }}>슬롯 교환 확인</div><div style={{ fontSize: 12, color: t.textM, lineHeight: 1.6, marginBottom: 18, whiteSpace: 'pre-line' }}>{pending.desc}</div><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button onClick={() => setPending(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>취소</button><button onClick={() => runSwaps(pending.pairs, pending.desc)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent, color: t.navText, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>교환 실행</button></div></div></div>}
@@ -4197,7 +4244,7 @@ function AtcView({ drugs, onReload }) {
       <div style={{ fontSize: 18, fontWeight: 800, color: t.text, marginRight: 8 }}>ATC 카세트 배치</div>
       <button onClick={() => setViewMode('current')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (viewMode === 'current' ? t.accent : t.border), background: viewMode === 'current' ? t.accent : t.card, color: viewMode === 'current' ? t.navText : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>현재 배치</button>
       <button onClick={() => setViewMode('proposal')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (viewMode === 'proposal' ? t.accent : t.border), background: viewMode === 'proposal' ? t.accent : t.card, color: viewMode === 'proposal' ? t.navText : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>사용량순 제안</button>
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="약품코드·약품명·성분명 검색..." style={{ minWidth: 220, padding: '7px 12px', border: '1px solid ' + t.border, borderRadius: 10, fontSize: 12, outline: 'none', background: t.bg, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
+      <input value={q} onChange={e => { setQ(e.target.value); setAtcPage(1); }} placeholder="약품코드·약품명·성분명 검색..." style={{ minWidth: 220, padding: '7px 12px', border: '1px solid ' + t.border, borderRadius: 10, fontSize: 12, outline: 'none', background: t.bg, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
       <button onClick={() => dlXlsx('가나다')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>엑셀(가나다)</button>
       <button onClick={() => dlXlsx('슬롯')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>엑셀(슬롯)</button>
       <button onClick={() => window.print()} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>인쇄</button>
@@ -4207,17 +4254,19 @@ function AtcView({ drugs, onReload }) {
       <span style={{ fontSize: 10, color: t.textL }}>색상 출력을 위해 인쇄 설정에서 「배경 그래픽」을 켜주세요</span>
     </div>
     {viewMode === 'current' && <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 8 }}>상단 카세트 (1~80) · 좌측문 8 + 우측문 8</div>
-      {[1, 17, 33, 49, 65].map(start => <div key={start} style={{ display: 'grid', gridTemplateColumns: '1fr 22px 1fr', gap: 4, marginBottom: 6 }}>
+      <style>{'@media(max-width:1100px){.atc-prop-row{grid-template-columns:1fr 22px 1fr!important}.atc-prop-row>*:last-child{grid-column:1/-1;margin-top:4px}}'}</style>
+      <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 8 }}>상단 카세트 (1~80) · 좌측문 8 + 우측문 8 <span style={{ fontSize: 10.5, fontWeight: 500, color: t.textL }}>· 우측 구간은 현재 배정 기준(규칙과 무관해 뒤섞여 보이는 것이 정상)</span></div>
+      {[1, 17, 33, 49, 65].map(start => { const bd = curRowBand(start); return <div key={start} className="atc-prop-row" style={{ display: 'grid', gridTemplateColumns: '1fr 22px 1fr 132px', gap: 4, marginBottom: 6 }}>
         {Door(start)}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: 5, height: '55%', borderRadius: 3, background: t.border }} /></div>
         {Door(start + 8)}
-      </div>)}
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 6 }}><div style={{ fontSize: 12, fontWeight: 700, color: t.accent }}>월 {Math.round(bd.mn / 3)} ~ {Math.round(bd.mx / 3)}개</div><div style={{ fontSize: 10, opacity: 0.6 }}>3개월 {bd.mn} ~ {bd.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: Math.min(100, bd.mx / curBandMax * 100) + '%', marginTop: 3 }} /></div>
+      </div>; })}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>FSP 고정식 (FSP1~5)</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 4 }}>
-            {['FSP1', 'FSP2', 'FSP3', 'FSP4', 'FSP5'].map(f => Cell(f, f, byFsp, f === 'FSP1' || f === 'FSP3', false))}
+            {['FSP5', 'FSP4', 'FSP3', 'FSP2', 'FSP1'].map(f => Cell(f, f, byFsp, f === 'FSP1' || f === 'FSP3', false))}
           </div>
         </div>
         <div>
@@ -4225,6 +4274,7 @@ function AtcView({ drugs, onReload }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 4 }}>
             {[301, 302, 303, 304, 305, 306, 307, 308].map(n => Cell(String(n), String(n), byAtc, false, true))}
           </div>
+          <div style={{ marginTop: 4 }}><div style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>월 {Math.round(curExpBand.mn / 3)} ~ {Math.round(curExpBand.mx / 3)}개 / 3개월 {curExpBand.mn} ~ {curExpBand.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: Math.min(100, curExpBand.mx / Math.max(1, curBandMax) * 100) + '%', marginTop: 3 }} /></div>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10, fontSize: 10, color: t.textM, alignItems: 'center' }}>
@@ -4243,11 +4293,11 @@ function AtcView({ drugs, onReload }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 3 }}>{Array.from({ length: 8 }, (_, i) => PCell(String(r * 16 + 1 + i), false))}</div>
         <div style={{ display: 'flex', justifyContent: 'center' }}><div style={{ width: 5, background: t.lavender, borderRadius: 3 }} /></div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 3 }}>{Array.from({ length: 8 }, (_, i) => PCell(String(r * 16 + 9 + i), false))}</div>
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 6 }}><div style={{ fontSize: 12, fontWeight: 700, color: t.accent }}>월 {Math.round(bd.mn / 3)} ~ {Math.round(bd.mx / 3)}개</div><div style={{ fontSize: 10, opacity: 0.6 }}>3개월 {bd.mn} ~ {bd.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: (bd.mx / bandMax * 100) + '%', marginTop: 3 }} /></div>
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 6 }}><div style={{ fontSize: 12, fontWeight: 700, color: t.accent }}>월 {Math.round(bd.mn / 3)} ~ {Math.round(bd.mx / 3)}개</div><div style={{ fontSize: 10, opacity: 0.6 }}>3개월 {bd.mn} ~ {bd.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: Math.min(100, bd.mx / bandMax * 100) + '%', marginTop: 3 }} /></div>
       </div>; })}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
         <div><div style={{ fontSize: 12, fontWeight: 700, color: t.green, marginBottom: 6 }}>FSP 고정식</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 3 }}>{['FSP1', 'FSP2', 'FSP3', 'FSP4', 'FSP5'].map(f => { const d = byFsp[f]; const s = d ? { bg: t.greenL, bd: t.green, fg: t.green } : { bg: t.card, bd: t.textL, fg: t.textL }; return <div key={f} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : '유동'} style={{ border: (d ? '1px solid ' : '1px dashed ') + s.bd, background: s.bg, color: s.fg, borderRadius: 4, height: 34, padding: '2px 4px', boxSizing: 'border-box', cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ fontSize: 9.5, opacity: 0.62 }}>{f}{d && d.fsp_note ? ' ' + d.fsp_note : ''}</div><div style={{ fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d ? d.drug_name : '유동'}</div></div>; })}</div></div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 3 }}>{['FSP5', 'FSP4', 'FSP3', 'FSP2', 'FSP1'].map(f => { const d = byFsp[f]; const s = d ? { bg: t.greenL, bd: t.green, fg: t.green } : { bg: t.card, bd: t.textL, fg: t.textL }; return <div key={f} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : '유동'} style={{ border: (d ? '1px solid ' : '1px dashed ') + s.bd, background: s.bg, color: s.fg, borderRadius: 6, minHeight: 46, padding: '3px 5px', cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ fontSize: 9, opacity: 0.62 }}>{f}{d && d.fsp_note ? ' ' + d.fsp_note : ''}</div><div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflow: 'hidden' }}>{d ? d.drug_name : '유동'}</div></div>; })}</div></div>
         <div><div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>하단 확장 301–308 · 최다빈도</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 3 }}>{[301, 302, 303, 304, 305, 306, 307, 308].map(n => PCell(String(n), true))}</div>
           <div style={{ marginTop: 4 }}><div style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>월 {Math.round(expBand.mn / 3)} ~ {Math.round(expBand.mx / 3)}개 / 3개월 {expBand.mn} ~ {expBand.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: '100%', marginTop: 3 }} /></div></div>
@@ -4255,78 +4305,75 @@ function AtcView({ drugs, onReload }) {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10, fontSize: 11.5, opacity: 0.75, alignItems: 'center' }}>{[['모양', t.coral], ['용량', t.blueL], ['발음', t.amberL], ['차광', t.text], ['상비 고정', t.greenL], ['일반', t.purpleL]].map(([lb, cl]) => <span key={lb} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: cl, border: '1px solid ' + t.border }} />{lb}</span>)}</div>
       <div style={{ fontSize: 11.5, color: t.textL, marginTop: 8 }}>기존 약품 간 교환은 카세트째 이동하므로 즉시 실행 가능합니다.</div>
       <div style={{ fontSize: 11.5, color: t.textL }}>사용량에 수기 입력분이 포함되어 있습니다. 9월 마감 후 재산출을 권장합니다.</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 12 }}>
-        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.green, marginBottom: 4 }}>A. 신규 진입 ({aNew.length}) · 카세트 확보 필요</div><div style={{ fontSize: 10, color: t.textM, wordBreak: 'break-all' }}>{aNew.slice(0, 15).map(d => d.drug_name).join(', ')}{aNew.length > 15 ? ' 외 ' + (aNew.length - 15) : ''}</div></div>
-        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.red, marginBottom: 4 }}>B. 제외 ({bOut.length}) · 수동 조제 전환</div><div style={{ fontSize: 10, color: t.textM, wordBreak: 'break-all' }}>{bOut.join(', ')}</div></div>
-        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.accent, marginBottom: 4 }}>C. 슬롯 이동 ({cKeep.length}) · 즉시 실행</div><div style={{ fontSize: 10, color: t.textM }}>유지 품목 위치 조정</div></div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8, marginTop: 12 }}>
+        {[{ lb: '현재 배정', v: curCodes2.size, sub: '카세트 슬롯', c: t.text }, { lb: '유지', v: cKeep.length, sub: '위치만 조정', c: t.green }, { lb: '신규 진입', v: aNew.length, sub: '카세트 확보', c: t.accent }, { lb: '제외', v: bOut.length, sub: '수동 조제 전환', c: t.amber }, { lb: '2차 예비', v: yebi12.length, sub: '89~100위', c: t.textL }].map(cd => <div key={cd.lb} style={{ background: t.bg, border: '1px solid ' + t.border, borderRadius: 10, padding: '10px 12px' }}>
+          <div style={{ fontSize: 11.5, color: t.textM, fontWeight: 600 }}>{cd.lb}</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: cd.c, letterSpacing: -0.5 }}>{cd.v}</div>
+          <div style={{ fontSize: 10.5, color: t.textL }}>{cd.sub}</div>
+        </div>)}
       </div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginTop: 6 }}>현재 88건 중 {cKeep.length} 유지 · {bOut.length} 제외 · {aNew.length} 신규</div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginTop: 10, marginBottom: 4 }}>2차 예비 12 (89~100위) · 카세트 확보 시 투입 가능</div>
-      <div style={{ fontSize: 10, color: t.textM, wordBreak: 'break-all' }}>{yebi12.map(d => d.drug_name + '(' + usageScore(d) + ')').join(', ')}</div>
+      {narcEx.length > 0 && <div style={{ marginTop: 12, background: t.amberL, border: '1px solid ' + t.amber + '55', borderRadius: 10, padding: '10px 12px' }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: t.amber, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>향정·마약 배정 제외 ({narcEx.length}) {B('향정·배정 제외', t.amberL, t.amber, t.amber)}<span style={{ fontSize: 10, fontWeight: 500, color: t.textM }}>· 순위 산정엔 포함, 슬롯 미배정 (top88 진입 {narcTop88.length}건)</span></div>
+        <div style={{ fontSize: 10.5, color: t.textM, wordBreak: 'break-all' }}>{[...narcEx].sort((a, b) => String(a.drug_name || '').localeCompare(String(b.drug_name || ''), 'ko')).map(d => d.drug_name + ' (' + (rankFull.get(d.drug_code) || '-') + '위' + ((rankFull.get(d.drug_code) || 999) <= 88 ? '·미배정' : '') + ')').join(', ')}</div>
+      </div>}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+        {[{ tag: 'A', tagBg: t.greenL, tagFg: t.green, title: '신규 진입', note: '카세트 확보 필요', rows: aNew.map(d => ({ _slot: atcSlotKey(propSlotOf[d.drug_code]), slotLabel: propSlotOf[d.drug_code], name: d.drug_name, r3: usageScore(d), rank: rankFull.get(d.drug_code) || null })) }, { tag: 'B', tagBg: t.amberL, tagFg: t.amber, title: '제외', note: '수동 조제 전환', rows: bOut.map(cc => { const dd = (drugs || []).find(x => x.drug_code === cc); return { _slot: atcSlotKey(dd && dd.atc_slot), slotLabel: dd && dd.atc_slot, name: (dd && dd.drug_name) || cc, r3: dd ? usageScore(dd) : 0, rank: rankFull.get(cc) || null }; }) }].map(sec => <div key={sec.tag} style={{ border: '1px solid ' + t.border, borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', background: t.bg, borderBottom: '1px solid ' + t.border }}>{B(sec.tag, sec.tagBg, sec.tagFg, sec.tagFg)}<span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>{sec.title} ({sec.rows.length})</span><div style={{ flex: 1 }} /><span style={{ fontSize: 10, color: t.textL }}>{sec.note}</span></div>
+          <div style={{ padding: 8 }}><AtcTable t={t} minWidth={332} colWidths={[62, 150, 62, 58]} resetable rows={sec.rows} cols={[{ k: '_slot', h: '슬롯', align: 'center', filter: true, render: r => r.slotLabel ? B(r.slotLabel, t.accentL, t.accent, t.accent) : <span style={{ color: t.textL }}>-</span> }, { k: 'name', h: '약품명', align: 'left' }, { k: 'r3', h: '3개월', align: 'right' }, { k: 'rank', h: '순위', align: 'right', render: r => r.rank == null ? '-' : r.rank }]} /></div>
+        </div>)}
+      </div>
+      <div style={{ marginTop: 12, border: '1px solid ' + t.border, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 10px', background: t.bg, borderBottom: '1px solid ' + t.border, fontSize: 12, fontWeight: 700, color: t.text }}>2차 예비 ({yebi12.length}) · 89~100위 · 카세트 확보 시 투입</div>
+        <div style={{ padding: 8 }}><AtcTable t={t} minWidth={420} colWidths={[56, 170, 64, 130]} resetable rows={yebi12.map(d => ({ rank: rankFull.get(d.drug_code) || null, name: d.drug_name, r3: usageScore(d), _u: usageScore(d) }))} cols={[{ k: 'rank', h: '순위', align: 'center', render: r => r.rank == null ? '-' : r.rank }, { k: 'name', h: '약품명', align: 'left' }, { k: 'r3', h: '3개월', align: 'right' }, { k: '_u', h: '88위 경계 대비', align: 'left', render: r => { const bnd = usageScore(assignable[87]) || 1; const w = Math.max(2, Math.min(100, r._u / bnd * 100)); return <div style={{ height: 6, borderRadius: 3, background: t.lavender, width: w + '%' }} />; } }]} /></div>
+      </div>
+      <div style={{ marginTop: 12, border: '1px solid ' + t.border, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: t.bg, borderBottom: '1px solid ' + t.border, flexWrap: 'wrap' }}>{B('C', t.accentL, t.accent, t.accent)}<span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>교환 제안 ({swapTop.length})</span><span style={{ fontSize: 10, color: t.textL }}>카세트째 이동 · 즉시 실행</span><div style={{ flex: 1 }} /><span style={{ fontSize: 10, color: t.textM }}>상위</span><input type="range" min={10} max={40} value={swapN} onChange={e => setSwapN(Number(e.target.value))} style={{ accentColor: t.accent }} /><span style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>{swapN}건</span><span style={{ fontSize: 10, color: t.textL }}>(개선 {swaps.length}쌍 중)</span>{canEdit && <button onClick={() => { const ps = swapTop.filter((_, i) => selPairs[i]).map(sw => ({ slot_a: sw.a.sl, slot_b: sw.b.sl })); if (!ps.length) { setMsg('선택된 쌍이 없습니다'); setTimeout(() => setMsg(null), 2500); return; } setPending({ pairs: ps, desc: ps.length + '쌍 일괄 교환' }); }} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.card, color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>선택 적용</button>}</div>
+        <div style={{ padding: 8 }}><AtcTable t={t} minWidth={canEdit ? 600 : 480} colWidths={canEdit ? [70, 140, 70, 140, 80, 120] : [76, 160, 76, 160, 92]} resetable rows={swapTop.map((sw, i) => ({ _slotA: atcSlotKey(sw.a.sl), slotA: sw.a.sl, nameA: sw.a.d.drug_name, _slotB: atcSlotKey(sw.b.sl), slotB: sw.b.sl, nameB: sw.b.d.drug_name, imp: sw.imp, _i: i }))} cols={[{ k: '_slotA', h: '슬롯A', align: 'center', filter: true, render: r => B(r.slotA, t.accentL, t.accent, t.accent) }, { k: 'nameA', h: '약품A', align: 'left' }, { k: '_slotB', h: '슬롯B', align: 'center', filter: true, render: r => B(r.slotB, t.accentL, t.accent, t.accent) }, { k: 'nameB', h: '약품B', align: 'left' }, { k: 'imp', h: '개선효과', align: 'right', render: r => <span style={{ fontWeight: 700, color: t.green }}>-{r.imp}</span> }, ...(canEdit ? [{ k: '_apply', h: '적용', align: 'center', plain: true, render: r => <span style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={!!selPairs[r._i]} onChange={e => setSelPairs(p => ({ ...p, [r._i]: e.target.checked }))} style={{ accentColor: t.accent, marginRight: 6 }} /><button onClick={() => setPending({ pairs: [{ slot_a: r.slotA, slot_b: r.slotB }], desc: '슬롯 ' + r.slotA + ' ' + r.nameA + '  <->  슬롯 ' + r.slotB + ' ' + r.nameB })} style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>적용</button></span> }] : [])]} /></div>
+      </div>
     </div>}
     <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginRight: 8 }}>배치 목록 ({listRows.length})</div>
-        {['가나다', '슬롯', '사용량'].map(m => <button key={m} onClick={() => setSortMode(m)} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + (sortMode === m ? t.accent : t.border), background: sortMode === m ? t.accentL : t.card, color: sortMode === m ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: sortMode === m ? 700 : 500 }}>{m}순</button>)}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginRight: 8 }}>배치 목록 ({atcFiltered.length})</div>
+        <span style={{ fontSize: 10.5, color: t.textL }}>헤더 글자=필터 · ▲=정렬(오름→내림→해제)</span>
+        <div style={{ flex: 1 }} />
+        {atcDf > 0 && <button onClick={_atcReset} title="필터·정렬 초기화" style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent + '12', color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>필터 초기화 ({atcDf})</button>}
       </div>
-      <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr>{['슬롯', '약품코드', '약품명', '성분명', '유사', '차광', '최근3개월', '직전1개월', '월평균'].map(h => <th key={h} style={{ ...th, textAlign: (h === '최근3개월' || h === '직전1개월' || h === '월평균') ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
-        <tbody>{listRows.map((e, i) => { const d = e.d; return <tr key={i} onMouseEnter={ev => ev.currentTarget.style.background = t.glass} onMouseLeave={ev => ev.currentTarget.style.background = ''}>
-          <td style={{ ...td, fontWeight: 700, color: t.accent, whiteSpace: 'nowrap' }}><span style={{ display: 'inline-flex', gap: 3, alignItems: 'center', flexWrap: 'wrap' }}>{e.slot}{!e.fsp && d.atc_pinned && B('상비', t.accentL, t.accent, t.accent)}{e.fsp && d.fsp_note && B(d.fsp_note, t.greenL, t.green, t.green)}</span></td>
-          <td style={{ ...td, textAlign: 'left' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, cursor: 'pointer', fontWeight: 600 }}>{d.drug_code}</span></td>
-          <td style={{ ...td, textAlign: 'left' }}>{d.drug_name}</td>
-          <td style={{ ...td, textAlign: 'left', color: t.textM, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.ingredient_kr || '-'}</td>
+      <StandardTable t={t} TS={atcTS} sk={atcSk} sd={atcSd} setSort={(k, sdv) => { atcSetSort(k, sdv); setAtcPage(1); }} hf={atcHf} layout="fixed" minWidth={1096} colWidths={[120, 120, 208, 220, 80, 72, 96, 96, 84]} hscroll={{ noLabel: true, ends: true }} cols={[
+        { k: '_slotkey', h: '슬롯', sticky: { left: 0, w: 120 }, th: { textAlign: 'center' } },
+        { k: 'drug_code', h: '약품코드', sticky: { left: 120, w: 120 } },
+        { k: 'drug_name', h: '약품명', th: { minWidth: 200 } },
+        { k: 'ingredient_kr', h: '성분명' },
+        { k: 'lasa', h: '유사' },
+        { k: 'light', h: '차광' },
+        { k: 'r3', h: '최근3개월', th: { textAlign: 'right' } },
+        { k: 'r1', h: '직전1개월', th: { textAlign: 'right' } },
+        { k: 'mavg', h: '월평균', th: { textAlign: 'right' } },
+      ]}>
+        <tbody>{!atcPaged.length ? <tr><td colSpan={9} style={{ padding: 30, textAlign: 'center', color: t.textL }}>없음</td></tr> : atcPaged.map((e, i) => { const d = e.d; return <tr key={i} onMouseEnter={ev => ev.currentTarget.style.background = t.glass} onMouseLeave={ev => ev.currentTarget.style.background = ''}>
+          <td style={{ ...td, fontWeight: 700, color: t.accent, textAlign: 'center', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border }}><span style={{ display: 'inline-flex', gap: 3, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>{e.slot}{!e.fsp && d.atc_pinned && B('상비', t.accentL, t.accent, t.accent)}{e.fsp && d.fsp_note && B(d.fsp_note, t.greenL, t.green, t.green)}</span></td>
+          <td style={{ ...td, textAlign: 'left', position: 'sticky', left: 120, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, cursor: 'pointer', fontWeight: 600 }}>{d.drug_code}</span></td>
+          <td style={{ ...td, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_name}</td>
+          <td style={{ ...td, textAlign: 'left', color: t.textM, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.ingredient_kr || '-'}</td>
           <td style={{ ...td, textAlign: 'left' }}>{d.lasa_type === '모양' ? B('모양', t.coral, t.text) : d.lasa_type === '용량' ? B('용량', t.blueL, t.blue, t.blue) : d.lasa_type === '발음' ? B('발음', t.amberL, t.amber, t.amber) : <span style={{ color: t.textL }}>-</span>}</td>
           <td style={{ ...td, textAlign: 'left' }}>{d.storage_light ? B('차광', t.text, t.navText) : <span style={{ color: t.textL }}>-</span>}</td>
           <td style={{ ...td, textAlign: 'right' }}>{Number(d.recent_3m_usage) || 0}</td>
           <td style={{ ...td, textAlign: 'right' }}>{d.recent_1m_usage == null ? '-' : Number(d.recent_1m_usage)}</td>
           <td style={{ ...td, textAlign: 'right' }}>{d.monthly_avg == null ? '-' : Number(d.monthly_avg)}</td>
         </tr>; })}</tbody>
-      </table></div>
+      </StandardTable>
+      {atcTp > 1 && <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 10 }}>
+        <button onClick={() => setAtcPage(p => Math.max(1, p - 1))} disabled={atcPg <= 1} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: t.card, color: atcPg <= 1 ? t.textL : t.textM, cursor: atcPg <= 1 ? 'default' : 'pointer', fontSize: 11, fontWeight: 700 }}>이전</button>
+        <span style={{ fontSize: 11, color: t.textM }}>{atcPg} / {atcTp}</span>
+        <button onClick={() => setAtcPage(p => Math.min(atcTp, p + 1))} disabled={atcPg >= atcTp} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: t.card, color: atcPg >= atcTp ? t.textL : t.textM, cursor: atcPg >= atcTp ? 'default' : 'pointer', fontSize: 11, fontWeight: 700 }}>다음</button>
+      </div>}
     </div>
-    <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>카세트 배치 최적화 — 괴리·교환 제안 (경구제·사용·고형 · recent_3m)</div>
-      <div style={{ fontSize: 11, color: t.textL }}>기존 약품 간 교환은 카세트째 이동하므로 즉시 실행 가능합니다.</div>
-      <div style={{ fontSize: 11, color: t.textL, marginBottom: 8 }}>사용량에 수기 입력분이 포함되어 있습니다. 9월 마감 후 재산출을 권장합니다.</div>
-      <div style={{ fontSize: 10, color: t.textL, marginBottom: 10 }}>배정 규칙: 상위 8종→확장 301~308, 다음→카세트 4~80(1번=최저·80번=최고). 상비 3건(슬롯 1·2·3, atc_pinned) 고정·재배치 제외.</div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 4 }}>괴리 상위 20 (|슬롯 순위 − 사용량 순위|)</div>
-      <div style={{ overflowX: 'auto', marginBottom: 12 }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr>{['슬롯', '현재 약품', '현재 사용량', '이상 약품', '이상 사용량', '괴리'].map((h, hi) => <th key={h} style={{ ...th, textAlign: (hi === 2 || hi === 4 || hi === 5) ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
-        <tbody>{gapRows.slice(0, 20).map((r, i) => <tr key={i}><td style={{ ...td, fontWeight: 700, color: t.accent }}>{r.sl}</td><td style={{ ...td, textAlign: 'left' }}>{r.cur ? r.cur.drug_name : '-'}</td><td style={{ ...td, textAlign: 'right' }}>{r.curU == null ? '-' : r.curU}</td><td style={{ ...td, textAlign: 'left', color: t.textM }}>{r.ideal ? r.ideal.drug_name : '-'}</td><td style={{ ...td, textAlign: 'right', color: t.textM }}>{r.idealU == null ? '-' : r.idealU}</td><td style={{ ...td, textAlign: 'right', fontWeight: 700, color: r.gap >= 20 ? t.red : r.gap >= 10 ? t.amber : t.textM }}>{r.gap}</td></tr>)}</tbody>
-      </table></div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: t.text }}>7-A 기존 약품 간 교환 — 즉시 실행 가능</div>
-        <span style={{ fontSize: 10, color: t.textM }}>상위</span>
-        <input type="range" min={10} max={40} value={swapN} onChange={e => setSwapN(Number(e.target.value))} style={{ accentColor: t.accent }} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>{swapN}건</span>
-        <span style={{ fontSize: 10, color: t.textL }}>(개선 {swaps.length}쌍 중)</span>{canEdit && <button onClick={() => { const ps = swapTop.filter((_, i) => selPairs[i]).map(sw => ({ slot_a: sw.a.sl, slot_b: sw.b.sl })); if (!ps.length) { setMsg('선택된 쌍이 없습니다'); setTimeout(() => setMsg(null), 2500); return; } setPending({ pairs: ps, desc: ps.length + '쌍 일괄 교환' }); }} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.card, color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>선택 적용</button>}
-      </div>
-      <div style={{ overflowX: 'auto', marginBottom: 12 }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr>{['슬롯 A', '약품 A', '사용량 A', '슬롯 B', '약품 B', '사용량 B', '개선'].map((h, hi) => <th key={h} style={{ ...th, textAlign: (hi === 2 || hi === 5 || hi === 6) ? 'right' : 'left' }}>{h}</th>)}{canEdit && <th style={th}>적용</th>}</tr></thead>
-        <tbody>{swapTop.length ? swapTop.map((sw, i) => <tr key={i}><td style={{ ...td, fontWeight: 700, color: t.accent }}>{sw.a.sl}</td><td style={{ ...td, textAlign: 'left' }}>{sw.a.d.drug_name}</td><td style={{ ...td, textAlign: 'right' }}>{usageScore(sw.a.d)}</td><td style={{ ...td, fontWeight: 700, color: t.accent }}>{sw.b.sl}</td><td style={{ ...td, textAlign: 'left' }}>{sw.b.d.drug_name}</td><td style={{ ...td, textAlign: 'right' }}>{usageScore(sw.b.d)}</td><td style={{ ...td, textAlign: 'right', fontWeight: 700, color: t.green }}>-{sw.imp}</td>{canEdit && <td style={td}><input type="checkbox" checked={!!selPairs[i]} onChange={e => setSelPairs(p => ({ ...p, [i]: e.target.checked }))} style={{ accentColor: t.accent, marginRight: 6 }} /><button onClick={() => setPending({ pairs: [{ slot_a: sw.a.sl, slot_b: sw.b.sl }], desc: '슬롯 ' + sw.a.sl + ' ' + sw.a.d.drug_name + '  <->  슬롯 ' + sw.b.sl + ' ' + sw.b.d.drug_name })} style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>적용</button></td>}</tr>) : <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: t.textL }}>개선 가능한 교환 없음</td></tr>}</tbody>
-      </table></div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 4 }}>7-B 신규 진입 후보 — 카세트 확보 필요</div>
-      <div style={{ fontSize: 10, color: t.textL, marginBottom: 6 }}>해당 약품용 카세트 확보 후 투입 가능(규격 맞는 카세트 필요).</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.green, marginBottom: 4 }}>신규 진입 ({newIn.length}) — top88 미배정</div>
-          <div style={{ fontSize: 11, color: t.textM, wordBreak: 'break-all' }}>{newIn.length ? (newIn.slice(0, 20).map(d => d.drug_name + '(' + usageScore(d) + ')').join(', ') + (newIn.length > 20 ? ' 외 ' + (newIn.length - 20) : '')) : '없음'}</div></div>
-        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.red, marginBottom: 4 }}>제외 (밀려남) ({pushOut.length})</div>
-          <div style={{ fontSize: 11, color: t.textM, wordBreak: 'break-all' }}>{pushOut.length ? pushOut.join(', ') : '없음'}</div></div>
-      </div>
-    </div>
-    <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+    {viewMode === 'proposal' && <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>FSP 제안 (FSP2·4·5 · 소수 사용량 우선 → 최근3개월)</div>
       <div style={{ fontSize: 11, color: t.textL, marginBottom: 8 }}>FSP1·FSP3은 유동이므로 제외.</div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 10 }}>
-        <thead><tr>{['제안순위', '코드', '약품명', '최근3개월', '소수여부'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
-        <tbody>{fspCand.map((x, i) => <tr key={i}><td style={td}>{i + 1}</td><td style={td}>{x.d.drug_code}</td><td style={td}>{x.d.drug_name}</td><td style={{ ...td, textAlign: 'right' }}>{x.r3}</td><td style={{ ...td, color: x.frac ? t.green : t.textL }}>{x.frac ? '소수' : '-'}</td></tr>)}</tbody>
-      </table>
+      <div style={{ marginBottom: 10 }}><AtcTable t={t} minWidth={520} colWidths={[70, 110, 180, 90, 80]} rows={fspCand.map((x, i) => ({ rank: i + 1, code: x.d.drug_code, name: x.d.drug_name, r3: x.r3, frac: x.frac ? '소수' : '-' }))} cols={[{ k: 'rank', h: '제안순위', align: 'center' }, { k: 'code', h: '코드', align: 'left' }, { k: 'name', h: '약품명', align: 'left' }, { k: 'r3', h: '최근3개월', align: 'right' }, { k: 'frac', h: '소수여부', align: 'center', filter: true, render: r => <span style={{ color: r.frac === '소수' ? t.green : t.textL }}>{r.frac}</span> }]} /></div>
       <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginBottom: 4 }}>현재 배정 역검증 (QROKEL125·SBCLP1·LSX)</div>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr>{['슬롯', '코드', '약품명', '최근3개월', '소수', '기준 부합'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
-        <tbody>{curFsp.map(({ s, d }, i) => { const r3 = d ? (Number(d.recent_3m_usage) || 0) : 0; const frac = d && (r3 % 1 !== 0); const inTop = d && fspCand.some(c => c.d.drug_code === d.drug_code); return <tr key={i}><td style={td}>{s}</td><td style={td}>{d ? d.drug_code : '-'}</td><td style={td}>{d ? d.drug_name : '-'}</td><td style={{ ...td, textAlign: 'right' }}>{d ? r3 : '-'}</td><td style={td}>{frac ? '소수' : '-'}</td><td style={{ ...td, color: t.green, fontWeight: 700 }}>{d ? '0.5T 운용 확인됨' : '-'}</td></tr>; })}</tbody>
-      </table>
-    </div>
+      <AtcTable t={t} minWidth={620} colWidths={[64, 110, 170, 90, 64, 130]} rows={curFsp.map(({ s, d }) => { const r3 = d ? (Number(d.recent_3m_usage) || 0) : 0; const isFrac = d && (r3 % 1 !== 0); return { _slot: atcSlotKey(s), slot: s, code: d ? d.drug_code : '-', name: d ? d.drug_name : '-', r3: d ? r3 : null, frac: isFrac ? '소수' : '-', verdict: d ? (isFrac ? '0.5T 운용 확인됨' : '다빈도 배정') : '-' }; })} cols={[{ k: '_slot', h: '슬롯', align: 'center', render: r => r.slot }, { k: 'code', h: '코드', align: 'left' }, { k: 'name', h: '약품명', align: 'left' }, { k: 'r3', h: '최근3개월', align: 'right', render: r => r.r3 == null ? '-' : r.r3 }, { k: 'frac', h: '소수', align: 'center', filter: true }, { k: 'verdict', h: '기준 부합', align: 'center', filter: true, render: r => <span style={{ fontWeight: 700, color: r.verdict === '0.5T 운용 확인됨' ? t.green : r.verdict === '다빈도 배정' ? t.accent : t.textL }}>{r.verdict}</span> }]} />
+    </div>}
     <div className="atc-print-only">
       {[0, 1].map(pg => { const rows = pg === 0 ? slot91Ga.slice(0, 46) : slot91Ga.slice(46); return <div key={pg} className="atc-page">
         <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '2mm' }}>ATC 카세트 배치 목록 ({slot91.length}건 · 가나다순) · {pg + 1}/2</div>
