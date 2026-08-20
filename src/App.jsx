@@ -4144,10 +4144,10 @@ function AtcView({ drugs, onReload }) {
     {Array.from({ length: 8 }, (_, i) => Cell(String(start + i), String(start + i), byAtc, false, true))}
   </div>;
   const slotNum = d => d.atc_slot ? Number(d.atc_slot) : (d.fsp_slot ? 1000 + Number(String(d.fsp_slot).replace('FSP', '')) : 9999);
-  const slotLabel = d => { const p = []; if (d.atc_slot) p.push(d.atc_slot + ' (1T)'); if (d.fsp_slot) p.push(d.fsp_slot + ' (' + (d.fsp_note || '0.5T') + ')'); return p.join(' · '); };
+  const slotLabel = d => { const p = []; if (d.atc_slot) p.push(d.atc_slot + ' (1T)'); if (d.fsp_slot) p.push(d.fsp_slot + (d.fsp_note ? ' (' + d.fsp_note + ')' : '')); return p.join(' · '); };
   const badgeStyle = (bg, fg, bd) => ({ fontSize: 8, fontWeight: 700, padding: '0 4px', borderRadius: 3, background: bg, color: fg, border: bd ? '1px solid ' + bd : '1px solid transparent', whiteSpace: 'nowrap', lineHeight: 1.5, display: 'inline-block' });
   const B = (x, bg, fg, bd) => <span style={badgeStyle(bg, fg, bd)}>{x}</span>;
-  const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }); if (d.storage_light) a.push({ x: '차광', bg: t.text, fg: t.navText }); if (d.lasa_type === '모양') a.push({ x: '모양', bg: t.coral, fg: t.text }); if (d.lasa_type === '용량') a.push({ x: '용량', bg: t.blueL, fg: t.blue, bd: t.blue }); if (d.lasa_type === '발음') a.push({ x: '발음', bg: t.amberL, fg: t.amber, bd: t.amber }); if (d.fsp_slot) a.push({ x: d.fsp_note || '0.5T', bg: t.greenL, fg: t.green, bd: t.green }); return a; };
+  const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }); if (d.storage_light) a.push({ x: '차광', bg: t.text, fg: t.navText }); if (d.lasa_type === '모양') a.push({ x: '모양', bg: t.coral, fg: t.text }); if (d.lasa_type === '용량') a.push({ x: '용량', bg: t.blueL, fg: t.blue, bd: t.blue }); if (d.lasa_type === '발음') a.push({ x: '발음', bg: t.amberL, fg: t.amber, bd: t.amber }); if (d.fsp_slot && d.fsp_note) a.push({ x: d.fsp_note, bg: t.greenL, fg: t.green, bd: t.green }); return a; };
   /* 슬롯 정렬키(숫자): 카세트 1~80 → 확장 301~308 → FSP5~1(1001~1005). 문자열정렬 금지 */
   const mkRow = (slot, d, fsp) => ({ slot, d, fsp, _slotkey: fsp ? 1000 + (6 - Number(String(slot).replace('FSP', ''))) : Number(slot), drug_code: d.drug_code, drug_name: d.drug_name, ingredient_kr: d.ingredient_kr || '', lasa: d.lasa_type || '-', light: d.storage_light ? '차광' : '-', kind: fsp ? 'FSP' : '카세트', r3: Number(d.recent_3m_usage) || 0, r1: d.recent_1m_usage == null ? null : Number(d.recent_1m_usage), mavg: d.monthly_avg == null ? null : Number(d.monthly_avg) });
   const atcRows = (() => { const ent = []; assigned.filter(matches).forEach(d => { if (d.atc_slot) ent.push(mkRow(d.atc_slot, d, false)); if (d.fsp_slot) ent.push(mkRow(d.fsp_slot, d, true)); }); return ent; })();
@@ -4260,7 +4260,7 @@ function AtcView({ drugs, onReload }) {
         {Door(start)}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: 5, height: '55%', borderRadius: 3, background: t.border }} /></div>
         {Door(start + 8)}
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 6 }}><div style={{ fontSize: 12, fontWeight: 700, color: t.accent }}>월 {Math.round(bd.mn / 3)} ~ {Math.round(bd.mx / 3)}개</div><div style={{ fontSize: 10, opacity: 0.6 }}>3개월 {bd.mn} ~ {bd.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: (bd.mx / curBandMax * 100) + '%', marginTop: 3 }} /></div>
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 6 }}><div style={{ fontSize: 12, fontWeight: 700, color: t.accent }}>월 {Math.round(bd.mn / 3)} ~ {Math.round(bd.mx / 3)}개</div><div style={{ fontSize: 10, opacity: 0.6 }}>3개월 {bd.mn} ~ {bd.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: Math.min(100, bd.mx / curBandMax * 100) + '%', marginTop: 3 }} /></div>
       </div>; })}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
         <div>
@@ -4274,7 +4274,7 @@ function AtcView({ drugs, onReload }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 4 }}>
             {[301, 302, 303, 304, 305, 306, 307, 308].map(n => Cell(String(n), String(n), byAtc, false, true))}
           </div>
-          <div style={{ marginTop: 4 }}><div style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>월 {Math.round(curExpBand.mn / 3)} ~ {Math.round(curExpBand.mx / 3)}개 / 3개월 {curExpBand.mn} ~ {curExpBand.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: (curExpBand.mx / Math.max(1, curBandMax) * 100) + '%', marginTop: 3 }} /></div>
+          <div style={{ marginTop: 4 }}><div style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>월 {Math.round(curExpBand.mn / 3)} ~ {Math.round(curExpBand.mx / 3)}개 / 3개월 {curExpBand.mn} ~ {curExpBand.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: Math.min(100, curExpBand.mx / Math.max(1, curBandMax) * 100) + '%', marginTop: 3 }} /></div>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10, fontSize: 10, color: t.textM, alignItems: 'center' }}>
@@ -4293,7 +4293,7 @@ function AtcView({ drugs, onReload }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 3 }}>{Array.from({ length: 8 }, (_, i) => PCell(String(r * 16 + 1 + i), false))}</div>
         <div style={{ display: 'flex', justifyContent: 'center' }}><div style={{ width: 5, background: t.lavender, borderRadius: 3 }} /></div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 3 }}>{Array.from({ length: 8 }, (_, i) => PCell(String(r * 16 + 9 + i), false))}</div>
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 6 }}><div style={{ fontSize: 12, fontWeight: 700, color: t.accent }}>월 {Math.round(bd.mn / 3)} ~ {Math.round(bd.mx / 3)}개</div><div style={{ fontSize: 10, opacity: 0.6 }}>3개월 {bd.mn} ~ {bd.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: (bd.mx / bandMax * 100) + '%', marginTop: 3 }} /></div>
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 6 }}><div style={{ fontSize: 12, fontWeight: 700, color: t.accent }}>월 {Math.round(bd.mn / 3)} ~ {Math.round(bd.mx / 3)}개</div><div style={{ fontSize: 10, opacity: 0.6 }}>3개월 {bd.mn} ~ {bd.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: Math.min(100, bd.mx / bandMax * 100) + '%', marginTop: 3 }} /></div>
       </div>; })}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
         <div><div style={{ fontSize: 12, fontWeight: 700, color: t.green, marginBottom: 6 }}>FSP 고정식</div>
