@@ -4166,20 +4166,13 @@ function AtcView({ drugs, onReload }) {
   const pinnedCodes = new Set(candDesc.filter(d => d.atc_pinned).map(d => d.drug_code));
   const orderSlots = []; for (let n = 301; n <= 308; n++) orderSlots.push(String(n)); for (let n = 80; n >= 4; n--) orderSlots.push(String(n));
   const slotRank = {}; orderSlots.forEach((sl, i) => slotRank[sl] = i);
-  const nonPinnedDesc = candDesc.filter(d => !pinnedCodes.has(d.drug_code));
-  const idealAt = {}; orderSlots.forEach((sl, i) => { if (nonPinnedDesc[i]) idealAt[sl] = nonPinnedDesc[i]; });
   const curAt = {}; assigned.forEach(d => { if (d.atc_slot) curAt[String(d.atc_slot)] = d; });
-  const gapRows = orderSlots.map(sl => { const cur = curAt[sl], ideal = idealAt[sl]; const cr = cur && usageRank.has(cur.drug_code) ? usageRank.get(cur.drug_code) : null; const gap = (cur && cr != null) ? Math.abs(slotRank[sl] - cr) : (cur ? 999 : 0); return { sl, cur, curU: cur ? usageScore(cur) : null, ideal, idealU: ideal ? usageScore(ideal) : null, gap }; }).filter(r => r.cur || r.ideal).sort((a, b) => b.gap - a.gap);
   const swapDrugs = orderSlots.map(sl => ({ sl, d: curAt[sl] })).filter(x => x.d && !pinnedCodes.has(x.d.drug_code) && usageRank.has(x.d.drug_code));
   const swapsAll = [];
   for (let i = 0; i < swapDrugs.length; i++) for (let j = i + 1; j < swapDrugs.length; j++) { const A = swapDrugs[i], B = swapDrugs[j]; const rA = usageRank.get(A.d.drug_code), rB = usageRank.get(B.d.drug_code); const cur = Math.abs(slotRank[A.sl] - rA) + Math.abs(slotRank[B.sl] - rB); const aft = Math.abs(slotRank[A.sl] - rB) + Math.abs(slotRank[B.sl] - rA); const imp = cur - aft; if (imp > 0) swapsAll.push({ a: A, b: B, imp }); }
   swapsAll.sort((x, y) => y.imp - x.imp);
   const swaps = swapsAll; const usedSwap = new Set(); const swapTop = [];
   for (const sw of swapsAll) { if (usedSwap.has(sw.a.d.drug_code) || usedSwap.has(sw.b.d.drug_code)) continue; usedSwap.add(sw.a.d.drug_code); usedSwap.add(sw.b.d.drug_code); swapTop.push(sw); if (swapTop.length >= swapN) break; }
-  const top88b = candDesc.slice(0, 88); const top88bSet = new Set(top88b.map(d => d.drug_code));
-  const curCodes = new Set(assigned.filter(d => d.atc_slot).map(d => d.drug_code));
-  const newIn = top88b.filter(d => !curCodes.has(d.drug_code));
-  const pushOut = [...curCodes].filter(cc => !top88bSet.has(cc));
   const [viewMode, setViewMode] = useState('current');
   const [abcOpen, setAbcOpen] = useState({ a: false, b: false });
   const FIXSET = new Set(['LSX', 'SBCLP1', 'QROKEL125']); /* FSP만 제외 — 상비는 사용량순 산정 포함(잔류만 보장) */
@@ -4311,6 +4304,13 @@ function AtcView({ drugs, onReload }) {
           <tbody>{[...yebi12].sort((a, b) => String(a.drug_name || '').localeCompare(String(b.drug_name || ''), 'ko')).map((d, i) => { const u = usageScore(d); const bnd = usageScore(assignable[87]) || 1; const w = Math.max(2, Math.min(100, u / bnd * 100)); return <tr key={i}><td style={{ ...td, textAlign: 'center', color: t.textM }}>{rankFull.get(d.drug_code) || '-'}</td><td style={{ ...td, textAlign: 'left' }}>{d.drug_name}</td><td style={{ ...td, textAlign: 'right' }}>{u}</td><td style={{ ...td }}><div style={{ height: 6, borderRadius: 3, background: t.lavender, width: w + '%' }} /></td></tr>; })}</tbody>
         </table>
       </div>
+      <div style={{ marginTop: 12, border: '1px solid ' + t.border, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: t.bg, borderBottom: '1px solid ' + t.border, flexWrap: 'wrap' }}>{B('C', t.accentL, t.accent, t.accent)}<span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>교환 제안 ({swapTop.length})</span><span style={{ fontSize: 10, color: t.textL }}>카세트째 이동 · 즉시 실행</span><div style={{ flex: 1 }} /><span style={{ fontSize: 10, color: t.textM }}>상위</span><input type="range" min={10} max={40} value={swapN} onChange={e => setSwapN(Number(e.target.value))} style={{ accentColor: t.accent }} /><span style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>{swapN}건</span><span style={{ fontSize: 10, color: t.textL }}>(개선 {swaps.length}쌍 중)</span>{canEdit && <button onClick={() => { const ps = swapTop.filter((_, i) => selPairs[i]).map(sw => ({ slot_a: sw.a.sl, slot_b: sw.b.sl })); if (!ps.length) { setMsg('선택된 쌍이 없습니다'); setTimeout(() => setMsg(null), 2500); return; } setPending({ pairs: ps, desc: ps.length + '쌍 일괄 교환' }); }} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.card, color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>선택 적용</button>}</div>
+        <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr>{[['슬롯A', 'center'], ['약품A', 'left'], ['슬롯B', 'center'], ['약품B', 'left'], ['개선효과', 'right']].map(([h, al]) => <th key={h} style={{ ...th, textAlign: al, padding: '5px 8px' }}>{h}</th>)}{canEdit && <th style={{ ...th, textAlign: 'center', padding: '5px 8px' }}>적용</th>}</tr></thead>
+          <tbody>{swapTop.length ? swapTop.map((sw, i) => <tr key={i}><td style={{ ...td, textAlign: 'center' }}>{B(sw.a.sl, t.accentL, t.accent, t.accent)}</td><td style={{ ...td, textAlign: 'left' }}>{sw.a.d.drug_name}</td><td style={{ ...td, textAlign: 'center' }}>{B(sw.b.sl, t.accentL, t.accent, t.accent)}</td><td style={{ ...td, textAlign: 'left' }}>{sw.b.d.drug_name}</td><td style={{ ...td, textAlign: 'right', fontWeight: 700, color: t.green }}>-{sw.imp}</td>{canEdit && <td style={{ ...td, textAlign: 'center', whiteSpace: 'nowrap' }}><input type="checkbox" checked={!!selPairs[i]} onChange={e => setSelPairs(p => ({ ...p, [i]: e.target.checked }))} style={{ accentColor: t.accent, marginRight: 6 }} /><button onClick={() => setPending({ pairs: [{ slot_a: sw.a.sl, slot_b: sw.b.sl }], desc: '슬롯 ' + sw.a.sl + ' ' + sw.a.d.drug_name + '  <->  슬롯 ' + sw.b.sl + ' ' + sw.b.d.drug_name })} style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>적용</button></td>}</tr>) : <tr><td colSpan={canEdit ? 6 : 5} style={{ ...td, textAlign: 'center', color: t.textL }}>개선 가능한 교환 없음</td></tr>}</tbody>
+        </table></div>
+      </div>
     </div>}
     <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
@@ -4348,37 +4348,7 @@ function AtcView({ drugs, onReload }) {
         <button onClick={() => setAtcPage(p => Math.min(atcTp, p + 1))} disabled={atcPg >= atcTp} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: t.card, color: atcPg >= atcTp ? t.textL : t.textM, cursor: atcPg >= atcTp ? 'default' : 'pointer', fontSize: 11, fontWeight: 700 }}>다음</button>
       </div>}
     </div>
-    <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>카세트 배치 최적화 — 괴리·교환 제안 (경구제·사용·고형 · recent_3m)</div>
-      <div style={{ fontSize: 11, color: t.textL }}>기존 약품 간 교환은 카세트째 이동하므로 즉시 실행 가능합니다.</div>
-      <div style={{ fontSize: 11, color: t.textL, marginBottom: 8 }}>사용량에 수기 입력분이 포함되어 있습니다. 9월 마감 후 재산출을 권장합니다.</div>
-      <div style={{ fontSize: 10, color: t.textL, marginBottom: 10 }}>배정 규칙: 사용량 순위 그대로 배치 — 상위 8종→확장 301~308, 나머지 80종→카세트 1~80(1번=최저·80번=최고). 상비 3건(atc_pinned)은 기계 잔류만 보장하며 슬롯 위치는 사용량순 대상(고정 아님).</div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 4 }}>괴리 상위 20 (|슬롯 순위 − 사용량 순위|)</div>
-      <div style={{ overflowX: 'auto', marginBottom: 12 }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr>{['슬롯', '현재 약품', '현재 사용량', '이상 약품', '이상 사용량', '괴리'].map((h, hi) => <th key={h} style={{ ...th, textAlign: (hi === 2 || hi === 4 || hi === 5) ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
-        <tbody>{gapRows.slice(0, 20).map((r, i) => <tr key={i}><td style={{ ...td, fontWeight: 700, color: t.accent }}>{r.sl}</td><td style={{ ...td, textAlign: 'left' }}>{r.cur ? r.cur.drug_name : '-'}</td><td style={{ ...td, textAlign: 'right' }}>{r.curU == null ? '-' : r.curU}</td><td style={{ ...td, textAlign: 'left', color: t.textM }}>{r.ideal ? r.ideal.drug_name : '-'}</td><td style={{ ...td, textAlign: 'right', color: t.textM }}>{r.idealU == null ? '-' : r.idealU}</td><td style={{ ...td, textAlign: 'right', fontWeight: 700, color: r.gap >= 20 ? t.red : r.gap >= 10 ? t.amber : t.textM }}>{r.gap}</td></tr>)}</tbody>
-      </table></div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: t.text }}>7-A 기존 약품 간 교환 — 즉시 실행 가능</div>
-        <span style={{ fontSize: 10, color: t.textM }}>상위</span>
-        <input type="range" min={10} max={40} value={swapN} onChange={e => setSwapN(Number(e.target.value))} style={{ accentColor: t.accent }} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>{swapN}건</span>
-        <span style={{ fontSize: 10, color: t.textL }}>(개선 {swaps.length}쌍 중)</span>{canEdit && <button onClick={() => { const ps = swapTop.filter((_, i) => selPairs[i]).map(sw => ({ slot_a: sw.a.sl, slot_b: sw.b.sl })); if (!ps.length) { setMsg('선택된 쌍이 없습니다'); setTimeout(() => setMsg(null), 2500); return; } setPending({ pairs: ps, desc: ps.length + '쌍 일괄 교환' }); }} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.card, color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>선택 적용</button>}
-      </div>
-      <div style={{ overflowX: 'auto', marginBottom: 12 }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr>{['슬롯 A', '약품 A', '사용량 A', '슬롯 B', '약품 B', '사용량 B', '개선'].map((h, hi) => <th key={h} style={{ ...th, textAlign: (hi === 2 || hi === 5 || hi === 6) ? 'right' : 'left' }}>{h}</th>)}{canEdit && <th style={th}>적용</th>}</tr></thead>
-        <tbody>{swapTop.length ? swapTop.map((sw, i) => <tr key={i}><td style={{ ...td, fontWeight: 700, color: t.accent }}>{sw.a.sl}</td><td style={{ ...td, textAlign: 'left' }}>{sw.a.d.drug_name}</td><td style={{ ...td, textAlign: 'right' }}>{usageScore(sw.a.d)}</td><td style={{ ...td, fontWeight: 700, color: t.accent }}>{sw.b.sl}</td><td style={{ ...td, textAlign: 'left' }}>{sw.b.d.drug_name}</td><td style={{ ...td, textAlign: 'right' }}>{usageScore(sw.b.d)}</td><td style={{ ...td, textAlign: 'right', fontWeight: 700, color: t.green }}>-{sw.imp}</td>{canEdit && <td style={td}><input type="checkbox" checked={!!selPairs[i]} onChange={e => setSelPairs(p => ({ ...p, [i]: e.target.checked }))} style={{ accentColor: t.accent, marginRight: 6 }} /><button onClick={() => setPending({ pairs: [{ slot_a: sw.a.sl, slot_b: sw.b.sl }], desc: '슬롯 ' + sw.a.sl + ' ' + sw.a.d.drug_name + '  <->  슬롯 ' + sw.b.sl + ' ' + sw.b.d.drug_name })} style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>적용</button></td>}</tr>) : <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: t.textL }}>개선 가능한 교환 없음</td></tr>}</tbody>
-      </table></div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 4 }}>7-B 신규 진입 후보 — 카세트 확보 필요</div>
-      <div style={{ fontSize: 10, color: t.textL, marginBottom: 6 }}>해당 약품용 카세트 확보 후 투입 가능(규격 맞는 카세트 필요).</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.green, marginBottom: 4 }}>신규 진입 ({newIn.length}) — top88 미배정</div>
-          <div style={{ fontSize: 11, color: t.textM, wordBreak: 'break-all' }}>{newIn.length ? (newIn.slice(0, 20).map(d => d.drug_name + '(' + usageScore(d) + ')').join(', ') + (newIn.length > 20 ? ' 외 ' + (newIn.length - 20) : '')) : '없음'}</div></div>
-        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.red, marginBottom: 4 }}>제외 (밀려남) ({pushOut.length})</div>
-          <div style={{ fontSize: 11, color: t.textM, wordBreak: 'break-all' }}>{pushOut.length ? pushOut.join(', ') : '없음'}</div></div>
-      </div>
-    </div>
-    <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+    {viewMode === 'proposal' && <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>FSP 제안 (FSP2·4·5 · 소수 사용량 우선 → 최근3개월)</div>
       <div style={{ fontSize: 11, color: t.textL, marginBottom: 8 }}>FSP1·FSP3은 유동이므로 제외.</div>
       <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 10 }}>
@@ -4390,7 +4360,7 @@ function AtcView({ drugs, onReload }) {
         <thead><tr>{[['슬롯', 'center'], ['코드', 'left'], ['약품명', 'left'], ['최근3개월', 'right'], ['소수', 'center'], ['기준 부합', 'center']].map(([h, al]) => <th key={h} style={{ ...th, textAlign: al }}>{h}</th>)}</tr></thead>
         <tbody>{curFsp.map(({ s, d }, i) => { const r3 = d ? (Number(d.recent_3m_usage) || 0) : 0; const frac = d && (r3 % 1 !== 0); const inTop = d && fspCand.some(c => c.d.drug_code === d.drug_code); return <tr key={i}><td style={{ ...td, textAlign: 'center' }}>{s}</td><td style={{ ...td, textAlign: 'left' }}>{d ? d.drug_code : '-'}</td><td style={{ ...td, textAlign: 'left' }}>{d ? d.drug_name : '-'}</td><td style={{ ...td, textAlign: 'right' }}>{d ? r3 : '-'}</td><td style={{ ...td, textAlign: 'center' }}>{frac ? '소수' : '-'}</td><td style={{ ...td, textAlign: 'center', color: t.green, fontWeight: 700 }}>{d ? '0.5T 운용 확인됨' : '-'}</td></tr>; })}</tbody>
       </table>
-    </div>
+    </div>}
     <div className="atc-print-only">
       {[0, 1].map(pg => { const rows = pg === 0 ? slot91Ga.slice(0, 46) : slot91Ga.slice(46); return <div key={pg} className="atc-page">
         <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '2mm' }}>ATC 카세트 배치 목록 ({slot91.length}건 · 가나다순) · {pg + 1}/2</div>
