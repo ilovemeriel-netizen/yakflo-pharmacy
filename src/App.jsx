@@ -4181,16 +4181,26 @@ function AtcView({ drugs, onReload }) {
   const newIn = top88b.filter(d => !curCodes.has(d.drug_code));
   const pushOut = [...curCodes].filter(cc => !top88bSet.has(cc));
   const [viewMode, setViewMode] = useState('current');
+  const [abcOpen, setAbcOpen] = useState({ a: false, b: false });
   const FIXSET = new Set(['LSX', 'SBCLP1', 'QROKEL125']); /* FSP만 제외 — 상비는 사용량순 산정 포함(잔류만 보장) */
   const propCand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d) && !FIXSET.has(d.drug_code)).sort((a, b) => usageScore(b) - usageScore(a));
-  const ranked = [...propCand]; ['SANTLTRPL', 'STCNE', 'AMNP5'].forEach(pc => { const ix = ranked.findIndex(d => d.drug_code === pc); if (ix >= 88) { const mv = ranked.splice(ix, 1)[0]; ranked.splice(87, 0, mv); } }); /* top88 잔류 보장 */
+  const fullRankCand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d)).sort((a, b) => usageScore(b) - usageScore(a)); /* 전체 기준(FSP·향정 포함) */
+  const rankFull = new Map(); fullRankCand.forEach((d, i) => rankFull.set(d.drug_code, i + 1)); /* 전체순위 유지 — 향정 포함 */
+  const narcEx = propCand.filter(d => isN(d)); /* 「가」안 — 향정·마약 배정 제외 대상 */
+  const assignable = propCand.filter(d => !isN(d)); /* 슬롯 배정 대상(향정 건너뛰기) */
+  ['SANTLTRPL', 'STCNE', 'AMNP5'].forEach(pc => { const ix = assignable.findIndex(d => d.drug_code === pc); if (ix >= 88) { const mv = assignable.splice(ix, 1)[0]; assignable.splice(87, 0, mv); } }); /* 상비 잔류 보장 */
   const pIdeal = {};
-  for (let x = 301; x <= 308; x++) pIdeal[String(x)] = ranked[x - 301] || null;
-  for (let sl = 1; sl <= 80; sl++) pIdeal[String(sl)] = ranked[88 - sl] || null;
+  for (let x = 301; x <= 308; x++) pIdeal[String(x)] = assignable[x - 301] || null;
+  for (let sl = 1; sl <= 80; sl++) pIdeal[String(sl)] = assignable[88 - sl] || null;
   const rowBand = r => { const u = []; for (let k = 1; k <= 16; k++) { const d = pIdeal[String(r * 16 + k)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; };
   const bandMax = Math.max(1, rowBand(0).mx, rowBand(1).mx, rowBand(2).mx, rowBand(3).mx, rowBand(4).mx);
   const expBand = (() => { const u = []; for (let x = 301; x <= 308; x++) { const d = pIdeal[String(x)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; })();
-  const top88r = ranked.slice(0, 88); const yebi12 = ranked.slice(88, 100);
+  const curRowBand = start => { const u = []; for (let k = 0; k < 16; k++) { const d = byAtc[String(start + k)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; }; /* 현재 배치 기준(실제 배정 약품) */
+  const curBandMax = Math.max(1, curRowBand(1).mx, curRowBand(17).mx, curRowBand(33).mx, curRowBand(49).mx, curRowBand(65).mx);
+  const curExpBand = (() => { const u = []; for (let x = 301; x <= 308; x++) { const d = byAtc[String(x)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; })();
+  const top88r = assignable.slice(0, 88); const yebi12 = assignable.slice(88, 100);
+  const propSlotOf = {}; for (const k in pIdeal) { const d = pIdeal[k]; if (d) propSlotOf[d.drug_code] = k; } /* 코드→제안 슬롯 */
+  const narcTop88 = narcEx.filter(d => (rankFull.get(d.drug_code) || 999) <= 88); /* 향정 중 원래 top88(리보트릴·아티반) */
   const t88p = new Set(top88r.map(d => d.drug_code));
   const curCodes2 = new Set((drugs || []).filter(d => d.atc_slot).map(d => d.drug_code));
   const nmOf = cc => { const d = (drugs || []).find(x => x.drug_code === cc); return (d && d.drug_name) || cc; };
@@ -4223,12 +4233,13 @@ function AtcView({ drugs, onReload }) {
       <span style={{ fontSize: 10, color: t.textL }}>색상 출력을 위해 인쇄 설정에서 「배경 그래픽」을 켜주세요</span>
     </div>
     {viewMode === 'current' && <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 8 }}>상단 카세트 (1~80) · 좌측문 8 + 우측문 8</div>
-      {[1, 17, 33, 49, 65].map(start => <div key={start} style={{ display: 'grid', gridTemplateColumns: '1fr 22px 1fr', gap: 4, marginBottom: 6 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 8 }}>상단 카세트 (1~80) · 좌측문 8 + 우측문 8 <span style={{ fontSize: 10.5, fontWeight: 500, color: t.textL }}>· 우측 구간은 현재 배정 기준(규칙과 무관해 뒤섞여 보이는 것이 정상)</span></div>
+      {[1, 17, 33, 49, 65].map(start => { const bd = curRowBand(start); return <div key={start} style={{ display: 'grid', gridTemplateColumns: '1fr 22px 1fr 132px', gap: 4, marginBottom: 6 }}>
         {Door(start)}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: 5, height: '55%', borderRadius: 3, background: t.border }} /></div>
         {Door(start + 8)}
-      </div>)}
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 6 }}><div style={{ fontSize: 12, fontWeight: 700, color: t.accent }}>월 {Math.round(bd.mn / 3)} ~ {Math.round(bd.mx / 3)}개</div><div style={{ fontSize: 10, opacity: 0.6 }}>3개월 {bd.mn} ~ {bd.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: (bd.mx / curBandMax * 100) + '%', marginTop: 3 }} /></div>
+      </div>; })}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>FSP 고정식 (FSP1~5)</div>
@@ -4241,6 +4252,7 @@ function AtcView({ drugs, onReload }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 4 }}>
             {[301, 302, 303, 304, 305, 306, 307, 308].map(n => Cell(String(n), String(n), byAtc, false, true))}
           </div>
+          <div style={{ marginTop: 4 }}><div style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>월 {Math.round(curExpBand.mn / 3)} ~ {Math.round(curExpBand.mx / 3)}개 / 3개월 {curExpBand.mn} ~ {curExpBand.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: (curExpBand.mx / Math.max(1, curBandMax) * 100) + '%', marginTop: 3 }} /></div>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10, fontSize: 10, color: t.textM, alignItems: 'center' }}>
@@ -4271,14 +4283,34 @@ function AtcView({ drugs, onReload }) {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10, fontSize: 11.5, opacity: 0.75, alignItems: 'center' }}>{[['모양', t.coral], ['용량', t.blueL], ['발음', t.amberL], ['차광', t.text], ['상비 고정', t.greenL], ['일반', t.purpleL]].map(([lb, cl]) => <span key={lb} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: cl, border: '1px solid ' + t.border }} />{lb}</span>)}</div>
       <div style={{ fontSize: 11.5, color: t.textL, marginTop: 8 }}>기존 약품 간 교환은 카세트째 이동하므로 즉시 실행 가능합니다.</div>
       <div style={{ fontSize: 11.5, color: t.textL }}>사용량에 수기 입력분이 포함되어 있습니다. 9월 마감 후 재산출을 권장합니다.</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 12 }}>
-        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.green, marginBottom: 4 }}>A. 신규 진입 ({aNew.length}) · 카세트 확보 필요</div><div style={{ fontSize: 10, color: t.textM, wordBreak: 'break-all' }}>{aNew.slice(0, 15).map(d => d.drug_name).join(', ')}{aNew.length > 15 ? ' 외 ' + (aNew.length - 15) : ''}</div></div>
-        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.red, marginBottom: 4 }}>B. 제외 ({bOut.length}) · 수동 조제 전환</div><div style={{ fontSize: 10, color: t.textM, wordBreak: 'break-all' }}>{bOut.join(', ')}</div></div>
-        <div><div style={{ fontSize: 11, fontWeight: 700, color: t.accent, marginBottom: 4 }}>C. 슬롯 이동 ({cKeep.length}) · 즉시 실행</div><div style={{ fontSize: 10, color: t.textM }}>유지 품목 위치 조정</div></div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8, marginTop: 12 }}>
+        {[{ lb: '현재 배정', v: curCodes2.size, sub: '카세트 슬롯', c: t.text }, { lb: '유지', v: cKeep.length, sub: '위치만 조정', c: t.green }, { lb: '신규 진입', v: aNew.length, sub: '카세트 확보', c: t.accent }, { lb: '제외', v: bOut.length, sub: '수동 조제 전환', c: t.amber }, { lb: '2차 예비', v: yebi12.length, sub: '89~100위', c: t.textL }].map(cd => <div key={cd.lb} style={{ background: t.bg, border: '1px solid ' + t.border, borderRadius: 10, padding: '10px 12px' }}>
+          <div style={{ fontSize: 11.5, color: t.textM, fontWeight: 600 }}>{cd.lb}</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: cd.c, letterSpacing: -0.5 }}>{cd.v}</div>
+          <div style={{ fontSize: 10.5, color: t.textL }}>{cd.sub}</div>
+        </div>)}
       </div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginTop: 6 }}>현재 88건 중 {cKeep.length} 유지 · {bOut.length} 제외 · {aNew.length} 신규</div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginTop: 10, marginBottom: 4 }}>2차 예비 12 (89~100위) · 카세트 확보 시 투입 가능</div>
-      <div style={{ fontSize: 10, color: t.textM, wordBreak: 'break-all' }}>{yebi12.map(d => d.drug_name + '(' + usageScore(d) + ')').join(', ')}</div>
+      {narcEx.length > 0 && <div style={{ marginTop: 12, background: t.amberL, border: '1px solid ' + t.amber + '55', borderRadius: 10, padding: '10px 12px' }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: t.amber, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>향정·마약 배정 제외 ({narcEx.length}) {B('향정·배정 제외', t.amberL, t.amber, t.amber)}<span style={{ fontSize: 10, fontWeight: 500, color: t.textM }}>· 순위 산정엔 포함, 슬롯 미배정 (top88 진입 {narcTop88.length}건)</span></div>
+        <div style={{ fontSize: 10.5, color: t.textM, wordBreak: 'break-all' }}>{[...narcEx].sort((a, b) => String(a.drug_name || '').localeCompare(String(b.drug_name || ''), 'ko')).map(d => d.drug_name + ' (' + (rankFull.get(d.drug_code) || '-') + '위' + ((rankFull.get(d.drug_code) || 999) <= 88 ? '·미배정' : '') + ')').join(', ')}</div>
+      </div>}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+        {[{ key: 'a', tag: 'A', tagBg: t.greenL, tagFg: t.green, title: '신규 진입', note: '카세트 확보 필요', rows: aNew.map(d => ({ slot: propSlotOf[d.drug_code], name: d.drug_name, r3: usageScore(d), rank: rankFull.get(d.drug_code) })) }, { key: 'b', tag: 'B', tagBg: t.amberL, tagFg: t.amber, title: '제외', note: '수동 조제 전환', rows: bOut.map(cc => { const dd = (drugs || []).find(x => x.drug_code === cc); return { slot: dd && dd.atc_slot, name: (dd && dd.drug_name) || cc, r3: dd ? usageScore(dd) : 0, rank: rankFull.get(cc) }; }) }].map(sec => { const open = abcOpen[sec.key]; const shown = open ? sec.rows : sec.rows.slice(0, 6); return <div key={sec.key} style={{ border: '1px solid ' + t.border, borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', background: t.bg, borderBottom: '1px solid ' + t.border }}>{B(sec.tag, sec.tagBg, sec.tagFg, sec.tagFg)}<span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>{sec.title} ({sec.rows.length})</span><div style={{ flex: 1 }} /><span style={{ fontSize: 10, color: t.textL }}>{sec.note}</span></div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>{[['슬롯', 'center'], ['약품명', 'left'], ['3개월', 'right'], ['순위', 'right']].map(([h, al]) => <th key={h} style={{ ...th, textAlign: al, padding: '5px 8px' }}>{h}</th>)}</tr></thead>
+            <tbody>{shown.length ? shown.map((r, i) => <tr key={i}><td style={{ ...td, textAlign: 'center' }}>{r.slot ? B(r.slot, t.accentL, t.accent, t.accent) : <span style={{ color: t.textL }}>-</span>}</td><td style={{ ...td, textAlign: 'left' }}>{r.name}</td><td style={{ ...td, textAlign: 'right' }}>{r.r3}</td><td style={{ ...td, textAlign: 'right', color: t.textM }}>{r.rank || '-'}</td></tr>) : <tr><td colSpan={4} style={{ ...td, textAlign: 'center', color: t.textL }}>없음</td></tr>}</tbody>
+          </table>
+          {sec.rows.length > 6 && <div onClick={() => setAbcOpen(o => ({ ...o, [sec.key]: !o[sec.key] }))} style={{ padding: '6px 10px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: t.accent, cursor: 'pointer', borderTop: '1px solid ' + t.border }}>{open ? '접기' : '외 ' + (sec.rows.length - 6) + '건 · 전체 보기'}</div>}
+        </div>; })}
+      </div>
+      <div style={{ marginTop: 12, border: '1px solid ' + t.border, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 10px', background: t.bg, borderBottom: '1px solid ' + t.border, fontSize: 12, fontWeight: 700, color: t.text }}>2차 예비 ({yebi12.length}) · 89~100위 · 카세트 확보 시 투입</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr>{[['순위', 'center'], ['약품명', 'left'], ['3개월', 'right'], ['88위 경계 대비', 'left']].map(([h, al]) => <th key={h} style={{ ...th, textAlign: al, padding: '5px 8px' }}>{h}</th>)}</tr></thead>
+          <tbody>{[...yebi12].sort((a, b) => String(a.drug_name || '').localeCompare(String(b.drug_name || ''), 'ko')).map((d, i) => { const u = usageScore(d); const bnd = usageScore(assignable[87]) || 1; const w = Math.max(2, Math.min(100, u / bnd * 100)); return <tr key={i}><td style={{ ...td, textAlign: 'center', color: t.textM }}>{rankFull.get(d.drug_code) || '-'}</td><td style={{ ...td, textAlign: 'left' }}>{d.drug_name}</td><td style={{ ...td, textAlign: 'right' }}>{u}</td><td style={{ ...td }}><div style={{ height: 6, borderRadius: 3, background: t.lavender, width: w + '%' }} /></td></tr>; })}</tbody>
+        </table>
+      </div>
     </div>}
     <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
@@ -4350,13 +4382,13 @@ function AtcView({ drugs, onReload }) {
       <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>FSP 제안 (FSP2·4·5 · 소수 사용량 우선 → 최근3개월)</div>
       <div style={{ fontSize: 11, color: t.textL, marginBottom: 8 }}>FSP1·FSP3은 유동이므로 제외.</div>
       <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 10 }}>
-        <thead><tr>{['제안순위', '코드', '약품명', '최근3개월', '소수여부'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
-        <tbody>{fspCand.map((x, i) => <tr key={i}><td style={td}>{i + 1}</td><td style={td}>{x.d.drug_code}</td><td style={td}>{x.d.drug_name}</td><td style={{ ...td, textAlign: 'right' }}>{x.r3}</td><td style={{ ...td, color: x.frac ? t.green : t.textL }}>{x.frac ? '소수' : '-'}</td></tr>)}</tbody>
+        <thead><tr>{[['제안순위', 'center'], ['코드', 'left'], ['약품명', 'left'], ['최근3개월', 'right'], ['소수여부', 'center']].map(([h, al]) => <th key={h} style={{ ...th, textAlign: al }}>{h}</th>)}</tr></thead>
+        <tbody>{fspCand.map((x, i) => <tr key={i}><td style={{ ...td, textAlign: 'center' }}>{i + 1}</td><td style={{ ...td, textAlign: 'left' }}>{x.d.drug_code}</td><td style={{ ...td, textAlign: 'left' }}>{x.d.drug_name}</td><td style={{ ...td, textAlign: 'right' }}>{x.r3}</td><td style={{ ...td, textAlign: 'center', color: x.frac ? t.green : t.textL }}>{x.frac ? '소수' : '-'}</td></tr>)}</tbody>
       </table>
       <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginBottom: 4 }}>현재 배정 역검증 (QROKEL125·SBCLP1·LSX)</div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr>{['슬롯', '코드', '약품명', '최근3개월', '소수', '기준 부합'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
-        <tbody>{curFsp.map(({ s, d }, i) => { const r3 = d ? (Number(d.recent_3m_usage) || 0) : 0; const frac = d && (r3 % 1 !== 0); const inTop = d && fspCand.some(c => c.d.drug_code === d.drug_code); return <tr key={i}><td style={td}>{s}</td><td style={td}>{d ? d.drug_code : '-'}</td><td style={td}>{d ? d.drug_name : '-'}</td><td style={{ ...td, textAlign: 'right' }}>{d ? r3 : '-'}</td><td style={td}>{frac ? '소수' : '-'}</td><td style={{ ...td, color: t.green, fontWeight: 700 }}>{d ? '0.5T 운용 확인됨' : '-'}</td></tr>; })}</tbody>
+        <thead><tr>{[['슬롯', 'center'], ['코드', 'left'], ['약품명', 'left'], ['최근3개월', 'right'], ['소수', 'center'], ['기준 부합', 'center']].map(([h, al]) => <th key={h} style={{ ...th, textAlign: al }}>{h}</th>)}</tr></thead>
+        <tbody>{curFsp.map(({ s, d }, i) => { const r3 = d ? (Number(d.recent_3m_usage) || 0) : 0; const frac = d && (r3 % 1 !== 0); const inTop = d && fspCand.some(c => c.d.drug_code === d.drug_code); return <tr key={i}><td style={{ ...td, textAlign: 'center' }}>{s}</td><td style={{ ...td, textAlign: 'left' }}>{d ? d.drug_code : '-'}</td><td style={{ ...td, textAlign: 'left' }}>{d ? d.drug_name : '-'}</td><td style={{ ...td, textAlign: 'right' }}>{d ? r3 : '-'}</td><td style={{ ...td, textAlign: 'center' }}>{frac ? '소수' : '-'}</td><td style={{ ...td, textAlign: 'center', color: t.green, fontWeight: 700 }}>{d ? '0.5T 운용 확인됨' : '-'}</td></tr>; })}</tbody>
       </table>
     </div>
     <div className="atc-print-only">
