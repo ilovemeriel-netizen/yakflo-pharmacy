@@ -4128,9 +4128,12 @@ function AtcView({ drugs, onReload }) {
   const [atcLight, setAtcLight] = useState('전체');
   const [atcKind, setAtcKind] = useState('전체');
   const [q, setQ] = useState('');
-  const [temp, setTemp] = useState(null); /* 임시 사용량 시뮬(제안 뷰 전용) — {file,map,matched,unmatched}. DB 미저장·state 전용 */
+  const [temp, setTemp] = useState(null); /* 임시 사용량 시뮬(제안 뷰 전용) — {file,m3,m1,matched,unmatched}. DB 미저장·state 전용 */
+  const [tempMetric, setTempMetric] = useState('3m'); /* 임시 지표: '3m'(3개월 단독) | 'weighted'(가중 결합) */
   const tempRef = useRef(null);
-  const usageScore = d => { const c = d && d.drug_code; if (temp && c && temp.map[c] != null) return temp.map[c]; return Number(d && d.recent_3m_usage) || 0; }; /* 순위 지표 — 임시 모드면 temp.map 우선, 아니면 recent_3m */
+  const metricLabel = tempMetric === 'weighted' ? '가중 결합' : '3개월 단독';
+  /* 순위 지표 단일 분기 — 실사용: recent_3m · 임시·3개월: m3??recent_3m · 임시·가중: 3M×0.6+(1M×3)×0.4 (1M 없거나 0이면 3개월 단독) */
+  const usageScore = d => { const c = d && d.drug_code; const dbR3 = Number(d && d.recent_3m_usage) || 0; if (!temp || !c) return dbR3; const r3 = temp.m3[c] != null ? temp.m3[c] : dbR3; if (tempMetric !== 'weighted') return r3; const r1 = temp.m1[c]; return (r1 != null && r1 > 0) ? (r3 * 0.6 + r1 * 3 * 0.4) : r3; };
   const isSolid = d => { const n = String((d && d.drug_name) || ''); if (/시럽|현탁|드롭|엘릭서/.test(n)) return false; if (/(액|산|과립)$/.test(n)) return false; return /정|캡슐|캅셀/.test(n); };
   const matches = d => { const kw = q.trim().toLowerCase(); if (!kw) return true; if (!d) return false; return String(d.drug_code||'').toLowerCase().includes(kw) || String(d.drug_name||'').toLowerCase().includes(kw) || String(d.ingredient_kr||'').toLowerCase().includes(kw); };
   const assigned = (drugs || []).filter(d => d.atc_slot || d.fsp_slot);
@@ -4185,7 +4188,7 @@ function AtcView({ drugs, onReload }) {
   function dlXlsx(mode) {
     const src = mode === '슬롯' ? [...slot91].sort((x, y) => (Number(String(x.slot).replace('FSP', '999')) || 0) - (Number(String(y.slot).replace('FSP', '999')) || 0)) : slot91Ga;
     const ws = XLSX.utils.json_to_sheet(src.map(({ slot, d }) => ({ 슬롯: slot, 약품코드: d.drug_code, 약품명: d.drug_name, 성분명: d.ingredient_kr || '', 유사: d.lasa_type || '', 차광: d.storage_light ? '차광' : '', 최근3개월: d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage), 직전1개월: d.recent_1m_usage == null ? '' : Number(d.recent_1m_usage) })));
-    if (temp) XLSX.utils.sheet_add_aoa(ws, [[], ['임시 사용량 기준 · ' + temp.file]], { origin: -1 });
+    if (temp) XLSX.utils.sheet_add_aoa(ws, [[], ['임시 사용량 기준 · ' + temp.file + ' · 지표: ' + metricLabel]], { origin: -1 });
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, temp ? 'ATC배치(임시)' : 'ATC배치'); XLSX.writeFile(wb, 'ATC배치_' + (temp ? '임시_' : '') + mode + '_' + new Date().toISOString().split('T')[0] + '.xlsx');
   }
   const oral = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d)).sort((a, b) => usageScore(b) - usageScore(a));
@@ -4271,10 +4274,10 @@ function AtcView({ drugs, onReload }) {
         const rows = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false });
         const codes = new Set((drugs || []).map(d => d.drug_code));
         const num = v => { const x = String(v).trim(); if (x === '') return null; const n = Number(x.replace(/,/g, '')); return (Number.isFinite(n) && n >= 0) ? n : null; };
-        const map = {}; const umset = new Set();
-        rows.forEach(r => { const code = String(r['약품코드'] ?? r['drug_code'] ?? '').trim(); if (!code) return; const v = num(r['최근3개월사용량'] ?? r['최근3개월'] ?? r['recent_3m_usage'] ?? ''); if (v == null) return; if (!codes.has(code)) { umset.add(code); return; } map[code] = v; });
-        setTemp({ file: file.name, map, matched: Object.keys(map).length, unmatched: umset.size });
-        setMsg('임시 사용량 적용 — 매칭 ' + Object.keys(map).length + '건 · 미매칭 ' + umset.size + '건'); setTimeout(() => setMsg(null), 3500);
+        const m3 = {}, m1 = {}; const umset = new Set(), mset = new Set();
+        rows.forEach(r => { const code = String(r['약품코드'] ?? r['drug_code'] ?? '').trim(); if (!code) return; const v3 = num(r['최근3개월사용량'] ?? r['최근3개월'] ?? r['recent_3m_usage'] ?? ''); const v1 = num(r['직전1개월사용량'] ?? r['직전1개월'] ?? r['recent_1m_usage'] ?? ''); if (v3 == null && v1 == null) return; if (!codes.has(code)) { umset.add(code); return; } if (v3 != null) m3[code] = v3; if (v1 != null) m1[code] = v1; mset.add(code); });
+        setTemp({ file: file.name, m3, m1, matched: mset.size, unmatched: umset.size });
+        setMsg('임시 사용량 적용 — 매칭 ' + mset.size + '건 · 미매칭 ' + umset.size + '건'); setTimeout(() => setMsg(null), 3500);
       } catch (err) { setMsg('임시 사용량 파싱 실패: ' + err.message); setTimeout(() => setMsg(null), 4000); }
     };
     reader.readAsArrayBuffer(file);
@@ -4282,11 +4285,11 @@ function AtcView({ drugs, onReload }) {
   async function dlTempTemplate() {
     const X = await import('xlsx');
     const cand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d)).sort((a, b) => String(a.drug_name || '').localeCompare(String(b.drug_name || ''), 'ko'));
-    const aoa = [['약품코드', '약품명(참고용)', '최근3개월사용량'], ...cand.map(d => [d.drug_code, d.drug_name || '', d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage)])];
+    const aoa = [['약품코드', '약품명(참고용)', '최근3개월사용량', '직전1개월사용량'], ...cand.map(d => [d.drug_code, d.drug_name || '', d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage), d.recent_1m_usage == null ? '' : Number(d.recent_1m_usage)])];
     const ws = X.utils.aoa_to_sheet(aoa);
     const rg = X.utils.decode_range(ws['!ref']);
-    for (let R = 1; R <= rg.e.r; R++) { const a = X.utils.encode_cell({ r: R, c: 0 }); if (ws[a]) { ws[a].t = 's'; ws[a].z = '@'; } const cc = X.utils.encode_cell({ r: R, c: 2 }); if (ws[cc] && ws[cc].v !== '') { ws[cc].t = 'n'; ws[cc].z = '0'; } }
-    ws['!cols'] = [{ wch: 14 }, { wch: 24 }, { wch: 16 }];
+    for (let R = 1; R <= rg.e.r; R++) { const a = X.utils.encode_cell({ r: R, c: 0 }); if (ws[a]) { ws[a].t = 's'; ws[a].z = '@'; } for (const C of [2, 3]) { const cc = X.utils.encode_cell({ r: R, c: C }); if (ws[cc] && ws[cc].v !== '') { ws[cc].t = 'n'; ws[cc].z = '0'; } } }
+    ws['!cols'] = [{ wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 16 }];
     const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, '임시사용량');
     X.writeFile(wb, 'ATC_임시사용량_양식_' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '.xlsx');
   }
@@ -4352,7 +4355,7 @@ function AtcView({ drugs, onReload }) {
         <input ref={tempRef} type="file" accept=".xlsx,.xls" onChange={onTempUpload} style={{ display: 'none' }} />
         <button onClick={dlTempTemplate} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: t.card, color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>임시 사용량 양식</button>
         <button onClick={() => tempRef.current && tempRef.current.click()} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: t.card, color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>임시 사용량 업로드</button>
-        {temp && <><span style={{ fontSize: 11.5, color: t.textM }}>임시 사용량 적용 중 · {temp.file} · 매칭 {temp.matched}건 · 미매칭 {temp.unmatched}건</span><button onClick={() => setTemp(null)} style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>해제</button></>}
+        {temp && <><span style={{ fontSize: 11.5, color: t.textM }}>임시 사용량 적용 중 · {temp.file} · 매칭 {temp.matched}건 · 미매칭 {temp.unmatched}건 · 지표: {metricLabel}</span>{[['3m', '3개월 단독'], ['weighted', '가중 결합']].map(([v, lb]) => <button key={v} onClick={() => setTempMetric(v)} style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid ' + (tempMetric === v ? t.accent : t.border), background: tempMetric === v ? t.accentL : t.card, color: tempMetric === v ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{lb}</button>)}<button onClick={() => setTemp(null)} style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>해제</button></>}
       </div>
       <div style={{ fontSize: 11, color: t.textL, marginBottom: 8 }}>양식을 받아 최근3개월 값을 수정한 뒤 업로드하면 임시 순위로 제안을 확인할 수 있습니다.</div>
       <div style={{ fontSize: 13, fontWeight: 700, color: t.accent, marginBottom: 8 }}>상단 카세트 1–80 · 위로 갈수록 저빈도</div>
@@ -4447,7 +4450,7 @@ function AtcView({ drugs, onReload }) {
     </div>}
     <div className="atc-print-only">
       {[0, 1].map(pg => { const rows = pg === 0 ? slot91Ga.slice(0, 46) : slot91Ga.slice(46); return <div key={pg} className="atc-page">
-        <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '2mm' }}>ATC 카세트 배치 목록 ({slot91.length}건 · 가나다순) · {pg + 1}/2{temp ? ' · 임시 사용량 기준 · ' + temp.file : ''}</div>
+        <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '2mm' }}>ATC 카세트 배치 목록 ({slot91.length}건 · 가나다순) · {pg + 1}/2{temp ? ' · 임시 사용량 기준 · ' + temp.file + ' · 지표: ' + metricLabel : ''}</div>
         <table><thead><tr>{[['슬롯', '12%', 'center'], ['약품명', '30%', 'left'], ['성분명', '46%', 'left'], ['배지', '12%', 'center']].map(([h, w, al]) => <th key={h} style={{ fontSize: '8pt', textAlign: al, borderBottom: '0.5pt solid ' + t.border, width: w }}>{h}</th>)}</tr></thead>
         <tbody>{rows.map(({ slot, d }, i) => { const isFsp = String(slot).startsWith('FSP'); return <tr key={i}><td className="sl" style={{ fontWeight: 700, borderBottom: '0.3pt solid ' + t.border }}>{slot}</td><td className="nm" style={{ fontWeight: 600, borderBottom: '0.3pt solid ' + t.border }} title={d.drug_name}>{d.drug_name}</td><td className="ig" style={{ color: t.textM, borderBottom: '0.3pt solid ' + t.border }} title={[d.ingredient_en, d.ingredient_kr].filter(Boolean).join(' / ')}>{printIng(d)}</td><td className="bd" style={{ borderBottom: '0.3pt solid ' + t.border }}>{dBadges(d).filter(b => b.x !== '상비' && (isFsp || !(b.bg === t.greenL && b.fg === t.green))).map((b, bi) => <span key={bi} style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>)}</td></tr>; })}</tbody></table>
         <div style={{ fontSize: '8pt', textAlign: 'center', marginTop: '3mm' }}>{pg + 1} / 2</div>
