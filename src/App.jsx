@@ -4279,6 +4279,17 @@ function AtcView({ drugs, onReload }) {
     };
     reader.readAsArrayBuffer(file);
   }
+  async function dlTempTemplate() {
+    const X = await import('xlsx');
+    const cand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d)).sort((a, b) => String(a.drug_name || '').localeCompare(String(b.drug_name || ''), 'ko'));
+    const aoa = [['약품코드', '약품명(참고용)', '최근3개월사용량'], ...cand.map(d => [d.drug_code, d.drug_name || '', d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage)])];
+    const ws = X.utils.aoa_to_sheet(aoa);
+    const rg = X.utils.decode_range(ws['!ref']);
+    for (let R = 1; R <= rg.e.r; R++) { const a = X.utils.encode_cell({ r: R, c: 0 }); if (ws[a]) { ws[a].t = 's'; ws[a].z = '@'; } const cc = X.utils.encode_cell({ r: R, c: 2 }); if (ws[cc] && ws[cc].v !== '') { ws[cc].t = 'n'; ws[cc].z = '0'; } }
+    ws['!cols'] = [{ wch: 14 }, { wch: 24 }, { wch: 16 }];
+    const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, '임시사용량');
+    X.writeFile(wb, 'ATC_임시사용량_양식_' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '.xlsx');
+  }
   async function saveExclude() { if (!excludeSel) return; const reason = excludeReason === '기타' ? (excludeEtc.trim() || '기타') : excludeReason; const { error } = await supabase.from('drugs').update({ atc_excluded: true, atc_exclude_reason: reason }).eq('drug_code', excludeSel.drug_code); if (error) { setMsg('수기 제외 실패: ' + error.message); setTimeout(() => setMsg(null), 4000); return; } setMsg('수기 조제 제외 추가 — ' + excludeSel.drug_name); setExcludeModal(false); setExcludeSel(null); setExcludeQ(''); setExcludeEtc(''); onReload && onReload(); setTimeout(() => setMsg(null), 3500); }
   async function unExclude(d) { const { error } = await supabase.from('drugs').update({ atc_excluded: false, atc_exclude_reason: null }).eq('drug_code', d.drug_code); if (error) { setMsg('해제 실패: ' + error.message); setTimeout(() => setMsg(null), 4000); return; } setMsg('수기 조제 제외 해제 — ' + d.drug_name); onReload && onReload(); setTimeout(() => setMsg(null), 3500); }
   return <div>
@@ -4337,10 +4348,13 @@ function AtcView({ drugs, onReload }) {
     </div>}
     {viewMode === 'proposal' && <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
       <style>{'@media(max-width:1100px){.atc-prop-row{grid-template-columns:1fr 22px 1fr!important}.atc-prop-row>*:last-child{grid-column:1/-1;margin-top:4px}}'}</style>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
         <input ref={tempRef} type="file" accept=".xlsx,.xls" onChange={onTempUpload} style={{ display: 'none' }} />
-        {temp ? <><span style={{ fontSize: 11.5, color: t.textM }}>임시 사용량 적용 중 · {temp.file} · 매칭 {temp.matched}건 · 미매칭 {temp.unmatched}건</span><button onClick={() => setTemp(null)} style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>해제</button></> : <button onClick={() => tempRef.current && tempRef.current.click()} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: t.card, color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>임시 사용량 엑셀</button>}
+        <button onClick={dlTempTemplate} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: t.card, color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>임시 사용량 양식</button>
+        <button onClick={() => tempRef.current && tempRef.current.click()} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: t.card, color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>임시 사용량 업로드</button>
+        {temp && <><span style={{ fontSize: 11.5, color: t.textM }}>임시 사용량 적용 중 · {temp.file} · 매칭 {temp.matched}건 · 미매칭 {temp.unmatched}건</span><button onClick={() => setTemp(null)} style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>해제</button></>}
       </div>
+      <div style={{ fontSize: 11, color: t.textL, marginBottom: 8 }}>양식을 받아 최근3개월 값을 수정한 뒤 업로드하면 임시 순위로 제안을 확인할 수 있습니다.</div>
       <div style={{ fontSize: 13, fontWeight: 700, color: t.accent, marginBottom: 8 }}>상단 카세트 1–80 · 위로 갈수록 저빈도</div>
       {[0, 1, 2, 3, 4].map(r => { const bd = rowBand(r); return <div key={r} className="atc-prop-row" style={{ display: 'grid', gridTemplateColumns: '1fr 22px 1fr 132px', gap: 3, marginBottom: 3 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 3 }}>{Array.from({ length: 8 }, (_, i) => PCell(String(r * 16 + 1 + i), false))}</div>
