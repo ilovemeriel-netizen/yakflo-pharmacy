@@ -4243,8 +4243,8 @@ function AtcView({ drugs, onReload }) {
   const swaps = swapsAll; const usedSwap = new Set(); const swapTop = [];
   for (const sw of swapsAll) { if (usedSwap.has(sw.a.d.drug_code) || usedSwap.has(sw.b.d.drug_code)) continue; usedSwap.add(sw.a.d.drug_code); usedSwap.add(sw.b.d.drug_code); swapTop.push(sw); if (swapTop.length >= swapN) break; }
   const [viewMode, setViewMode] = useState('current');
-  const FIXSET = new Set(['LSX', 'SBCLP1', 'QROKEL125']); /* FSP만 제외 — 상비는 사용량순 산정 포함(잔류만 보장) */
-  const propCand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d) && !FIXSET.has(d.drug_code)).sort((a, b) => usageScore(b) - usageScore(a));
+  /* FSP 배정 약품(LSX·SBCLP1·QROKEL125)도 카세트 후보·배정 대상에 포함 — FSP 고정과 카세트는 별도 물리 공간. fsp_slot은 별도 고정 유지 */
+  const propCand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d)).sort((a, b) => usageScore(b) - usageScore(a));
   const fullRankCand = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d)).sort((a, b) => usageScore(b) - usageScore(a)); /* 전체 기준(FSP·향정 포함) */
   const rankFull = new Map(); fullRankCand.forEach((d, i) => rankFull.set(d.drug_code, i + 1)); /* 전체순위 유지 — 향정 포함 */
   const narcEx = propCand.filter(d => isN(d)); /* 「가」안 — 향정·마약 배정 제외 대상 */
