@@ -1762,7 +1762,7 @@ function StandardTable({ cols, TS, sk, sd, setSort, hf, t, grid, layout, colWidt
       const th = c.plain
         ? { padding: '8px 10px', textAlign: 'center', color: t.textM, fontWeight: 600, borderBottom: '1px solid ' + t.border, fontSize: 11, background: bg, ...br, ...(c.th || {}) }
         : { ...TS(k), background: bg, ...br, ...(c.sticky ? { position: 'sticky', left: c.sticky.left, zIndex: 6, ...(c.sticky.w ? { minWidth: c.sticky.w, maxWidth: c.sticky.w, width: c.sticky.w } : {}), ...br } : {}), ...(c.th || {}) };
-      return <th key={c.h} style={th}>{k ? <ColMenu colKey={k} label={c.h} sk={sk} sd={sd} setSort={setSort} filter={hf[k] || null} /> : <span style={{ cursor: 'default', whiteSpace: 'nowrap', fontWeight: 700 }}>{c.h}</span>}</th>;
+      return <th key={c.h} title={c.thTitle || undefined} style={th}>{k ? <ColMenu colKey={k} label={c.h} sk={sk} sd={sd} setSort={setSort} filter={hf[k] || null} /> : <span style={{ cursor: 'default', whiteSpace: 'nowrap', fontWeight: 700 }}>{c.h}</span>}</th>;
     })}</tr></thead>
     {children}
   </table></HScroll>;
@@ -3055,7 +3055,8 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
   const visKeys = CHANGE_COL_ORDER.filter(k => selCols.includes(k))
   const visSticky = CHANGE_STICKY_ORDER.filter(k => visKeys.includes(k))
   const stickyLeftOf = k => { const idx = visSticky.indexOf(k); if (idx === -1) return null; let l = 0; for (let j = 0; j < idx; j++) l += CHANGE_COL_WIDTH[visSticky[j]]; return l }
-  const stCols = visKeys.map(k => { const left = stickyLeftOf(k); return { k, h: CHANGE_COL_LABEL[k], th: { whiteSpace: 'nowrap', textAlign: CHANGE_RIGHT_COLS.has(k) ? 'right' : 'left' }, ...(left != null ? { sticky: { left, w: CHANGE_COL_WIDTH[k] } } : {}) } }).concat([{ k: '', h: '관리', plain: true }])
+  const _hdrAbbr = { usage_dept1: 'FM(화)', usage_dept2: 'RM(수)', usage_dept3: 'NR(목)' }; const _hdrFull = { usage_dept1: '가정의학과', usage_dept2: '재활의학과', usage_dept3: '신경과' }
+  const stCols = visKeys.map(k => { const left = stickyLeftOf(k); return { k, h: _hdrAbbr[k] || CHANGE_COL_LABEL[k], thTitle: _hdrFull[k], th: { whiteSpace: 'nowrap', textAlign: CHANGE_RIGHT_COLS.has(k) ? 'right' : 'left' }, ...(left != null ? { sticky: { left, w: CHANGE_COL_WIDTH[k] } } : {}) } }).concat([{ k: '', h: '관리', plain: true }])
   const stWidths = visKeys.map(k => CHANGE_COL_WIDTH[k]).concat([96])
   const stMin = stWidths.reduce((a, b) => a + b, 0)
   const weeklyVisible = visKeys.includes('weekly_usage')
@@ -3078,6 +3079,7 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
       </div>
     </div>
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}><span style={{ fontSize: 10, color: t.textM }}>남은 주:</span>{[['4주↑', '#BFA6D9'], ['3~4주', '#B8CBD9'], ['2~3주', '#A8D9BE'], ['1~2주', '#F5DFAE'], ['1주 미만', '#EFB8B0']].map(([l, bg]) => <span key={l} style={{ fontSize: 9, padding: '2px 8px', borderRadius: 6, background: bg, color: bg === '#EFB8B0' ? '#8C2F26' : '#333', fontWeight: 600 }}>{l}</span>)}<span style={{ fontSize: 9, color: t.textM, marginLeft: 4 }}>· 과별 누적 사용이 현재고 초과 시 해당 칸 노랑</span></div>
+    <div style={{ fontSize: 10, color: t.textM, marginBottom: 10 }}>FM 가정의학과 · RM 재활의학과 · NR 신경과</div>
     {uMsg && <div style={{ background: uMsg.includes('오류') ? t.redL : t.blueL, border: `1px solid ${uMsg.includes('오류') ? t.red : t.blue}`, borderRadius: 8, padding: '10px 14px', marginBottom: 10, color: uMsg.includes('오류') ? t.red : t.blue, fontSize: 12, fontWeight: 600 }}>{uMsg}</div>}
     <div style={{ background: t.card, borderRadius: 12, border: `1px solid ${t.border}`, overflow: 'hidden' }}>
       <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={setSort} hf={{}} grid layout="fixed" minWidth={stMin} colWidths={stWidths} hscroll={{ noLabel: true, ends: true }} cols={stCols}>
