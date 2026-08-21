@@ -4128,7 +4128,9 @@ function AtcView({ drugs, onReload }) {
   const [atcLight, setAtcLight] = useState('전체');
   const [atcKind, setAtcKind] = useState('전체');
   const [q, setQ] = useState('');
-  const usageScore = d => Number(d && d.recent_3m_usage) || 0; /* 순위 지표 — 현재 recent_3m 단독. 향후 전환 대비 분리 */
+  const [temp, setTemp] = useState(null); /* 임시 사용량 시뮬(제안 뷰 전용) — {file,map,matched,unmatched}. DB 미저장·state 전용 */
+  const tempRef = useRef(null);
+  const usageScore = d => { const c = d && d.drug_code; if (temp && c && temp.map[c] != null) return temp.map[c]; return Number(d && d.recent_3m_usage) || 0; }; /* 순위 지표 — 임시 모드면 temp.map 우선, 아니면 recent_3m */
   const isSolid = d => { const n = String((d && d.drug_name) || ''); if (/시럽|현탁|드롭|엘릭서/.test(n)) return false; if (/(액|산|과립)$/.test(n)) return false; return /정|캡슐|캅셀/.test(n); };
   const matches = d => { const kw = q.trim().toLowerCase(); if (!kw) return true; if (!d) return false; return String(d.drug_code||'').toLowerCase().includes(kw) || String(d.drug_name||'').toLowerCase().includes(kw) || String(d.ingredient_kr||'').toLowerCase().includes(kw); };
   const assigned = (drugs || []).filter(d => d.atc_slot || d.fsp_slot);
@@ -4183,7 +4185,8 @@ function AtcView({ drugs, onReload }) {
   function dlXlsx(mode) {
     const src = mode === '슬롯' ? [...slot91].sort((x, y) => (Number(String(x.slot).replace('FSP', '999')) || 0) - (Number(String(y.slot).replace('FSP', '999')) || 0)) : slot91Ga;
     const ws = XLSX.utils.json_to_sheet(src.map(({ slot, d }) => ({ 슬롯: slot, 약품코드: d.drug_code, 약품명: d.drug_name, 성분명: d.ingredient_kr || '', 유사: d.lasa_type || '', 차광: d.storage_light ? '차광' : '', 최근3개월: d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage), 직전1개월: d.recent_1m_usage == null ? '' : Number(d.recent_1m_usage) })));
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'ATC배치'); XLSX.writeFile(wb, 'ATC배치_' + mode + '_' + new Date().toISOString().split('T')[0] + '.xlsx');
+    if (temp) XLSX.utils.sheet_add_aoa(ws, [[], ['임시 사용량 기준 · ' + temp.file]], { origin: -1 });
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, temp ? 'ATC배치(임시)' : 'ATC배치'); XLSX.writeFile(wb, 'ATC배치_' + (temp ? '임시_' : '') + mode + '_' + new Date().toISOString().split('T')[0] + '.xlsx');
   }
   const oral = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d)).sort((a, b) => usageScore(b) - usageScore(a));
   const top88 = oral.slice(0, 88), spare = oral.slice(88, 100);
@@ -4195,6 +4198,7 @@ function AtcView({ drugs, onReload }) {
   const curFsp = ['FSP5', 'FSP4', 'FSP2'].map(s => ({ s, d: byFsp[s] }));
   const [swapN, setSwapN] = useState(10);
   const canEdit = memberRole === 'owner' || memberRole === 'admin' || (profile && profile.role === 'admin');
+  const canSwap = canEdit && !temp; /* 임시 사용량 모드에서는 슬롯 교환·적용(DB 쓰기) 차단 */
   const [editMode, setEditMode] = useState(false);
   const [selSlot, setSelSlot] = useState(null);
   const [pending, setPending] = useState(null);
@@ -4238,9 +4242,9 @@ function AtcView({ drugs, onReload }) {
   const rowBand = r => { const u = []; for (let k = 1; k <= 16; k++) { const d = pIdeal[String(r * 16 + k)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; };
   const bandMax = Math.max(1, rowBand(0).mx, rowBand(1).mx, rowBand(2).mx, rowBand(3).mx, rowBand(4).mx);
   const expBand = (() => { const u = []; for (let x = 301; x <= 308; x++) { const d = pIdeal[String(x)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; })();
-  const curRowBand = start => { const u = []; for (let k = 0; k < 16; k++) { const d = byAtc[String(start + k)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; }; /* 현재 배치 기준(실제 배정 약품) */
+  const curRowBand = start => { const u = []; for (let k = 0; k < 16; k++) { const d = byAtc[String(start + k)]; if (d) u.push(Number(d.recent_3m_usage) || 0); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; }; /* 현재 배치 기준(실제 배정 약품·DB 전용, 임시 미반영) */
   const curBandMax = Math.max(1, curRowBand(1).mx, curRowBand(17).mx, curRowBand(33).mx, curRowBand(49).mx, curRowBand(65).mx);
-  const curExpBand = (() => { const u = []; for (let x = 301; x <= 308; x++) { const d = byAtc[String(x)]; if (d) u.push(usageScore(d)); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; })();
+  const curExpBand = (() => { const u = []; for (let x = 301; x <= 308; x++) { const d = byAtc[String(x)]; if (d) u.push(Number(d.recent_3m_usage) || 0); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; })();
   const top88r = assignable.slice(0, 88); const yebi12 = assignable.slice(88, 100);
   const propSlotOf = {}; for (const k in pIdeal) { const d = pIdeal[k]; if (d) propSlotOf[d.drug_code] = k; } /* 코드→제안 슬롯 */
   const narcTop88 = narcEx.filter(d => (rankFull.get(d.drug_code) || 999) <= 88); /* 향정 중 원래 top88(리보트릴·아티반) */
@@ -4257,6 +4261,24 @@ function AtcView({ drugs, onReload }) {
   function cellEdit(slot, d) { if (selSlot != null) { if (selSlot === slot) { setSelSlot(null); return; } const da = byAtc[selSlot], db = d; setPending({ pairs: [{ slot_a: selSlot, slot_b: slot }], desc: '슬롯 ' + selSlot + ' ' + (da ? da.drug_name : '(빈 칸)') + '  <->  슬롯 ' + slot + ' ' + (db ? db.drug_name : '(빈 칸)') }); return; } if (d) { setCellAct({ slot, d }); return; } setAssignSlot(slot); setAssignQ(''); }
   async function runAssign(slot, code) { const { data, error } = await supabase.rpc('assign_atc_slot', { p_code: code, p_slot: slot }); if (error) { setMsg('배정 실패: ' + error.message); return; } if (data && data.ok === false) { setMsg('배정 불가 — ' + data.reason); return; } setMsg('슬롯 ' + slot + ' 배정 완료'); setAssignSlot(null); onReload && onReload(); setTimeout(() => setMsg(null), 3500); }
   async function runClear(slot, d) { const { data, error } = await supabase.rpc('clear_atc_slot', { p_slot: slot }); if (error) { setMsg('제거 실패: ' + error.message); return; } if (data && data.ok === false) { setMsg('제거 불가 — ' + data.reason); return; } setMsg('슬롯 ' + slot + ' 비움'); setCellAct(null); onReload && onReload(); setTimeout(() => setMsg(null), 3500); }
+  async function onTempUpload(e) {
+    const file = e.target.files && e.target.files[0]; if (!file) return; e.target.value = '';
+    const X = await import('xlsx');
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const wb = X.read(ev.target.result, { type: 'array' });
+        const rows = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false });
+        const codes = new Set((drugs || []).map(d => d.drug_code));
+        const num = v => { const x = String(v).trim(); if (x === '') return null; const n = Number(x.replace(/,/g, '')); return (Number.isFinite(n) && n >= 0) ? n : null; };
+        const map = {}; const umset = new Set();
+        rows.forEach(r => { const code = String(r['약품코드'] ?? r['drug_code'] ?? '').trim(); if (!code) return; const v = num(r['최근3개월사용량'] ?? r['최근3개월'] ?? r['recent_3m_usage'] ?? ''); if (v == null) return; if (!codes.has(code)) { umset.add(code); return; } map[code] = v; });
+        setTemp({ file: file.name, map, matched: Object.keys(map).length, unmatched: umset.size });
+        setMsg('임시 사용량 적용 — 매칭 ' + Object.keys(map).length + '건 · 미매칭 ' + umset.size + '건'); setTimeout(() => setMsg(null), 3500);
+      } catch (err) { setMsg('임시 사용량 파싱 실패: ' + err.message); setTimeout(() => setMsg(null), 4000); }
+    };
+    reader.readAsArrayBuffer(file);
+  }
   async function saveExclude() { if (!excludeSel) return; const reason = excludeReason === '기타' ? (excludeEtc.trim() || '기타') : excludeReason; const { error } = await supabase.from('drugs').update({ atc_excluded: true, atc_exclude_reason: reason }).eq('drug_code', excludeSel.drug_code); if (error) { setMsg('수기 제외 실패: ' + error.message); setTimeout(() => setMsg(null), 4000); return; } setMsg('수기 조제 제외 추가 — ' + excludeSel.drug_name); setExcludeModal(false); setExcludeSel(null); setExcludeQ(''); setExcludeEtc(''); onReload && onReload(); setTimeout(() => setMsg(null), 3500); }
   async function unExclude(d) { const { error } = await supabase.from('drugs').update({ atc_excluded: false, atc_exclude_reason: null }).eq('drug_code', d.drug_code); if (error) { setMsg('해제 실패: ' + error.message); setTimeout(() => setMsg(null), 4000); return; } setMsg('수기 조제 제외 해제 — ' + d.drug_name); onReload && onReload(); setTimeout(() => setMsg(null), 3500); }
   return <div>
@@ -4315,6 +4337,10 @@ function AtcView({ drugs, onReload }) {
     </div>}
     {viewMode === 'proposal' && <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
       <style>{'@media(max-width:1100px){.atc-prop-row{grid-template-columns:1fr 22px 1fr!important}.atc-prop-row>*:last-child{grid-column:1/-1;margin-top:4px}}'}</style>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <input ref={tempRef} type="file" accept=".xlsx,.xls" onChange={onTempUpload} style={{ display: 'none' }} />
+        {temp ? <><span style={{ fontSize: 11.5, color: t.textM }}>임시 사용량 적용 중 · {temp.file} · 매칭 {temp.matched}건 · 미매칭 {temp.unmatched}건</span><button onClick={() => setTemp(null)} style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>해제</button></> : <button onClick={() => tempRef.current && tempRef.current.click()} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: t.card, color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>임시 사용량 엑셀</button>}
+      </div>
       <div style={{ fontSize: 13, fontWeight: 700, color: t.accent, marginBottom: 8 }}>상단 카세트 1–80 · 위로 갈수록 저빈도</div>
       {[0, 1, 2, 3, 4].map(r => { const bd = rowBand(r); return <div key={r} className="atc-prop-row" style={{ display: 'grid', gridTemplateColumns: '1fr 22px 1fr 132px', gap: 3, marginBottom: 3 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 3 }}>{Array.from({ length: 8 }, (_, i) => PCell(String(r * 16 + 1 + i), false))}</div>
@@ -4358,8 +4384,8 @@ function AtcView({ drugs, onReload }) {
         <div style={{ padding: 8 }}><AtcTable t={t} minWidth={420} colWidths={[56, 170, 64, 130]} resetable qfilter={r => !r.d || matches(r.d)} rows={yebi12.map(d => ({ rank: rankFull.get(d.drug_code) || null, name: d.drug_name, r3: usageScore(d), _u: usageScore(d), d }))} cols={[{ k: 'rank', h: '순위', align: 'center', render: r => r.rank == null ? '-' : r.rank }, { k: 'name', h: '약품명', align: 'left' }, { k: 'r3', h: '3개월', align: 'right' }, { k: '_u', h: '88위 경계 대비', align: 'left', render: r => { const bnd = usageScore(assignable[87]) || 1; const w = Math.max(2, Math.min(100, r._u / bnd * 100)); return <div style={{ height: 6, borderRadius: 3, background: t.lavender, width: w + '%' }} />; } }]} /></div>
       </div>
       <div style={{ marginTop: 12, border: '1px solid ' + t.border, borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: t.bg, borderBottom: '1px solid ' + t.border, flexWrap: 'wrap' }}>{B('C', t.accentL, t.accent, t.accent)}<span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>교환 제안 ({swapTop.length})</span><span style={{ fontSize: 10, color: t.textL }}>카세트째 이동 · 즉시 실행</span><div style={{ flex: 1 }} /><span style={{ fontSize: 10, color: t.textM }}>상위</span><input type="range" min={10} max={40} value={swapN} onChange={e => setSwapN(Number(e.target.value))} style={{ accentColor: t.accent }} /><span style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>{swapN}건</span><span style={{ fontSize: 10, color: t.textL }}>(개선 {swaps.length}쌍 중)</span>{canEdit && <button onClick={() => { const ps = swapTop.filter((_, i) => selPairs[i]).map(sw => ({ slot_a: sw.a.sl, slot_b: sw.b.sl })); if (!ps.length) { setMsg('선택된 쌍이 없습니다'); setTimeout(() => setMsg(null), 2500); return; } setPending({ pairs: ps, desc: ps.length + '쌍 일괄 교환' }); }} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.card, color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>선택 적용</button>}</div>
-        <div style={{ padding: 8 }}><AtcTable t={t} minWidth={canEdit ? 600 : 480} colWidths={canEdit ? [70, 140, 70, 140, 80, 120] : [76, 160, 76, 160, 92]} resetable qfilter={r => matches(r.dA) || matches(r.dB)} rows={swapTop.map((sw, i) => ({ _slotA: atcSlotKey(sw.a.sl), slotA: sw.a.sl, nameA: sw.a.d.drug_name, _slotB: atcSlotKey(sw.b.sl), slotB: sw.b.sl, nameB: sw.b.d.drug_name, imp: sw.imp, _i: i, dA: sw.a.d, dB: sw.b.d }))} cols={[{ k: '_slotA', h: '슬롯A', align: 'center', filter: true, render: r => B(r.slotA, t.accentL, t.accent, t.accent) }, { k: 'nameA', h: '약품A', align: 'left' }, { k: '_slotB', h: '슬롯B', align: 'center', filter: true, render: r => B(r.slotB, t.accentL, t.accent, t.accent) }, { k: 'nameB', h: '약품B', align: 'left' }, { k: 'imp', h: '개선효과', align: 'right', render: r => <span style={{ fontWeight: 700, color: t.green }}>-{r.imp}</span> }, ...(canEdit ? [{ k: '_apply', h: '적용', align: 'center', plain: true, render: r => <span style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={!!selPairs[r._i]} onChange={e => setSelPairs(p => ({ ...p, [r._i]: e.target.checked }))} style={{ accentColor: t.accent, marginRight: 6 }} /><button onClick={() => setPending({ pairs: [{ slot_a: r.slotA, slot_b: r.slotB }], desc: '슬롯 ' + r.slotA + ' ' + r.nameA + '  <->  슬롯 ' + r.slotB + ' ' + r.nameB })} style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>적용</button></span> }] : [])]} /></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: t.bg, borderBottom: '1px solid ' + t.border, flexWrap: 'wrap' }}>{B('C', t.accentL, t.accent, t.accent)}<span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>교환 제안 ({swapTop.length})</span><span style={{ fontSize: 10, color: t.textL }}>카세트째 이동 · 즉시 실행</span><div style={{ flex: 1 }} /><span style={{ fontSize: 10, color: t.textM }}>상위</span><input type="range" min={10} max={40} value={swapN} onChange={e => setSwapN(Number(e.target.value))} style={{ accentColor: t.accent }} /><span style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>{swapN}건</span><span style={{ fontSize: 10, color: t.textL }}>(개선 {swaps.length}쌍 중)</span>{temp && <span style={{ fontSize: 10, color: t.textL }}>임시 모드 · 적용 불가</span>}{canSwap && <button onClick={() => { const ps = swapTop.filter((_, i) => selPairs[i]).map(sw => ({ slot_a: sw.a.sl, slot_b: sw.b.sl })); if (!ps.length) { setMsg('선택된 쌍이 없습니다'); setTimeout(() => setMsg(null), 2500); return; } setPending({ pairs: ps, desc: ps.length + '쌍 일괄 교환' }); }} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.card, color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>선택 적용</button>}</div>
+        <div style={{ padding: 8 }}><AtcTable t={t} minWidth={canSwap ? 600 : 480} colWidths={canSwap ? [70, 140, 70, 140, 80, 120] : [76, 160, 76, 160, 92]} resetable qfilter={r => matches(r.dA) || matches(r.dB)} rows={swapTop.map((sw, i) => ({ _slotA: atcSlotKey(sw.a.sl), slotA: sw.a.sl, nameA: sw.a.d.drug_name, _slotB: atcSlotKey(sw.b.sl), slotB: sw.b.sl, nameB: sw.b.d.drug_name, imp: sw.imp, _i: i, dA: sw.a.d, dB: sw.b.d }))} cols={[{ k: '_slotA', h: '슬롯A', align: 'center', filter: true, render: r => B(r.slotA, t.accentL, t.accent, t.accent) }, { k: 'nameA', h: '약품A', align: 'left' }, { k: '_slotB', h: '슬롯B', align: 'center', filter: true, render: r => B(r.slotB, t.accentL, t.accent, t.accent) }, { k: 'nameB', h: '약품B', align: 'left' }, { k: 'imp', h: '개선효과', align: 'right', render: r => <span style={{ fontWeight: 700, color: t.green }}>-{r.imp}</span> }, ...(canSwap ? [{ k: '_apply', h: '적용', align: 'center', plain: true, render: r => <span style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={!!selPairs[r._i]} onChange={e => setSelPairs(p => ({ ...p, [r._i]: e.target.checked }))} style={{ accentColor: t.accent, marginRight: 6 }} /><button onClick={() => setPending({ pairs: [{ slot_a: r.slotA, slot_b: r.slotB }], desc: '슬롯 ' + r.slotA + ' ' + r.nameA + '  <->  슬롯 ' + r.slotB + ' ' + r.nameB })} style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>적용</button></span> }] : [])]} /></div>
       </div>
     </div>}
     <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
@@ -4407,7 +4433,7 @@ function AtcView({ drugs, onReload }) {
     </div>}
     <div className="atc-print-only">
       {[0, 1].map(pg => { const rows = pg === 0 ? slot91Ga.slice(0, 46) : slot91Ga.slice(46); return <div key={pg} className="atc-page">
-        <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '2mm' }}>ATC 카세트 배치 목록 ({slot91.length}건 · 가나다순) · {pg + 1}/2</div>
+        <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '2mm' }}>ATC 카세트 배치 목록 ({slot91.length}건 · 가나다순) · {pg + 1}/2{temp ? ' · 임시 사용량 기준 · ' + temp.file : ''}</div>
         <table><thead><tr>{[['슬롯', '12%', 'center'], ['약품명', '30%', 'left'], ['성분명', '46%', 'left'], ['배지', '12%', 'center']].map(([h, w, al]) => <th key={h} style={{ fontSize: '8pt', textAlign: al, borderBottom: '0.5pt solid ' + t.border, width: w }}>{h}</th>)}</tr></thead>
         <tbody>{rows.map(({ slot, d }, i) => { const isFsp = String(slot).startsWith('FSP'); return <tr key={i}><td className="sl" style={{ fontWeight: 700, borderBottom: '0.3pt solid ' + t.border }}>{slot}</td><td className="nm" style={{ fontWeight: 600, borderBottom: '0.3pt solid ' + t.border }} title={d.drug_name}>{d.drug_name}</td><td className="ig" style={{ color: t.textM, borderBottom: '0.3pt solid ' + t.border }} title={[d.ingredient_en, d.ingredient_kr].filter(Boolean).join(' / ')}>{printIng(d)}</td><td className="bd" style={{ borderBottom: '0.3pt solid ' + t.border }}>{dBadges(d).filter(b => b.x !== '상비' && (isFsp || !(b.bg === t.greenL && b.fg === t.green))).map((b, bi) => <span key={bi} style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>)}</td></tr>; })}</tbody></table>
         <div style={{ fontSize: '8pt', textAlign: 'center', marginTop: '3mm' }}>{pg + 1} / 2</div>
