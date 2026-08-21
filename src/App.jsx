@@ -3400,7 +3400,7 @@ function Report({drugs,onNav}){
     const sum=[['씨엔씨재활의학과병원 약품관리 월간보고서'],['보고월',`${year}년 ${rtype==='monthly'?month+'월':'연간'}`],[],
       ['[재고 현황]'],['관리 품목수',sideTot?Number(sideTot.item_count):itemCnt],['현재고',Math.round(_clo)],['전월재고',Math.round(_opn)],['증감',Math.round(_clo-_opn)],[],
       ['[입출고 현황]','건수','금액'],['입고',_inRows,Math.round(_ia)],['출고',_outRows,Math.round(_oua)],['순입고','',Math.round(_ia-_oua)],[],
-      ['[손실 현황]','건수','금액'],['폐기',_dispRows,Math.round(_da)],['반품',_retRows,Math.round(_ra)],[],
+      ['[폐기·반품 현황]','건수','금액'],['폐기',_dispRows,Math.round(_da)],['반품',_retRows,Math.round(_ra)],[],
       ['[유효기간 관리]'],['만료',sideTot?Number(sideTot.exp_expired):expExpired],['긴급(30일)',sideTot?Number(sideTot.exp_urgent30):expU30],['주의(60일)',sideTot?Number(sideTot.exp_caution60):expW60],['확인(90일)',sideTot?Number(sideTot.exp_check90):expC90],[],
       [nowStamp()],['Copyright © 2026 Jeonghwa Lee. All rights reserved.']];
     const _ws0=XLSX.utils.aoa_to_sheet(sum);_fmtNums(_ws0);_ws0['!cols']=[{wch:28},{wch:16},{wch:16}];XLSX.utils.book_append_sheet(wb,_ws0,'요약');
@@ -3531,10 +3531,10 @@ function Report({drugs,onNav}){
           <MRow2 label="출고" bg="#f1e4ee" cnt={_outRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.out_amount):tot.oua).toLocaleString()} />
           <MRow2 label="순입고" bg="#ececec" cnt={''} amt={'₩'+Math.round(sideTot?(Number(sideTot.in_amount)-Number(sideTot.out_amount)):(tot.ia-tot.oua)).toLocaleString()} />
         </MSec>
-        <MSec title="■ 손실 현황">
+        <MSec title="■ 폐기·반품 현황">
           <MRow2 label="폐기" bg="#f6dede" cnt={_dispRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.disposal_amount):tot.da).toLocaleString()} />
           <MRow2 label="반품" bg="#f7f3d6" cnt={_retRows+'건'} amt={'₩'+Math.round(sideTot?Number(sideTot.return_amount):tot.ra).toLocaleString()} />
-          <MRow2 label="손실(단순합)" bg="#804A87" fg="#fff" cnt={(_dispRows+_retRows)+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.disposal_amount)+Number(sideTot.return_amount)):(tot.da+tot.ra)).toLocaleString()} />
+          <MRow2 label="합계" bg="#804A87" fg="#fff" cnt={(_dispRows+_retRows)+'건'} amt={'₩'+Math.round(sideTot?(Number(sideTot.disposal_amount)+Number(sideTot.return_amount)):(tot.da+tot.ra)).toLocaleString()} />
         </MSec>
         <MSec title="■ 유효기간 관리">
           <MRow label="★ 만료" bg="#f6dede" value={(sideTot?Number(sideTot.exp_expired):expExpired)+'건'} />
