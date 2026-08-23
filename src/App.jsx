@@ -4210,8 +4210,22 @@ function Schedule({ drugs, onNav }) {
   const [editEv, setEditEv] = useState(null);
   const [msg, setMsg] = useState(null);
   const dragDay = useDragModal(); const dragEdit = useDragModal(); // 일자 상세·일정 등록 모달 드래그(useDragModal 재사용)
+  const [holidays, setHolidays] = useState([]); const [hidBusy, setHidBusy] = useState(false); const [hidMsg, setHidMsg] = useState(null); const _hidTried = useRef({}); // 공휴일(공유 레퍼런스, 읽기 전용)
+  const HOLIDAY_COLOR = '#C05040'; // 기존 팔레트(브릭레드) — 유효기한 빨강과 구분
   async function loadEvents() { const { data } = await supabase.from('calendar_events').select('*').order('event_date'); setEvents(data || []) }
+  async function syncHolidays(yr, manual) { // 특일정보 Function 호출 → holidays upsert 후 재조회
+    setHidBusy(true); if (manual) setHidMsg(null)
+    try { const { data: { session } } = await supabase.auth.getSession(); const token = session?.access_token; if (!token) { if (manual) setHidMsg('로그인이 필요합니다'); return }
+      const res = await fetch('/api/holidays', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ year: yr }) })
+      const j = await res.json().catch(() => ({ ok: false, msg: '응답 파싱 실패' }))
+      if (!j.ok) { if (manual) setHidMsg('갱신 실패: ' + (j.msg || res.status)); return }
+      const { data } = await supabase.from('holidays').select('date,name').eq('year', yr); setHolidays(data || [])
+      if (manual) setHidMsg(`공휴일 ${j.upserted || 0}건 갱신 완료`)
+    } catch (e) { if (manual) setHidMsg('갱신 오류: ' + e.message) } finally { setHidBusy(false); if (manual) setTimeout(() => setHidMsg(null), 4000) }
+  }
+  async function loadHolidays(yr) { const { data } = await supabase.from('holidays').select('date,name').eq('year', yr); setHolidays(data || []); if ((!data || !data.length) && !_hidTried.current[yr]) { _hidTried.current[yr] = true; syncHolidays(yr, false) } }
   useEffect(() => { loadEvents(); supabase.from('drug_change_plans').select('from_drug_code,plan_status,weekly_usage,base_date').then(({ data }) => setPlans(data || [])); supabase.from('monthly_snapshots').select('snap_year,snap_month').then(({ data }) => { const s = new Set(); (data || []).forEach(r => s.add(r.snap_year + '-' + r.snap_month)); setClosed(s) }) }, []);
+  useEffect(() => { loadHolidays(y) }, [y]); // 연도 전환 시 조회(없으면 자동 동기화 1회)
   const dmap = {}; drugs.forEach(d => { dmap[d.drug_code] = d });
   const monthPrefix = y + '-' + pad(m);
   const _catColor = c => c === '발주' ? '#804A87' : c === '실사' ? '#019748' : c === '마감' ? '#2E4A62' : c === '업무' ? '#A8CF5C' : c === '근무' ? '#92C8E0' : c === '입퇴원' ? '#F39E94' : c === '휴일' ? '#E2A6D4' : '#BFA6D9'; // 전부 기존 팔레트 사용색(신규 hex 0). 업무=#A8CF5C(라임)
@@ -4220,6 +4234,7 @@ function Schedule({ drugs, onNav }) {
   plans.forEach(p => { if (p.plan_status === '완료') return; const d = dmap[p.from_drug_code] || {}; const cur = d.current_qty || 0; const wu = Number(p.weekly_usage) || 0; const wl = wu > 0 ? cur / wu : null; if (!(p.base_date && wl != null)) return; const eta = new Date(new Date(p.base_date + 'T00:00:00Z').getTime() + wl * 7 * 864e5).toISOString().slice(0, 10); if (eta.slice(0, 7) === monthPrefix) derived.push({ date: eta, kind: 'change', color: t.accent, tag: '약품변경', label: (d.drug_name || p.from_drug_code) + ' 변경예상', nav: { menu: 'change' } }) });
   const lastDay = new Date(y, m, 0).getDate(); const closeStr = ymd(y, m, lastDay); const isClosed = closed.has(y + '-' + m);
   derived.push({ date: closeStr, kind: 'close', color: isClosed ? t.green : t.amber, tag: '월마감', label: isClosed ? '월마감 완료' : '월마감 예정', nav: { menu: 'report' } });
+  holidays.forEach(h => { const hd = String(h.date).slice(0, 10); if (hd.slice(0, 7) === monthPrefix) derived.push({ date: hd, kind: 'holiday', color: HOLIDAY_COLOR, tag: '공휴일', label: h.name }) }); // 읽기 전용 자동 표시(nav 없음)
   const eachDay = (s, e) => { const out = []; let cur = s, g = 0; while (cur <= e && g < 400) { out.push(cur); const dt = new Date(cur + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() + 1); cur = dt.toISOString().slice(0, 10); g++ } return out }; // 문자열 날짜 반복(UTC 일관, 밀림 없음)
   const own = []; events.forEach(e => { const s = String(e.event_date).slice(0, 10); const en = e.end_date ? String(e.end_date).slice(0, 10) : s; const isRange = en > s; eachDay(s, en).forEach(ds => { if (ds.slice(0, 7) !== monthPrefix) return; own.push({ date: ds, kind: 'own', color: _catColor(e.category), tag: e.category || '기타', label: e.title, ev: e, start: s, end: en, isRange }) }) });
   const all = [...derived, ...own];
@@ -4249,8 +4264,10 @@ function Schedule({ drugs, onNav }) {
       <select value={m} onChange={e => setM(Number(e.target.value))} style={selStyle}>{Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}월</option>)}</select>
       <button onClick={() => shift(1)} style={navBtn}>›</button>
       <button onClick={() => { setY(_now.getFullYear()); setM(_now.getMonth() + 1) }} style={{ ...navBtn, fontWeight: 600, fontSize: 12 }}>오늘</button>
+      {canEdit && <button onClick={() => syncHolidays(y, true)} disabled={hidBusy} style={{ ...navBtn, fontWeight: 600, fontSize: 12, opacity: hidBusy ? 0.5 : 1, cursor: hidBusy ? 'not-allowed' : 'pointer' }} title="공공데이터포털 특일정보에서 해당 연도 공휴일을 다시 받아옵니다">{hidBusy ? '갱신 중…' : '공휴일 갱신'}</button>}
+      {hidMsg && <span style={{ fontSize: 11, fontWeight: 600, color: hidMsg.includes('완료') ? t.green : t.red }}>{hidMsg}</span>}
       <div style={{ flex: 1 }} />
-      <span style={{ display: 'flex', gap: 10, fontSize: 10, color: t.textM, flexWrap: 'wrap' }}>{[['유효기한', t.red], ['약품변경', t.accent], ['월마감', t.amber], ['발주', '#804A87'], ['실사', '#019748'], ['마감', '#2E4A62'], ['업무', '#A8CF5C'], ['근무', '#92C8E0'], ['입퇴원', '#F39E94'], ['휴일', '#E2A6D4'], ['기타', '#BFA6D9']].map(([lbl, c]) => <span key={lbl}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: c, marginRight: 4, verticalAlign: 'middle' }} />{lbl}</span>)}</span>
+      <span style={{ display: 'flex', gap: 10, fontSize: 10, color: t.textM, flexWrap: 'wrap' }}>{[['유효기한', t.red], ['약품변경', t.accent], ['월마감', t.amber], ['공휴일', HOLIDAY_COLOR], ['발주', '#804A87'], ['실사', '#019748'], ['마감', '#2E4A62'], ['업무', '#A8CF5C'], ['근무', '#92C8E0'], ['입퇴원', '#F39E94'], ['휴일', '#E2A6D4'], ['기타', '#BFA6D9']].map(([lbl, c]) => <span key={lbl}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: c, marginRight: 4, verticalAlign: 'middle' }} />{lbl}</span>)}</span>
     </div>
     <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, overflow: 'hidden' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>{['일', '월', '화', '수', '목', '금', '토'].map(w => <div key={w} style={{ padding: '8px 0', textAlign: 'center', fontSize: 11, fontWeight: 700, color: t.textM, borderBottom: '1px solid ' + t.border, background: t.bg }}>{w}</div>)}</div>
