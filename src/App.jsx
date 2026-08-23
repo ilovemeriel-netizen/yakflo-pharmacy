@@ -3045,13 +3045,13 @@ const CHANGE_COL_PRESETS = [
 ]
 const CHANGE_RIGHT_COLS = new Set(['recent3', 'monthlyAvg', 'rec', 'usage_dept1', 'usage_dept2', 'usage_dept3', 'weekly_usage', 'cur', 'weeksLeft'])
 const CHANGE_STICKY_ORDER = ['category', 'from_drug_name']
-function DrugChangePlans({ drugs, onAdjust, onReload }) {
+function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
   const { t, memberRole, profile, user, setProfile } = useTheme()
   const canDel = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
   const canEdit = canDel
   const { so, TS, sk, sd, setSort } = useSort('base_date', 'desc')
   const [plans, setPlans] = useState([]); const [snap, setSnap] = useState({}); const [ld, setLd] = useState(true)
-  const [filter, setFilter] = useState('예정'); const [editP, setEditP] = useState(null); const [delP, setDelP] = useState(null)
+  const [filter, setFilter] = useState(() => { const f = navFilter?.changeStatus; return (typeof f === 'string' && ['전체', '예정', '완료', '보류', '모니터링', '생산중단', '일시품절'].includes(f)) ? f : '전체' }); const [editP, setEditP] = useState(null); const [delP, setDelP] = useState(null) // 기본 '전체'(등록 전 건 노출), 딥링크 changeStatus 지정 시 우선
   const [drafts, setDrafts] = useState({}); const [uMsg, setUMsg] = useState(null)
   const [selCols, setSelCols] = useState(() => { const s = profile?.settings?.changeCols; return Array.isArray(s) && s.length ? s : CHANGE_DEFAULT_COLS })
   const dmap = {}; (drugs || []).forEach(d => { dmap[d.drug_code] = d })
@@ -4854,7 +4854,7 @@ export default function App() {
         {menu === 'ordering' && <Ordering drugs={drugs} onAdjust={setAdjustDrug} />}
         {menu === 'druglist' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} />}
         {menu === 'nonins' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} nonins />}
-        {menu === 'change' && <DrugChangePlans drugs={drugs} onAdjust={setAdjustDrug} onReload={load} />}
+        {menu === 'change' && <DrugChangePlans drugs={drugs} onAdjust={setAdjustDrug} onReload={load} navFilter={nf} />}
         {menu === 'archive' && <DrugList drugs={drugs} navFilter={{ status: ['중지'], archive: true }} onEdit={setEditDrug} onReload={load} />}
         {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} onDispose={setDisposeDrug} />}
         {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
