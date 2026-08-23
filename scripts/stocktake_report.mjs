@@ -12,7 +12,9 @@ import { readFileSync, existsSync } from 'node:fs'
 import XLSX from 'xlsx'
 function rd(p){const o={};if(!existsSync(p))return o;let t=readFileSync(p,'utf8');if(t.charCodeAt(0)===0xfeff)t=t.slice(1);for(const l of t.split(/\r?\n/)){const m=l.match(/^\s*([\w.]+)\s*=\s*(.+?)\s*$/);if(m)o[m[1]]=m[2].replace(/^["']|["']$/g,'')}return o}
 const env=rd('.env'),cred=rd('.owner-login.local')
-const OUT = process.argv[2] || 'stocktake_2026-09.xlsx' // 경로 인자로 지정 가능(스크래치패드 권장)
+const ARGS = process.argv.slice(2)
+const ALL = ARGS.includes('--all') // 기본: 재고 보유(current_qty>0)만 · --all: 전량
+const OUT = ARGS.find(a => !a.startsWith('--')) || 'stocktake_2026-09.xlsx' // 경로 인자(스크래치패드 권장)
 const sb=createClient(env.VITE_SUPABASE_URL,env.VITE_SUPABASE_ANON_KEY,{auth:{persistSession:false}})
 await sb.auth.signInWithPassword({email:cred.email,password:cred.password})
 const {data:{user}}=await sb.auth.getUser()
@@ -41,9 +43,9 @@ const rows=drugs.map(d=>{const cq=num(d.current_qty),pp=num(d.purchase_price),td
 const rank=s=>s==='사용'?0:1
 rows.sort((a,b)=>rank(a.status)-rank(b.status)||(a.loc?0:1)-(b.loc?0:1)||String(a.loc).localeCompare(String(b.loc),'ko')||String(a.code).localeCompare(String(b.code)))
 const HEADER=['약품코드','약품명','구분','상태','보관위치','시스템재고','단위','구입단가','평가금액','실사수량','차이','비고','참고|거래누적','참고|opening추정','참고|08월직접변동']
-const INFO='※ 실사 대조 기준 = 시스템재고(current_qty). 「참고|거래누적」과의 차이는 로드 opening 잔고이며 오류가 아닙니다(정정 금지). 평가금액=시스템재고×구입단가(purchase_price). 실사수량·차이·비고 열은 현장 기입용 빈칸입니다.'
-function sheet(rws){
-  const aoa=[[INFO],[],HEADER]
+const INFO='※ 실사 대조 기준 = 시스템재고(current_qty). 「참고|거래누적」과의 차이는 로드 opening 잔고이며 오류가 아닙니다(정정 금지). 「참고|거래누적」이 음수인 것은 opening으로 받은 재고를 출고해 온 정상 상태이며 오류가 아닙니다. 평가금액=시스템재고×구입단가(purchase_price). 실사수량·차이·비고 열은 현장 기입용 빈칸입니다.'
+function sheet(rws, scopeLabel){
+  const aoa=[[INFO],[scopeLabel],HEADER]
   let totRaw=0,cnt=0
   for(const r of rws){aoa.push([r.code,r.name,r.cat,r.status,r.loc,r.cq,r.unit,r.pp,r.amt,'','','',r.td,r.opening,r.direct]);totRaw+=r.cq*r.pp;cnt++}
   const tot=Math.round(totRaw) // 재고현황 화면과 동일: 미반올림 합 → 최종 1회 반올림
@@ -52,10 +54,13 @@ function sheet(rws){
   return {ws,tot,cnt}
 }
 const wb=XLSX.utils.book_new()
-const s1=sheet(rows); XLSX.utils.book_append_sheet(wb,s1.ws,'실사대조')
-const prio=rows.filter(r=>r.direct==='Y'); const s2=sheet(prio); XLSX.utils.book_append_sheet(wb,s2.ws,'우선대조')
+const mainRows = ALL ? rows : rows.filter(r=>r.cq>0) // 기본: 재고 보유(current_qty>0)만
+const scope1 = ALL ? ('대상: 전체 '+rows.length+'종') : ('대상: 재고 보유 약품 '+mainRows.length+'종 (전체 '+rows.length+'종 중, --all 로 전량 출력)')
+const prio=rows.filter(r=>r.direct==='Y') // 우선대조: 옵션 무관 110종 전량
+const s1=sheet(mainRows, scope1); XLSX.utils.book_append_sheet(wb,s1.ws,'실사대조')
+const s2=sheet(prio, '대상: 08월 직접변동 '+prio.length+'종 (옵션 무관 전량)'); XLSX.utils.book_append_sheet(wb,s2.ws,'우선대조')
 XLSX.writeFile(wb,OUT)
-console.log('산출 완료:',OUT)
+console.log('산출 완료:',OUT,'· 범위:',ALL?'--all 전량':'기본(재고>0)')
 console.log('실사대조 시트:',s1.cnt,'종 · 평가금액 총계',s1.tot.toLocaleString())
 console.log('우선대조 시트(08월 직접변동):',s2.cnt,'종 · 평가금액',s2.tot.toLocaleString())
 console.log('상태 분포:',JSON.stringify(rows.reduce((m,r)=>{m[r.status]=(m[r.status]||0)+1;return m},{})))
