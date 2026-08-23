@@ -3197,6 +3197,7 @@ function Report({drugs,onNav}){
   const cy=new Date().getFullYear(),cm=new Date().getMonth()+1;
   const[rtype,setRtype]=useState('monthly');
   const[year,setYear]=useState(cy);const[month,setMonth]=useState(cm);
+  const[barTip,setBarTip]=useState(null); // 월별 추이 막대 호버 툴팁(입고·사용 합본)
   const[snaps,setSnaps]=useState([]);const[ld,setLd]=useState(false);
   const[sideTot,setSideTot]=useState(null); // 정본 사이드카(월 총계) 단일행 — 월간 KPI 표시용
   const[sideY,setSideY]=useState({}); // 정본 사이드카(연도 전체 월 맵) — 연간 표 표시용
@@ -3536,24 +3537,25 @@ function Report({drugs,onNav}){
           <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:10}}>약품군별 사용 비중 <span style={{fontSize:11,fontWeight:500,color:t.textL}}>· 사용액(출고) 기준</span></div>
           {_useData.length?<div style={{display:'flex',gap:14,alignItems:'center'}}>
             <NDonut data={_useData} total={_useTot} onSlice={()=>{}} centerTop={_won2(_useTot)} centerBot="사용액" t={t} colorOf={n=>_catColor(n)}/>
-            <div style={{flex:1,display:'grid',gap:3,minWidth:0}}>{_useData.map(d=><div key={d.name} style={{display:'flex',alignItems:'center',gap:6}}><span style={{width:9,height:9,borderRadius:3,background:_catColor(d.name),flexShrink:0}}/><span style={{fontSize:11,color:t.textM,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.name}</span><span style={{fontSize:11,fontWeight:700,color:t.text}}>{_won2(d.count)}</span><span style={{fontSize:10,color:t.textL,width:38,textAlign:'right'}}>{Math.round(d.count/_useTot*100)}%</span></div>)}</div>
+            <div style={{flex:1,display:'grid',gap:3,minWidth:0}}>{_useData.map(d=><div key={d.name} style={{display:'flex',alignItems:'center',gap:6}}><span style={{width:9,height:9,borderRadius:3,background:_catColor(d.name),flexShrink:0}}/><span style={{fontSize:11,color:t.textM,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.name}</span><span style={{fontSize:11,fontWeight:700,color:t.text,textAlign:'right'}}>{_won2(d.count)}</span><span style={{fontSize:10,color:t.textL,width:38,textAlign:'right'}}>{Math.round(d.count/_useTot*100)}%</span></div>)}</div>
           </div>:<div style={{padding:24,textAlign:'center',color:t.textL,fontSize:12}}>데이터 없음</div>}
         </div>
         <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'14px 16px'}}>
           <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:10}}>반품·폐기 분석 <span style={{fontSize:11,fontWeight:500,color:t.textL}}>· 폐기+반품(수량×구입단가)</span></div>
           {_lossData.length?<div style={{display:'flex',gap:14,alignItems:'center'}}>
             <NDonut data={_lossData} total={_lossTot} onSlice={()=>{}} centerTop={_won2(_lossTot)} centerBot="반품·폐기액" t={t} colorOf={n=>_catColor(n)}/>
-            <div style={{flex:1,display:'grid',gap:3,minWidth:0}}>{_lossData.map(d=><div key={d.name} style={{display:'flex',alignItems:'center',gap:6}}><span style={{width:9,height:9,borderRadius:3,background:_catColor(d.name),flexShrink:0}}/><span style={{fontSize:11,color:t.textM,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.name}</span><span style={{fontSize:11,fontWeight:700,color:t.text}}>{_won2(d.count)}</span><span style={{fontSize:10,color:t.textL,width:38,textAlign:'right'}}>{Math.round(d.count/_lossTot*100)}%</span></div>)}</div>
+            <div style={{flex:1,display:'grid',gap:3,minWidth:0}}>{_lossData.map(d=><div key={d.name} style={{display:'flex',alignItems:'center',gap:6}}><span style={{width:9,height:9,borderRadius:3,background:_catColor(d.name),flexShrink:0}}/><span style={{fontSize:11,color:t.textM,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.name}</span><span style={{fontSize:11,fontWeight:700,color:t.text,textAlign:'right'}}>{_won2(d.count)}</span><span style={{fontSize:10,color:t.textL,width:38,textAlign:'right'}}>{Math.round(d.count/_lossTot*100)}%</span></div>)}</div>
           </div>:<div style={{padding:24,textAlign:'center',color:t.textL,fontSize:12}}>반품·폐기 없음</div>}
         </div>
       </div>
-      <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'14px 16px'}}>
+      <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'14px 16px',position:'relative'}} onMouseLeave={()=>setBarTip(null)}>
         <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:8,display:'flex',alignItems:'center',gap:12}}>월별 추이 <span style={{fontSize:11,fontWeight:500,color:t.textL}}>· 입고/사용액</span><span style={{marginLeft:'auto',display:'flex',gap:12,fontSize:10,color:t.textM}}><span><span style={{display:'inline-block',width:9,height:9,borderRadius:2,background:t.accent,marginRight:4,verticalAlign:'middle'}}/>입고</span><span><span style={{display:'inline-block',width:9,height:9,borderRadius:2,background:t.blue,marginRight:4,verticalAlign:'middle'}}/>사용</span></span></div>
         <svg viewBox="0 0 720 210" style={{width:'100%',height:200}} preserveAspectRatio="xMidYMid meet">
           {[0,0.25,0.5,0.75,1].map((g,i)=><line key={i} x1={40} y1={180-g*150} x2={712} y2={180-g*150} stroke={t.border} strokeWidth="1"/>)}
-          {annM.map((r,i)=>{const bw=14,gap=56,x=52+i*gap,ih=r.inA/_barMax*150,oh=r.outA/_barMax*150;return <g key={r.m}><rect x={x} y={180-ih} width={bw} height={ih} fill={t.accent} rx="2"><title>{r.m+'월 입고 '+_won2(r.inA)}</title></rect><rect x={x+bw+3} y={180-oh} width={bw} height={oh} fill={t.blue} rx="2"><title>{r.m+'월 사용 '+_won2(r.outA)}</title></rect><text x={x+bw+1} y={196} textAnchor="middle" style={{fontSize:10,fill:t.textM}}>{r.m}</text></g>})}
+          {annM.map((r,i)=>{const bw=14,gap=56,x=52+i*gap,ih=r.inA/_barMax*150,oh=r.outA/_barMax*150;const cx=x+bw+1;return <g key={r.m}><rect x={x} y={180-ih} width={bw} height={ih} fill={t.accent} rx="2"/><rect x={x+bw+3} y={180-oh} width={bw} height={oh} fill={t.blue} rx="2"/><text x={cx} y={196} textAnchor="middle" style={{fontSize:10,fill:t.textM}}>{r.m}</text><rect x={x-6} y={30} width={2*bw+3+12} height={150} fill="transparent" style={{pointerEvents:'all',cursor:'default'}} onMouseEnter={()=>setBarTip({m:r.m,has:r.has,inA:r.inA,outA:r.outA,leftPct:cx/720*100})} onMouseMove={()=>setBarTip({m:r.m,has:r.has,inA:r.inA,outA:r.outA,leftPct:cx/720*100})}/></g>})}
           <text x={36} y={184} textAnchor="end" style={{fontSize:9,fill:t.textL}}>0</text><text x={36} y={34} textAnchor="end" style={{fontSize:9,fill:t.textL}}>{_won2(_barMax)}</text>
         </svg>
+        {barTip&&<div style={{position:'absolute',left:barTip.leftPct+'%',top:34,transform:'translateX(-50%)',background:t.cardSolid,border:'1px solid '+t.border,borderRadius:8,boxShadow:t.shadowH,padding:'6px 10px',fontSize:11,fontWeight:600,color:t.text,whiteSpace:'nowrap',pointerEvents:'none',zIndex:5}}>{barTip.has?barTip.m+'월 · 입고 '+_won2(barTip.inA)+' · 사용 '+_won2(barTip.outA):barTip.m+'월 · 데이터 없음'}</div>}
       </div>
     </div>}
 
