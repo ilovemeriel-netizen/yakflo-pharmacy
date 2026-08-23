@@ -945,7 +945,7 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tenant, setTenant] = useState('')
   useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, [])
-  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'emergency', l: '비상조제' }, { id: 'atc', l: 'ATC' }]
+  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'emergency', l: '비상조제' }, { id: 'atc', l: 'ATC' }, { id: 'schedule', l: '일정' }]
   function nav(id) { sm(id); setMobileOpen(false) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
@@ -4193,7 +4193,96 @@ function RecoveryPage({ onDone }) {
 
 /* ═══ 메인 App ═══ */
 /* SPA 라우트: 화면 식별자 ↔ URL 해시(#menu). 새로고침/직접진입 복원·뒤로가기 동기화와 일관. */
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'emergency', 'atc', 'register', 'mypage', 'admin', 'archive'];
+/* ═══ 일정(달력) — calendar_events(직접입력) + 파생 일정(유효기한·약품변경·월마감). 날짜는 전부 YYYY-MM-DD 문자열, UTC 변환 없음(등록=표시 일치). ═══ */
+function Schedule({ drugs, onNav }) {
+  const { t, memberRole, profile } = useTheme();
+  const canEdit = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin';
+  const _now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const ymd = (yy, mm, dd) => yy + '-' + pad(mm) + '-' + pad(dd);
+  const todayStr = ymd(_now.getFullYear(), _now.getMonth() + 1, _now.getDate());
+  const [y, setY] = useState(_now.getFullYear());
+  const [m, setM] = useState(_now.getMonth() + 1);
+  const [events, setEvents] = useState([]);
+  const [plans, setPlans] = useState([]);
+  const [closed, setClosed] = useState(new Set());
+  const [dayDetail, setDayDetail] = useState(null);
+  const [editEv, setEditEv] = useState(null);
+  const [msg, setMsg] = useState(null);
+  async function loadEvents() { const { data } = await supabase.from('calendar_events').select('*').order('event_date'); setEvents(data || []) }
+  useEffect(() => { loadEvents(); supabase.from('drug_change_plans').select('from_drug_code,plan_status,weekly_usage,base_date').then(({ data }) => setPlans(data || [])); supabase.from('monthly_snapshots').select('snap_year,snap_month').then(({ data }) => { const s = new Set(); (data || []).forEach(r => s.add(r.snap_year + '-' + r.snap_month)); setClosed(s) }) }, []);
+  const dmap = {}; drugs.forEach(d => { dmap[d.drug_code] = d });
+  const monthPrefix = y + '-' + pad(m);
+  const _catColor = c => c === '발주' ? t.blue : c === '실사' ? t.accent : c === '마감' ? t.amber : t.textM;
+  const derived = [];
+  drugs.forEach(d => { if (!MAIN_STATS.includes(d.status) || !((d.current_qty || 0) > 0)) return; const ed = String(d.expiry_date || '').slice(0, 10); if (ed.slice(0, 7) === monthPrefix) derived.push({ date: ed, kind: 'expiry', color: t.red, tag: '유효기한', label: d.drug_name, drug: d, nav: { menu: 'expiry', focus: 'urgent' } }) });
+  plans.forEach(p => { if (p.plan_status === '완료') return; const d = dmap[p.from_drug_code] || {}; const cur = d.current_qty || 0; const wu = Number(p.weekly_usage) || 0; const wl = wu > 0 ? cur / wu : null; if (!(p.base_date && wl != null)) return; const eta = new Date(new Date(p.base_date + 'T00:00:00Z').getTime() + wl * 7 * 864e5).toISOString().slice(0, 10); if (eta.slice(0, 7) === monthPrefix) derived.push({ date: eta, kind: 'change', color: t.accent, tag: '약품변경', label: (d.drug_name || p.from_drug_code) + ' 변경예상', nav: { menu: 'change' } }) });
+  const lastDay = new Date(y, m, 0).getDate(); const closeStr = ymd(y, m, lastDay); const isClosed = closed.has(y + '-' + m);
+  derived.push({ date: closeStr, kind: 'close', color: isClosed ? t.green : t.amber, tag: '월마감', label: isClosed ? '월마감 완료' : '월마감 예정', nav: { menu: 'report' } });
+  const own = events.filter(e => String(e.event_date || '').slice(0, 7) === monthPrefix).map(e => ({ date: String(e.event_date).slice(0, 10), kind: 'own', color: _catColor(e.category), tag: e.category || '기타', label: e.title, ev: e }));
+  const all = [...derived, ...own];
+  const byDate = {}; all.forEach(x => { (byDate[x.date] = byDate[x.date] || []).push(x) });
+  const firstW = new Date(y, m - 1, 1).getDay(); const cells = []; for (let i = 0; i < firstW; i++) cells.push(null); for (let d = 1; d <= lastDay; d++) cells.push(d); while (cells.length % 7 !== 0) cells.push(null);
+  function shift(delta) { let nm = m + delta, ny = y; if (nm < 1) { nm = 12; ny-- } else if (nm > 12) { nm = 1; ny++ } setY(ny); setM(nm) }
+  async function saveEv() { if (!editEv.title || !editEv.event_date) { setMsg('제목과 날짜를 입력하세요'); return } const payload = { title: editEv.title, event_date: editEv.event_date, category: editEv.category || '기타', memo: editEv.memo || null }; const res = editEv.id ? await supabase.from('calendar_events').update(payload).eq('id', editEv.id) : await supabase.from('calendar_events').insert([payload]); if (res.error) { setMsg(dbErrorMsg(res.error)); return } setEditEv(null); setMsg(null); loadEvents() }
+  async function delEv(id) { const { error } = await supabase.from('calendar_events').delete().eq('id', id); if (error) { setMsg(dbErrorMsg(error)); return } setEditEv(null); loadEvents() }
+  const selStyle = { padding: '6px 10px', borderRadius: 6, border: `1px solid ${t.border}`, fontSize: 12, background: t.bg, color: t.text };
+  const navBtn = { padding: '6px 12px', borderRadius: 8, border: `1px solid ${t.border}`, background: t.card, color: t.textM, cursor: 'pointer', fontSize: 13, fontWeight: 700 };
+  const ip = { width: '100%', padding: '8px 10px', border: `1px solid ${t.border}`, borderRadius: 6, fontSize: 12, outline: 'none', background: t.bg, color: t.text, boxSizing: 'border-box' };
+  const lb = { fontSize: 10, color: t.textM, marginBottom: 3, display: 'block' };
+  const dayList = dayDetail ? (byDate[dayDetail] || []) : [];
+  return <div style={{ padding: '20px 24px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 18, fontWeight: 800, color: t.text, marginRight: 4 }}>🗓️ 일정</span>
+      <button onClick={() => shift(-1)} style={navBtn}>‹</button>
+      <select value={y} onChange={e => setY(Number(e.target.value))} style={selStyle}>{[2024, 2025, 2026, 2027, 2028].map(yy => <option key={yy} value={yy}>{yy}년</option>)}</select>
+      <select value={m} onChange={e => setM(Number(e.target.value))} style={selStyle}>{Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}월</option>)}</select>
+      <button onClick={() => shift(1)} style={navBtn}>›</button>
+      <button onClick={() => { setY(_now.getFullYear()); setM(_now.getMonth() + 1) }} style={{ ...navBtn, fontWeight: 600, fontSize: 12 }}>오늘</button>
+      <div style={{ flex: 1 }} />
+      <span style={{ display: 'flex', gap: 12, fontSize: 10, color: t.textM, flexWrap: 'wrap' }}>{[['유효기한', t.red], ['약품변경', t.accent], ['월마감', t.amber], ['직접입력', t.blue]].map(([lbl, c]) => <span key={lbl}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: c, marginRight: 4, verticalAlign: 'middle' }} />{lbl}</span>)}</span>
+    </div>
+    <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>{['일', '월', '화', '수', '목', '금', '토'].map(w => <div key={w} style={{ padding: '8px 0', textAlign: 'center', fontSize: 11, fontWeight: 700, color: t.textM, borderBottom: '1px solid ' + t.border, background: t.bg }}>{w}</div>)}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>{cells.map((d, i) => { const ds = d ? ymd(y, m, d) : null; const evs = ds ? (byDate[ds] || []) : []; const isToday = ds === todayStr; return <div key={i} onClick={() => d && setDayDetail(ds)} style={{ minHeight: 92, borderRight: (i % 7 !== 6) ? '1px solid ' + t.border : 'none', borderBottom: '1px solid ' + t.border, padding: 5, background: isToday ? t.accentL : (d ? t.card : t.bg), cursor: d ? 'pointer' : 'default', overflow: 'hidden' }} onMouseEnter={e => { if (d) e.currentTarget.style.background = isToday ? t.accentL : t.glass }} onMouseLeave={e => { if (d) e.currentTarget.style.background = isToday ? t.accentL : t.card }}>{d && <><div style={{ fontSize: 11, fontWeight: isToday ? 800 : 600, color: isToday ? t.accent : t.textM, marginBottom: 3 }}>{d}</div>{evs.slice(0, 3).map((x, xi) => <div key={xi} style={{ fontSize: 9, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: 2, background: x.color, flexShrink: 0 }} />{x.label}</div>)}{evs.length > 3 && <div style={{ fontSize: 9, color: t.textL }}>+{evs.length - 3}건</div>}</>}</div> })}</div>
+    </div>
+    {msg && <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: msg.includes('완료') ? t.green : t.red }}>{msg}</div>}
+
+    {/* 일자 상세 */}
+    {dayDetail && <div onClick={() => setDayDetail(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 14, padding: '20px 24px', maxWidth: 440, width: '100%', border: '1px solid ' + t.border, boxShadow: t.shadowH, maxHeight: '80vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}><span style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{dayDetail}</span>{canEdit && <button onClick={() => setEditEv({ title: '', event_date: dayDetail, category: '발주', memo: '' })} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>+ 일정 추가</button>}</div>
+        {dayList.length === 0 ? <div style={{ padding: 20, textAlign: 'center', color: t.textL, fontSize: 12 }}>일정 없음</div> : dayList.map((x, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 10px', borderBottom: '1px solid ' + t.border, borderRadius: 8 }}>
+          <span onClick={() => { if (x.kind !== 'own' && x.nav) { setDayDetail(null); onNav(x.nav) } }} style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 7, cursor: x.kind !== 'own' ? 'pointer' : 'default', flex: 1 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: x.color, flexShrink: 0 }} /><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: t.text }}><Bd bg={x.color + '1A'} color={x.color}>{x.tag}</Bd> {x.label}{x.kind !== 'own' && <span style={{ color: t.textL, fontSize: 10 }}> · 읽기전용 ›</span>}{x.kind === 'own' && x.ev.memo ? <span style={{ color: t.textL, fontSize: 10 }}> · {x.ev.memo}</span> : null}</span></span>
+          {x.kind === 'own' && canEdit && <span style={{ display: 'flex', gap: 4, flexShrink: 0 }}><button onClick={() => setEditEv({ id: x.ev.id, title: x.ev.title, event_date: String(x.ev.event_date).slice(0, 10), category: x.ev.category || '기타', memo: x.ev.memo || '' })} style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid ' + t.border, background: t.bg, color: t.accent, cursor: 'pointer', fontSize: 10, fontWeight: 600 }}>편집</button></span>}
+        </div>)}
+      </div>
+    </div>}
+
+    {/* 일정 등록/수정 */}
+    {editEv && <div onClick={() => { setEditEv(null); setMsg(null) }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 14, padding: '22px 26px', maxWidth: 420, width: '100%', border: '1px solid ' + t.border, boxShadow: t.shadowH }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: t.accent, marginBottom: 14 }}>{editEv.id ? '일정 수정' : '일정 등록'}</div>
+        <div style={{ marginBottom: 10 }}><label style={lb}>제목</label><input value={editEv.title} onChange={e => setEditEv(v => ({ ...v, title: e.target.value }))} style={ip} placeholder="일정 제목" /></div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div><label style={lb}>날짜</label><input type="date" value={editEv.event_date} onChange={e => setEditEv(v => ({ ...v, event_date: e.target.value }))} style={ip} /></div>
+          <div><label style={lb}>분류</label><select value={editEv.category} onChange={e => setEditEv(v => ({ ...v, category: e.target.value }))} style={ip}>{['발주', '실사', '마감', '기타'].map(c => <option key={c}>{c}</option>)}</select></div>
+        </div>
+        <div style={{ marginBottom: 14 }}><label style={lb}>메모</label><input value={editEv.memo} onChange={e => setEditEv(v => ({ ...v, memo: e.target.value }))} style={ip} placeholder="선택" /></div>
+        {msg && <div style={{ marginBottom: 10, fontSize: 11, color: t.red, fontWeight: 600 }}>{msg}</div>}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <div>{editEv.id && <button onClick={() => delEv(editEv.id)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>삭제</button>}</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => { setEditEv(null); setMsg(null) }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>취소</button>
+            <button onClick={saveEv} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>{editEv.id ? '수정' : '등록'}</button>
+          </div>
+        </div>
+      </div>
+    </div>}
+  </div>;
+}
+
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); const m = h.split('/')[0]; return ROUTES.includes(m) ? m : 'dashboard'; }
 function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
 /* 입출고 월 선택: 해시 3번째 세그먼트(#transaction/out/2026-08). 없으면 현재 월(하위호환). 「전체」는 URL에 월 세그먼트 없음(→새로고침 시 현재 월로 복원). */
@@ -4774,6 +4863,7 @@ export default function App() {
         {menu === 'report' && <Report drugs={drugs} onNav={handleNav} />}
         {menu === 'emergency' && <EmergencyDispense />}
         {menu === 'atc' && <AtcView drugs={drugs} onReload={load} />}
+        {menu === 'schedule' && <Schedule drugs={drugs} onNav={handleNav} />}
         {menu === 'register' && <DrugRegister onRefresh={load} drugs={drugs} />}
         {menu === 'mypage' && <MyPage profile={profile} onProfileUpdated={loadProfile} />}
         {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
