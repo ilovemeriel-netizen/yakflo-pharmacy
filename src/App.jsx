@@ -987,6 +987,12 @@ function AtcDonut({ data, total, colorFn, onSlice, t }){ const R=58, CIRC=2*Math
 /* ═══ 통합 알림센터 (3종 경고 집약·데이터 비의존) ═══ */
 function AlertCenter({ drugs, onNav }) {
   const { t, open360 } = useTheme();
+  const [supPlans, setSupPlans] = useState([]); const [supMore, setSupMore] = useState(false); // 수급 이슈(약품변경 재사용, 읽기 전용)
+  useEffect(() => { let on = true; supabase.from('drug_change_plans').select('from_drug_code,plan_status,memo,weekly_usage,base_date').in('plan_status', ['모니터링', '생산중단', '일시품절']).order('base_date', { ascending: false }).then(({ data }) => { if (on) setSupPlans(data || []) }); return () => { on = false } }, []);
+  const _supBg = s => s === '생산중단' ? t.redL : s === '일시품절' ? t.amberL : t.accentL; // 배지 색상: 약품변경 표와 동일 규칙(모니터링=accent)
+  const _supFg = s => s === '생산중단' ? t.red : s === '일시품절' ? t.amber : t.accent;
+  const _supMap = {}; drugs.forEach(d => { _supMap[d.drug_code] = d });
+  const supRows = supPlans.map(p => { const d = _supMap[p.from_drug_code] || {}; const cur = d.current_qty || 0; const wu = Number(p.weekly_usage) || 0; const weeksLeft = wu > 0 ? cur / wu : null; const eta = (p.base_date && weeksLeft != null) ? new Date(new Date(p.base_date).getTime() + weeksLeft * 7 * 864e5) : null; return { code: p.from_drug_code, name: d.drug_name || p.from_drug_code, status: p.plan_status, memo: p.memo || '', weeksLeft, etaStr: eta ? eta.toISOString().split('T')[0] : '' } });
   const md = drugs.filter(d => MAIN_STATS.includes(d.status));
   const eD = d => exD(d.expiry_date);
   const exp = md.filter(d => { const x = eD(d); return x !== null && x <= 60 }).sort((a, b) => eD(a) - eD(b));
@@ -1009,6 +1015,18 @@ function AlertCenter({ drugs, onNav }) {
     {sec({ icon: '🚨', title: '긴급 재고', color: t.red, items: low, sub: null, deeplink: () => onNav({ menu: 'stock', filter: '긴급' }), render: d => <span style={{ fontSize: 11, color: t.textM }}>현 <b style={{ color: t.red }}>{(d.current_qty || 0).toLocaleString()}</b> / 안전 {(d.safety_stock || 0).toLocaleString()}</span> })}
     {sec({ icon: '📦', title: '주문 필요', color: t.amber, items: reorder, sub: null, deeplink: () => onNav({ menu: 'stock', filter: '주문필요' }), render: d => <span style={{ fontSize: 11, color: t.textM }}>현 <b style={{ color: t.amber }}>{(d.current_qty || 0).toLocaleString()}</b> / 안전 {(d.safety_stock || 0).toLocaleString()}</span> })}
     {sec({ icon: '💊', title: '향정·마약 유효기간 임박', color: t.purple, items: narc, sub: <span style={{ fontSize: 11, fontWeight: 500, color: t.textM, marginLeft: 6 }}>(≤90일)</span>, deeplink: () => onNav({ menu: 'narcotic' }), render: d => <span style={{ fontSize: 11 }}><Bd bg={getNT(d) === '마약' ? t.redL : t.purpleL} color={getNT(d) === '마약' ? t.red : t.purple}>{getNT(d)}</Bd> <b style={{ color: t.purple, marginLeft: 4 }}>{ddl(d)}</b></span> })}
+    {/* 수급 이슈: 약품변경(drug_change_plans) 재사용·읽기 전용. 0건이면 미표시. 5건+더보기(3분할 패턴). 행 클릭 → 약품변경 */}
+    {supRows.length > 0 && (() => { const shown = supMore ? supRows : supRows.slice(0, 5); return <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, overflow: 'hidden', marginBottom: 14 }}>
+      <div onClick={() => onNav({ menu: 'change' })} style={{ padding: '14px 18px', borderBottom: '1px solid ' + t.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: t.amber + '0D' }}>
+        <span style={{ fontWeight: 700, fontSize: 14, color: t.text, display: 'flex', alignItems: 'center', gap: 8 }}>⚠ 수급 이슈 <span style={{ fontSize: 11, fontWeight: 500, color: t.textM, marginLeft: 6 }}>(모니터링·생산중단·일시품절)</span></span>
+        <span style={{ fontWeight: 800, fontSize: 16, color: t.amber }}>{supRows.length}건 ›</span>
+      </div>
+      <div>{shown.map((r, i) => <div key={i} onClick={() => onNav({ menu: 'change' })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 18px', borderBottom: '1px solid ' + t.border, cursor: 'pointer', fontSize: 12 }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
+        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span style={{ color: t.accent, fontWeight: 600 }}>{r.name}</span> <Bd bg={_supBg(r.status)} color={_supFg(r.status)}>{r.status}</Bd>{r.memo ? <span style={{ color: t.textL, fontSize: 10 }}> · {r.memo}</span> : null}</span>
+        <span style={{ fontSize: 11, color: t.textM, flexShrink: 0, marginLeft: 8 }}>{r.weeksLeft != null ? '남은 ' + (Math.round(r.weeksLeft * 10) / 10) + '주' : '남은 -'}{r.etaStr ? ' · 예상 ' + r.etaStr : ''}</span>
+      </div>)}</div>
+      {supRows.length > 5 && <div onClick={() => setSupMore(v => !v)} style={{ padding: '10px 18px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: t.accent, cursor: 'pointer', borderTop: '1px solid ' + t.border }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>{supMore ? '접기' : '더보기 (' + supRows.length + ')'}</div>}
+    </div>; })()}
   </div>;
 }
 
@@ -2993,7 +3011,7 @@ function ChangePlanModal({ plan, drugs, onClose, onSaved }) {
           <div><label style={lb}>사입여부</label><select value={f.purchased} onChange={e => sf('purchased', e.target.value)} style={ip}><option>○</option><option>X</option></select></div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-          <div><label style={lb}>상태</label><select value={f.plan_status} onChange={e => sf('plan_status', e.target.value)} style={ip}><option>예정</option><option>완료</option><option>보류</option><option>모니터링</option></select></div>
+          <div><label style={lb}>상태</label><select value={f.plan_status} onChange={e => sf('plan_status', e.target.value)} style={ip}><option>예정</option><option>완료</option><option>보류</option><option>모니터링</option><option>생산중단</option><option>일시품절</option></select></div>
           <div><label style={lb}>주간 사용량(합계)</label><input type="number" value={wuTouched ? f.weekly_usage : (hasDept ? String(dsum) : f.weekly_usage)} onChange={e => { setWuTouched(true); sf('weekly_usage', e.target.value) }} placeholder="수기 입력" style={ip} /></div>
         </div>
         {f.plan_status === '모니터링' && <div style={{ fontSize: 11, color: t.textM, marginBottom: 10, marginTop: -4 }}>대체약이 정해지면 약품명을 입력하고 상태를 「예정」으로 변경하세요.</div>}
@@ -3115,7 +3133,7 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
       <div style={{ fontSize: 16, fontWeight: 700, color: t.text }}>약품변경 관리 <span style={{ fontSize: 11, fontWeight: 500, color: t.textM }}>· 예상일은 현재고·주간사용량으로 조회 시 재계산</span></div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{['전체', '예정', '완료', '보류', '모니터링'].map(s => <button key={s} onClick={() => setFilter(s)} style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${filter === s ? t.accent : t.border}`, background: filter === s ? t.accentL : t.card, color: filter === s ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: filter === s ? 700 : 500 }}>{s}</button>)}</div>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{['전체', '예정', '완료', '보류', '모니터링', '생산중단', '일시품절'].map(s => <button key={s} onClick={() => setFilter(s)} style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${filter === s ? t.accent : t.border}`, background: filter === s ? t.accentL : t.card, color: filter === s ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: filter === s ? 700 : 500 }}>{s}</button>)}</div>
         <ColumnSelector t={t} groups={selGroups} value={selCols} onChange={applyCols} presets={selPresets} />
         <button onClick={dl} style={{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${t.green}`, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>엑셀</button>
         <button onClick={() => setEditP({})} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>+ 등록</button>
@@ -3160,7 +3178,7 @@ function DrugChangePlans({ drugs, onAdjust, onReload }) {
               else if (k === 'weeksLeft') { base = { padding: '6px 8px', fontSize: 11, textAlign: 'right', background: remBg(p.curRaw, wl), color: remFg(p.curRaw, wl) ?? ((wl != null && wl < 1) ? '#C00000' : undefined) }; inner = wl == null ? '—' : (Math.round(wl * 10) / 10).toLocaleString() }
               else if (k === 'etaStr') { base = { padding: '6px 8px', fontSize: 10, fontWeight: 600, background: remBg(p.curRaw, wl), color: remFg(p.curRaw, wl) ?? ((wl != null && wl < 1) ? '#C00000' : (eta ? t.text : t.textL)) }; inner = eta || '—' }
               else if (k === 'base_date') { base = { padding: '6px 8px', fontSize: 10, color: t.textM, textAlign: 'center' }; inner = p.base_date || '—' }
-              else if (k === 'plan_status') { base = { padding: '6px 8px', textAlign: 'center' }; inner = <Bd bg={p.plan_status === '완료' ? t.greenL : p.plan_status === '보류' ? t.amberL : t.accentL} color={p.plan_status === '완료' ? t.green : p.plan_status === '보류' ? t.amber : t.accent}>{p.plan_status || '-'}</Bd> }
+              else if (k === 'plan_status') { base = { padding: '6px 8px', textAlign: 'center' }; inner = <Bd bg={p.plan_status === '완료' ? t.greenL : p.plan_status === '생산중단' ? t.redL : (p.plan_status === '보류' || p.plan_status === '일시품절') ? t.amberL : t.accentL} color={p.plan_status === '완료' ? t.green : p.plan_status === '생산중단' ? t.red : (p.plan_status === '보류' || p.plan_status === '일시품절') ? t.amber : t.accent}>{p.plan_status || '-'}</Bd> }
               else if (k === 'memo') { base = { padding: '6px 8px', fontSize: 10, color: t.textM, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }; inner = p.memo || '-' }
               return <td key={k} style={{ ...base, ...sticky }}>{inner}</td>
             })}
