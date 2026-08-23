@@ -276,23 +276,33 @@ function GnbNav({ ms, m, nav }) {
   const { t } = useTheme();
   const [dd, setDd] = useState(null);
   const ref = useRef(null);
+  const timers = useRef({ open: null, close: null });
+  const hoverable = useRef(false);
   useEffect(() => {
+    try { hoverable.current = window.matchMedia('(hover: hover) and (pointer: fine)').matches } catch { hoverable.current = false } // 터치 기기 제외
     function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setDd(null) }
     function onEsc(e) { if (e.key === 'Escape') setDd(null) }
     document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc);
-    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) };
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc); clearTimeout(timers.current.open); clearTimeout(timers.current.close) };
   }, []);
+  const clearT = () => { clearTimeout(timers.current.open); clearTimeout(timers.current.close) };
+  const hoverOpen = i => { if (!hoverable.current) return; clearT(); timers.current.open = setTimeout(() => setDd(i), 120) };   // 진입 지연 120ms
+  const hoverClose = () => { if (!hoverable.current) return; clearTimeout(timers.current.open); clearTimeout(timers.current.close); timers.current.close = setTimeout(() => setDd(null), 250) }; // 이탈 지연 250ms
+  const keepOpen = () => { if (!hoverable.current) return; clearTimeout(timers.current.close) }; // 브릿지·드롭다운 진입 시 닫힘 취소
   const isActive = x => x.children ? (m === x.landing || x.children.some(c => c.id === m)) : (m === x.id); // 하위 활성 시 부모도 활성
   const btnBase = (active) => ({ padding: '7px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 500, background: active ? t.navHi + '38' : 'transparent', color: active ? '#ffffff' : 'rgba(255,255,255,0.6)', border: '1px solid ' + (active ? t.navHi + '7A' : 'transparent'), transition: 'all .15s', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4, lineHeight: 1.1 });
   return <div ref={ref} className="cnc-nav-desktop" style={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center', height: 44 }}>
-    {ms.map((x, i) => x.children ? <div key={i} style={{ position: 'relative' }}>
+    {ms.map((x, i) => x.children ? <div key={i} style={{ position: 'relative' }} onMouseEnter={() => hoverOpen(i)} onMouseLeave={hoverClose}>
         <div style={btnBase(isActive(x))}>
-          <span onClick={() => { setDd(null); nav(x.landing) }} style={{ cursor: 'pointer' }}>{x.l}</span>
-          <span onClick={e => { e.stopPropagation(); setDd(dd === i ? null : i) }} title="하위 메뉴" style={{ cursor: 'pointer', fontSize: 9, padding: '0 2px' }}>▾</span>
+          <span onClick={() => { clearT(); setDd(null); nav(x.landing) }} style={{ cursor: 'pointer' }}>{x.l}</span>
+          <span onClick={e => { e.stopPropagation(); clearT(); setDd(dd === i ? null : i) }} title="하위 메뉴" style={{ cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: '0 2px' }}>▾</span>
         </div>
-        {dd === i ? <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 150, maxHeight: 320, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', zIndex: 950, padding: 6, textAlign: 'left' }}>
-          {x.children.map((c, j) => { const on = m === c.id; return <button key={j} onClick={() => { setDd(null); nav(c.id) }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '6px 9px', border: 'none', background: on ? t.accent + '14' : 'transparent', color: on ? t.accent : t.text, cursor: 'pointer', fontSize: 11, fontWeight: on ? 700 : 500, borderRadius: 6, whiteSpace: 'nowrap' }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{c.l}{on ? <span style={{ fontSize: 9 }}>✓</span> : null}</button> })}
-        </div> : null}
+        {dd === i ? <>
+          <div onMouseEnter={keepOpen} style={{ position: 'absolute', top: '100%', left: 0, right: 0, height: 6, zIndex: 949 }} /> {/* 브릿지: 부모-드롭다운 틈 연속 hover */}
+          <div onMouseEnter={keepOpen} onMouseLeave={hoverClose} style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 92, maxHeight: 320, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', zIndex: 950, padding: 6, textAlign: 'left' }}>
+          {x.children.map((c, j) => { const on = m === c.id; return <button key={j} onClick={() => { clearT(); setDd(null); nav(c.id) }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '6px 9px', border: 'none', background: on ? t.accent + '14' : 'transparent', color: on ? t.accent : t.text, cursor: 'pointer', fontSize: 11, fontWeight: on ? 700 : 500, borderRadius: 6, whiteSpace: 'nowrap' }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{c.l}{on ? <span style={{ fontSize: 9 }}>✓</span> : null}</button> })}
+          </div>
+        </> : null}
       </div>
       : <button key={i} onClick={() => nav(x.id)} style={btnBase(m === x.id)} onMouseEnter={e => { if (m !== x.id) e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }} onMouseLeave={e => { if (m !== x.id) e.currentTarget.style.background = 'transparent' }}>{x.l}</button>)}
   </div>;
@@ -955,8 +965,8 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
     { id: 'druglist', l: '약품목록', landing: 'druglist', children: [{ id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }] },
     { id: 'stock', l: '재고현황', landing: 'stock', children: [{ id: 'expiry', l: '유효기한' }, { id: 'ordering', l: '발주' }, { id: 'change', l: '약품변경' }] },
     { id: 'transaction', l: '입출고' },
-    { id: 'atc', l: '조제', landing: 'atc', children: [{ id: 'atc', l: 'ATC' }, { id: 'emergency', l: '비상조제' }] },
     { id: 'report', l: '보고서' },
+    { id: 'atc', l: '조제', landing: 'atc', children: [{ id: 'atc', l: 'ATC' }, { id: 'emergency', l: '비상조제' }] },
     { id: 'schedule', l: '일정' },
   ]
   function nav(id) { sm(id); setMobileOpen(false) }
