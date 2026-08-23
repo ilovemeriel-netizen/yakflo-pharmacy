@@ -293,10 +293,7 @@ function GnbNav({ ms, m, nav }) {
   const btnBase = (active) => ({ padding: '7px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 500, background: active ? t.navHi + '38' : 'transparent', color: active ? '#ffffff' : 'rgba(255,255,255,0.6)', border: '1px solid ' + (active ? t.navHi + '7A' : 'transparent'), transition: 'all .15s', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4, lineHeight: 1.1 });
   return <div ref={ref} className="cnc-nav-desktop" style={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center', height: 44 }}>
     {ms.map((x, i) => x.children ? <div key={i} style={{ position: 'relative' }} onMouseEnter={() => hoverOpen(i)} onMouseLeave={hoverClose}>
-        <div style={btnBase(isActive(x))}>
-          <span onClick={() => { clearT(); setDd(null); nav(x.landing) }} style={{ cursor: 'pointer' }}>{x.l}</span>
-          <span onClick={e => { e.stopPropagation(); clearT(); setDd(dd === i ? null : i) }} title="하위 메뉴" style={{ cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: '0 2px' }}>▾</span>
-        </div>
+        <div onClick={() => { clearT(); if (hoverable.current) { setDd(null); nav(x.landing) } else { setDd(dd === i ? null : i) } }} style={btnBase(isActive(x))}>{x.l}</div>
         {dd === i ? <>
           <div onMouseEnter={keepOpen} style={{ position: 'absolute', top: '100%', left: 0, right: 0, height: 6, zIndex: 949 }} /> {/* 브릿지: 부모-드롭다운 틈 연속 hover */}
           <div onMouseEnter={keepOpen} onMouseLeave={hoverClose} style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 92, maxHeight: 320, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', zIndex: 950, padding: 6, textAlign: 'left' }}>
@@ -962,11 +959,11 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
   const ms = [
     { id: 'dashboard', l: '대시보드' },
     { id: 'alerts', l: '🔔 알림' },
-    { id: 'druglist', l: '약품목록', landing: 'druglist', children: [{ id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }] },
-    { id: 'stock', l: '재고현황', landing: 'stock', children: [{ id: 'expiry', l: '유효기한' }, { id: 'ordering', l: '발주' }, { id: 'change', l: '약품변경' }] },
+    { id: 'druglist', l: '약품관리', landing: 'druglist', children: [{ id: 'druglist', l: '약품목록' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }] },
+    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }] },
     { id: 'transaction', l: '입출고' },
     { id: 'report', l: '보고서' },
-    { id: 'atc', l: '조제', landing: 'atc', children: [{ id: 'atc', l: 'ATC' }, { id: 'emergency', l: '비상조제' }] },
+    { id: 'atc', l: '조제관리', landing: 'atc', children: [{ id: 'atc', l: 'ATC편집' }, { id: 'emergency', l: '비상조제' }] },
     { id: 'schedule', l: '일정' },
   ]
   function nav(id) { sm(id); setMobileOpen(false) }
