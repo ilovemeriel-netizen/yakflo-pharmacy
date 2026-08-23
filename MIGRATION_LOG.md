@@ -85,6 +85,7 @@ git push --force-with-lease origin main
 | 2026-06-21 | 리전이전 실행 | **새 Seoul 프로젝트(ref `phgkjrvdtcdrdiuigici`) 구축 완료**: `0000_baseline.sql`(pg_dump 스키마)+0006 적용, 1103 적재 | `yakflo-runbook-p0` |
 | 2026-08-23 | 재고무결. current_qty 가드 | `0055_guard_drugs_qty_direct.sql` — drugs.current_qty **직접 UPDATE 차단**(BEFORE UPDATE 트리거 `trg_guard_drugs_qty_direct`, `NEW.current_qty IS DISTINCT FROM OLD` 조건, 오류 23514). 예외 방식: **세션 변수 `app.qty_via_tx`**(tx-local) — `apply_tx_to_inventory`·`revert_tx_from_inventory`가 drugs 갱신 직전 `'on'`·직후 `'off'`(0055가 두 함수를 flag 버전으로 `create or replace`, 가드와 원자 적용). INSERT 미차단(신규 current_qty:0 허용). 선행조건 충족(src 직접쓰기 0건). dryrun A~L 통과 후 승인 apply. 재검증 11항목 통과(직접UPDATE 23514 차단·타컬럼 통과·거래INSERT Δ반영·0056 감사 path='거래(trigger)'·bulk_stock_adjust 정상·inventory 반영·drugs 1,112 무변동·정본 885,285,628/7월 106,365,758·8월 EQM100 반품 1건 잔존). 코드 무변경(번들 무변동). | `feat/0055-guard-dryrun` |
 | 2026-08-23 | 참고. 0068 상태 | `0068_assign_clear_atc_slot.sql`은 **0069_slot_rpc_pinned_movable가 `assign_atc_slot`·`clear_atc_slot`를 `create or replace`로 대체**(0069 헤더 명시). 운영 DB에 두 함수는 0069 정의(FSP2·4·5만 서버 고정·상비 이동 허용)로 존재, ATC 화면이 정상 호출. → **0068 별도 apply 불요(조치 불요)**. | (기록만) |
+| 2026-08-23 | 참고. 공휴일 레퍼런스 | `0075_holidays.sql` — 공휴일 자동표시용 `holidays` 공유 레퍼런스 테이블(전 테넌트 공유·tenant_id 없음) 신규 도입. drug_master(0041) 패턴: **anon/authenticated 전면 회수 → authenticated SELECT only → service_role 쓰기 → RLS on → `holidays_select_all`(for select to authenticated using true)**. UNIQUE(date,name)·year/date 인덱스. 한국천문연구원 특일정보를 service_role이 upsert, 화면은 읽기 전용. 정본·거래 무관 신규 테이블(dryrun BEGIN→생성→검증→ROLLBACK 통과 후 apply). | (기록만) |
 | 2026-08-23 | 보안. 공유레퍼런스 RLS | `0076_shared_ref_rls.sql` — 공유 레퍼런스 6개(`drug_discontinuation`·`drug_harmful`·`drug_status_alerts`·`dur_age_contraindication`·`dur_elderly_caution`·`dur_pregnancy_contraindication`)를 drug_master(0041)/holidays(0075) 패턴으로 정렬: **anon 전면 회수 · authenticated SELECT only · RLS on · SELECT 정책 1종(authenticated,using true) · 쓰기는 service_role**. 배경: 6개가 RLS off+anon·authenticated CRUD 전권(익명 쓰기 가능, 6개 모두 0행·src 참조 0건). dryrun A~J 전항 통과(RLS on·anon 회수·auth SELECT only·auth INSERT 42501 차단·service_role 쓰기 보존·drug_master/holidays·운영4테이블·정본 무변동) 후 승인 apply. apply 후 재검증 9항목 통과(정본 885,285,628/7월 106,365,758 무변동, 6개 0행 복귀, allow_all qual=true 9건 전부 SELECT·cmd=ALL 0건). 코드 무변경(번들 해시 `index-DRkZ2TTM.js` 유지). | `feat/0076-shared-ref-rls` |
 
 > **리전 이전 실행 기록 (2026-06-21) — 완료된 부분**
@@ -92,6 +93,7 @@ git push --force-with-lease origin main
 > - 옛 Sydney ref=`ukzjhiweqezhrtqzpjkf`(pooler `aws-1-ap-southeast-2`), 새 Seoul ref=`phgkjrvdtcdrdiuigici`.
 > - baseline 적용 시 제거한 것: `\restrict`/`\unrestrict`(psql 메타), `ALTER DEFAULT PRIVILEGES`(권한거부), `CREATE SCHEMA public`(기본 존재). UTF-8 강제(한글 COMMENT 깨짐 방지).
 > - **검증 통과**: 15정상테이블+drug_vocab(25)+RLS17정책, drugs/inv/snap 각 **1103**, tx 0, 고아 0. 분포 §8 일치. 코드없는 중지약품 **282개에 NOCODE- 합성코드**.
+>   - **[2026-08-23 갱신]** 위 값은 리전 이전 적재 **직후(2026-06-21)** 스냅샷임. 현재는 `transactions`가 채워져 있어 「tx 0」은 **구 기재(오류)** — 판단 전 재측정(2026-08-23 기준 약 **869행**). `drugs`도 이후 적재/조정으로 변동(2026-08-23 기준 약 **1,112행**, 재고 보유 약 526종, 평가금액 약 111,681,296원). **행수·금액은 변동하므로 판단 전 반드시 재측정.**
 > - drugs 실측: `insurance_price` 없음(→`edi_price`), drug_code unique 없음(일반 insert), 모든 수량·금액 integer(반올림).
 > - ⚠️ **미완(사용자 진행 필요)**: 인증 재설정(카카오/네이버 Provider·Redirect URL), `.env`·Netlify·Vercel 키 교체, 재로그인 후 `0007` 실행(메타 재연결), 앱 검증, 옛 프로젝트 삭제. 레퍼런스 7테이블은 거의 빈 상태(drug_master 5행, `supabase/reference_data.sql` 미적용).
 > - 🔐 노출된 옛 DB 비밀번호(채팅)는 옛 프로젝트 삭제로 무효화 예정. 새 프로젝트 service_role/access token은 미노출.
@@ -109,3 +111,4 @@ git push --force-with-lease origin main
 > - 라이브 `drugs`(1083행)에 CHECK/NOT NULL 제약은 **걸지 않음** — 0002 원칙대로 데이터 안정화(P1-3) 이후로 미룸.
 > - **P1-2/3/4 미완**: 원천 엑셀 또는 라이브 DB 조회 권한 필요. `verify/P1_data_verification.sql`을 사용자가 Supabase에서 실행 → 결과로 P1-3(확인필요 225건·보관방법 483건 보강) 백로그 확정 예정.
 > - `drug_lots`: App.jsx LotModal이 사용하나 0002 시점 DB 부재 기록 → **현 존재 여부 확인 필요**(가이드 §12 신규 설계 후보).
+>   - **[2026-08-23 갱신]** `drug_lots`는 **존재 확인** — `0008`에서 생성, `0063`에서 UNIQUE(tenant_id,drug_code,lot_no)+`drugs.expiry_date` 최단 유효기한 캐시 트리거. 「부재/미확인」은 **구 기재(오류)**.
