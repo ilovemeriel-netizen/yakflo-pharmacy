@@ -1269,7 +1269,7 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
         {sT('▲', '반품/폐기 현황')}
         {txns.length >= 500 && <div style={{ fontSize: 10, color: t.textM, marginTop: -2, marginBottom: 4 }}>· 최근 500건 기준 집계</div>}
         {sR('반품 건수', txS.retC, t.amber, '건')}{sR('반품 금액', txS.retA, t.amber, '원')}{sR('폐기 건수', txS.dspC, t.red, '건')}{sR('폐기 금액', txS.dspA, t.red, '원')}{sR('폐기 수량', txS.dspQ, t.red, '개')}
-        <div style={{ marginTop: 8, padding: '8px 12px', background: t.redL, borderRadius: 8, display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 12, fontWeight: 700, color: t.red }}>손실 합계</span><span style={{ fontSize: 14, fontWeight: 800, color: t.red }}>{txS.lossT}건 / ₩{Math.round(txS.lossA).toLocaleString()}</span></div>
+        <div style={{ marginTop: 8, padding: '8px 12px', background: t.redL, borderRadius: 8, display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 12, fontWeight: 700, color: t.red }}>반품·폐기 합계</span><span style={{ fontSize: 14, fontWeight: 800, color: t.red }}>{txS.lossT}건 / ₩{Math.round(txS.lossA).toLocaleString()}</span></div>
       </div>
       <div onClick={() => onNav({ menu: 'stock' })} style={{ background: t.card, borderRadius: 14, padding: '18px 22px', border: `1px solid ${t.border}`, boxShadow: t.shadow, cursor: 'pointer', transition: 'all .15s' }} onMouseEnter={hv} onMouseLeave={hx}>
         {sT('■', '재고 총괄')}
@@ -3540,11 +3540,11 @@ function Report({drugs,onNav}){
           </div>:<div style={{padding:24,textAlign:'center',color:t.textL,fontSize:12}}>데이터 없음</div>}
         </div>
         <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'14px 16px'}}>
-          <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:10}}>손실 분석 <span style={{fontSize:11,fontWeight:500,color:t.textL}}>· 폐기+반품(수량×구입단가)</span></div>
+          <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:10}}>반품·폐기 분석 <span style={{fontSize:11,fontWeight:500,color:t.textL}}>· 폐기+반품(수량×구입단가)</span></div>
           {_lossData.length?<div style={{display:'flex',gap:14,alignItems:'center'}}>
-            <NDonut data={_lossData} total={_lossTot} onSlice={()=>{}} centerTop={_won2(_lossTot)} centerBot="손실액" t={t} colorOf={n=>_catColor(n)}/>
+            <NDonut data={_lossData} total={_lossTot} onSlice={()=>{}} centerTop={_won2(_lossTot)} centerBot="반품·폐기액" t={t} colorOf={n=>_catColor(n)}/>
             <div style={{flex:1,display:'grid',gap:3,minWidth:0}}>{_lossData.map(d=><div key={d.name} style={{display:'flex',alignItems:'center',gap:6}}><span style={{width:9,height:9,borderRadius:3,background:_catColor(d.name),flexShrink:0}}/><span style={{fontSize:11,color:t.textM,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.name}</span><span style={{fontSize:11,fontWeight:700,color:t.text}}>{_won2(d.count)}</span><span style={{fontSize:10,color:t.textL,width:38,textAlign:'right'}}>{Math.round(d.count/_lossTot*100)}%</span></div>)}</div>
-          </div>:<div style={{padding:24,textAlign:'center',color:t.textL,fontSize:12}}>손실 없음</div>}
+          </div>:<div style={{padding:24,textAlign:'center',color:t.textL,fontSize:12}}>반품·폐기 없음</div>}
         </div>
       </div>
       <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'14px 16px'}}>
