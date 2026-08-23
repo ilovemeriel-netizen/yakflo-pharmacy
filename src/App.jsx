@@ -1540,7 +1540,7 @@ function DrugList({ drugs, navFilter: nf, onEdit, onReload, nonins }) {
   const { t, open360 } = useTheme();
   /* 메뉴별 기본값 단일 출처 — 진입 초기값·필터 초기화 복원값·초기화 버튼 표시 판정이 모두 이 값을 기준으로 삼는다 (약품목록=전체/사용, 비보험=비보험/사용, 아카이브=전체/중지). */
   const _isArchive = !!nf?.archive; const DEF_INS = nonins ? '비보험' : '전체'; const DEF_STATS = _isArchive ? ['중지'] : ['사용'];
-  const [search, setSearch] = useState(''); const [cats, setCats] = useState(nf?.cats || CATS); const [stats, setStats] = useState(nf?.status || DEF_STATS); const [narcOnly, setNarcOnly] = useState(false); const [hanoeOnly, setHanoeOnly] = useState(false); const [hiAlertOnly, setHiAlertOnly] = useState(false); const [insF, setInsF] = useState(nf?.insType || DEF_INS); const [page, setPage] = useState(1); const [atcF, setAtcF] = useState(nf?.atc || null); const [rxF, setRxF] = useState(null); const [donutF, setDonutF] = useState(null); const [cmpHF, setCmpHF] = useState(null); const [stoHF, setStoHF] = useState(null); const [locHF, setLocHF] = useState(null); const [locOpts, setLocOpts] = useState([])
+  const [search, setSearch] = useState(''); const [cats, setCats] = useState(nf?.cats || CATS); const [stats, setStats] = useState(nf?.status || DEF_STATS); const [narcOnly, setNarcOnly] = useState(false); const [hanoeOnly, setHanoeOnly] = useState(false); const [hiAlertOnly, setHiAlertOnly] = useState(false); const [insF, setInsF] = useState(nf?.insType || DEF_INS); const [page, setPage] = useState(1); const [atcF, setAtcF] = useState(nf?.atc || null); const [rxF, setRxF] = useState(null); const [donutF, setDonutF] = useState(null); const [donutSet, setDonutSet] = useState('atc'); const [cmpHF, setCmpHF] = useState(null); const [stoHF, setStoHF] = useState(null); const [locHF, setLocHF] = useState(null); const [locOpts, setLocOpts] = useState([])
   const { so, TS, sk, sd, setSort } = useSort('drug_name')
   const { memberRole, profile, user, setProfile } = useTheme(); const [bulkOpen, setBulkOpen] = useState(false)
   const [selCols, setSelCols] = useState(() => { const _s = profile?.settings?.drugCols; return Array.isArray(_s) && _s.length ? _s : DRUG_DEFAULT_COLS })
@@ -1609,8 +1609,13 @@ function DrugList({ drugs, navFilter: nf, onEdit, onReload, nonins }) {
         
       </div>
     </div>
-    {nonins && <NoninsDonuts used={drugs.filter(d => d.status === '사용' && isNonIns(d))} t={t} donutF={donutF} onPick={(level, value) => { setDonutF({ level, value }); setPage(1) }} onClear={() => { setDonutF(null); setPage(1) }} />}
-    <AtcDonutsRow drugs={drugs} t={t} nonins={nonins} sel={donutF} onPick={(level, value) => { setDonutF({ level, value }); setPage(1) }} onClear={() => { setDonutF(null); setPage(1) }} onCenterReset={_resetF} />
+    {nonins ? <div style={{ position: 'relative' }}>
+      <div style={{ position: 'absolute', top: 12, right: 16, zIndex: 30 }}><DonutSetMenu value={donutSet} onChange={v => { if (v !== donutSet) { setDonutSet(v); setDonutF(null); setPage(1) } }} t={t} /></div>
+      {donutSet === 'atc'
+        ? <AtcDonutsRow drugs={drugs} t={t} nonins={nonins} sel={donutF} onPick={(level, value) => { setDonutF({ level, value }); setPage(1) }} onClear={() => { setDonutF(null); setPage(1) }} onCenterReset={_resetF} />
+        : <NoninsDonuts used={drugs.filter(d => d.status === '사용' && isNonIns(d))} t={t} donutF={donutF} onPick={(level, value) => { setDonutF({ level, value }); setPage(1) }} onClear={() => { setDonutF(null); setPage(1) }} />}
+    </div>
+    : <AtcDonutsRow drugs={drugs} t={t} nonins={nonins} sel={donutF} onPick={(level, value) => { setDonutF({ level, value }); setPage(1) }} onClear={() => { setDonutF(null); setPage(1) }} onCenterReset={_resetF} />}
     <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, overflow: 'visible', boxShadow: t.shadow }}>
       <div style={{ position: 'sticky', top: gnbH, zIndex: 20, padding: '10px 18px', borderBottom: `1px solid ${t.border}`, fontSize: 12, color: t.textM, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 600, background: t.card, borderTopLeftRadius: 14, borderTopRightRadius: 14 }}><span>전체 {drugs.length}개 · 결과 <strong style={{ color: t.accent }}>{filtered.length}개</strong><span onClick={() => colBtnRef.current && colBtnRef.current.toggle()} title="표시 컬럼 선택(클릭)" style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: t.purpleL, color: t.purple, fontSize: 10, fontWeight: 700, border: '1px solid ' + t.purple + '40', cursor: 'pointer', whiteSpace: 'nowrap' }}>{_presetLabel}</span>{atcF && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: atcColor(atcF) + '1A', color: atcColor(atcF), fontSize: 10, fontWeight: 700, border: '1px solid '+atcColor(atcF)+'40' }}>효능군: {atcF}<span onClick={() => setAtcF(null)} style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span>}{rxF && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: t.purpleL, color: t.purple, fontSize: 10, fontWeight: 700, border: '1px solid ' + t.purple + '40' }}>분류: {rxF}<span onClick={() => setRxF(null)} style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span>}</span><span style={{ display: 'flex', alignItems: 'center', gap: 10 }}><ColumnSelector ref={colBtnRef} t={t} groups={selGroups} value={selCols} onChange={applyCols} presets={selPresets} />{_showReset && <button onClick={_resetF} title="필터·정렬 전체 초기화" style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent + '12', color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>필터 초기화{_df > 0 ? ' (' + _df + ')' : ''}</button>}<span style={{ fontSize: 10, color: t.textL }}>약품명 클릭 → 수정</span></span></div>
       <div style={{ overflow: 'hidden', borderBottomLeftRadius: 14, borderBottomRightRadius: 14 }}><StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={(k,sdv)=>{setSort(k,sdv);setPage(1)}} hf={hf} hscroll={{noLabel:true,ends:true}} cols={drugCols} colWidths={drugColWidths}>
@@ -2020,6 +2025,25 @@ function NarcDonuts({ used, t, donutF, onPick, onClear }) {
       {col('성분', '성분명별', <NDonut data={dIng} total={total} onSlice={n => onPick('ingredient_kr', n === '미분류' ? '' : n)} onCenter={onClear} centerTitle="필터 해제(전체)" centerTop={total} centerBot="성분" t={t} colorOf={palOf} />, dIng.map((d, i) => legItem('ingredient_kr', d, palOf, i)))}
     </div>
     {drill2 ? <div style={{ marginTop: 8 }}><button onClick={() => setDrill2(null)} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>◂ ATC 2단계로</button></div> : null}
+  </div>;
+}
+/* 비보험 도넛 세트 전환 드롭다운 — 클릭 오픈·바깥클릭/Esc 닫힘. 색은 ColMenu/GnbNav 토큰 재사용(원본 무수정), 신규 hex 0. */
+function DonutSetMenu({ value, onChange, t }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    function onEsc(e) { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) };
+  }, []);
+  const opts = [{ v: 'atc', l: 'ATC 분류' }, { v: 'basic', l: '기본 분류' }];
+  const cur = opts.find(o => o.v === value) || opts[0];
+  return <div ref={ref} style={{ position: 'relative' }}>
+    <button onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.borderH, background: t.cardSolid, color: t.text, cursor: 'pointer', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{cur.l} <span style={{ fontSize: 9 }}>▾</span></button>
+    {open && <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, minWidth: 130, background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', zIndex: 60, padding: 6, textAlign: 'left' }}>
+      {opts.map(o => { const on = o.v === value; return <button key={o.v} onClick={() => { setOpen(false); onChange(o.v) }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '6px 9px', border: 'none', background: on ? t.accent + '14' : 'transparent', color: on ? t.accent : t.text, cursor: 'pointer', fontSize: 11, fontWeight: on ? 700 : 500, borderRadius: 6, whiteSpace: 'nowrap' }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{o.l}{on ? <span style={{ fontSize: 9 }}>✓</span> : null}</button> })}
+    </div>}
   </div>;
 }
 /* 비보험 분포 도넛 3종(구분·분류·ATC대분류) — NarcDonuts/NDonut 패턴 재사용. 모집단=사용&&비보험, 결측 제외. donutF 공유(표 로직 무수정). */
