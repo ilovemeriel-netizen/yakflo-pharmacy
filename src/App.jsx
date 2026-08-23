@@ -272,7 +272,7 @@ function TreeFilter({ groups }) {
 }
 
 /* ═══ GNB 드롭다운 내비 (hover/click→수직 펼침·스크롤·Esc·외부클릭 닫힘) ═══ */
-function GnbNav({ ms, m, onFlat, navTo }) {
+function GnbNav({ ms, m, nav }) {
   const { t } = useTheme();
   const [dd, setDd] = useState(null);
   const ref = useRef(null);
@@ -282,15 +282,19 @@ function GnbNav({ ms, m, onFlat, navTo }) {
     document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc);
     return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) };
   }, []);
-  const btnBase = (active) => ({ padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 400, background: active ? t.navHi + '22' : 'transparent', color: active ? t.navHi : 'rgba(255,255,255,0.55)', border: '1px solid ' + (active ? t.navHi + '40' : 'transparent'), transition: 'all .15s', whiteSpace: 'nowrap' });
-  return <div ref={ref} className="cnc-nav-desktop" style={{ display: 'flex', gap: 2, flex: '1 1 auto', justifyContent: 'center' }}>
-    {ms.map((x, i) => x.children ? <div key={i} style={{ position: 'relative' }} onMouseEnter={() => setDd(i)} onMouseLeave={() => setDd(null)}>
-        <button onClick={() => setDd(dd === i ? null : i)} style={btnBase(dd === i)}>{x.l} <span style={{ fontSize: 9 }}>▾</span></button>
-        {dd === i ? <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 170, maxHeight: 320, overflowY: 'auto', background: t.nav, border: '1px solid ' + t.navHi + '40', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.32)', zIndex: 950, padding: 4 }}>
-          {x.children.map((c, j) => <button key={j} onClick={() => { setDd(null); navTo(c.nav) }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'transparent', color: 'rgba(255,255,255,0.78)', cursor: 'pointer', fontSize: 12, borderRadius: 6, whiteSpace: 'nowrap' }} onMouseEnter={e => e.currentTarget.style.background = t.navHi + '22'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>{c.l}</button>)}
+  const isActive = x => x.children ? (m === x.landing || x.children.some(c => c.id === m)) : (m === x.id); // 하위 활성 시 부모도 활성
+  const btnBase = (active) => ({ padding: '7px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 500, background: active ? t.navHi + '38' : 'transparent', color: active ? '#ffffff' : 'rgba(255,255,255,0.6)', border: '1px solid ' + (active ? t.navHi + '7A' : 'transparent'), transition: 'all .15s', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4, lineHeight: 1.1 });
+  return <div ref={ref} className="cnc-nav-desktop" style={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center', height: 44 }}>
+    {ms.map((x, i) => x.children ? <div key={i} style={{ position: 'relative' }}>
+        <div style={btnBase(isActive(x))}>
+          <span onClick={() => { setDd(null); nav(x.landing) }} style={{ cursor: 'pointer' }}>{x.l}</span>
+          <span onClick={e => { e.stopPropagation(); setDd(dd === i ? null : i) }} title="하위 메뉴" style={{ cursor: 'pointer', fontSize: 9, padding: '0 2px' }}>▾</span>
+        </div>
+        {dd === i ? <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 150, maxHeight: 320, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', zIndex: 950, padding: 6, textAlign: 'left' }}>
+          {x.children.map((c, j) => { const on = m === c.id; return <button key={j} onClick={() => { setDd(null); nav(c.id) }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '6px 9px', border: 'none', background: on ? t.accent + '14' : 'transparent', color: on ? t.accent : t.text, cursor: 'pointer', fontSize: 11, fontWeight: on ? 700 : 500, borderRadius: 6, whiteSpace: 'nowrap' }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{c.l}{on ? <span style={{ fontSize: 9 }}>✓</span> : null}</button> })}
         </div> : null}
       </div>
-      : <button key={i} onClick={() => onFlat(x.id)} style={btnBase(m === x.id)}>{x.l}</button>)}
+      : <button key={i} onClick={() => nav(x.id)} style={btnBase(m === x.id)} onMouseEnter={e => { if (m !== x.id) e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }} onMouseLeave={e => { if (m !== x.id) e.currentTarget.style.background = 'transparent' }}>{x.l}</button>)}
   </div>;
 }
 
@@ -945,7 +949,16 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tenant, setTenant] = useState('')
   useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, [])
-  const ms = [{ id: 'dashboard', l: '대시보드' }, { id: 'alerts', l: '🔔 알림' }, { id: 'druglist', l: '약품목록' }, { id: 'expiry', l: '유효기한' }, { id: 'stock', l: '재고현황' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주' }, { id: 'transaction', l: '입출고' }, { id: 'report', l: '보고서' }, { id: 'emergency', l: '비상조제' }, { id: 'atc', l: 'ATC' }, { id: 'schedule', l: '일정' }]
+  const ms = [
+    { id: 'dashboard', l: '대시보드' },
+    { id: 'alerts', l: '🔔 알림' },
+    { id: 'druglist', l: '약품목록', landing: 'druglist', children: [{ id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }] },
+    { id: 'stock', l: '재고현황', landing: 'stock', children: [{ id: 'expiry', l: '유효기한' }, { id: 'ordering', l: '발주' }, { id: 'change', l: '약품변경' }] },
+    { id: 'transaction', l: '입출고' },
+    { id: 'atc', l: '조제', landing: 'atc', children: [{ id: 'atc', l: 'ATC' }, { id: 'emergency', l: '비상조제' }] },
+    { id: 'report', l: '보고서' },
+    { id: 'schedule', l: '일정' },
+  ]
   function nav(id) { sm(id); setMobileOpen(false) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
@@ -968,12 +981,15 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
       </div>
       </div>
       <div className="cnc-row2" style={{ background: t.nav, borderTop: '1px solid rgba(255,255,255,0.10)', padding: '0 20px' }}>
-        <div className="cnc-nav-desktop" style={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center', height: 44 }}>{ms.map(x => { const on = m === x.id; return <button key={x.id} onClick={() => nav(x.id)} style={{ padding: '7px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: on ? 700 : 500, background: on ? t.navHi + '38' : 'transparent', color: on ? '#ffffff' : 'rgba(255,255,255,0.6)', border: '1px solid ' + (on ? t.navHi + '7A' : 'transparent'), transition: 'all .15s', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', lineHeight: 1.1 }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{x.l}</button> })}</div>
+        <GnbNav ms={ms} m={m} nav={nav} />
       </div>
     </div>
     {mobileOpen && <div className="cnc-nav-mobile no-print" style={{ position: 'fixed', top: 56, left: 0, right: 0, bottom: 0, zIndex: 899 }} onClick={() => setMobileOpen(false)}>
       <div style={{ background: t.nav, borderBottom: `2px solid ${t.navHi}40`, padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: 2 }} onClick={e => e.stopPropagation()}>
-        {ms.map(x => <button key={x.id} onClick={() => nav(x.id)} style={{ padding: '12px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: m === x.id ? 700 : 400, background: m === x.id ? t.navHi + '22' : 'transparent', color: m === x.id ? t.navHi : 'rgba(255,255,255,0.65)', border: 'none', textAlign: 'left' }}>{x.l}</button>)}
+        {ms.map(x => x.children ? <div key={x.id} style={{ display: 'flex', flexDirection: 'column' }}>
+          <button onClick={() => nav(x.landing)} style={{ padding: '12px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: (m === x.landing || x.children.some(c => c.id === m)) ? 700 : 400, background: (m === x.landing || x.children.some(c => c.id === m)) ? t.navHi + '22' : 'transparent', color: (m === x.landing || x.children.some(c => c.id === m)) ? t.navHi : 'rgba(255,255,255,0.65)', border: 'none', textAlign: 'left' }}>{x.l}</button>
+          {x.children.map(c => <button key={c.id} onClick={() => nav(c.id)} style={{ padding: '10px 16px 10px 30px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: m === c.id ? 700 : 400, background: m === c.id ? t.navHi + '22' : 'transparent', color: m === c.id ? t.navHi : 'rgba(255,255,255,0.55)', border: 'none', textAlign: 'left' }}>· {c.l}</button>)}
+        </div> : <button key={x.id} onClick={() => nav(x.id)} style={{ padding: '12px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: m === x.id ? 700 : 400, background: m === x.id ? t.navHi + '22' : 'transparent', color: m === x.id ? t.navHi : 'rgba(255,255,255,0.65)', border: 'none', textAlign: 'left' }}>{x.l}</button>)}
         <button onClick={() => { setMobileOpen(false); if (onRegister) onRegister(); else nav('register') }} style={{ padding: '12px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: m === 'register' ? 700 : 400, background: m === 'register' ? t.navHi + '22' : 'transparent', color: t.navHi, border: `1px solid ${t.navHi}40`, textAlign: 'left', marginTop: 4 }}>+ 신규 등록</button>
       </div>
       <div style={{ flex: 1, background: 'rgba(0,0,0,0.4)' }} />
