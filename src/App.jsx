@@ -4214,7 +4214,7 @@ function Schedule({ drugs, onNav }) {
   useEffect(() => { loadEvents(); supabase.from('drug_change_plans').select('from_drug_code,plan_status,weekly_usage,base_date').then(({ data }) => setPlans(data || [])); supabase.from('monthly_snapshots').select('snap_year,snap_month').then(({ data }) => { const s = new Set(); (data || []).forEach(r => s.add(r.snap_year + '-' + r.snap_month)); setClosed(s) }) }, []);
   const dmap = {}; drugs.forEach(d => { dmap[d.drug_code] = d });
   const monthPrefix = y + '-' + pad(m);
-  const _catColor = c => c === '발주' ? '#804A87' : c === '실사' ? '#019748' : c === '마감' ? '#2E4A62' : c === '근무' ? '#92C8E0' : c === '입퇴원' ? '#F39E94' : c === '휴일' ? '#E2A6D4' : '#BFA6D9'; // 전부 기존 팔레트 사용색(신규 hex 0)
+  const _catColor = c => c === '발주' ? '#804A87' : c === '실사' ? '#019748' : c === '마감' ? '#2E4A62' : c === '업무' ? '#A8CF5C' : c === '근무' ? '#92C8E0' : c === '입퇴원' ? '#F39E94' : c === '휴일' ? '#E2A6D4' : '#BFA6D9'; // 전부 기존 팔레트 사용색(신규 hex 0). 업무=#A8CF5C(라임)
   const derived = [];
   drugs.forEach(d => { if (!MAIN_STATS.includes(d.status) || !((d.current_qty || 0) > 0)) return; const ed = String(d.expiry_date || '').slice(0, 10); if (ed.slice(0, 7) === monthPrefix) derived.push({ date: ed, kind: 'expiry', color: t.red, tag: '유효기한', label: d.drug_name, drug: d, nav: { menu: 'expiry', focus: 'urgent' } }) });
   plans.forEach(p => { if (p.plan_status === '완료') return; const d = dmap[p.from_drug_code] || {}; const cur = d.current_qty || 0; const wu = Number(p.weekly_usage) || 0; const wl = wu > 0 ? cur / wu : null; if (!(p.base_date && wl != null)) return; const eta = new Date(new Date(p.base_date + 'T00:00:00Z').getTime() + wl * 7 * 864e5).toISOString().slice(0, 10); if (eta.slice(0, 7) === monthPrefix) derived.push({ date: eta, kind: 'change', color: t.accent, tag: '약품변경', label: (d.drug_name || p.from_drug_code) + ' 변경예상', nav: { menu: 'change' } }) });
@@ -4242,7 +4242,7 @@ function Schedule({ drugs, onNav }) {
       <button onClick={() => shift(1)} style={navBtn}>›</button>
       <button onClick={() => { setY(_now.getFullYear()); setM(_now.getMonth() + 1) }} style={{ ...navBtn, fontWeight: 600, fontSize: 12 }}>오늘</button>
       <div style={{ flex: 1 }} />
-      <span style={{ display: 'flex', gap: 10, fontSize: 10, color: t.textM, flexWrap: 'wrap' }}>{[['유효기한', t.red], ['약품변경', t.accent], ['월마감', t.amber], ['발주', '#804A87'], ['실사', '#019748'], ['마감', '#2E4A62'], ['근무', '#92C8E0'], ['입퇴원', '#F39E94'], ['휴일', '#E2A6D4'], ['기타', '#BFA6D9']].map(([lbl, c]) => <span key={lbl}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: c, marginRight: 4, verticalAlign: 'middle' }} />{lbl}</span>)}</span>
+      <span style={{ display: 'flex', gap: 10, fontSize: 10, color: t.textM, flexWrap: 'wrap' }}>{[['유효기한', t.red], ['약품변경', t.accent], ['월마감', t.amber], ['발주', '#804A87'], ['실사', '#019748'], ['마감', '#2E4A62'], ['업무', '#A8CF5C'], ['근무', '#92C8E0'], ['입퇴원', '#F39E94'], ['휴일', '#E2A6D4'], ['기타', '#BFA6D9']].map(([lbl, c]) => <span key={lbl}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: c, marginRight: 4, verticalAlign: 'middle' }} />{lbl}</span>)}</span>
     </div>
     <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, overflow: 'hidden' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>{['일', '월', '화', '수', '목', '금', '토'].map(w => <div key={w} style={{ padding: '8px 0', textAlign: 'center', fontSize: 11, fontWeight: 700, color: t.textM, borderBottom: '1px solid ' + t.border, background: t.bg }}>{w}</div>)}</div>
@@ -4270,7 +4270,7 @@ function Schedule({ drugs, onNav }) {
           <div><label style={lb}>시작일</label><input type="date" value={editEv.event_date} onChange={e => setEditEv(v => ({ ...v, event_date: e.target.value }))} style={ip} /></div>
           <div><label style={lb}>종료일 (선택)</label><input type="date" value={editEv.end_date || ''} onChange={e => setEditEv(v => ({ ...v, end_date: e.target.value }))} style={ip} /></div>
         </div>
-        <div style={{ marginBottom: 10 }}><label style={lb}>분류</label><select value={editEv.category} onChange={e => setEditEv(v => ({ ...v, category: e.target.value }))} style={ip}>{['발주', '실사', '마감', '근무', '입퇴원', '휴일', '기타'].map(c => <option key={c}>{c}</option>)}</select></div>
+        <div style={{ marginBottom: 10 }}><label style={lb}>분류</label><select value={editEv.category} onChange={e => setEditEv(v => ({ ...v, category: e.target.value }))} style={ip}>{['발주', '실사', '마감', '업무', '근무', '입퇴원', '휴일', '기타'].map(c => <option key={c}>{c}</option>)}</select></div>
         <div style={{ marginBottom: 14 }}><label style={lb}>메모</label><input value={editEv.memo} onChange={e => setEditEv(v => ({ ...v, memo: e.target.value }))} style={ip} placeholder="선택" /></div>
         {msg && <div style={{ marginBottom: 10, fontSize: 11, color: t.red, fontWeight: 600 }}>{msg}</div>}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
