@@ -83,6 +83,7 @@ git push --force-with-lease origin main
 | 2026-06-21 | 리전 이전 | `0007_relink_users_after_region_move.sql` — Sydney→Seoul 이전 후 이메일 기준 사용자 재매핑(tenant_members owner/member + profiles admin), 옛 UUID 비의존 | `yakflo-runbook-p0` |
 | 2026-06-21 | 리전 이전 | `scripts/load_yakflodata.mjs` — 개선본 1103 적재 로더(drugs+inventory+snapshot, 전월재고→현재고 이월·입출고0·약품코드 문자열강제, dry-run 기본, env service_role) | `yakflo-runbook-p0` |
 | 2026-06-21 | 리전이전 실행 | **새 Seoul 프로젝트(ref `phgkjrvdtcdrdiuigici`) 구축 완료**: `0000_baseline.sql`(pg_dump 스키마)+0006 적용, 1103 적재 | `yakflo-runbook-p0` |
+| 2026-08-23 | 보안. 공유레퍼런스 RLS | `0076_shared_ref_rls.sql` — 공유 레퍼런스 6개(`drug_discontinuation`·`drug_harmful`·`drug_status_alerts`·`dur_age_contraindication`·`dur_elderly_caution`·`dur_pregnancy_contraindication`)를 drug_master(0041)/holidays(0075) 패턴으로 정렬: **anon 전면 회수 · authenticated SELECT only · RLS on · SELECT 정책 1종(authenticated,using true) · 쓰기는 service_role**. 배경: 6개가 RLS off+anon·authenticated CRUD 전권(익명 쓰기 가능, 6개 모두 0행·src 참조 0건). dryrun A~J 전항 통과(RLS on·anon 회수·auth SELECT only·auth INSERT 42501 차단·service_role 쓰기 보존·drug_master/holidays·운영4테이블·정본 무변동) 후 승인 apply. apply 후 재검증 9항목 통과(정본 885,285,628/7월 106,365,758 무변동, 6개 0행 복귀, allow_all qual=true 9건 전부 SELECT·cmd=ALL 0건). 코드 무변경(번들 해시 `index-DRkZ2TTM.js` 유지). | `feat/0076-shared-ref-rls` |
 
 > **리전 이전 실행 기록 (2026-06-21) — 완료된 부분**
 > - 도구: Docker 미설치 → `pg_dump`(PostgreSQL 18 winget 설치)로 옛 DB 스키마 덤프. 새 프로젝트 적용은 `supabase login` 토큰으로 **Management API(`/database/query`)** 사용(DB 비밀번호 우회).
