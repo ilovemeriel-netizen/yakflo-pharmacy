@@ -3233,7 +3233,7 @@ function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
               let base = { padding: '6px 8px', fontSize: 11 }, inner = null
               if (k === 'category') { base = { padding: '6px 8px', fontSize: 10, color: t.textM }; inner = p.category || '-' }
               else if (k === 'from_drug_name') { base = { padding: '6px 8px', fontSize: 11, fontWeight: 600, color: t.text, textAlign: 'left' }; inner = p.from_drug_name }
-              else if (k === 'to_drug_name') { base = { padding: '6px 8px', fontSize: 11 }; inner = p.to_drug_name || '-' }
+              else if (k === 'to_drug_name') { base = { padding: '6px 8px', fontSize: 11, textAlign: 'left' }; inner = p.to_drug_name || '-' }
               else if (k === 'to_manufacturer') { base = { padding: '6px 8px', fontSize: 10, color: t.textM }; inner = p.to_manufacturer || '-' }
               else if (k === 'purchased') { base = { padding: '6px 8px', fontSize: 10, textAlign: 'center' }; inner = p.purchased || '-' }
               else if (k === 'recent3') { base = { padding: '6px 8px', fontSize: 11, textAlign: 'right' }; inner = num(p.recent3) }
