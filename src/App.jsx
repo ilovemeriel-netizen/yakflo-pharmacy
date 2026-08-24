@@ -291,7 +291,7 @@ function GnbNav({ ms, m, nav }) {
   const keepOpen = () => { if (!hoverable.current) return; clearTimeout(timers.current.close) }; // 브릿지·드롭다운 진입 시 닫힘 취소
   const isActive = x => x.children ? (m === x.landing || x.children.some(c => c.id === m)) : (m === x.id); // 하위 활성 시 부모도 활성
   const btnBase = (active) => ({ padding: '7px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 500, background: active ? t.navHi + '38' : 'transparent', color: active ? '#ffffff' : 'rgba(255,255,255,0.6)', border: '1px solid ' + (active ? t.navHi + '7A' : 'transparent'), transition: 'all .15s', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4, lineHeight: 1.1 });
-  return <div ref={ref} className="cnc-nav-desktop" style={{ display: 'flex', gap: 'clamp(8px, 5vw, 96px)', justifyContent: 'center', alignItems: 'center', height: 44 }}>
+  return <div ref={ref} className="cnc-nav-desktop" style={{ display: 'flex', justifyContent: 'space-evenly', alignItems: 'center', height: 44 }}>
     {ms.map((x, i) => x.children ? <div key={i} style={{ position: 'relative' }} onMouseEnter={() => hoverOpen(i)} onMouseLeave={hoverClose}>
         <div onClick={() => { clearT(); if (hoverable.current) { setDd(null); nav(x.landing) } else { setDd(dd === i ? null : i) } }} style={btnBase(isActive(x))}>
           <span>{x.l}</span>
