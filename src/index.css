@@ -109,3 +109,10 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* 인쇄 시 앱 컨테이너의 최소 페이지 높이 해제 — 예약된 페이지 높이로 인한 잉여/백지 페이지 방지.
+   기존 규칙 미변경, @media print 추가만. (ATC 인쇄 빈 페이지 (b) 기전 확정용) */
+@media print {
+  #root { min-height: 0; }
+  .cnc-app-root { min-height: 0 !important; }
+}
