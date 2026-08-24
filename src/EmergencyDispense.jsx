@@ -153,8 +153,8 @@ export default function EmergencyDispense() {
 
     {/* ─── 컨트롤(인쇄 제외) ─── */}
     <div className="ed-noprint">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 18, fontWeight: 800, color: PURPLE }}>💊 비상조제</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 16, fontWeight: 700, color: PURPLE }}>비상조제</span>
         <span style={{ fontSize: 12, color: t.textM }}>조제기 고장 시 수기 약포지 인쇄 </span>
         {loaded && (loadErr || cache.length === 0) && <span style={{ fontSize: 11, fontWeight: 700, color: '#a06b00', background: '#fff7e6', border: '1px solid #ffe1a6', borderRadius: 6, padding: '2px 8px' }}>⚠ 약품 0종 — 로그인·권한을 확인하세요{loadErr ? ' (' + loadErr + ')' : ''}</span>}
         <div style={{ flex: 1 }} />
