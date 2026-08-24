@@ -291,9 +291,12 @@ function GnbNav({ ms, m, nav }) {
   const keepOpen = () => { if (!hoverable.current) return; clearTimeout(timers.current.close) }; // 브릿지·드롭다운 진입 시 닫힘 취소
   const isActive = x => x.children ? (m === x.landing || x.children.some(c => c.id === m)) : (m === x.id); // 하위 활성 시 부모도 활성
   const btnBase = (active) => ({ padding: '7px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 500, background: active ? t.navHi + '38' : 'transparent', color: active ? '#ffffff' : 'rgba(255,255,255,0.6)', border: '1px solid ' + (active ? t.navHi + '7A' : 'transparent'), transition: 'all .15s', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4, lineHeight: 1.1 });
-  return <div ref={ref} className="cnc-nav-desktop" style={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center', height: 44 }}>
+  return <div ref={ref} className="cnc-nav-desktop" style={{ display: 'flex', gap: 'clamp(8px, 5vw, 96px)', justifyContent: 'center', alignItems: 'center', height: 44 }}>
     {ms.map((x, i) => x.children ? <div key={i} style={{ position: 'relative' }} onMouseEnter={() => hoverOpen(i)} onMouseLeave={hoverClose}>
-        <div onClick={() => { clearT(); if (hoverable.current) { setDd(null); nav(x.landing) } else { setDd(dd === i ? null : i) } }} style={btnBase(isActive(x))}>{x.l}</div>
+        <div onClick={() => { clearT(); if (hoverable.current) { setDd(null); nav(x.landing) } else { setDd(dd === i ? null : i) } }} style={btnBase(isActive(x))}>
+          <span>{x.l}</span>
+          <span onClick={e => { if (!hoverable.current) return; e.stopPropagation(); clearT(); setDd(dd === i ? null : i) }} title="하위 메뉴" style={{ cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: '0 2px' }}>▾</span>
+        </div>
         {dd === i ? <>
           <div onMouseEnter={keepOpen} style={{ position: 'absolute', top: '100%', left: 0, right: 0, height: 6, zIndex: 949 }} /> {/* 브릿지: 부모-드롭다운 틈 연속 hover */}
           <div onMouseEnter={keepOpen} onMouseLeave={hoverClose} style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 92, maxHeight: 320, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', zIndex: 950, padding: 6, textAlign: 'left' }}>
