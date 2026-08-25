@@ -4403,6 +4403,9 @@ function AtcView({ drugs, onReload }) {
   const [q, setQ] = useState('');
   const [temp, setTemp] = useState(null); /* 임시 사용량 시뮬(제안 뷰 전용) — {file,m3,m1,matched,unmatched}. DB 미저장·state 전용 */
   const [tempMetric, setTempMetric] = useState('3m'); /* 임시 지표: '3m'(3개월 단독) | 'weighted'(가중 결합) */
+  const [xlsxOpen, setXlsxOpen] = useState(false); /* 엑셀 내보내기 드롭다운(클릭 개폐·hover 아님) */
+  const xlsxRef = useRef(null);
+  useEffect(() => { if (!xlsxOpen) return; function onDoc(e){ if (xlsxRef.current && !xlsxRef.current.contains(e.target)) setXlsxOpen(false) } function onEsc(e){ if (e.key === 'Escape') setXlsxOpen(false) } document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onEsc); return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) } }, [xlsxOpen]);
   const tempRef = useRef(null);
   const metricLabel = tempMetric === 'weighted' ? '가중 결합' : '3개월 단독';
   /* 순위 지표 단일 분기 — 실사용: recent_3m · 임시·3개월: m3??recent_3m · 임시·가중: 3M×0.6+(1M×3)×0.4 (1M 없거나 0이면 3개월 단독) */
@@ -4585,8 +4588,12 @@ function AtcView({ drugs, onReload }) {
       <button onClick={() => setViewMode('current')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (viewMode === 'current' ? t.accent : t.border), background: viewMode === 'current' ? t.accent : t.card, color: viewMode === 'current' ? t.navText : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>현재 배치</button>
       <button onClick={() => setViewMode('proposal')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (viewMode === 'proposal' ? t.accent : t.border), background: viewMode === 'proposal' ? t.accent : t.card, color: viewMode === 'proposal' ? t.navText : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>사용량순 제안</button>
       <input value={q} onChange={e => { setQ(e.target.value); setAtcPage(1); }} placeholder="약품코드·약품명·성분명 검색..." style={{ minWidth: 220, padding: '7px 12px', border: '1px solid ' + t.border, borderRadius: 10, fontSize: 12, outline: 'none', background: t.bg, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
-      <button onClick={() => dlXlsx('가나다')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>엑셀(가나다)</button>
-      <button onClick={() => dlXlsx('슬롯')} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>엑셀(슬롯)</button>
+      <div ref={xlsxRef} style={{ position: 'relative', display: 'inline-flex' }}>
+        <button onClick={() => setXlsxOpen(o => !o)} title="엑셀 내보내기" style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>엑셀 <span style={{ fontSize: 11, lineHeight: 1 }}>▾</span></button>
+        {xlsxOpen && <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 92, background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', zIndex: 950, padding: 6 }}>
+          {['가나다', '슬롯'].map(mode => <button key={mode} onClick={() => { setXlsxOpen(false); dlXlsx(mode); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 9px', border: 'none', background: 'transparent', color: t.text, cursor: 'pointer', fontSize: 11, fontWeight: 500, borderRadius: 6, whiteSpace: 'nowrap' }} onMouseEnter={e => e.currentTarget.style.background = t.bg} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>{mode}</button>)}
+        </div>}
+      </div>
       <button onClick={() => window.print()} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>인쇄</button>
       {canEdit && <button onClick={() => { setEditMode(v => !v); setSelSlot(null); }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: editMode ? t.accentL : t.card, color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{editMode ? '편집 종료' : '편집'}</button>}
       {canEdit && <button onClick={() => { dragM.reset(); setManageModal(true); }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.amber, background: t.card, color: t.amber, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>수기 조제 관리{manualEx.length ? ' (' + manualEx.length + ')' : ''}</button>}
