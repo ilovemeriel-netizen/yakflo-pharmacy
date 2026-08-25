@@ -960,7 +960,7 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 
 /* ═══ 헤더 — 반응형 (모바일 햄버거) ═══ */
 function Header({ menu: m, setMenu: sm, onRegister }) {
-  const { t, dark, toggle, user, profile, logout, openSearch, open360 } = useTheme()
+  const { t, dark, toggle, user, profile, setProfile, logout, openSearch, open360 } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tenant, setTenant] = useState('')
   useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, [])
@@ -975,6 +975,17 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
     { id: 'schedule', l: '일정' },
   ]
   function nav(id) { sm(id); setMobileOpen(false) }
+  /* ── 즐겨찾기(profiles.settings.favorites) — 화면 id 배열·상한 5. GnbNav 무관·Header 렌더 계층 ── */
+  const FAV_MAX = 5
+  const [favModal, setFavModal] = useState(false)
+  const [favSel, setFavSel] = useState([])
+  const _favClean = s => String(s).replace(/^[^\p{L}\p{N}(]+/u, '').trim()  /* 선두 이모지 제거: 「🔔 알림」→「알림」 */
+  const favCand = ms.flatMap(x => x.children ? x.children.map(c => ({ id: c.id, l: _favClean(c.l) })) : [{ id: x.id, l: _favClean(x.l) }])  /* children+단독, 부모 그룹라벨 제외 */
+  const favLabel = id => { const c = favCand.find(c => c.id === id); return c ? c.l : id }
+  const favorites = (Array.isArray(profile?.settings?.favorites) ? profile.settings.favorites : []).filter(id => favCand.some(c => c.id === id)).slice(0, FAV_MAX)
+  function openFav() { setFavSel(favorites); setFavModal(true) }
+  function toggleFav(id) { setFavSel(s => s.includes(id) ? s.filter(x => x !== id) : (s.length >= FAV_MAX ? s : [...s, id])) }
+  function saveFav() { if (!user) return; const next = { ...(profile?.settings || {}), favorites: favSel }; supabase.from('profiles').update({ settings: next }).eq('id', user.id).then(({ error }) => { if (!error) { setProfile && setProfile(p => p ? { ...p, settings: next } : p); setFavModal(false) } }) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
   return <>
@@ -998,7 +1009,22 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
       <div className="cnc-row2" style={{ background: t.nav, borderTop: '1px solid rgba(255,255,255,0.10)', padding: '0 20px' }}>
         <GnbNav ms={ms} m={m} nav={nav} />
       </div>
+      <div className="cnc-fav no-print" style={{ background: t.nav, borderTop: '1px solid rgba(255,255,255,0.06)', padding: '5px 20px', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        {favorites.length > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', marginRight: 2 }}>즐겨찾기</span>}
+        {favorites.map(id => { const on = m === id; return <button key={id} onClick={() => nav(id)} style={{ padding: '3px 11px', borderRadius: 12, border: '1px solid ' + (on ? t.navHi : 'rgba(255,255,255,0.14)'), background: on ? t.navHi + '22' : 'rgba(255,255,255,0.05)', color: on ? t.navHi : 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: 11, fontWeight: on ? 700 : 500, whiteSpace: 'nowrap' }}>{favLabel(id)}</button> })}
+        <button onClick={openFav} title="즐겨찾기 편집" style={{ padding: '3px 10px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)', cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{favorites.length > 0 ? '+' : '+ 즐겨찾기'}</button>
+      </div>
     </div>
+    {favModal && <div className="no-print" onClick={() => setFavModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, padding: 20, maxWidth: 420, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: t.text, marginBottom: 4 }}>즐겨찾기 편집</div>
+        <div style={{ fontSize: 11, color: t.textM, marginBottom: 12 }}>자주 쓰는 화면을 최대 {FAV_MAX}개 지정 · {favSel.length}/{FAV_MAX}</div>
+        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {favCand.map(c => { const checked = favSel.includes(c.id); const disabled = !checked && favSel.length >= FAV_MAX; return <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, cursor: disabled ? 'not-allowed' : 'pointer', background: checked ? t.accentL : 'transparent', opacity: disabled ? 0.4 : 1 }}><input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleFav(c.id)} style={{ width: 15, height: 15, accentColor: t.accent }} /><span style={{ fontSize: 13, color: t.text, fontWeight: checked ? 700 : 500 }}>{c.l}</span></label> })}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}><button onClick={() => setFavModal(false)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>취소</button><button onClick={saveFav} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>저장</button></div>
+      </div>
+    </div>}
     {mobileOpen && <div className="cnc-nav-mobile no-print" style={{ position: 'fixed', top: 56, left: 0, right: 0, bottom: 0, zIndex: 899 }} onClick={() => setMobileOpen(false)}>
       <div style={{ background: t.nav, borderBottom: `2px solid ${t.navHi}40`, padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: 2 }} onClick={e => e.stopPropagation()}>
         {ms.map(x => x.children ? <div key={x.id} style={{ display: 'flex', flexDirection: 'column' }}>
