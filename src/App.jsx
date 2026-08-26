@@ -387,12 +387,14 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   }, [dragging])
 
   /* API 5종 조회 — 1차:허가정보 → 보조:e약은요+낱알식별+약가+성분약효 (신규등록과 동일 순서) */
-  useEffect(()=>{_fillFromDrugMaster(f.insurance_code,dm=>sF(p=>{const m=_mergeDrugMaster(p,dm);const _emp=v=>v==null||String(v).trim()==='';if(_emp(dr.compound_type)&&!_emp(dm.compound_type))m.compound_type=dm.compound_type;if(_emp(dr.additive)&&!_emp(dm.excipient))m.additive=m.additive||dm.excipient;return m}),f.drug_name)},[f.insurance_code])
+  const _applyDM=dm=>sF(p=>{const m=_mergeDrugMaster(p,dm);const _emp=v=>v==null||String(v).trim()==='';if(_emp(dr.compound_type)&&!_emp(dm.compound_type))m.compound_type=dm.compound_type;if(_emp(dr.additive)&&!_emp(dm.excipient))m.additive=m.additive||dm.excipient;return m})
+  const fillMaster=()=>_fillFromDrugMaster(f.insurance_code,_applyDM,f.drug_name,f.standard_code)  // 조회 키: 보험코드→품목기준코드(standard_code)→약품명
+  useEffect(()=>{fillMaster()},[f.insurance_code])  // 자동 발동(첫 입력 편의) 유지 · 재조회는 [마스터 조회] 버튼
   useEffect(()=>{ if(!isNew) return; sF(p=>((p.insurance_price!==''&&p.insurance_price!=null&&Number(p.insurance_price)>0&&(p.purchase_price===''||p.purchase_price==null))?{...p,purchase_price:p.insurance_price}:p)) },[f.insurance_price,isNew])
   async function lookupApi(overrideName) {
     const searchName = overrideName || f.drug_name.trim()
     if (!searchName) { setMsg('약품명이 필요합니다'); return }
-    setApiLd(true); setMsg(null); setApiResults([]); setLookupInfo(null); if (isNew) sF(p => ({ ...p, atc_code: '', standard_code: '', specification: '', total_qty: '', packaging: '', ingredient_kr: '', ingredient_en: '', manufacturer: '', insurance_price: '' }))
+    setApiLd(true); setMsg(null); setApiResults([]); setLookupInfo(null)  // 결함A 수정: 기존 리셋 제거 — drug_master·사용자 입력값 보존. 대입부의 (apiVal||p.X)/(p.X||apiVal) 가드가 빈 필드에만 채우거나 API-우선 갱신 처리
     /* try/finally — 어떤 예외/타임아웃이 발생해도 setApiLd(false) 반드시 호출되어
        "조회중..." 영구 상태 방지 */
     try {
@@ -619,7 +621,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     <div ref={_eBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 760, maxHeight: '92vh', overflowY: 'auto', border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${pos.x}px, ${pos.y}px)` }} onClick={e => e.stopPropagation()}>
       <div onMouseDown={onDragStart} style={{ padding: '18px 24px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none' }}>
         <div><div style={{ fontSize: 16, fontWeight: 700, color: t.text }}>{isNew ? '약품 등록' : '약품 정보 수정'}</div><div style={{ fontSize: 11, color: t.textM, marginTop: 2 }}>{isNew ? '신규 약품을 등록합니다' : `코드: ${oc}`} · 드래그하여 이동</div></div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><button onClick={() => lookupApi()} disabled={apiLd} style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${t.green}`, background: t.greenL, color: t.green, cursor: apiLd ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 700 }}>{apiLd ? '조회중...' : '🔍 API 조회'}</button><button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${t.border}`, background: 'transparent', cursor: 'pointer', fontSize: 16, color: t.textM }}>✕</button></div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><button onClick={() => lookupApi()} disabled={apiLd} style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${t.green}`, background: t.greenL, color: t.green, cursor: apiLd ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 700 }}>{apiLd ? '조회중...' : '🔍 API 조회'}</button><button onClick={() => fillMaster()} style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${t.green}`, background: 'transparent', color: t.green, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>📋 마스터 조회</button><button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${t.border}`, background: 'transparent', cursor: 'pointer', fontSize: 16, color: t.textM }}>✕</button></div>
       </div>
       <div style={{ padding: '16px 24px 20px' }}>
         {msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '10px', marginBottom: 12, color: msg === 'OK' ? t.green : t.red, fontSize: 13, fontWeight: 600 }}>{msg === 'OK' ? '✅ API 조회 완료!' : msg}</div>}
@@ -2230,11 +2232,12 @@ function _normDrugName(s) {
   const key = base.replace(/[^0-9A-Za-z가-힣]+/g, '').toLowerCase()
   return doses.length ? key + '|' + doses.join('|') : key
 }
-async function _fillFromDrugMaster(insCode, apply, drugName) {
-  const cols = 'dosage_form,total_qty,package,product_code,atc_code,ingredient_kr,ingredient_en,manufacturer,insurance_type,narcotic_type,edi_price,excipient,compound_type'; const c = String(insCode || '').trim()
+async function _fillFromDrugMaster(insCode, apply, drugName, prodCode) {
+  const cols = 'dosage_form,total_qty,package,product_code,atc_code,ingredient_kr,ingredient_en,manufacturer,insurance_type,narcotic_type,edi_price,excipient,compound_type'; const c = String(insCode || '').trim(); const pc = String(prodCode || '').trim()
   try {
     let data = null
     if (c.length >= 8) { const r = await supabase.from('drug_master').select(cols).eq('insurance_code', c).limit(1).maybeSingle(); data = r.data }
+    if (!data && pc.length >= 8) { const r = await supabase.from('drug_master').select(cols).eq('product_code', pc).limit(2); if ((r.data || []).length === 1) data = r.data[0] }  // 품목기준코드(product_code) — 중복(≥2)이면 미적용, 1:1일 때만
     if (!data && drugName && String(drugName).trim().length >= 2) {
       const key = _normDrugName(drugName)
       if (key.length >= 3) {
@@ -2490,7 +2493,8 @@ function DrugRegister({onRefresh, drugs}) {
     }))
   },[priceInfo])
 
-  useEffect(()=>{_fillFromDrugMaster(form.insurance_code,dm=>setForm(f=>_mergeDrugMaster(f,dm)),form.drug_name)},[form.insurance_code])
+  const fillMasterR=()=>_fillFromDrugMaster(form.insurance_code,dm=>setForm(f=>_mergeDrugMaster(f,dm)),form.drug_name,form.standard_code)  // 조회 키: 보험코드→품목기준코드(standard_code)→약품명
+  useEffect(()=>{fillMasterR()},[form.insurance_code])  // 자동 발동 유지 · 재조회는 [마스터 조회] 버튼
   useEffect(()=>{setForm(f=>((f.insurance_price!==''&&f.insurance_price!=null&&(f.purchase_price===''||f.purchase_price==null))?{...f,purchase_price:f.insurance_price}:f))},[form.insurance_price])
   function set(k,v){setForm(f=>({...f,[k]:v}))}
 
@@ -2612,6 +2616,10 @@ function DrugRegister({onRefresh, drugs}) {
                 <button onClick={searchApi} disabled={apiLoading}
                   style={{padding:'8px 16px',borderRadius:8,border:'none',background:apiLoading?C.grayB:C.purple,color:'#fff',cursor:apiLoading?'not-allowed':'pointer',fontSize:13,fontWeight:600,whiteSpace:'nowrap'}}>
                   {apiLoading?'검색중...':'검색'}
+                </button>
+                <button onClick={()=>fillMasterR()}
+                  style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${C.purple}`,background:'transparent',color:C.purple,cursor:'pointer',fontSize:13,fontWeight:600,whiteSpace:'nowrap'}}>
+                  📋 마스터 조회
                 </button>
               </div>
               {apiMsg&&<div style={{fontSize:12,color:C.coral,marginTop:6}}>{apiMsg}</div>}
