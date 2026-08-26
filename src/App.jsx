@@ -826,7 +826,7 @@ function AdjustModal({ drug: dr, onClose, onSaved }) {
     const d = Number(qty) - (dr.current_qty || 0)
     if (d === 0) { setSaving(false); setMsg('변동 없음'); setTimeout(() => { onSaved?.(); onClose() }, 500); return }
     /* 실사 조정도 거래로 일원화: transactions type='조정'(quantity=목표−현재) → 0009 트리거가 drugs+inventory 동기. 직접 update 제거. */
-    const tx = { drug_code: dr.drug_code, type: TX_ADJUST, quantity: d, total_amount: d * (Number(dr.purchase_price) || 0), reason: `${reason} (${d > 0 ? '+' : ''}${d})`, transaction_date: new Date().toISOString().split('T')[0] }
+    const tx = { drug_code: dr.drug_code, type: TX_ADJUST, quantity: d, total_amount: Math.round(d * (Number(dr.purchase_price) || 0)), reason: `${reason} (${d > 0 ? '+' : ''}${d})`, transaction_date: new Date().toISOString().split('T')[0] }
     let res = await supabase.from('transactions').insert([tx])
     for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
     setSaving(false)
@@ -2864,7 +2864,7 @@ function TransactionForm({drugs,onReload,navFilter}){
   }
   async function _doSave(pp,updateMaster){
     setSaving(true);setMsg(null);setPpConfirm(null)
-    const q=parseInt(form.qty);const amt=q*(pp||0)
+    const q=parseInt(form.qty);const amt=Math.round(q*(pp||0))
     const tx={drug_code:selDrug.drug_code,type:tab,quantity:q,unit_price:pp||0,total_amount:amt,memo:form.note||null,transaction_date:form.transaction_date||new Date().toISOString().split('T')[0],reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
     let res=await supabase.from('transactions').insert([tx])
     for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
