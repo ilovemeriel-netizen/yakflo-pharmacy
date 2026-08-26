@@ -976,7 +976,7 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
   ]
   function nav(id) { sm(id); setMobileOpen(false) }
   /* ── 즐겨찾기(profiles.settings.favorites) — 화면 id 배열·상한 5. GnbNav 무관·Header 렌더 계층 ── */
-  const FAV_MAX = 5
+  const FAV_MAX = 10
   const [favModal, setFavModal] = useState(false)
   const [favSel, setFavSel] = useState([])
   const _favClean = s => String(s).replace(/^[^\p{L}\p{N}(]+/u, '').trim()  /* 선두 이모지 제거: 「🔔 알림」→「알림」 */
@@ -986,6 +986,15 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
   function openFav() { setFavSel(favorites); setFavModal(true) }
   function toggleFav(id) { setFavSel(s => s.includes(id) ? s.filter(x => x !== id) : (s.length >= FAV_MAX ? s : [...s, id])) }
   function saveFav() { if (!user) return; const next = { ...(profile?.settings || {}), favorites: favSel }; supabase.from('profiles').update({ settings: next }).eq('id', user.id).then(({ error }) => { if (!error) { setProfile && setProfile(p => p ? { ...p, settings: next } : p); setFavModal(false) } }) }
+  /* 순서 변경 — Pointer Events 직접 구현(마우스·터치 동일 경로·HTML5 DnD/외부의존 없음)·임계값 5px로 클릭 구분 */
+  const [favDragId, setFavDragId] = useState(null); const [favOver, setFavOver] = useState(null)
+  const favDrag = useRef(null); const favRowRef = useRef({})
+  function favIdxAt(y) { const a = favSel; for (let i = 0; i < a.length; i++) { const el = favRowRef.current[a[i]]; if (!el) continue; const r = el.getBoundingClientRect(); if (y < r.top + r.height / 2) return i } return a.length }
+  function favDown(e, id) { try { e.currentTarget.setPointerCapture(e.pointerId) } catch {} favDrag.current = { id, y: e.clientY, moved: false } }
+  function favMoveH(e, id) { const d = favDrag.current; if (!d || d.id !== id) return; if (!d.moved && Math.abs(e.clientY - d.y) < 5) return; d.moved = true; setFavDragId(id); setFavOver(favIdxAt(e.clientY)) }
+  function favUpH(e, id) { const d = favDrag.current; try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {} if (d && d.moved && favOver != null) setFavSel(a => { const from = a.indexOf(id); if (from < 0) return a; const n = [...a]; n.splice(from, 1); let to = favOver; if (from < to) to--; to = Math.max(0, Math.min(n.length, to)); n.splice(to, 0, id); return n }); favDrag.current = null; setFavDragId(null); setFavOver(null) }
+  function favCancelH() { favDrag.current = null; setFavDragId(null); setFavOver(null) }
+  function favMoveBy(id, dir) { setFavSel(a => { const i = a.indexOf(id); if (i < 0) return a; const j = i + dir; if (j < 0 || j >= a.length) return a; const n = [...a]; const t2 = n[i]; n[i] = n[j]; n[j] = t2; return n }) }
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
   return <>
@@ -1020,7 +1029,19 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
         <div style={{ fontSize: 15, fontWeight: 800, color: t.text, marginBottom: 4 }}>즐겨찾기 편집</div>
         <div style={{ fontSize: 11, color: t.textM, marginBottom: 12 }}>자주 쓰는 화면을 최대 {FAV_MAX}개 지정 · {favSel.length}/{FAV_MAX}</div>
         <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {favCand.map(c => { const checked = favSel.includes(c.id); const disabled = !checked && favSel.length >= FAV_MAX; return <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, cursor: disabled ? 'not-allowed' : 'pointer', background: checked ? t.accentL : 'transparent', opacity: disabled ? 0.4 : 1 }}><input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleFav(c.id)} style={{ width: 15, height: 15, accentColor: t.accent }} /><span style={{ fontSize: 13, color: t.text, fontWeight: checked ? 700 : 500 }}>{c.l}</span></label> })}
+          {favSel.length > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: t.textL, margin: '2px 2px 4px' }}>지정됨 · 드래그(⋮⋮) 또는 ↑↓로 순서 변경 · 짧게 클릭하면 제거</div>}
+          {favSel.map((id, i) => { const dragging = favDragId === id; return <div key={id} ref={el => { if (el) favRowRef.current[id] = el; else delete favRowRef.current[id] }}>
+            {favDragId && favOver === i && <div style={{ height: 2, background: t.accent, borderRadius: 2, margin: '2px 0' }} />}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 6px', borderRadius: 8, background: dragging ? t.accentL : t.bg, border: '1px solid ' + t.border, opacity: dragging ? 0.85 : 1 }}>
+              <span onPointerDown={e => favDown(e, id)} onPointerMove={e => favMoveH(e, id)} onPointerUp={e => favUpH(e, id)} onPointerCancel={favCancelH} title="드래그로 순서 변경" style={{ cursor: 'grab', touchAction: 'none', userSelect: 'none', color: t.textL, fontSize: 14, padding: '2px 6px' }}>⋮⋮</span>
+              <span onClick={() => toggleFav(id)} title="클릭 시 제거" style={{ flex: 1, fontSize: 13, fontWeight: 700, color: t.text, cursor: 'pointer' }}>{favLabel(id)}</span>
+              <button onClick={e => { e.stopPropagation(); favMoveBy(id, -1) }} disabled={i === 0} title="위로" style={{ width: 28, height: 26, borderRadius: 6, border: '1px solid ' + t.border, background: 'transparent', color: i === 0 ? t.textL : t.textM, cursor: i === 0 ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 700, padding: 0 }}>↑</button>
+              <button onClick={e => { e.stopPropagation(); favMoveBy(id, 1) }} disabled={i === favSel.length - 1} title="아래로" style={{ width: 28, height: 26, borderRadius: 6, border: '1px solid ' + t.border, background: 'transparent', color: i === favSel.length - 1 ? t.textL : t.textM, cursor: i === favSel.length - 1 ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 700, padding: 0 }}>↓</button>
+            </div>
+          </div> })}
+          {favDragId && favOver === favSel.length && <div style={{ height: 2, background: t.accent, borderRadius: 2, margin: '2px 0' }} />}
+          {favCand.some(c => !favSel.includes(c.id)) && <div style={{ fontSize: 10, fontWeight: 700, color: t.textL, margin: '10px 2px 4px' }}>추가{favSel.length >= FAV_MAX ? ` (최대 ${FAV_MAX}개 도달)` : ''}</div>}
+          {favCand.filter(c => !favSel.includes(c.id)).map(c => { const disabled = favSel.length >= FAV_MAX; return <button key={c.id} onClick={() => toggleFav(c.id)} disabled={disabled} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, border: 'none', width: '100%', textAlign: 'left', background: 'transparent', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1 }}><span style={{ fontSize: 15, color: t.accent, fontWeight: 700, width: 15, textAlign: 'center' }}>+</span><span style={{ fontSize: 13, color: t.text, fontWeight: 500 }}>{c.l}</span></button> })}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 14 }}><button onClick={() => setFavModal(false)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>취소</button><button onClick={saveFav} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>저장</button></div>
       </div>
