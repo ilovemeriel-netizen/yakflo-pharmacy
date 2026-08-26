@@ -360,7 +360,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null); const [apiLd, setApiLd] = useState(false)
   const [apiResults, setApiResults] = useState([])
   const [lookupInfo, setLookupInfo] = useState(null)
-  const [pos, setPos] = useState({ x: 0, y: 0 }); const [dragging, setDragging] = useState(false); const dragRef = useRef(null); const [edSuppliers, setEdSuppliers] = useState([]); useEffect(() => { let on = true; supabase.from('suppliers').select('*').order('sort_order', { nullsFirst: false }).then(({ data }) => { if (on) setEdSuppliers(data || []) }); return () => { on = false } }, [])
+  const [pos, setPos] = useState({ x: 0, y: 0 }); const [dragging, setDragging] = useState(false); const dragRef = useRef(null); const _eBox = useRef(null); const [edSuppliers, setEdSuppliers] = useState([]); useEffect(() => { let on = true; supabase.from('suppliers').select('*').order('sort_order', { nullsFirst: false }).then(({ data }) => { if (on) setEdSuppliers(data || []) }); return () => { on = false } }, [])
   function set(k, v) { sF(p => ({ ...p, [k]: v })) }
   const [detailOpen, setDetailOpen] = useState(false)
   const [dupCode, setDupCode] = useState(false); const [chkCode, setChkCode] = useState(false)
@@ -377,10 +377,10 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   }, [f.drug_code, isNew])
 
   /* 드래그 핸들러 */
-  function onDragStart(e) { if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return; setDragging(true); dragRef.current = { sx: e.clientX - pos.x, sy: e.clientY - pos.y } }
+  function onDragStart(e) { if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return; setDragging(true); const r = _eBox.current ? _eBox.current.getBoundingClientRect() : null; dragRef.current = { sx: e.clientX - pos.x, sy: e.clientY - pos.y, baseLeft: r ? r.left - pos.x : 0, baseTop: r ? r.top - pos.y : 0, w: r ? r.width : 0 } }
   useEffect(() => {
     if (!dragging) return
-    function onMove(e) { setPos({ x: e.clientX - dragRef.current.sx, y: e.clientY - dragRef.current.sy }) }
+    function onMove(e) { const s = dragRef.current; if (!s) return; const x = e.clientX - s.sx, y = e.clientY - s.sy; const projLeft = Math.min(Math.max(s.baseLeft + x, 40 - s.w), window.innerWidth - 40); const projTop = Math.min(Math.max(s.baseTop + y, 0), window.innerHeight - 40); setPos({ x: projLeft - s.baseLeft, y: projTop - s.baseTop }) /* 훅A(useDraggableModal) EDGE 40 동일 클램프 */ }
     function onUp() { setDragging(false) }
     window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
@@ -616,7 +616,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   const lb = { fontSize: 10, color: t.textM, marginBottom: 4, display: 'block', fontWeight: 600 }; const cc = f.drug_code.trim() !== oc
   const regInvalid = isNew && (!f.drug_code.trim() || !f.drug_name.trim() || !CATS.includes(f.category) || dupCode || chkCode)
   return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
-    <div style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 760, maxHeight: '92vh', overflowY: 'auto', border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${pos.x}px, ${pos.y}px)` }} onClick={e => e.stopPropagation()}>
+    <div ref={_eBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 760, maxHeight: '92vh', overflowY: 'auto', border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${pos.x}px, ${pos.y}px)` }} onClick={e => e.stopPropagation()}>
       <div onMouseDown={onDragStart} style={{ padding: '18px 24px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none' }}>
         <div><div style={{ fontSize: 16, fontWeight: 700, color: t.text }}>{isNew ? '약품 등록' : '약품 정보 수정'}</div><div style={{ fontSize: 11, color: t.textM, marginTop: 2 }}>{isNew ? '신규 약품을 등록합니다' : `코드: ${oc}`} · 드래그하여 이동</div></div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><button onClick={() => lookupApi()} disabled={apiLd} style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${t.green}`, background: t.greenL, color: t.green, cursor: apiLd ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 700 }}>{apiLd ? '조회중...' : '🔍 API 조회'}</button><button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${t.border}`, background: 'transparent', cursor: 'pointer', fontSize: 16, color: t.textM }}>✕</button></div>
@@ -995,6 +995,9 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
   function favUpH(e, id) { const d = favDrag.current; try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {} if (d && d.moved && favOver != null) setFavSel(a => { const from = a.indexOf(id); if (from < 0) return a; const n = [...a]; n.splice(from, 1); let to = favOver; if (from < to) to--; to = Math.max(0, Math.min(n.length, to)); n.splice(to, 0, id); return n }); favDrag.current = null; setFavDragId(null); setFavOver(null) }
   function favCancelH() { favDrag.current = null; setFavDragId(null); setFavOver(null) }
   function favMoveBy(id, dir) { setFavSel(a => { const i = a.indexOf(id); if (i < 0) return a; const j = i + dir; if (j < 0 || j >= a.length) return a; const n = [...a]; const t2 = n[i]; n[i] = n[j]; n[j] = t2; return n }) }
+  /* 창 드래그 이동 — 기존 훅A(useDraggableModal) 그대로 부착(제목줄 한정). 항목순서 Pointer 드래그와 이벤트계·손잡이 분리 */
+  const favBoxRef = useRef(null); const [favPos, setFavPos] = useState({ x: 0, y: 0 })
+  const { dragging: favWinDrag, onHeaderMouseDown: favHeaderDown } = useDraggableModal(favBoxRef, favPos, setFavPos)
   const displayName = profile?.full_name || user?.email?.split('@')[0] || ''
   const isAdmin = profile?.role === 'admin'
   return <>
@@ -1025,8 +1028,8 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
       </div>
     </div>
     {favModal && <div className="no-print" onClick={() => setFavModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, padding: 20, maxWidth: 420, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: t.text, marginBottom: 4 }}>즐겨찾기 편집</div>
+      <div ref={favBoxRef} onClick={e => e.stopPropagation()} style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, padding: 20, maxWidth: 420, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', transform: 'translate(' + favPos.x + 'px, ' + favPos.y + 'px)' }}>
+        <div onMouseDown={favHeaderDown} style={{ fontSize: 15, fontWeight: 800, color: t.text, marginBottom: 4, cursor: favWinDrag ? 'grabbing' : 'grab', userSelect: 'none' }}>즐겨찾기 편집</div>
         <div style={{ fontSize: 11, color: t.textM, marginBottom: 12 }}>자주 쓰는 화면을 최대 {FAV_MAX}개 지정 · {favSel.length}/{FAV_MAX}</div>
         <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {favSel.length > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: t.textL, margin: '2px 2px 4px' }}>지정됨 · 드래그(⋮⋮) 또는 ↑↓로 순서 변경 · 짧게 클릭하면 제거</div>}
