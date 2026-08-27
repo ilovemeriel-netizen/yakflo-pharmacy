@@ -4450,7 +4450,7 @@ function Schedule({ drugs, onNav }) {
   </div>;
 }
 
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive'];
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'change', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); const m = h.split('/')[0]; return ROUTES.includes(m) ? m : 'dashboard'; }
 function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
 /* 입출고 월 선택: 해시 3번째 세그먼트(#transaction/out/2026-08). 없으면 현재 월(하위호환). 「전체」는 URL에 월 세그먼트 없음(→새로고침 시 현재 월로 복원). */
