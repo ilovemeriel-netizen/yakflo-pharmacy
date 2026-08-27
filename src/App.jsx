@@ -970,7 +970,7 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
     { id: 'dashboard', l: '대시보드' },
     { id: 'alerts', l: '🔔 알림' },
     { id: 'druglist', l: '약품관리', landing: 'druglist', children: [{ id: 'druglist', l: '약품목록' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }] },
-    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }] },
+    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }] },
     { id: 'transaction', l: '입출고' },
     { id: 'report', l: '보고서' },
     { id: 'atc', l: '조제관리', landing: 'atc', children: [{ id: 'atc', l: 'ATC편집' }, { id: 'emergency', l: '비상조제' }] },
@@ -3335,6 +3335,130 @@ function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
   </div>
 }
 
+/* ═══ 사용 점검 — 장기 미사용 약품 보유 판단 이력(drug_idle_reviews 누적·조회 시 재계산) ═══ */
+const IDLE_BANDS_DEFAULT = [90, 180, 365]
+const IDLE_STATUSES = ['관찰', '중지', '보유유지', '해제']
+function _idleDays(d) { if (!d || !d.last_used_date) return null; return Math.floor((new Date() - new Date(d.last_used_date)) / 864e5) }  // unusedDays(ExpiryAlert:1799) 동일식
+function IdleCheck({ drugs, onReload }) {
+  const { t, profile, user } = useTheme()
+  const { so, TS, sk, sd, setSort } = useSort('idle_days', 'desc')
+  const [reviews, setReviews] = useState([]); const [ld, setLd] = useState(true)
+  const [aLv, setALv] = useState(null); const [statusF, setStatusF] = useState('관찰'); const [page, setPage] = useState(1); const RPP = 50
+  const [editRow, setEditRow] = useState(null); const [editField, setEditField] = useState(null)
+  const [regOpen, setRegOpen] = useState(false); const [fb, setFb] = useState({}); const [hfV, setHfV] = useState({})
+  const bands = (Array.isArray(profile?.settings?.idleBands) && profile.settings.idleBands.length === 3) ? profile.settings.idleBands : IDLE_BANDS_DEFAULT
+  const [b1, b2, b3] = bands
+  const lvs = [{ k: 'lv1', l: '3개월 미만', sub: '< ' + b1 + '일', c: t.blue }, { k: 'lv2', l: '3~6개월', sub: b1 + '~' + b2 + '일', c: t.amber }, { k: 'lv3', l: '6~12개월', sub: b2 + '~' + b3 + '일', c: t.red }, { k: 'lv4', l: '1년 이상', sub: '≥ ' + b3 + '일', c: t.purple }]
+  const bandOf = days => days == null ? null : (days < b1 ? 'lv1' : days < b2 ? 'lv2' : days < b3 ? 'lv3' : 'lv4')
+  useEffect(() => { loadReviews() }, [])
+  async function loadReviews() { setLd(true); const { data } = await supabase.from('drug_idle_reviews').select('*'); setReviews(data || []); setLd(false) }
+  const latestByCode = {}  // drug_code별 최신 1행 (reviewed_at desc, created_at desc) — 화면 계산(유효기한 g 패턴)
+  for (const r of reviews) { const p = latestByCode[r.drug_code]; if (!p || r.reviewed_at > p.reviewed_at || (r.reviewed_at === p.reviewed_at && (r.created_at || '') > (p.created_at || ''))) latestByCode[r.drug_code] = r }
+  const flash = (key, kind) => { setFb(p => ({ ...p, [key]: kind })); setTimeout(() => setFb(p => { const c = { ...p }; delete c[key]; return c }), kind === 'ok' ? 1500 : 2500) }
+  const _fbSt = key => fb[key] === 'ok' ? { boxShadow: 'inset 0 0 0 2px ' + t.green } : fb[key] === 'err' ? { boxShadow: 'inset 0 0 0 2px ' + t.red } : {}
+  async function saveDrugField(d, field, value) {  // saveField(1808) 패턴: 로컬 ud·단일 필드 direct UPDATE·current_qty 미포함(0055)
+    const ud = {}
+    if (field === 'last_used_date') ud.last_used_date = value || null
+    else if (field === 'last_used_dept') ud.last_used_dept = value || ''
+    let res = await supabase.from('drugs').update(ud).eq('drug_code', d.drug_code)
+    for (let r = 0; r < 3 && res.error && res.error.message?.includes('column'); r++) { const m = res.error.message.match(/'([^']+)' column/); if (!m) break; delete ud[m[1]]; res = await supabase.from('drugs').update(ud).eq('drug_code', d.drug_code) }
+    setEditRow(null); setEditField(null); flash(d.drug_code + ':' + field, res.error ? 'err' : 'ok'); onReload?.()
+  }
+  async function insertReview(code, status, memo) { const { error } = await supabase.from('drug_idle_reviews').insert([{ drug_code: code, status, memo: memo || null }]); flash(code + ':status', error ? 'err' : 'ok'); if (!error) loadReviews() }  // 이력 누적(INSERT·UPDATE 아님)
+  function changeStatus(code, status) { const cur = latestByCode[code]; insertReview(code, status, cur?.memo || null) }  // 상태+직전 메모 동일 행
+  function saveMemo(code, memo) { const cur = latestByCode[code]; insertReview(code, cur?.status || '관찰', memo) }  // 메모+직전 상태 동일 행
+  const pop = (drugs || []).filter(d => d.last_used_date)  // 모집단: last_used_date 보유 전체(current_qty·status 무필터)
+  const enriched = pop.map(d => { const rv = latestByCode[d.drug_code] || null; const idle = _idleDays(d); return { drug_code: d.drug_code, drug_name: d.drug_name || d.drug_code, category: d.category || '', current_qty: d.current_qty || 0, last_used_date: d.last_used_date || '', last_used_dept: d.last_used_dept || '', expiry_date: d.expiry_date || '', idle_days: idle, band: bandOf(idle), status: rv?.status || '', reviewed_at: rv?.reviewed_at || '', memo: rv?.memo || '', _drug: d } })
+  const statusMatch = r => statusF === '전체' ? true : statusF === '관찰' ? (r.status === '관찰' || !r.status) : r.status === statusF  // 관찰=공란 포함(미판단 우선)
+  const _uniq = arr => [...new Set(arr.filter(x => x != null && x !== ''))]
+  const hf = { category: { items: _uniq(enriched.map(r => r.category)), value: hfV['구분'] || null, on: v => setHfV(p => ({ ...p, '구분': v })) }, last_used_dept: { items: _uniq(enriched.map(r => r.last_used_dept)), value: hfV['진료과'] || null, on: v => setHfV(p => ({ ...p, '진료과': v })) } }
+  const filtered = enriched.filter(r => statusMatch(r) && (!aLv || r.band === aLv) && (!hfV['구분'] || r.category === hfV['구분']) && (!hfV['진료과'] || r.last_used_dept === hfV['진료과']))
+  const sorted = so(filtered); const pages = Math.max(1, Math.ceil(sorted.length / RPP)); const pg = Math.min(page, pages); const rows = sorted.slice((pg - 1) * RPP, pg * RPP)
+  const bandCnt = k => enriched.filter(r => r.band === k && statusMatch(r)).length
+  const CODE_W = 110, NAME_W = 180
+  const cols = [{ k: 'drug_code', h: '약품코드', th: { textAlign: 'left' }, sticky: { left: 0, w: CODE_W } }, { k: 'drug_name', h: '약품명', th: { textAlign: 'left' }, sticky: { left: CODE_W, w: NAME_W } }, { k: 'category', h: '구분', th: { textAlign: 'left' } }, { k: 'current_qty', h: '현재고', th: { textAlign: 'right' } }, { k: 'last_used_date', h: '마지막사용일', th: { textAlign: 'center' } }, { k: 'idle_days', h: '경과일', th: { textAlign: 'right' } }, { k: 'last_used_dept', h: '진료과', th: { textAlign: 'left' } }, { k: 'expiry_date', h: '유효기한', th: { textAlign: 'center' } }, { k: 'status', h: '상태', th: { textAlign: 'center' } }, { k: 'reviewed_at', h: '확인일', th: { textAlign: 'center' } }, { k: 'memo', h: '메모', th: { textAlign: 'left' } }]
+  const colWidths = [CODE_W, NAME_W, 70, 80, 110, 82, 100, 116, 96, 100, 160]; const minWidth = colWidths.reduce((a, b) => a + b, 0)
+  const ip2 = { padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 11, outline: 'none', background: t.bg, color: t.text, width: '100%', boxSizing: 'border-box' }
+  const stBg = { '관찰': t.accentL, '중지': t.redL, '보유유지': t.greenL, '해제': t.bg }; const stFg = { '관찰': t.accent, '중지': t.red, '보유유지': t.green, '해제': t.textM }
+  return <div style={{ padding: '20px 24px' }}>
+    <div style={{ marginBottom: 10 }}><div style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>사용 점검 <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>· 경과일은 마지막 사용일 기준 · 조회 시 재계산</span></div></div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 12 }}>{lvs.map(l => <div key={l.k} onClick={() => { setALv(aLv === l.k ? null : l.k); setPage(1) }} style={{ background: t.card, border: '1px solid ' + (aLv === l.k ? l.c : t.border), borderRadius: 12, padding: '12px 14px', cursor: 'pointer', boxShadow: aLv === l.k ? '0 0 12px ' + l.c + '15' : 'none' }} onMouseEnter={e => e.currentTarget.style.borderColor = l.c} onMouseLeave={e => { if (aLv !== l.k) e.currentTarget.style.borderColor = t.border }}><div style={{ fontSize: 12, color: l.c, fontWeight: 700, textAlign: 'left' }}>{l.l}</div><div style={{ fontSize: 26, fontWeight: 700, color: l.c, marginTop: 2, textAlign: 'left' }}>{bandCnt(l.k)}</div><div style={{ fontSize: 10, color: t.textM, marginTop: 2, textAlign: 'left' }}>{l.sub}</div></div>)}</div>
+    <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{['전체', ...IDLE_STATUSES].map(s => <button key={s} onClick={() => { setStatusF(s); setPage(1) }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (statusF === s ? t.accent : t.border), background: statusF === s ? t.accentL : t.card, color: statusF === s ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: statusF === s ? 700 : 500 }}>{s}</button>)}</div>
+      {aLv && <button onClick={() => { setALv(null); setPage(1) }} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid ' + t.border, background: t.card, color: t.textM, cursor: 'pointer', fontSize: 11 }}>← 전체 구간</button>}
+      <div style={{ flex: 1 }} />
+      <button onClick={() => setRegOpen(true)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: t.accent, color: t.card, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>+ 등록</button>
+    </div>
+    <div style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, overflow: 'hidden' }}>
+      <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={setSort} hf={hf} grid layout="fixed" minWidth={minWidth} colWidths={colWidths} hscroll={{ noLabel: true, ends: true }} cols={cols}>
+        <tbody>{ld ? <tr><td colSpan={cols.length} style={{ padding: 30, textAlign: 'center', color: t.textL }}>불러오는 중...</td></tr> : !rows.length ? <tr><td colSpan={cols.length} style={{ padding: 30, textAlign: 'center', color: t.textL }}>해당 약품이 없습니다</td></tr> : rows.map(r => {
+          const isEd = editRow === r.drug_code; const eDays = exD(r.expiry_date)
+          return <tr key={r.drug_code} style={{ borderBottom: '1px solid ' + t.border }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
+            <td style={{ padding: '6px 8px', fontSize: 10, color: t.textM, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border, minWidth: CODE_W, maxWidth: CODE_W }}>{r.drug_code}</td>
+            <td style={{ padding: '6px 8px', fontSize: 11, fontWeight: 600, color: t.text, textAlign: 'left', position: 'sticky', left: CODE_W, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border, minWidth: NAME_W, maxWidth: NAME_W, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.drug_name}</td>
+            <td style={{ padding: '6px 8px', fontSize: 10, color: t.textM, textAlign: 'left' }}>{r.category || '-'}</td>
+            <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right', fontWeight: 600 }}>{r.current_qty.toLocaleString()}</td>
+            <td style={{ padding: '5px 6px', fontSize: 11, textAlign: 'center', ..._fbSt(r.drug_code + ':last_used_date') }}>{isEd && editField === 'last_used_date' ? <input type="date" defaultValue={r.last_used_date || ''} onChange={e => saveDrugField(r._drug, 'last_used_date', e.target.value)} onBlur={() => { setEditRow(null); setEditField(null) }} style={ip2} /> : <span style={{ cursor: 'pointer', color: t.textM }} onClick={() => { setEditRow(r.drug_code); setEditField('last_used_date') }}>{r.last_used_date || <span style={{ color: t.textL, fontSize: 9 }}>클릭</span>}</span>}</td>
+            <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right', fontWeight: 700, color: r.idle_days != null && r.idle_days >= b3 ? t.red : t.text }}>{r.idle_days != null ? r.idle_days.toLocaleString() + '일' : '-'}</td>
+            <td style={{ padding: '5px 6px', fontSize: 10, textAlign: 'left', ..._fbSt(r.drug_code + ':last_used_dept') }}>{isEd && editField === 'last_used_dept' ? <input list="idle-depts" defaultValue={r.last_used_dept || ''} onChange={e => saveDrugField(r._drug, 'last_used_dept', e.target.value)} onBlur={() => { setEditRow(null); setEditField(null) }} placeholder="선택/입력" style={ip2} /> : <span style={{ cursor: 'pointer' }} onClick={() => { setEditRow(r.drug_code); setEditField('last_used_dept') }}>{r.last_used_dept ? <Bd bg={t.accentL} color={t.accent}>{r.last_used_dept}</Bd> : <span style={{ color: t.textL, fontSize: 9 }}>클릭</span>}</span>}</td>
+            <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'center', ...exS(r.expiry_date, t) }}>{r.expiry_date ? r.expiry_date + (eDays != null ? ' (' + (eDays <= 0 ? 'D' + eDays : 'D-' + eDays) + ')' : '') : '-'}</td>
+            <td style={{ padding: '5px 6px', textAlign: 'center' }}><select value={r.status || ''} onChange={e => { if (e.target.value && e.target.value !== r.status) changeStatus(r.drug_code, e.target.value) }} style={{ ...ip2, width: 'auto', background: stBg[r.status] || t.bg, color: stFg[r.status] || t.textL, fontWeight: 600 }}><option value="">미판단</option>{IDLE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select></td>
+            <td style={{ padding: '6px 8px', fontSize: 10, color: t.textM, textAlign: 'center' }}>{r.reviewed_at || '-'}</td>
+            <td style={{ padding: '5px 6px', fontSize: 10, textAlign: 'left', ..._fbSt(r.drug_code + ':status') }}>{isEd && editField === 'memo' ? <input defaultValue={r.memo || ''} onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }} onBlur={e => { if (e.target.value !== (r.memo || '')) saveMemo(r.drug_code, e.target.value); setEditRow(null); setEditField(null) }} placeholder="Enter 저장(새 행)" style={ip2} /> : <span style={{ cursor: 'pointer', color: t.textM, display: 'block', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => { setEditRow(r.drug_code); setEditField('memo') }}>{r.memo || <span style={{ color: t.textL, fontSize: 9 }}>클릭</span>}</span>}</td>
+          </tr>
+        })}</tbody>
+      </StandardTable>
+    </div>
+    <datalist id="idle-depts"><option value="가정의학과" /><option value="재활의학과1" /><option value="신경과" /><option value="기타" /></datalist>
+    {pages > 1 && <div className="no-print" style={{ display: 'flex', justifyContent: 'center', gap: 4, marginTop: 12 }}>{Array.from({ length: pages }, (_, i) => i + 1).map(n => <button key={n} onClick={() => setPage(n)} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid ' + (pg === n ? t.accent : t.border), background: pg === n ? t.accentL : t.card, color: pg === n ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: pg === n ? 700 : 500 }}>{n}</button>)}</div>}
+    <div style={{ fontSize: 10, color: t.textM, marginTop: 8, textAlign: 'right' }}>총 {sorted.length}건 · 유효기한 임박은 색으로 강조(D-90 이내)</div>
+    {regOpen && <IdleRegisterModal drugs={drugs} onClose={() => setRegOpen(false)} onSaved={() => { setRegOpen(false); loadReviews(); onReload?.() }} />}
+    <Ft />
+  </div>
+}
+function IdleRegisterModal({ drugs, onClose, onSaved }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos)
+  const { t } = useTheme()
+  const [search, setSearch] = useState(''); const [selCode, setSelCode] = useState('')
+  const [f, setF] = useState({ last_used_date: '', last_used_dept: '', status: '관찰', memo: '' })
+  const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null)
+  const sel = drugs.find(d => d.drug_code === selCode); const sf = (k, v) => setF(p => ({ ...p, [k]: v }))
+  const filtered = drugs.filter(d => !d.last_used_date && search.trim() && (d.drug_name?.toLowerCase().includes(search.toLowerCase()) || d.drug_code?.toLowerCase().includes(search.toLowerCase()))).slice(0, 8)
+  const canSave = !!selCode && !!f.last_used_date && !saving
+  async function save() {
+    if (!canSave) { setMsg('약품과 마지막 사용일을 입력하세요'); return }
+    setSaving(true); setMsg(null)
+    const ud = { last_used_date: f.last_used_date || null, last_used_dept: f.last_used_dept || '' }  // current_qty 미포함(0055)
+    let r1 = await supabase.from('drugs').update(ud).eq('drug_code', selCode)
+    for (let r = 0; r < 3 && r1.error && r1.error.message?.includes('column'); r++) { const m = r1.error.message.match(/'([^']+)' column/); if (!m) break; delete ud[m[1]]; r1 = await supabase.from('drugs').update(ud).eq('drug_code', selCode) }
+    if (r1.error) { setSaving(false); setMsg('drugs 저장 오류: ' + r1.error.message); return }
+    const r2 = await supabase.from('drug_idle_reviews').insert([{ drug_code: selCode, status: f.status, memo: f.memo || null }])
+    setSaving(false)
+    if (r2.error) { setMsg('이력 저장 오류: ' + r2.error.message); return }
+    setMsg('OK'); setTimeout(() => { onSaved?.(); onClose() }, 400)
+  }
+  const ip = { width: '100%', padding: '9px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }
+  const lb = { fontSize: 10, color: t.textM, display: 'block', marginBottom: 4 }
+  return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
+    <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: '1px solid ' + t.border, boxShadow: t.shadowH, maxHeight: '92vh', overflowY: 'auto', transform: 'translate(' + _dmPos.x + 'px, ' + _dmPos.y + 'px)' }} onClick={e => e.stopPropagation()}>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: '1px solid ' + t.border }}><div style={{ fontSize: 15, fontWeight: 700, color: t.accent }}>사용 점검 등록</div></div>
+      <div style={{ padding: '16px 20px' }}>
+        {msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '저장 완료' : msg}</div>}
+        <div style={{ marginBottom: 10 }}><label style={lb}>약품 * <span style={{ color: t.textL, fontWeight: 400 }}>· 마지막사용일 없는 약품만</span></label>
+          {sel ? <div style={{ background: t.bg, borderRadius: 8, padding: '8px 10px', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span><strong>{sel.drug_name}</strong> <span style={{ color: t.textL, fontSize: 10 }}>({sel.drug_code})</span></span><button onClick={() => { setSelCode(''); setSearch('') }} style={{ border: 'none', background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11 }}>변경</button></div>
+            : <><input value={search} onChange={e => setSearch(e.target.value)} placeholder="약품 검색 (코드/이름)" style={ip} />{search.trim() && filtered.length > 0 && <div style={{ border: '1px solid ' + t.border, borderRadius: 6, maxHeight: 140, overflowY: 'auto', marginTop: 4 }}>{filtered.map(d => <div key={d.drug_code} onClick={() => { setSelCode(d.drug_code); setSearch('') }} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 11, borderBottom: '1px solid ' + t.border }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>{d.drug_name} <span style={{ color: t.textL, fontSize: 9 }}>({d.drug_code})</span></div>)}</div>}{search.trim() && filtered.length === 0 && <div style={{ fontSize: 10, color: t.textL, marginTop: 4 }}>후보 없음 (이미 사용일 있는 약품은 표에서 편집)</div>}</>}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div><label style={lb}>마지막 사용일 *</label><input type="date" value={f.last_used_date} onChange={e => sf('last_used_date', e.target.value)} style={ip} /></div>
+          <div><label style={lb}>진료과</label><input list="idle-depts" value={f.last_used_dept} onChange={e => sf('last_used_dept', e.target.value)} placeholder="선택/입력" style={ip} /></div>
+        </div>
+        <div style={{ marginBottom: 10 }}><label style={lb}>상태</label><select value={f.status} onChange={e => sf('status', e.target.value)} style={ip}>{IDLE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+        <div style={{ marginBottom: 14 }}><label style={lb}>메모</label><input value={f.memo} onChange={e => sf('memo', e.target.value)} placeholder="판단 근거 등 (선택)" style={ip} /></div>
+        <div style={{ display: 'flex', gap: 8 }}><button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button><button onClick={save} disabled={!canSave} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: canSave ? 'pointer' : 'not-allowed', background: canSave ? t.accent : t.textL, color: t.card, fontSize: 13, fontWeight: 700 }}>{saving ? '저장 중...' : '저장'}</button></div>
+      </div>
+    </div>
+  </div>
+}
 function nowStamp(){const n=new Date();const p=x=>String(x).padStart(2,'0');return n.getFullYear()+'-'+p(n.getMonth()+1)+'-'+p(n.getDate())+' '+p(n.getHours())+':'+p(n.getMinutes())+' 작성'}
 const mpTd={border:'1px solid #bbb',padding:'6px 10px'};
 function MSec({title,children}){return <div style={{marginBottom:9}}><div style={{background:'#019748',color:'#fff',fontWeight:800,fontSize:13.5,padding:'5px 10px'}}>{title}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><tbody>{children}</tbody></table></div>}
@@ -4450,7 +4574,7 @@ function Schedule({ drugs, onNav }) {
   </div>;
 }
 
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'change', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive'];
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); const m = h.split('/')[0]; return ROUTES.includes(m) ? m : 'dashboard'; }
 function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
 /* 입출고 월 선택: 해시 3번째 세그먼트(#transaction/out/2026-08). 없으면 현재 월(하위호환). 「전체」는 URL에 월 세그먼트 없음(→새로고침 시 현재 월로 복원). */
@@ -5030,6 +5154,7 @@ export default function App() {
         {menu === 'change' && <DrugChangePlans drugs={drugs} onAdjust={setAdjustDrug} onReload={load} navFilter={nf} />}
         {menu === 'archive' && <DrugList drugs={drugs} navFilter={{ status: ['중지'], archive: true }} onEdit={setEditDrug} onReload={load} />}
         {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} onDispose={setDisposeDrug} />}
+        {menu === 'idle' && <IdleCheck drugs={drugs} onReload={load} />}
         {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
         {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
