@@ -115,4 +115,7 @@ code {
 @media print {
   #root { min-height: 0; }
   .cnc-app-root { min-height: 0 !important; }
+  /* 약품목록 표 최소 높이(DRUG_TABLE_MIN_H) 해제 — px min-height도 인쇄에서 잉여 페이지를 만들 수 있음(함정 #11).
+     인라인 style보다 우선하려면 !important 필요. 기존 규칙 미변경, 신규 클래스 추가만. */
+  .cnc-table-minh { min-height: 0 !important; }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, createContext, useContext } from 'react'
+import { useEffect, useState, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './lib/supabase'
 import { passesDrugFilters } from './lib/drugFilter'
@@ -51,6 +51,11 @@ const CATS = ['경구제','주사제','외용제','수액제','영양제','의�
 const STATS = ['사용','중지','휴면']
 const MAIN_STATS = ['사용','휴면']
 const PP = 20
+/* 약품목록 표 최소 높이 — 검색 결과가 줄어도 문서 높이가 급변해 브라우저가 스크롤을 되당기는 것을 막는다.
+   산정: 본문 20행(PP) × 44px + 헤더행 36px + 가로스크롤 바 32px ≒ 948 → 940px 채택.
+   행 44px 근거: td padding 12+12=24px + 본문 1줄 ~17px(약품명 2줄 clamp 시 더 큼, 보수적으로 1줄 기준).
+   ★ 인쇄에서는 index.css의 `.cnc-table-minh`가 min-height를 해제한다(함정 #11: 잉여 페이지 예방). */
+const DRUG_TABLE_MIN_H = PP * 44 + 36 + 32
 const TYPES = TX_TAB_TYPES
 /* 입출고 4탭 <-> URL sub 키 매핑(영문키=공유 URL 가독). 값은 txTypes SSOT 참조 */
 const TX_URL_KEY = { [TX_IN]:'in', [TX_OUT]:'out', [TX_RETURN]:'return', [TX_DISPOSE]:'dispose' }
@@ -1449,10 +1454,15 @@ function LDonut({ data, total, onSlice, onCenter, centerTop, centerBot, t }) {
 }
 function AtcDonutsRow({ drugs, t, onPick, sel, onClear, nonins, onCenterReset }) {
   const [drill, setDrill] = useState(false);
-  const used = drugs.filter(d => d.status === '사용' && (!nonins || isNonIns(d)));
-  const agg = (key) => { const m = {}; used.forEach(d => { const v = (d[key] && String(d[key]).trim()) || '미분류'; m[v] = (m[v] || 0) + 1 }); return Object.entries(m).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count) };
+  /* 집계 캐시 — 의존성은 원본 drugs·nonins뿐. ★ 검색어·필터는 의존성에 넣지 않는다:
+     도넛은 「전체 분포」가 사양이라 검색해도 숫자가 바뀌지 않으며(사용 N개 기준 표시 동일),
+     그 덕에 검색어가 바뀌어도 1,114건 순회 4회가 재실행되지 않는다(첫 클릭 유실 대응). */
+  const { used, d1, d2, d3full } = useMemo(() => {
+    const u = drugs.filter(d => d.status === '사용' && (!nonins || isNonIns(d)));
+    const agg = (key) => { const m = {}; u.forEach(d => { const v = (d[key] && String(d[key]).trim()) || '미분류'; m[v] = (m[v] || 0) + 1 }); return Object.entries(m).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count) };
+    return { used: u, d1: agg('atc_l1'), d2: agg('atc_l2'), d3full: agg('atc_l3') };
+  }, [drugs, nonins]);
   const total = used.length;
-  const d1 = agg('atc_l1'), d2 = agg('atc_l2'), d3full = agg('atc_l3');
   const d3top = d3full.slice(0, 12), d3rest = d3full.slice(12);
   const d3restSum = d3rest.reduce((a, x) => a + x.count, 0);
   const d3base = d3restSum > 0 ? [...d3top, { name: '기타', count: d3restSum }] : d3top;
@@ -1684,7 +1694,7 @@ function DrugList({ drugs, navFilter: nf, onEdit, onReload, nonins }) {
     : <AtcDonutsRow drugs={drugs} t={t} nonins={nonins} sel={donutF} onPick={(level, value) => { setDonutF({ level, value }); setPage(1) }} onClear={() => { setDonutF(null); setPage(1) }} onCenterReset={_resetF} />}
     <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, overflow: 'visible', boxShadow: t.shadow }}>
       <div style={{ position: 'sticky', top: gnbH, zIndex: 20, padding: '10px 18px', borderBottom: `1px solid ${t.border}`, fontSize: 12, color: t.textM, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 600, background: t.card, borderTopLeftRadius: 14, borderTopRightRadius: 14 }}><span>전체 {drugs.length}개 · 결과 <strong style={{ color: t.accent }}>{filtered.length}개</strong><span onClick={() => colBtnRef.current && colBtnRef.current.toggle()} title="표시 컬럼 선택(클릭)" style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: t.purpleL, color: t.purple, fontSize: 10, fontWeight: 700, border: '1px solid ' + t.purple + '40', cursor: 'pointer', whiteSpace: 'nowrap' }}>{_presetLabel}</span>{atcF && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: atcColor(atcF) + '1A', color: atcColor(atcF), fontSize: 10, fontWeight: 700, border: '1px solid '+atcColor(atcF)+'40' }}>효능군: {atcF}<span onClick={() => setAtcF(null)} style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span>}{rxF && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 12, background: t.purpleL, color: t.purple, fontSize: 10, fontWeight: 700, border: '1px solid ' + t.purple + '40' }}>분류: {rxF}<span onClick={() => setRxF(null)} style={{ cursor: 'pointer', fontWeight: 800 }}>✕</span></span>}</span><span style={{ display: 'flex', alignItems: 'center', gap: 10 }}><ColumnSelector ref={colBtnRef} t={t} groups={selGroups} value={selCols} onChange={applyCols} presets={selPresets} />{_showReset && <button onClick={_resetF} title="필터·정렬 전체 초기화" style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent + '12', color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>필터 초기화{_df > 0 ? ' (' + _df + ')' : ''}</button>}<span style={{ fontSize: 10, color: t.textL }}>약품명 클릭 → 수정</span></span></div>
-      <div style={{ overflow: 'hidden', borderBottomLeftRadius: 14, borderBottomRightRadius: 14 }}><StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={(k,sdv)=>{setSort(k,sdv);setPage(1)}} hf={hf} hscroll={{noLabel:true,ends:true}} cols={drugCols} colWidths={drugColWidths}>
+      <div className="cnc-table-minh" style={{ overflow: 'hidden', borderBottomLeftRadius: 14, borderBottomRightRadius: 14, minHeight: DRUG_TABLE_MIN_H }}><StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={(k,sdv)=>{setSort(k,sdv);setPage(1)}} hf={hf} hscroll={{noLabel:true,ends:true}} cols={drugCols} colWidths={drugColWidths}>
         <tbody>{!paged.length ? <tr><td colSpan={visCols.length || 1} style={{ padding: 40, textAlign: 'center', color: t.textL }}>검색 결과 없음</td></tr> : paged.map((d, i) => { const nSticky = stickyOn.length; const rowBg = i % 2 ? t.bg : ''; const stickBg = i % 2 ? t.bg : t.card; return <tr key={i} style={{ borderBottom: '1px solid ' + t.border, background: rowBg }} onMouseEnter={e => { const r = e.currentTarget; r.style.background = 'rgba(128,74,135,0.08)'; const op = 'linear-gradient(rgba(128,74,135,0.08),rgba(128,74,135,0.08)), ' + t.card; const c = r.children; for (let j = 0; j < nSticky; j++) { if (c[j]) { c[j].style.background = op; if (j === 0) c[j].style.boxShadow = 'inset 3px 0 0 0 #804A87' } } }} onMouseLeave={e => { const r = e.currentTarget; r.style.background = rowBg; const c = r.children; for (let j = 0; j < nSticky; j++) { if (c[j]) { c[j].style.background = stickBg; if (j === 0) c[j].style.boxShadow = '' } } }}>{visCols.map(c => { const left = stickyLeft(c.key); const stick = left !== null ? { position: 'sticky', left, zIndex: 2, background: stickBg, ...(c.key === 'drug_code' ? { minWidth: 128, maxWidth: 128, width: 128 } : {}) } : {}; const base = c.td ? c.td(d, colCtx) : {}; const extra = c.tdProps ? c.tdProps(d, colCtx) : {}; return <td key={c.key} {...extra} style={{ ...base, ...stick }}>{c.render(d, colCtx)}</td> })}</tr> })}</tbody>
       </StandardTable>
       <Pg page={page} setPage={setPage} tp={tp} fl={filtered} pp={PP} ends/>
