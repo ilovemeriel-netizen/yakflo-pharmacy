@@ -4013,6 +4013,7 @@ function IdleCheck({ drugs, onReload }) {
   const [aLv, setALv] = useState(null); const [statusF, setStatusF] = useState('관찰'); const [page, setPage] = useState(1); const RPP = 50
   const [editRow, setEditRow] = useState(null); const [editField, setEditField] = useState(null)
   const [regOpen, setRegOpen] = useState(false); const [fb, setFb] = useState({}); const [hfV, setHfV] = useState({})
+  const [rsn, setRsn] = useState(null)  // 사유 입력 모달 대상 {code,name,status,memo} · null=닫힘
   const bands = (Array.isArray(profile?.settings?.idleBands) && profile.settings.idleBands.length === 3) ? profile.settings.idleBands : IDLE_BANDS_DEFAULT
   const [b1, b2, b3] = bands
   const lvs = [{ k: 'lv1', l: '3개월 미만', sub: '< ' + b1 + '일', c: t.blue }, { k: 'lv2', l: '3~6개월', sub: b1 + '~' + b2 + '일', c: t.amber }, { k: 'lv3', l: '6~12개월', sub: b2 + '~' + b3 + '일', c: t.red }, { k: 'lv4', l: '1년 이상', sub: '≥ ' + b3 + '일', c: t.purple }]
@@ -4032,7 +4033,7 @@ function IdleCheck({ drugs, onReload }) {
     setEditRow(null); setEditField(null); flash(d.drug_code + ':' + field, res.error ? 'err' : 'ok'); onReload?.()
   }
   async function insertReview(code, status, memo) { const { error } = await supabase.from('drug_idle_reviews').insert([{ drug_code: code, status, memo: memo || null }]); flash(code + ':status', error ? 'err' : 'ok'); if (!error) loadReviews() }  // 이력 누적(INSERT·UPDATE 아님)
-  function changeStatus(code, status) { const cur = latestByCode[code]; insertReview(code, status, cur?.memo || null) }  // 상태+직전 메모 동일 행
+  function changeStatus(code, status, name) { const cur = latestByCode[code]; setRsn({ code, name, status, memo: cur?.memo || '' }) }  // 즉시 INSERT 아님 → 사유 모달에서 status+memo를 한 행으로 저장(중복 이력 방지). 취소 시 미저장·상태 미변경(controlled select 복원)
   function saveMemo(code, memo) { const cur = latestByCode[code]; insertReview(code, cur?.status || '관찰', memo) }  // 메모+직전 상태 동일 행
   const pop = (drugs || []).filter(d => d.last_used_date)  // 모집단: last_used_date 보유 전체(current_qty·status 무필터)
   const enriched = pop.map(d => { const rv = latestByCode[d.drug_code] || null; const idle = _idleDays(d); return { drug_code: d.drug_code, drug_name: d.drug_name || d.drug_code, category: d.category || '', current_qty: d.current_qty || 0, last_used_date: d.last_used_date || '', last_used_dept: d.last_used_dept || '', expiry_date: d.expiry_date || '', idle_days: idle, band: bandOf(idle), status: rv?.status || '', reviewed_at: rv?.reviewed_at || '', memo: rv?.memo || '', _drug: d } })
@@ -4070,7 +4071,7 @@ function IdleCheck({ drugs, onReload }) {
             <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right', fontWeight: 700, color: r.idle_days != null && r.idle_days >= b3 ? t.red : t.text }}>{r.idle_days != null ? r.idle_days.toLocaleString() + '일' : '-'}</td>
             <td style={{ padding: '5px 6px', fontSize: 10, textAlign: 'left', ..._fbSt(r.drug_code + ':last_used_dept') }}>{isEd && editField === 'last_used_dept' ? <input list="idle-depts" defaultValue={r.last_used_dept || ''} onChange={e => saveDrugField(r._drug, 'last_used_dept', e.target.value)} onBlur={() => { setEditRow(null); setEditField(null) }} placeholder="선택/입력" style={ip2} /> : <span style={{ cursor: 'pointer' }} onClick={() => { setEditRow(r.drug_code); setEditField('last_used_dept') }}>{r.last_used_dept ? <Bd bg={t.accentL} color={t.accent}>{r.last_used_dept}</Bd> : <span style={{ color: t.textL, fontSize: 9 }}>클릭</span>}</span>}</td>
             <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'center', ...exS(r.expiry_date, t) }}>{r.expiry_date ? r.expiry_date + (eDays != null ? ' (' + (eDays <= 0 ? 'D' + eDays : 'D-' + eDays) + ')' : '') : '-'}</td>
-            <td style={{ padding: '5px 6px', textAlign: 'center' }}><select value={r.status || ''} onChange={e => { if (e.target.value && e.target.value !== r.status) changeStatus(r.drug_code, e.target.value) }} style={{ ...ip2, width: 'auto', background: stBg[r.status] || t.bg, color: stFg[r.status] || t.textL, fontWeight: 600 }}><option value="">미판단</option>{IDLE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select></td>
+            <td style={{ padding: '5px 6px', textAlign: 'center' }}><select value={r.status || ''} onChange={e => { if (e.target.value && e.target.value !== r.status) changeStatus(r.drug_code, e.target.value, r.drug_name) }} style={{ ...ip2, width: 'auto', background: stBg[r.status] || t.bg, color: stFg[r.status] || t.textL, fontWeight: 600 }}><option value="">미판단</option>{IDLE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select></td>
             <td style={{ padding: '6px 8px', fontSize: 10, color: t.textM, textAlign: 'center' }}>{r.reviewed_at || '-'}</td>
             <td style={{ padding: '5px 6px', fontSize: 10, textAlign: 'left', ..._fbSt(r.drug_code + ':status') }}>{isEd && editField === 'memo' ? <input defaultValue={r.memo || ''} onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }} onBlur={e => { if (e.target.value !== (r.memo || '')) saveMemo(r.drug_code, e.target.value); setEditRow(null); setEditField(null) }} placeholder="Enter 저장(새 행)" style={ip2} /> : <span style={{ cursor: 'pointer', color: t.textM, display: 'block', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => { setEditRow(r.drug_code); setEditField('memo') }}>{r.memo || <span style={{ color: t.textL, fontSize: 9 }}>클릭</span>}</span>}</td>
           </tr>
@@ -4081,7 +4082,31 @@ function IdleCheck({ drugs, onReload }) {
     {pages > 1 && <div className="no-print" style={{ display: 'flex', justifyContent: 'center', gap: 4, marginTop: 12 }}>{Array.from({ length: pages }, (_, i) => i + 1).map(n => <button key={n} onClick={() => setPage(n)} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid ' + (pg === n ? t.accent : t.border), background: pg === n ? t.accentL : t.card, color: pg === n ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: pg === n ? 700 : 500 }}>{n}</button>)}</div>}
     <div style={{ fontSize: 10, color: t.textM, marginTop: 8, textAlign: 'right' }}>총 {sorted.length}건 · 유효기한 임박은 색으로 강조(D-90 이내)</div>
     {regOpen && <IdleRegisterModal drugs={drugs} onClose={() => setRegOpen(false)} onSaved={() => { setRegOpen(false); loadReviews(); onReload?.() }} />}
+    {rsn && <IdleReasonModal t={t} row={rsn} onClose={() => setRsn(null)} onSave={async memo => { await insertReview(rsn.code, rsn.status, memo); setRsn(null) }} />}
     <Ft />
+  </div>
+}
+/* 사유 입력 모달 — 상태 변경 시 status+memo를 한 행으로 INSERT(중복 이력 방지). 취소 시 미저장.
+   직전 행 메모를 초기값으로 승계(상태만 바꾸고 사유가 같은 경우 재입력 부담 제거). 사유는 선택(비워도 저장). */
+function IdleReasonModal({ t, row, onClose, onSave }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos)  // 훅A(함정 #13: 신규 모달은 훅A)
+  const [memo, setMemo] = useState(row.memo || ''); const [saving, setSaving] = useState(false)
+  const stBg = { '관찰': t.accentL, '중지': t.redL, '보유유지': t.greenL, '해제': t.bg }; const stFg = { '관찰': t.accent, '중지': t.red, '보유유지': t.green, '해제': t.textM }
+  const ta = { width: '100%', minHeight: 84, padding: '9px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text, resize: 'vertical', fontFamily: 'inherit' }
+  const lb = { fontSize: 10, color: t.textM, display: 'block', marginBottom: 4 }
+  async function submit() { if (saving) return; setSaving(true); await onSave(memo) }
+  return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1002, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
+    <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 380, border: '1px solid ' + t.border, boxShadow: t.shadowH, maxHeight: '92vh', overflowY: 'auto', transform: 'translate(' + _dmPos.x + 'px, ' + _dmPos.y + 'px)' }} onClick={e => e.stopPropagation()}>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: '1px solid ' + t.border }}><div style={{ fontSize: 15, fontWeight: 700, color: t.accent }}>사유 입력</div></div>
+      <div style={{ padding: '16px 20px' }}>
+        <div style={{ marginBottom: 10 }}><label style={lb}>약품</label><div style={{ background: t.bg, borderRadius: 8, padding: '8px 10px', fontSize: 12 }}><strong>{row.name || row.code}</strong> <span style={{ color: t.textL, fontSize: 10 }}>({row.code})</span></div></div>
+        <div style={{ marginBottom: 10 }}><label style={lb}>변경할 상태</label><div style={{ background: stBg[row.status] || t.bg, color: stFg[row.status] || t.textM, borderRadius: 8, padding: '8px 10px', fontSize: 13, fontWeight: 700 }}>{row.status}</div></div>
+        <div style={{ marginBottom: 14 }}><label style={lb}>사유 <span style={{ color: t.textL, fontWeight: 400 }}>· 선택 (비워도 저장됩니다)</span></label>
+          <textarea value={memo} onChange={e => setMemo(e.target.value)} placeholder="판단 근거 등" style={ta} autoFocus />
+          {row.status === '중지' && <div style={{ fontSize: 10, color: t.red, marginTop: 4 }}>중지는 되돌리기 어려운 판단입니다 — 사유를 남겨 두시길 권합니다.</div>}</div>
+        <div style={{ display: 'flex', gap: 8 }}><button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button><button onClick={submit} disabled={saving} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', background: saving ? t.textL : t.accent, color: t.card, fontSize: 13, fontWeight: 700 }}>{saving ? '저장 중...' : '저장'}</button></div>
+      </div>
+    </div>
   </div>
 }
 function IdleRegisterModal({ drugs, onClose, onSaved }) {
