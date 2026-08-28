@@ -18,13 +18,17 @@ export function isNonInsured(d) {
   return v === '비보험' || v === '비급여'
 }
 
-/** 약품목록 인라인 검색 매칭 — 코드·약품명·성분(KR)·제조사 (DrugList와 동치) */
+/** 약품목록 인라인 검색 매칭 — 코드·약품명·성분(KR)·성분(EN)·제조사 (DrugList와 동치)
+ *  ingredient_en 추가(2026-08-28): 화면에는 성분(영문)이 표시되는데 검색 대상에서만 빠져
+ *  「Vita」 검색이 0건이던 문제. 전역검색(GLOBAL_SEARCH_FIELDS)은 이미 포함하고 있어 범위를 맞춘 것.
+ *  ※ 최소 글자 수 제한은 두지 않는다(사용자 확정) — 1글자 영문은 수백 건이 걸리며 이는 부분일치의 성질. */
 export function matchesDrugSearch(d, q) {
   if (!q || !q.trim()) return true
   const s = q.trim().toLowerCase()
   return (d?.drug_name || '').toLowerCase().includes(s)
     || (d?.drug_code || '').toLowerCase().includes(s)
     || (d?.ingredient_kr || '').toLowerCase().includes(s)
+    || (d?.ingredient_en || '').toLowerCase().includes(s)
     || (d?.manufacturer || '').toLowerCase().includes(s)
 }
 
