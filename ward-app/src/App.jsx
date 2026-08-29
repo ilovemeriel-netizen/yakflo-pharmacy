@@ -205,7 +205,7 @@ export default function App() {
       })
       const d = await r.json().catch(() => ({}))
       if (r.status === 403) { setConfirmOpen(false); setClosed(true); setMsg({ kind: 'err', text: d.msg || '접수 기간이 아닙니다' }); return }
-      /* ★ 409 = 이 병동은 이미 신청 완료. 그 병동을 잠가 더 이상 헛수고하지 않게 한다.
+      /* ★ 409 = 이 병동은 이미 신청완료. 그 병동을 잠가 더 이상 헛수고하지 않게 한다.
          다른 병동으로 바꾸면 잠금이 풀린다(dupWards에 없는 병동이므로). */
       if (r.status === 409) { setConfirmOpen(false); setDupWards(w => w.includes(ward) ? w : [...w, ward]); if (d.msg) setDupMsg(d.msg); setMsg({ kind: 'err', text: d.msg || '이미 신청이 완료된 병동입니다' }); return }
       if (!r.ok || !d.ok) { setConfirmOpen(false); setMsg({ kind: 'err', text: d.msg || '저장에 실패했습니다' }); return }
@@ -241,10 +241,10 @@ export default function App() {
         </div>
       )}
 
-      {/* 카드 1 — 신청 완료 */}
+      {/* 카드 1 — 신청완료 */}
       <div style={{ ...card, textAlign: 'center', paddingTop: 30, paddingBottom: 26 }}>
         <div style={{ width: 56, height: 56, borderRadius: 28, background: rgba(GREEN, 0.12), color: GREEN, fontSize: 28, lineHeight: '56px', margin: '0 auto 14px' }}>✓</div>
-        <div style={{ fontSize: 19, fontWeight: 800, color: NAVY, marginBottom: 12 }}>신청 완료</div>
+        <div style={{ fontSize: 19, fontWeight: 800, color: NAVY, marginBottom: 12 }}>신청완료</div>
         <div style={{
           display: 'inline-block', fontSize: 15, fontWeight: 800, color: PURPLE,
           background: rgba(LAVENDER, 0.22), borderRadius: 10, padding: '9px 16px', lineHeight: 1.6,
