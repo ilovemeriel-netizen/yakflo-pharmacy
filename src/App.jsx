@@ -3339,10 +3339,17 @@ function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
 const WARD_SEASONS = ['설', '추석']
 const WARD_LIST = ['3', '4', '5', '6']
 const WARD_STATUSES = ['접수', '처리중', '완료']
-/* 인쇄 1장에 들어가는 표 행수 — A4 세로 기준(행 8.6mm × 22 ≒ 189mm + 제목·머리말·헤더·저작권).
-   품목이 적어도 빈 행으로 틀을 채워 약제과가 수기로 추가 기입할 수 있게 한다.
+/* ★ 인쇄 1장에 들어가는 표 행수 — 실제 인쇄 후 미세 조정하는 **유일한 손잡이**.
+   [산정 근거]  A4 세로 297mm. 행 높이 8.6mm(아래 인쇄 CSS와 반드시 함께 움직일 것).
+     고정 요소 ≈ 제목 9.7 + 머리말 5.9 + 표 헤더 8.6 + 저작권 24.2 = 48.4mm
+     22행 실측(2026-08-30): 저작권만 다음 장으로 밀려 병동당 2장이 됐다
+       → 본문 213.4mm는 들어갔고 +저작권 237.6mm는 넘쳤다 → 실제 가용 높이는 213.4 ~ 237.6mm 사이.
+     16행 = 48.4 + 137.6 = 186.0mm → 하한(213.4mm) 대비 약 27mm(3행분) 여유.
+   ★ 계산에 딱 맞추지 않는다 — 프린터·용지·배율·브라우저 머리글 설정에 따라 경계가 달라진다(ATC #239 전례).
+     넘쳐서 2장이 되는 것보다 조금 남는 편이 안전하다.
+   ★ 품목이 이 값을 넘으면 빈 행을 채우지 않고 자연스럽게 다음 장으로 넘어간다(표 헤더 반복·행 잘림 방지).
    ★ min-height·vh를 쓰지 않는다(함정 #11) — 행 높이 합으로만 지면을 채운다. */
-const WARD_PRINT_ROWS = 22
+const WARD_PRINT_ROWS = 16
 function WardAdmin() {
   const { t, memberRole, profile } = useTheme()
   const { so, TS, sk, sd, setSort } = useSort('submitted_at', 'desc')
@@ -3355,7 +3362,18 @@ function WardAdmin() {
   const [fWard, setFWard] = useState('전체'); const [fPeriod, setFPeriod] = useState('전체'); const [fStatus, setFStatus] = useState('전체')
   const [page, setPage] = useState(1); const PP_W = 20
   const [edit, setEdit] = useState(null)                 // {itemId, field}
+  const [delTarget, setDelTarget] = useState(null)       // 삭제 확인 대상 신청(헤더 행)
+  const [deleting, setDeleting] = useState(false)
   const flash = (text, kind) => { setMsg({ text, kind }); setTimeout(() => setMsg(null), kind === 'err' ? 3000 : 1800) }
+
+  /* ★ 삭제 결과 판정 공통 — RLS DELETE는 admin 한정(0083)인데, 정책에 막히면
+     PostgREST는 **오류 없이 0행**을 지운다(성공처럼 보인다). 반드시 .select()로
+     실제 삭제된 행을 돌려받아 0건이면 실패로 처리한다. */
+  function delOutcome({ data, error }, what) {
+    if (error) return '삭제 실패: ' + error.message
+    if (!data || !data.length) return what + '을(를) 삭제하지 못했습니다 — 관리자 권한이 필요합니다'
+    return null
+  }
 
   useEffect(() => { loadAll() }, [])
   async function loadAll() {
@@ -3388,8 +3406,8 @@ function WardAdmin() {
   }
   async function delWin(w) {
     if (!isAdmin) { flash('관리자만 삭제할 수 있습니다', 'err'); return }
-    const { error } = await supabase.from('ward_request_window').delete().eq('id', w.id)
-    if (error) { flash('삭제 실패: ' + error.message, 'err'); return }
+    const bad = delOutcome(await supabase.from('ward_request_window').delete().eq('id', w.id).select('id'), '접수 기간')
+    if (bad) { flash(bad, 'err'); return }
     flash('삭제했습니다'); loadAll()
   }
 
@@ -3422,9 +3440,22 @@ function WardAdmin() {
   }
   async function delItem(it) {
     if (!isAdmin) { flash('관리자만 삭제할 수 있습니다', 'err'); return }
-    const { error } = await supabase.from('ward_request_items').delete().eq('id', it.id)
-    if (error) { flash('삭제 실패: ' + error.message, 'err'); return }
+    const bad = delOutcome(await supabase.from('ward_request_items').delete().eq('id', it.id).select('id'), '품목')
+    if (bad) { flash(bad, 'err'); return }
     flash('품목을 삭제했습니다'); loadAll()
+  }
+
+  /* ★ 신청 건 삭제 — 품목은 ward_request_items의 on delete cascade로 함께 사라진다(0083).
+     cascade는 참조 무결성 동작이라 자식 테이블 RLS의 영향을 받지 않는다. */
+  async function delReq() {
+    const r = delTarget; if (!r) return
+    if (!isAdmin) { flash('관리자만 삭제할 수 있습니다', 'err'); setDelTarget(null); return }
+    setDeleting(true)
+    const bad = delOutcome(await supabase.from('ward_requests').delete().eq('id', r.id).select('id'), '신청')
+    setDeleting(false); setDelTarget(null)
+    if (bad) { flash(bad, 'err'); return }
+    if (openRow === r.id) setOpenRow(null)
+    flash(r.ward + '병동 신청을 삭제했습니다 · 품목도 함께 삭제됩니다'); loadAll()
   }
 
   /* ── 인쇄: 현재 필터 결과를 병동별 1장씩 ── */
@@ -3444,7 +3475,8 @@ function WardAdmin() {
   const stColor = s => s === '완료' ? [t.greenL, t.green] : s === '처리중' ? [t.amberL, t.amber] : [t.accentL, t.accent]
 
   return <div style={{ padding: '20px 24px' }}>
-    <div className="no-print" style={{ marginBottom: 10 }}><div style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>병동신청 <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>· 명절 대비 병동 약품 신청 접수·확인</span></div></div>
+    {/* ★ textAlign:'left' 명시 — #root{text-align:center} 상속으로 제목이 가운데 렌더되는 회귀(함정 #20) */}
+    <div className="no-print" style={{ marginBottom: 10, textAlign: 'left' }}><div style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>병동신청 <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>· 명절 대비 병동 약품 신청 접수·확인</span></div></div>
 
     {msg && <div className="no-print" style={{ background: msg.kind === 'err' ? t.redL : t.greenL, color: msg.kind === 'err' ? t.red : t.green, borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>{msg.text}</div>}
 
@@ -3518,6 +3550,7 @@ function WardAdmin() {
           <div style={{ flex: 1 }} />
           <span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>상태</span>
           <select value={r.status} onChange={e => setStatus(r, e.target.value)} style={{ ...ip2, width: 'auto' }}>{WARD_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select>
+          {isAdmin && <button onClick={() => setDelTarget(r)} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>신청 삭제</button>}
           <button onClick={() => setOpenRow(null)} style={{ border: 'none', background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12 }}>닫기 ✕</button>
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -3544,12 +3577,14 @@ function WardAdmin() {
     })()}
 
     {/* ── 인쇄 전용: 병동별 1장 ── */}
-    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;text-align:left;vertical-align:middle}.ward-print thead{display:table-header-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}}'}</style>
+    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;text-align:left;vertical-align:middle}.ward-print thead{display:table-header-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft{break-inside:avoid;page-break-inside:avoid}}'}</style>
     {/* ── 인쇄 전용: 신청 1건당 A4 1장 · 빈 행으로 표 틀을 채워 수기 추가 기입 가능 ── */}
     <div className="ward-print">
       {printPages.map(r => {
         const list = itemsOf(r.id)
-        const blanks = Math.max(0, WARD_PRINT_ROWS - list.length)   // A4 한 장을 채우는 빈 행
+        /* ★ 품목이 WARD_PRINT_ROWS를 넘으면 빈 행 0 — 표가 이미 가득 찼으므로 채우지 않고
+           자연스럽게 다음 장으로 넘긴다(thead 반복 · tr break-inside:avoid로 행 잘림 방지). */
+        const blanks = Math.max(0, WARD_PRINT_ROWS - list.length)
         return <div key={r.id} className="wp-page">
           <div style={{ fontSize: 24, fontWeight: 800, color: t.accent, marginBottom: 8 }}>{r.ward}병동 약품 신청서</div>
           <div style={{ fontSize: 12, marginBottom: 8 }}>작성자 {r.requester_name} · 신청일 {r.submitted_day} · {r.request_year} {r.season} · 상태 {r.status}</div>
@@ -3563,13 +3598,41 @@ function WardAdmin() {
               {Array.from({ length: blanks }, (_, i) => <tr key={'b' + i}><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>)}
             </tbody>
           </table>
-          <Ft />
+          {/* 인쇄용 저작권 — 장마다 1회. break-inside:avoid로 두 줄이 갈라져 다음 장으로 밀리지 않게 한다 */}
+          <div className="wp-ft"><Ft /></div>
         </div>
       })}
     </div>
     {/* ── 기간 생성 모달 ── */}
     {regOpen && <WardWindowModal t={t} nf={nf} setNf={setNf} onClose={() => setRegOpen(false)} onSave={createWin} />}
-    <Ft />
+    {/* ★ 삭제 확인 모달 — 병동·작성자·품목수를 보여주고 확인받는다 */}
+    {delTarget && <WardDeleteModal t={t} r={delTarget} count={itemsOf(delTarget.id).length} busy={deleting} onClose={() => setDelTarget(null)} onConfirm={delReq} />}
+    {/* ★ 화면 하단 저작권은 인쇄에서 제외한다 — 인쇄용 저작권은 각 wp-page 안에 따로 있다.
+        no-print가 없으면 마지막 병동 뒤에 저작권만 있는 백지 장이 붙는다. */}
+    <div className="no-print"><Ft /></div>
+  </div>
+}
+/* ★ 신청 삭제 확인 모달 — 병동·작성자·품목수를 보여주고 확인받는다.
+   품목은 ward_request_items의 on delete cascade로 함께 삭제된다(0083). 되돌릴 수 없다. */
+function WardDeleteModal({ t, r, count, busy, onClose, onConfirm }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos)
+  return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => !busy && onClose()}>
+    <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 400, border: '1px solid ' + t.border, boxShadow: t.shadowH, transform: 'translate(' + _dmPos.x + 'px, ' + _dmPos.y + 'px)' }} onClick={e => e.stopPropagation()}>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: '1px solid ' + t.border }}><div style={{ fontSize: 15, fontWeight: 700, color: t.red, textAlign: 'left' }}>신청 삭제</div></div>
+      <div style={{ padding: '16px 20px', textAlign: 'left' }}>
+        <div style={{ background: t.bg, border: '1px solid ' + t.border, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{r.ward}병동 · {r.requester_name}</div>
+          <div style={{ fontSize: 11, color: t.textM, marginTop: 5 }}>{r.request_year} {r.season} · 신청일 {(r.submitted_at || '').slice(0, 10)} · 상태 {r.status}</div>
+          <div style={{ fontSize: 12, color: t.text, fontWeight: 700, marginTop: 7 }}>품목 {count}건</div>
+        </div>
+        <div style={{ fontSize: 12, color: t.red, fontWeight: 700, marginBottom: 4 }}>되돌릴 수 없습니다.</div>
+        <div style={{ fontSize: 11, color: t.textM, marginBottom: 14, lineHeight: 1.6 }}>신청과 함께 품목 {count}건이 모두 삭제됩니다. 삭제는 관리자만 가능합니다.</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClose} disabled={busy} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button>
+          <button onClick={onConfirm} disabled={busy} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer', background: t.red, color: t.card, fontSize: 13, fontWeight: 700 }}>{busy ? '삭제 중...' : '영구 삭제'}</button>
+        </div>
+      </div>
+    </div>
   </div>
 }
 /* 접수 기간 생성 모달 — 훅A(useDraggableModal)·제목줄 한정(함정 #13) */
@@ -3647,7 +3710,8 @@ function IdleCheck({ drugs, onReload }) {
   const ip2 = { padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 11, outline: 'none', background: t.bg, color: t.text, width: '100%', boxSizing: 'border-box' }
   const stBg = { '관찰': t.accentL, '중지': t.redL, '보유유지': t.greenL, '해제': t.bg }; const stFg = { '관찰': t.accent, '중지': t.red, '보유유지': t.green, '해제': t.textM }
   return <div style={{ padding: '20px 24px' }}>
-    <div style={{ marginBottom: 10 }}><div style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>사용 점검 <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>· 경과일은 마지막 사용일 기준 · 조회 시 재계산</span></div></div>
+    {/* ★ textAlign:'left' 명시 — #root{text-align:center} 상속으로 제목이 가운데 렌더되는 회귀(함정 #20) */}
+    <div style={{ marginBottom: 10, textAlign: 'left' }}><div style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>사용 점검 <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>· 경과일은 마지막 사용일 기준 · 조회 시 재계산</span></div></div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 12 }}>{lvs.map(l => <div key={l.k} onClick={() => { setALv(aLv === l.k ? null : l.k); setPage(1) }} style={{ background: t.card, border: '1px solid ' + (aLv === l.k ? l.c : t.border), borderRadius: 12, padding: '12px 14px', cursor: 'pointer', boxShadow: aLv === l.k ? '0 0 12px ' + l.c + '15' : 'none' }} onMouseEnter={e => e.currentTarget.style.borderColor = l.c} onMouseLeave={e => { if (aLv !== l.k) e.currentTarget.style.borderColor = t.border }}><div style={{ fontSize: 12, color: l.c, fontWeight: 700, textAlign: 'left' }}>{l.l}</div><div style={{ fontSize: 26, fontWeight: 700, color: l.c, marginTop: 2, textAlign: 'left' }}>{bandCnt(l.k)}</div><div style={{ fontSize: 10, color: t.textM, marginTop: 2, textAlign: 'left' }}>{l.sub}</div></div>)}</div>
     <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{['전체', ...IDLE_STATUSES].map(s => <button key={s} onClick={() => { setStatusF(s); setPage(1) }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (statusF === s ? t.accent : t.border), background: statusF === s ? t.accentL : t.card, color: statusF === s ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: statusF === s ? 700 : 500 }}>{s}</button>)}</div>
