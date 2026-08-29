@@ -6,18 +6,19 @@ import { useState, useRef, useEffect } from 'react'
    ★ Supabase 클라이언트·키를 일절 포함하지 않는다. 데이터 접근은 같은 사이트의
      Netlify Function(/api/ward/*) 상대 경로 호출뿐이며, service_role 키는 서버에만 있다.
    ★ 외부 도메인·브랜드명을 노출하지 않는다.
-   ★ 색상은 브랜드 4색만 사용 — 그 외는 white 키워드와 그 4색의 rgba 파생.
+   ★ 색상은 브랜드 4색만 사용 — 그 외는 white/black 키워드와 그 4색의 rgba 파생.
    ★ 입력은 약품과 수량뿐 — 단위·비고는 약제과가 관리 화면에서 채운다(DB 컬럼은 유지).
    ★ 신청번호(uuid)는 쓰지 않는다 — 병동당 1회라 병동·작성자·명절로 식별된다.
    ★ 병동·작성자를 먼저 입력해야 검색·담기·저장이 열린다(오조작 방지).
+   ★ 수량은 **검색 결과 행에서** 입력해 담는다 — 담은 뒤 목록으로 눈이 왕복하지 않게.
    ★ 저장은 useRef로 잠근다 — disabled는 리렌더 이후에나 걸려 더블탭 사이를 막지 못한다.
    ★ 라우터·해시 라우팅을 쓰지 않는다. 완료 시 pushState 1회로 뒤로 가기를 **한 번만** 흡수하고,
      두 번째 뒤로 가기는 막지 않는다. beforeunload는 쓰지 않는다(bfcache 무효화 방지).
    ════════════════════════════════════════════════════════════════ */
 
 const PURPLE = '#804A87'   // 보라 — 강조·경고
-const GREEN = '#019748'    // 녹색 — 완료
-const LAVENDER = '#BFA6D9' // 라벤더 — 보조 배경
+const GREEN = '#019748'    // 녹색 — 완료·담기
+const LAVENDER = '#BFA6D9' // 라벤더 — 보조 배경·은은한 강조
 const NAVY = '#2E4A62'     // 네이비 — 본문
 
 const WARDS = ['3', '4', '5', '6']
@@ -28,6 +29,7 @@ export default function App() {
   const [name, setName] = useState('')
   const [q, setQ] = useState('')
   const [found, setFound] = useState([])
+  const [qtyMap, setQtyMap] = useState({})      // 검색 결과 행별 수량 입력값
   const [searched, setSearched] = useState(false)
   const [searching, setSearching] = useState(false)
   const [cart, setCart] = useState([])
@@ -40,12 +42,14 @@ export default function App() {
   const [wardConfirm, setWardConfirm] = useState(null)  // 바꾸려는 병동(확인 대기)
   const timer = useRef(null)
   const qRef = useRef(null)                     // 검색 입력 — 담기 후 포커스를 되돌린다
+  const firstQtyRef = useRef(null)              // 결과 1건일 때 Enter로 옮겨 갈 수량 칸
   const lastTerm = useRef('')                   // 마지막으로 실제 조회한 검색어(결과가 최신인지 판정)
   const submitting = useRef(false)              // ★ 이중 제출 잠금(리렌더와 무관하게 즉시 걸림)
   const pushed = useRef(false)                  // 완료 이력 push를 1회로 제한
 
   /* ★ 필수 입력 — 병동과 작성자 이름이 채워지기 전에는 검색·담기·저장을 모두 막는다 */
   const ready = !!ward && !!name.trim()
+  const keyOf = d => d.drug_code || d.drug_name
 
   /* ── 완료 시 뒤로 가기 1회 흡수 ──────────────────────────────
      앱은 이력에 항목을 쌓지 않는 상태 기반 단일 화면이라, 완료 화면에서 뒤로 가기를 누르면
@@ -76,18 +80,18 @@ export default function App() {
       const d = await r.json().catch(() => ({}))
       if (r.status === 403) { setClosed(true); setMsg({ kind: 'err', text: d.msg || '접수 기간이 아닙니다' }); setFound([]); return }
       if (!r.ok || !d.ok) { setMsg({ kind: 'err', text: d.msg || '검색에 실패했습니다' }); setFound([]); return }
-      setFound(d.items || []); setSearched(true); lastTerm.current = term
+      setFound(d.items || []); setSearched(true); setQtyMap({}); lastTerm.current = term
       if (d.capped) setMsg({ kind: 'info', text: '결과가 많습니다. 검색어를 더 입력해 주세요' })
     } catch { setMsg({ kind: 'err', text: '연결에 실패했습니다. 잠시 후 다시 시도해 주세요' }) }
     finally { setSearching(false) }
   }
 
   /* ── 검색창 Enter ────────────────────────────────────────────
-     ★ 한글 IME 조합 중의 Enter는 **조합 확정**에 쓰인다. 그때 담기를 실행하면
+     ★ 한글 IME 조합 중의 Enter는 **조합 확정**에 쓰인다. 그때 다음 단계로 넘기면
        엉뚱한 약이 담기는 오작동이 된다 → isComposing(구형 브라우저는 keyCode 229)이면 무시하고
        조합이 끝난 뒤의 Enter만 처리한다. 검색 자체(onChange·디바운스)는 건드리지 않는다.
-     ★ 결과가 **정확히 1건일 때만** 담는다 — 여러 건에서 첫 번째를 자동으로 담으면
-       무엇이 담겼는지 모른 채 넘어가고, 병동 신청은 되돌릴 수 없다. 2건 이상이면 골라 담게 안내한다. */
+     ★ 결과가 **정확히 1건일 때만** 수량 칸으로 넘어간다 — 여러 건에서 첫 번째를 자동으로 고르면
+       무엇이 담겼는지 모른 채 넘어가고, 병동 신청은 되돌릴 수 없다. */
   function onSearchKeyDown(e) {
     if (e.key !== 'Enter') return
     if (e.nativeEvent?.isComposing || e.keyCode === 229) return
@@ -96,8 +100,15 @@ export default function App() {
     if (term.length < MIN_Q) return
     /* 디바운스가 아직 안 돈 상태(결과가 옛 검색어의 것)면 우선 즉시 조회한다 */
     if (searching || term !== lastTerm.current) { clearTimeout(timer.current); search(term); return }
-    if (found.length === 1) { add(found[0]); return }
-    if (found.length > 1) setMsg({ kind: 'info', text: `검색 결과가 ${found.length}건입니다 — 담을 약품을 눌러 주세요` })
+    if (found.length === 1) { firstQtyRef.current?.focus(); return }
+    if (found.length > 1) setMsg({ kind: 'info', text: `검색 결과가 ${found.length}건입니다 — 수량을 넣고 담아 주세요` })
+  }
+  /* 수량 칸 Enter → 담기 (IME 가드 동일 적용 — 숫자 입력이라도 규칙을 통일한다) */
+  function onQtyKeyDown(e, d) {
+    if (e.key !== 'Enter') return
+    if (e.nativeEvent?.isComposing || e.keyCode === 229) return
+    e.preventDefault()
+    addWithQty(d)
   }
 
   /* ── 병동 전환 ────────────────────────────────────────────────
@@ -105,8 +116,7 @@ export default function App() {
        병동별로 근무자가 다르므로 이름은 병동에 딸린 값이고, 목록이 남으면
        3병동이 담은 약이 4병동 이름으로 접수되는 데이터 오류가 난다.
      · 담긴 약품이 있을 때만 확인을 받는다(잃을 것이 큰 경우).
-     · 이름만 있고 목록이 비었으면 모달 없이 전환하고, 이름을 비웠다는 사실만 알린다
-       — 「담긴 약품 N개」 문구가 0건에서는 거짓이 되고, 다시 칠 것은 이름 한 줄뿐이다. */
+     · 이름만 있고 목록이 비었으면 모달 없이 전환하고, 이름을 비웠다는 사실만 알린다. */
   function pickWard(w) {
     if (w === ward) return
     if (cart.length) { setWardConfirm(w); return }
@@ -114,17 +124,21 @@ export default function App() {
   }
   function applyWard(w) {
     const hadName = !!name.trim()
-    setWard(w); setCart([]); setName(''); setQ(''); setFound([]); setSearched(false); setWardConfirm(null)
+    setWard(w); setCart([]); setName(''); setQ(''); setFound([]); setSearched(false); setQtyMap({}); setWardConfirm(null)
+    lastTerm.current = ''
     setMsg(hadName ? { kind: 'info', text: '병동을 바꿔 작성자 이름을 비웠습니다 — 다시 입력해 주세요' } : null)
   }
 
   /* ── 담기 / 편집 / 삭제 ── */
-  function add(d) {
+  function addWithQty(d) {
     if (!ready) { setMsg({ kind: 'err', text: '병동과 작성자 이름을 먼저 입력해 주세요' }); return }
-    if (cart.some(c => c.key === (d.drug_code || d.drug_name))) { setMsg({ kind: 'info', text: '이미 담긴 약품입니다' }); return }
-    setCart(c => [...c, { key: d.drug_code || d.drug_name, drug_code: d.drug_code || '', drug_name: d.drug_name, qty: '' }])
+    const raw = qtyMap[keyOf(d)]
+    const n = Number(raw)
+    if (!raw || !Number.isFinite(n) || n <= 0) { setMsg({ kind: 'err', text: `「${d.drug_name}」의 수량을 1 이상으로 입력해 주세요` }); return }
+    if (cart.some(c => c.key === keyOf(d))) { setMsg({ kind: 'info', text: '이미 담긴 약품입니다' }); return }
+    setCart(c => [...c, { key: keyOf(d), drug_code: d.drug_code || '', drug_name: d.drug_name, qty: String(n) }])
     /* 담으면 검색어를 비우고 검색창에 포커스를 되돌린다 — 연속으로 담기 쉽게 */
-    setQ(''); setFound([]); setSearched(false); setMsg(null); lastTerm.current = ''
+    setQ(''); setFound([]); setSearched(false); setQtyMap({}); setMsg(null); lastTerm.current = ''
     clearTimeout(timer.current)
     qRef.current?.focus()
   }
@@ -184,8 +198,9 @@ export default function App() {
   /* ── 스타일 ── */
   const card = { background: 'white', border: '1px solid ' + rgba(NAVY, 0.12), borderRadius: 14, padding: '16px 16px', marginBottom: 12 }
   const label = { fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 8, display: 'block' }
+  const tag = { fontSize: 11, fontWeight: 800, color: 'white', background: PURPLE, borderRadius: 8, padding: '5px 9px', whiteSpace: 'nowrap' }
   const input = { width: '100%', padding: '11px 12px', border: '1px solid ' + rgba(NAVY, 0.2), borderRadius: 10, outline: 'none', background: 'white', color: NAVY }
-  const step = () => ({ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 10, background: PURPLE, color: 'white', fontSize: 11, fontWeight: 800, marginRight: 8 })
+  const qtyBox = { width: 74, padding: '8px 9px', border: '1px solid ' + rgba(NAVY, 0.25), borderRadius: 8, outline: 'none', background: 'white', color: NAVY, fontSize: 14, textAlign: 'right' }
   /* 경고 강조 — 브랜드 보라를 경고색으로 사용(신규 색상값 없음) */
   const warn = { background: rgba(PURPLE, 0.09), border: '2px solid ' + rgba(PURPLE, 0.45), borderRadius: 12, padding: '14px 16px', textAlign: 'center' }
 
@@ -257,7 +272,7 @@ export default function App() {
 
   return (
     <div className="wa-wrap">
-      <div style={{ padding: '10px 2px 14px' }}>
+      <div style={{ padding: '10px 2px 12px' }}>
         <div style={{ fontSize: 20, fontWeight: 800, color: PURPLE }}>병동 약품 신청</div>
         <div style={{ fontSize: 12, color: rgba(NAVY, 0.7), marginTop: 4 }}>명절 대비 약품을 신청합니다 · 문의 약제과 내선 217</div>
       </div>
@@ -272,123 +287,145 @@ export default function App() {
       )}
 
       {closed ? null : (
-        <div className="wa-cols">
-          {/* ── 왼쪽: 병동·작성자·검색 ── */}
-          <div>
-            <div style={card}>
-              <label style={label}><span style={step()}>1</span>병동 선택</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
-                {WARDS.map(w => (
-                  <button key={w} onClick={() => pickWard(w)} style={{
-                    padding: '13px 0', borderRadius: 10, cursor: 'pointer', fontWeight: 800, fontSize: 15,
-                    border: '1px solid ' + (ward === w ? PURPLE : rgba(NAVY, 0.2)),
-                    background: ward === w ? PURPLE : 'white',
-                    color: ward === w ? 'white' : NAVY,
-                  }}>{w}병동</button>
-                ))}
+        <>
+          {/* ── ★ 상단 한 줄: [병동] 3 4 5 6 | [작성자] ____ ── */}
+          <div style={card}>
+            <div className="wa-top">
+              <div className="wa-top-ward">
+                <span style={tag}>병동</span>
+                <div className="wa-grow" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
+                  {WARDS.map(w => (
+                    <button key={w} onClick={() => pickWard(w)} style={{
+                      padding: '10px 0', borderRadius: 9, cursor: 'pointer', fontWeight: 800, fontSize: 14,
+                      border: '1px solid ' + (ward === w ? PURPLE : rgba(NAVY, 0.2)),
+                      background: ward === w ? PURPLE : 'white',
+                      color: ward === w ? 'white' : NAVY,
+                    }}>{w}병동</button>
+                  ))}
+                </div>
+              </div>
+              <div className="wa-top-name">
+                <span style={tag}>작성자</span>
+                <input className="wa-grow" value={name} onChange={e => setName(e.target.value)} maxLength={20}
+                  placeholder="이름을 입력해 주세요" style={{ ...input, padding: '10px 12px' }} />
               </div>
             </div>
-
-            <div style={card}>
-              <label style={label}><span style={step()}>2</span>작성자 이름</label>
-              <input value={name} onChange={e => setName(e.target.value)} maxLength={20} placeholder="이름을 입력해 주세요" style={input} />
-            </div>
-
-            <div style={card}>
-              <label style={label}><span style={step()}>3</span>약품 검색</label>
-              {/* ★ 필수 입력 안내 — 병동·작성자가 비면 검색창을 잠근다 */}
-              {!ready && (
-                <div style={{
-                  background: rgba(LAVENDER, 0.22), border: '1px solid ' + rgba(LAVENDER, 0.6), borderRadius: 10,
-                  padding: '11px 12px', fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 10, lineHeight: 1.6,
-                }}>
-                  병동과 작성자 이름을 먼저 입력해 주세요
-                </div>
-              )}
-              <input
-                ref={qRef}
-                value={q}
-                onChange={e => onQuery(e.target.value)}
-                onKeyDown={onSearchKeyDown}
-                disabled={!ready}
-                placeholder={ready ? `약품명 ${MIN_Q}자 이상 입력 · Enter로 담기` : '위 1·2를 먼저 입력해 주세요'}
-                style={{ ...input, background: ready ? 'white' : rgba(NAVY, 0.05), color: ready ? NAVY : rgba(NAVY, 0.45), cursor: ready ? 'text' : 'not-allowed' }}
-              />
-              {searching && <div style={{ fontSize: 12, color: rgba(NAVY, 0.6), marginTop: 8 }}>찾는 중…</div>}
-              {searched && !searching && (
-                <div style={{ marginTop: 12, border: '1px solid ' + rgba(NAVY, 0.12), borderRadius: 10, overflow: 'hidden' }}>
-                  <div style={{ padding: '8px 12px', background: rgba(LAVENDER, 0.18), fontSize: 11, fontWeight: 700, color: NAVY }}>
-                    검색 결과 {found.length}건
-                  </div>
-                  {!found.length
-                    ? <div style={{ padding: '16px 12px', fontSize: 12, color: rgba(NAVY, 0.55), textAlign: 'center' }}>검색 결과가 없습니다</div>
-                    : <div style={{ maxHeight: 320, overflowY: 'auto' }}>{found.map(d => (
-                        <button key={d.drug_code || d.drug_name} onClick={() => add(d)} style={{
-                          display: 'block', width: '100%', textAlign: 'left', padding: '12px 12px', cursor: 'pointer',
-                          border: 'none', borderTop: '1px solid ' + rgba(NAVY, 0.08), background: 'white', color: NAVY, fontSize: 14,
-                        }}>
-                          <span style={{ fontWeight: 700 }}>{d.drug_name}</span>
-                          <span style={{ float: 'right', color: GREEN, fontWeight: 800, fontSize: 13 }}>담기 +</span>
-                        </button>))}</div>}
-                </div>
-              )}
-            </div>
+            {/* ★ 상단이 작아진 만큼 미입력 안내를 눈에 띄게 남긴다 — 진행 차단은 그대로 */}
+            {!ready && (
+              <div style={{
+                marginTop: 12, background: rgba(LAVENDER, 0.24), border: '1px solid ' + rgba(LAVENDER, 0.7), borderRadius: 10,
+                padding: '11px 12px', fontSize: 14, fontWeight: 800, color: PURPLE, textAlign: 'center', lineHeight: 1.6,
+              }}>
+                병동과 작성자 이름을 먼저 입력해 주세요
+              </div>
+            )}
           </div>
 
-          {/* ── 오른쪽: 신청 목록 (넓은 화면에서 고정) ── */}
-          <div>
-            <div className="wa-sticky">
+          <div className="wa-cols">
+            {/* ── 왼쪽: 약품 검색 · 결과에서 수량까지 입력 ── */}
+            <div>
               <div style={card}>
-                <label style={label}>
-                  <span style={step()}>4</span>신청 목록
-                  {cart.length > 0 && <span style={{
-                    marginLeft: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    minWidth: 22, height: 20, padding: '0 7px', borderRadius: 10,
-                    background: PURPLE, color: 'white', fontSize: 11, fontWeight: 800,
-                  }}>{cart.length}</span>}
-                </label>
-                {!cart.length ? (
-                  <div style={{ fontSize: 13, color: rgba(NAVY, 0.55), padding: '20px 0', textAlign: 'center' }}>왼쪽에서 약품을 검색해 담아 주세요</div>
-                ) : (
-                  <div style={{ maxHeight: 420, overflowY: 'auto' }}>{cart.map((c, i) => (
-                    <div key={c.key} style={{ border: '1px solid ' + rgba(NAVY, 0.12), borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
-                        <div style={{ flex: 1, fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.4 }}>{c.drug_name}</div>
-                        <button onClick={() => remove(i)} style={{ border: 'none', background: 'transparent', color: rgba(NAVY, 0.55), cursor: 'pointer', fontSize: 13, padding: '2px 4px' }}>삭제</button>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 11, color: rgba(NAVY, 0.6), whiteSpace: 'nowrap' }}>수량 *</span>
-                        <input value={c.qty} onChange={e => edit(i, e.target.value)} inputMode="decimal" placeholder="0" style={{ ...input, padding: '9px 11px' }} />
-                      </div>
-                    </div>))}</div>
-                )}
-              </div>
-
-              {/* ★ 저장은 목록 카드 **밖** 하단에 둔다 — 목록을 다 확인한 뒤 누르는 동작으로 분리 */}
-              <div style={{ padding: '2px 2px 0' }}>
-                {/* 안내는 담긴 것이 있을 때만 — 0건에서 「모두 담으셨나요?」는 물음이 성립하지 않는다 */}
-                {cart.length > 0 && (
-                  <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, textAlign: 'center', marginBottom: 8 }}>
-                    담을 약품을 모두 담으셨나요?
+                <label style={label}>약품 검색</label>
+                <input
+                  ref={qRef}
+                  value={q}
+                  onChange={e => onQuery(e.target.value)}
+                  onKeyDown={onSearchKeyDown}
+                  disabled={!ready}
+                  placeholder={ready ? `약품명 ${MIN_Q}자 이상 입력 · Enter` : '위에서 병동·작성자를 먼저 입력해 주세요'}
+                  style={{ ...input, background: ready ? 'white' : rgba(NAVY, 0.05), color: ready ? NAVY : rgba(NAVY, 0.45), cursor: ready ? 'text' : 'not-allowed' }}
+                />
+                {searching && <div style={{ fontSize: 12, color: rgba(NAVY, 0.6), marginTop: 8 }}>찾는 중…</div>}
+                {searched && !searching && (
+                  <div style={{ marginTop: 12, border: '1px solid ' + rgba(NAVY, 0.12), borderRadius: 10, overflow: 'hidden' }}>
+                    <div style={{ padding: '8px 12px', background: rgba(LAVENDER, 0.18), fontSize: 11, fontWeight: 700, color: NAVY }}>
+                      검색 결과 {found.length}건 · 수량을 넣고 담아 주세요
+                    </div>
+                    {!found.length
+                      ? <div style={{ padding: '16px 12px', fontSize: 12, color: rgba(NAVY, 0.55), textAlign: 'center' }}>검색 결과가 없습니다</div>
+                      : <div style={{ maxHeight: 360, overflowY: 'auto' }}>{found.map((d, i) => (
+                          <div key={keyOf(d)} style={{
+                            display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px',
+                            borderTop: '1px solid ' + rgba(NAVY, 0.08), background: 'white',
+                          }}>
+                            <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 14, color: NAVY, lineHeight: 1.4 }}>{d.drug_name}</span>
+                            <input
+                              ref={i === 0 ? firstQtyRef : null}
+                              value={qtyMap[keyOf(d)] ?? ''}
+                              onChange={e => setQtyMap(m => ({ ...m, [keyOf(d)]: e.target.value }))}
+                              onKeyDown={e => onQtyKeyDown(e, d)}
+                              inputMode="decimal" placeholder="수량" style={qtyBox}
+                            />
+                            {/* 담기는 이 화면의 반복 동작이라 은은한 녹색 외곽선으로 둔다(최종 동작 아님) */}
+                            <button onClick={() => addWithQty(d)} style={{
+                              padding: '8px 12px', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap',
+                              border: '1px solid ' + GREEN, background: rgba(GREEN, 0.1), color: GREEN, fontSize: 13, fontWeight: 800,
+                            }}>담기 +</button>
+                          </div>))}</div>}
                   </div>
                 )}
-                {/* ★ 톤 낮춤 — 여기서는 최종 동작이 아니라 확인 모달로 넘어가는 단계다.
-                    라벤더 외곽선 + 옅은 배경 + 보라 글자(브랜드 4색의 rgba 파생 · 신규 hex 없음). */}
-                <button onClick={tryOpen} disabled={!cart.length || !ready} style={{
-                  width: '100%', padding: '15px 0', borderRadius: 12,
-                  cursor: (!cart.length || !ready) ? 'not-allowed' : 'pointer',
-                  border: '1px solid ' + ((!cart.length || !ready) ? rgba(NAVY, 0.15) : LAVENDER),
-                  background: (!cart.length || !ready) ? rgba(NAVY, 0.05) : rgba(LAVENDER, 0.14),
-                  color: (!cart.length || !ready) ? rgba(NAVY, 0.45) : PURPLE,
-                  fontSize: 15, fontWeight: 800,
-                }}>{cart.length ? `${cart.length}개 품목 신청하기` : '담은 약품이 없습니다'}</button>
-                <div style={{ fontSize: 12, color: rgba(NAVY, 0.65), textAlign: 'center', marginTop: 10, lineHeight: 1.6 }}>
-                  저장하면 내용을 수정할 수 없습니다.<br />병동당 1회만 신청할 수 있습니다.
+              </div>
+            </div>
+
+            {/* ── 오른쪽: 신청 목록 (한 줄 압축 · 넓은 화면에서 고정) ── */}
+            <div>
+              <div className="wa-sticky">
+                <div style={card}>
+                  <label style={label}>
+                    신청 목록
+                    {cart.length > 0 && <span style={{
+                      marginLeft: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      minWidth: 22, height: 20, padding: '0 7px', borderRadius: 10,
+                      background: PURPLE, color: 'white', fontSize: 11, fontWeight: 800,
+                    }}>{cart.length}</span>}
+                  </label>
+                  {!cart.length ? (
+                    <div style={{ fontSize: 13, color: rgba(NAVY, 0.55), padding: '20px 0', textAlign: 'center' }}>왼쪽에서 약품을 검색해 담아 주세요</div>
+                  ) : (
+                    <div style={{ maxHeight: 420, overflowY: 'auto', border: '1px solid ' + rgba(NAVY, 0.12), borderRadius: 10 }}>
+                      {/* ★ 한 줄 압축 — 약품명 · 수량 · 삭제 */}
+                      {cart.map((c, i) => (
+                        <div key={c.key} style={{
+                          display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                          borderTop: i === 0 ? 'none' : '1px solid ' + rgba(NAVY, 0.08),
+                        }}>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: NAVY, lineHeight: 1.35 }}>{c.drug_name}</span>
+                          <input value={c.qty} onChange={e => edit(i, e.target.value)} inputMode="decimal" placeholder="0"
+                            style={{ ...qtyBox, width: 64, padding: '6px 8px', fontSize: 13 }} />
+                          <button onClick={() => remove(i)} title="빼기" style={{
+                            border: 'none', background: 'transparent', color: rgba(NAVY, 0.5),
+                            cursor: 'pointer', fontSize: 15, padding: '2px 4px', lineHeight: 1,
+                          }}>✕</button>
+                        </div>))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
-        </div>
+
+          {/* ── ★ 저장 — 2단 아래 가운데 ── */}
+          <div className="wa-save">
+            {/* 안내는 담긴 것이 있을 때만 — 0건에서 「모두 담으셨나요?」는 물음이 성립하지 않는다 */}
+            {cart.length > 0 && (
+              <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, textAlign: 'center', marginBottom: 8 }}>
+                담을 약품을 모두 담으셨나요?
+              </div>
+            )}
+            {/* ★ 톤 낮춤 — 여기서는 최종 동작이 아니라 확인 모달로 넘어가는 단계다. */}
+            <button onClick={tryOpen} disabled={!cart.length || !ready} style={{
+              width: '100%', padding: '15px 0', borderRadius: 12,
+              cursor: (!cart.length || !ready) ? 'not-allowed' : 'pointer',
+              border: '1px solid ' + ((!cart.length || !ready) ? rgba(NAVY, 0.15) : LAVENDER),
+              background: (!cart.length || !ready) ? rgba(NAVY, 0.05) : rgba(LAVENDER, 0.14),
+              color: (!cart.length || !ready) ? rgba(NAVY, 0.45) : PURPLE,
+              fontSize: 15, fontWeight: 800,
+            }}>{cart.length ? `${cart.length}개 품목 신청하기` : '담은 약품이 없습니다'}</button>
+            <div style={{ fontSize: 12, color: rgba(NAVY, 0.65), textAlign: 'center', marginTop: 10, lineHeight: 1.6 }}>
+              저장하면 내용을 수정할 수 없습니다.<br />병동당 1회만 신청할 수 있습니다.
+            </div>
+          </div>
+        </>
       )}
 
       {/* ── ★ 병동 변경 확인 — 담긴 약품이 있을 때만 ── */}
@@ -463,6 +500,7 @@ export default function App() {
                 flex: 1, padding: 13, borderRadius: 10, cursor: saving ? 'not-allowed' : 'pointer',
                 border: '1px solid ' + rgba(NAVY, 0.25), background: 'white', color: NAVY, fontSize: 14, fontWeight: 700,
               }}>취소</button>
+              {/* 최종 동작 — 여기서는 보라 채움으로 강조를 유지한다 */}
               <button onClick={submit} disabled={saving} style={{
                 flex: 2, padding: 13, borderRadius: 10, border: 'none', cursor: saving ? 'not-allowed' : 'pointer',
                 background: saving ? rgba(PURPLE, 0.5) : PURPLE, color: 'white', fontSize: 14, fontWeight: 800,

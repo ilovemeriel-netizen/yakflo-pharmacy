@@ -20,11 +20,22 @@ base.textContent = `
   .wa-cols { display: block; }
   .wa-sticky { position: static; }
 
-  /* 넓은 화면: 왼쪽 입력·검색 / 오른쪽 신청 목록(스크롤에 붙어 따라옴) */
+  /* 상단 한 줄: [병동] 3 4 5 6 | [작성자] ____ — 좁은 화면에서는 두 줄로 쌓임 */
+  .wa-top { display: flex; flex-direction: column; gap: 10px; }
+  .wa-top-ward, .wa-top-name { display: flex; align-items: center; gap: 8px; }
+  .wa-top-ward > .wa-grow, .wa-top-name > .wa-grow { flex: 1; min-width: 0; }
+
+  /* 저장 영역: 2단 아래 가운데 */
+  .wa-save { max-width: 420px; margin: 4px auto 0; }
+
+  /* 넓은 화면: 왼쪽 약품 검색 / 오른쪽 신청 목록(스크롤에 붙어 따라옴) */
   @media (min-width: 900px) {
     .wa-wrap { max-width: 1040px; padding: 20px 20px 56px; }
     .wa-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
     .wa-sticky { position: sticky; top: 16px; }
+    .wa-top { flex-direction: row; align-items: center; gap: 20px; }
+    .wa-top-ward { flex: 0 0 360px; }
+    .wa-top-name { flex: 1; min-width: 0; }
   }
 `
 document.head.appendChild(base)

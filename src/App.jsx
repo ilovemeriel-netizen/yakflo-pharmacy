@@ -3509,6 +3509,20 @@ function WardAdmin() {
     if (error) { flash('약품 검색 실패: ' + error.message, 'err'); setAFound([]); return }
     setAFound(data || []); setASearched(true)
   }
+  /* ★ 검색창 Enter로 추가 — 신청 앱과 같은 규칙.
+     한글 IME 조합 중 Enter는 조합 확정용이라 무시하고(isComposing·keyCode 229),
+     결과가 **정확히 1건일 때만** 담는다(여러 건에서 첫 번째를 자동으로 담으면 오추가가 된다). */
+  function onAqKeyDown(e, r) {
+    if (e.key !== 'Enter') return
+    if (e.nativeEvent?.isComposing || e.keyCode === 229) return
+    e.preventDefault()
+    const term = aq.trim()
+    if (term.length < 2) return
+    if (aSearching) return
+    if (aFound.length === 1) { addItem(r, aFound[0]); return }
+    if (aFound.length > 1) { flash(`검색 결과가 ${aFound.length}건입니다 — 추가할 약품을 눌러 주세요`, 'err'); return }
+    if (aSearched) addItem(r, { drug_name: term })   // 결과 0건이면 자유 입력으로 추가
+  }
   async function addItem(r, d) {
     const nm = String(d.drug_name || '').trim()
     if (!nm) { flash('약품명을 입력해 주세요', 'err'); return }
@@ -3649,7 +3663,8 @@ function WardAdmin() {
         <div style={{ borderTop: '1px solid ' + t.border, marginTop: 12, paddingTop: 12, textAlign: 'left' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>약품 추가 <span style={{ fontSize: 10, fontWeight: 400, color: t.textM }}>· 추가한 품목은 「약제과 추가」로 흐리게 표시됩니다</span></div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input value={aq} onChange={e => onAq(e.target.value)} placeholder="약품명·코드·성분명 2자 이상" style={{ ...ip2, width: 260 }} />
+            {/* ★ Enter로 추가 — 신청 앱과 같은 규칙: IME 조합 중 Enter는 무시하고, 결과가 1건일 때만 담는다 */}
+            <input value={aq} onChange={e => onAq(e.target.value)} onKeyDown={e => onAqKeyDown(e, r)} placeholder="약품명·코드·성분명 2자 이상 · Enter로 추가" style={{ ...ip2, width: 300 }} />
             {aSearching && <span style={{ fontSize: 11, color: t.textL }}>찾는 중...</span>}
             {/* drug_code는 nullable(0083) — 목록에 없는 약도 이름만으로 추가할 수 있다 */}
             {aq.trim().length >= 2 && <button onClick={() => addItem(r, { drug_name: aq.trim() })} disabled={adding} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 10, fontWeight: 600 }}>「{aq.trim()}」 직접 추가</button>}
@@ -3658,11 +3673,16 @@ function WardAdmin() {
             <div style={{ marginTop: 8, border: '1px solid ' + t.border, borderRadius: 8, overflow: 'hidden', maxHeight: 220, overflowY: 'auto' }}>
               {!aFound.length ? <div style={{ padding: '12px', fontSize: 11, color: t.textL }}>검색 결과가 없습니다 · 위 「직접 추가」로 이름만 넣을 수 있습니다</div>
                 : aFound.map(d => (
-                  <div key={d.drug_code || d.drug_name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderTop: '1px solid ' + t.border, fontSize: 12 }}>
+                  /* ★ 어느 행을 고르는지 보이도록 호버 시 배경 강조 */
+                  <div key={d.drug_code || d.drug_name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderTop: '1px solid ' + t.border, fontSize: 12 }}
+                    onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
                     <span style={{ flex: 1, fontWeight: 600, color: t.text }}>{d.drug_name} <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></span>
                     {/* ★ status로 거르지 않는다 — 약제과가 중지·휴면 약품으로 대체할 수 있어야 하므로 상태만 보여준다 */}
                     <Bd bg={d.status === '사용' ? t.greenL : t.bg} color={d.status === '사용' ? t.green : t.textM}>{d.status || '-'}</Bd>
-                    <button onClick={() => addItem(r, d)} disabled={adding} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 10, fontWeight: 700 }}>추가</button>
+                    {/* ★ 비상조제의 btn(LAV, PURPLE) 톤 — 라벤더 외곽선·옅은 배경·보라 글자. 고정폭 안에서 가운데 정렬 */}
+                    <span style={{ width: 72, display: 'flex', justifyContent: 'center' }}>
+                      <button onClick={() => addItem(r, d)} disabled={adding} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.lavender, background: t.lavender + '22', color: t.purple, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700 }}>추가</button>
+                    </span>
                   </div>))}
             </div>
           )}
@@ -3671,7 +3691,11 @@ function WardAdmin() {
     })()}
 
     {/* ── 인쇄 전용: 병동별 1장 ── */}
-    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;text-align:left;vertical-align:middle}.ward-print thead{display:table-header-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft{break-inside:avoid;page-break-inside:avoid}}'}</style>
+    {/* ★ 인쇄 색은 화면 테마와 무관하게 고정한다 — 다크 테마에서 t.text가 #E8E6E1(거의 흰색)이라
+        인쇄물 전체가 연한 회색으로 나오던 원인이다. 본문은 black 키워드(신규 hex 아님),
+        제목은 브랜드 보라, 저작권만 옅은 회색으로 못 박는다.
+        정렬: 헤더는 전부 가운데. 본문은 약품명·비고 좌측 / 수량·사용량 우측 / 단위 가운데. */}
+    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important;color:black}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print .wp-title{color:#804A87}.ward-print .wp-meta{color:black}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;vertical-align:middle;color:black}.ward-print th{text-align:center;font-weight:700}.ward-print td{text-align:center}.ward-print td:nth-child(1),.ward-print td:nth-child(5){text-align:left}.ward-print td:nth-child(2),.ward-print td:nth-child(4){text-align:right}.ward-print thead{display:table-header-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft{break-inside:avoid;page-break-inside:avoid;color:#A3A39E}}'}</style>
     {/* ── 인쇄 전용: 신청 1건당 A4 1장 · 빈 행으로 표 틀을 채워 수기 추가 기입 가능 ── */}
     <div className="ward-print">
       {printPages.map(r => {
@@ -3680,8 +3704,8 @@ function WardAdmin() {
            자연스럽게 다음 장으로 넘긴다(thead 반복 · tr break-inside:avoid로 행 잘림 방지). */
         const blanks = Math.max(0, WARD_PRINT_ROWS - list.length)
         return <div key={r.id} className="wp-page">
-          <div style={{ fontSize: 24, fontWeight: 800, color: t.accent, marginBottom: 8 }}>{r.ward}병동 약품 신청서</div>
-          <div style={{ fontSize: 12, marginBottom: 8 }}>작성자 {r.requester_name} · 신청일 {r.submitted_day} · {r.request_year} {r.season} · 상태 {r.status}</div>
+          <div className="wp-title" style={{ fontSize: 24, fontWeight: 800, marginBottom: 8 }}>{r.ward}병동 약품 신청서</div>
+          <div className="wp-meta" style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>작성자 {r.requester_name} · 신청일 {r.submitted_day} · {r.request_year} {r.season} · 상태 {r.status}</div>
           <table>
             <thead><tr>
               <th style={{ width: '44%' }}>약품명</th><th style={{ width: '13%' }}>수량</th>
