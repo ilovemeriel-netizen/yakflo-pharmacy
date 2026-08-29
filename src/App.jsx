@@ -3384,7 +3384,7 @@ function WardAdmin() {
      초기 키가 ''이라 so2()는 원본 배열을 그대로 돌려주고, hs2()의 3순환(오름▲→내림▼→해제)에서
      해제 상태로 돌아오면 로드 순서(= .order('sort_order') 오름차순)가 되살아난다
      → 신청분 1..N → 추가분 1000+ 구조 복귀.
-     ★ 인쇄는 이 정렬을 쓰지 않는다 — 인쇄 블록은 itemsOf()를 다시 호출해 원본 순서를 그대로 쓴다.
+     ★ 인쇄도 이 정렬을 공유한다 — 인쇄 블록이 같은 so2를 쓰므로 인쇄물 순서 = 화면 순서다.
        so2()는 [...a].sort()로 **사본**을 만들므로 원본 items 배열도 오염되지 않는다. */
   const { so: so2, hs: hs2, SI: SI2, sk: sk2 } = useSort('')
   const isAdmin = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
@@ -3758,7 +3758,11 @@ function WardAdmin() {
     {/* ── 인쇄 전용: 신청 1건당 A4 1장 · 빈 행으로 표 틀을 채워 수기 추가 기입 가능 ── */}
     <div className="ward-print">
       {printPages.map(r => {
-        const list = itemsOf(r.id)
+        /* ★ 인쇄는 **화면 정렬 상태를 그대로 따른다** — 상세 표(3654)와 같은 so2를 쓴다.
+           정렬 해제(sk2==='') 상태에서는 so2가 인자를 그대로 반환하므로
+           로드 순서(.order('sort_order') 오름차순 = 신청분 1..N → 추가분 1000+)가 유지된다.
+           so2는 [...a].sort()로 사본을 만들므로 원본 items 배열은 오염되지 않는다. */
+        const list = so2(itemsOf(r.id))
         /* ★ 품목이 WARD_PRINT_ROWS를 넘으면 빈 행 0 — 표가 이미 가득 찼으므로 채우지 않고
            자연스럽게 다음 장으로 넘긴다(thead 반복 · tr break-inside:avoid로 행 잘림 방지). */
         const blanks = Math.max(0, WARD_PRINT_ROWS - list.length)
@@ -3783,7 +3787,7 @@ function WardAdmin() {
             </td></tr></tfoot>
             <tbody>
               {/* ★ 「(추가)」는 약품명 열에만 붙인다 · 행 색은 기존 약품과 동일 · 비고 열 무변경
-                     ★ 인쇄는 화면 정렬을 따르지 않는다 — itemsOf(원본 sort_order 순)를 그대로 쓴다 */}
+                     ★ 인쇄는 화면 정렬 상태를 그대로 따른다(so2 공유) */}
               {list.map(it => <tr key={it.id}><td><WardItemName it={it} /></td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}
               {Array.from({ length: blanks }, (_, i) => <tr key={'b' + i}><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>)}
             </tbody>
