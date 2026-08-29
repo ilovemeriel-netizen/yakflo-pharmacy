@@ -3344,13 +3344,14 @@ const WARD_STATUSES = ['접수', '처리중', '완료']
      고정 요소 ≈ 제목 9.7 + 머리말 5.9 + 표 헤더 8.6 + 저작권 24.2 = 48.4mm
      22행 실측(2026-08-30): 저작권만 다음 장으로 밀려 병동당 2장이 됐다
        → 본문 213.4mm는 들어갔고 +저작권 237.6mm는 넘쳤다 → 실제 가용 높이는 213.4 ~ 237.6mm 사이.
-     18행 = 48.4 + 154.8 = 203.2mm → 하한(213.4mm) 대비 약 10.2mm(1.2행분) 여유.
-       ※ 16행(186.0mm·3행분 여유)에서 한 장 확인 후 18행으로 올렸다. 인쇄해 보고 넘치면 17 → 16 순으로 내릴 것.
+     19행 = 48.4 + 163.4 = 211.8mm → 하한(213.4mm) 대비 여유 **1.6mm뿐**이다.
+       ※ 16 → 18 → 19로 올려 왔다. ★ 인쇄해서 한 장을 넘기면 **18로 되돌릴 것**(그다음은 17 → 16).
+         여기가 계산상 상한이며, 프린터·용지·배율·브라우저 머리글 설정이 조금만 달라도 넘칠 수 있다.
    ★ 계산에 딱 맞추지 않는다 — 프린터·용지·배율·브라우저 머리글 설정에 따라 경계가 달라진다(ATC #239 전례).
      넘쳐서 2장이 되는 것보다 조금 남는 편이 안전하다.
    ★ 품목이 이 값을 넘으면 빈 행을 채우지 않고 자연스럽게 다음 장으로 넘어간다(표 헤더 반복·행 잘림 방지).
    ★ min-height·vh를 쓰지 않는다(함정 #11) — 행 높이 합으로만 지면을 채운다. */
-const WARD_PRINT_ROWS = 18
+const WARD_PRINT_ROWS = 19
 /* ★ 「약제과 추가」 판별 기준 — **신규 컬럼 없이** sort_order 값만으로 구분한다(0083 스키마 무변경).
    신청 앱(ward-submit)은 담은 순서대로 1..N을 넣고 MAX_ITEMS=100이라 100을 넘지 않는다.
    따라서 1000 이상은 관리 화면에서 약제과가 추가한 품목뿐이다.
@@ -3693,9 +3694,10 @@ function WardAdmin() {
     {/* ── 인쇄 전용: 병동별 1장 ── */}
     {/* ★ 인쇄 색은 화면 테마와 무관하게 고정한다 — 다크 테마에서 t.text가 #E8E6E1(거의 흰색)이라
         인쇄물 전체가 연한 회색으로 나오던 원인이다. 본문은 black 키워드(신규 hex 아님),
-        제목은 브랜드 보라, 저작권만 옅은 회색으로 못 박는다.
+        제목은 브랜드 보라, 머리말은 회색 토큰(#52524E — 제목·본문보다 흐리되 인쇄에서 읽히는 농도),
+        저작권만 옅은 회색으로 못 박는다.
         정렬: 헤더는 전부 가운데. 본문은 약품명·비고 좌측 / 수량·사용량 우측 / 단위 가운데. */}
-    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important;color:black}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print .wp-title{color:#804A87}.ward-print .wp-meta{color:black}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;vertical-align:middle;color:black}.ward-print th{text-align:center;font-weight:700}.ward-print td{text-align:center}.ward-print td:nth-child(1),.ward-print td:nth-child(5){text-align:left}.ward-print td:nth-child(2),.ward-print td:nth-child(4){text-align:right}.ward-print thead{display:table-header-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft{break-inside:avoid;page-break-inside:avoid;color:#A3A39E}}'}</style>
+    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important;color:black}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print .wp-title{color:#804A87}.ward-print .wp-meta{color:#52524E}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;vertical-align:middle;color:black}.ward-print th{text-align:center;font-weight:700}.ward-print td{text-align:center}.ward-print td:nth-child(1),.ward-print td:nth-child(5){text-align:left}.ward-print td:nth-child(2),.ward-print td:nth-child(4){text-align:right}.ward-print thead{display:table-header-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft{break-inside:avoid;page-break-inside:avoid;color:#A3A39E}}'}</style>
     {/* ── 인쇄 전용: 신청 1건당 A4 1장 · 빈 행으로 표 틀을 채워 수기 추가 기입 가능 ── */}
     <div className="ward-print">
       {printPages.map(r => {
