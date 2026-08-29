@@ -3340,18 +3340,27 @@ const WARD_SEASONS = ['설', '추석']
 const WARD_LIST = ['3', '4', '5', '6']
 const WARD_STATUSES = ['접수', '처리중', '완료']
 /* ★ 인쇄 1장에 들어가는 표 행수 — 실제 인쇄 후 미세 조정하는 **유일한 손잡이**.
-   [산정 근거]  A4 세로 297mm. 행 높이 8.6mm(아래 인쇄 CSS와 반드시 함께 움직일 것).
-     고정 요소 ≈ 제목 9.7 + 머리말 5.9 + 표 헤더 8.6 + 저작권 24.2 = 48.4mm
-     22행 실측(2026-08-30): 저작권만 다음 장으로 밀려 병동당 2장이 됐다
-       → 본문 213.4mm는 들어갔고 +저작권 237.6mm는 넘쳤다 → 실제 가용 높이는 213.4 ~ 237.6mm 사이.
-     19행 = 48.4 + 163.4 = 211.8mm → 하한(213.4mm) 대비 여유 **1.6mm뿐**이다.
-       ※ 16 → 18 → 19로 올려 왔다. ★ 인쇄해서 한 장을 넘기면 **18로 되돌릴 것**(그다음은 17 → 16).
-         여기가 계산상 상한이며, 프린터·용지·배율·브라우저 머리글 설정이 조금만 달라도 넘칠 수 있다.
-   ★ 계산에 딱 맞추지 않는다 — 프린터·용지·배율·브라우저 머리글 설정에 따라 경계가 달라진다(ATC #239 전례).
-     넘쳐서 2장이 되는 것보다 조금 남는 편이 안전하다.
-   ★ 품목이 이 값을 넘으면 빈 행을 채우지 않고 자연스럽게 다음 장으로 넘어간다(표 헤더 반복·행 잘림 방지).
+   [기준]  A4 세로 297mm. 행 높이 8.6mm(아래 인쇄 CSS와 반드시 함께 움직일 것).
+   [가용 높이]  22행 실측(2026-08-30): 저작권만 다음 장으로 밀려 병동당 2장이 됐다
+       → 본문 213.4mm는 들어갔고 +저작권 237.6mm는 넘쳤다 → 실제 가용 높이는 213.4 ~ 237.6mm.
+       아래 계산은 **하한 213.4mm**를 기준으로 한다.
+
+   [저작권을 표 안(tfoot)으로 옮겨 공간을 회수]
+     이전: 표 뒤에 별도 블록 <Ft/> — 여백 24px + 구분선 + 패딩 20/12px + 2줄 ≈ **24.2mm**
+     현재: <tfoot> 한 행 — **8.6mm** (본문 행과 같은 높이)
+     → 회수 ≈ **15.6mm ≈ 1.8행**
+     ※ tfoot는 display:table-footer-group이라 표가 지면을 채우면 자연히 **페이지 바닥**에 놓인다.
+       position:fixed·@page margin-box는 브라우저 인쇄에서 동작이 갈려 쓰지 않는다.
+
+   [고정 요소]  제목 9.7 + 머리말 5.9 + thead 8.6 + tfoot 8.6 = **32.8mm**
+   [행 예산]    213.4 − 32.8 = 180.6mm → 21.0행이 이론상 상한
+   [채택 20행]  32.8 + 172.0 = **204.8mm** → 하한 대비 여유 **8.6mm(1행분)**
+       ※ 19 → 20으로 올렸다. ★ 인쇄해서 한 장을 넘기면 **19로 되돌릴 것**(그다음 18 → 17).
+   ★ 계산에 딱 맞추지 않는다(21행 금지) — 프린터·용지·배율·브라우저 머리글 설정에 따라 경계가 달라진다
+     (ATC #239 전례). 넘쳐서 2장이 되는 것보다 조금 남는 편이 안전하다.
+   ★ 품목이 이 값을 넘으면 빈 행을 채우지 않고 자연스럽게 다음 장으로 넘어간다(thead·tfoot 매 장 반복).
    ★ min-height·vh를 쓰지 않는다(함정 #11) — 행 높이 합으로만 지면을 채운다. */
-const WARD_PRINT_ROWS = 19
+const WARD_PRINT_ROWS = 20
 /* ★ 「약제과 추가」 판별 기준 — **신규 컬럼 없이** sort_order 값만으로 구분한다(0083 스키마 무변경).
    신청 앱(ward-submit)은 담은 순서대로 1..N을 넣고 MAX_ITEMS=100이라 100을 넘지 않는다.
    따라서 1000 이상은 관리 화면에서 약제과가 추가한 품목뿐이다.
@@ -3708,8 +3717,12 @@ function WardAdmin() {
         인쇄물 전체가 연한 회색으로 나오던 원인이다. 본문은 black 키워드(신규 hex 아님),
         제목은 브랜드 보라, 머리말은 회색 토큰(#52524E — 제목·본문보다 흐리되 인쇄에서 읽히는 농도),
         저작권만 옅은 회색으로 못 박는다.
+        ★ 저작권은 표의 <tfoot>에 넣는다 — display:table-footer-group이라 표가 지면을 채우면
+          자연히 페이지 바닥에 놓이고, 2장이 되면 장마다 반복된다. 별도 블록으로 뒤에 붙이던
+          방식(약 24.2mm)보다 15.6mm를 회수해 그만큼 표를 아래까지 늘렸다.
+          position:fixed·@page margin-box는 브라우저 인쇄 지원이 갈려 쓰지 않는다.
         정렬: 헤더는 전부 가운데. 본문은 약품명·비고 좌측 / 수량·사용량 우측 / 단위 가운데. */}
-    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important;color:black}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print .wp-title{color:#804A87}.ward-print .wp-meta{color:#52524E}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;vertical-align:middle;color:black}.ward-print th{text-align:center;font-weight:700}.ward-print td{text-align:center}.ward-print td:nth-child(1),.ward-print td:nth-child(5){text-align:left}.ward-print td:nth-child(2),.ward-print td:nth-child(4){text-align:right}.ward-print thead{display:table-header-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft{break-inside:avoid;page-break-inside:avoid;color:#A3A39E}}'}</style>
+    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important;color:black}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print .wp-title{color:#804A87}.ward-print .wp-meta{color:#52524E}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;vertical-align:middle;color:black}.ward-print th{text-align:center;font-weight:700}.ward-print td{text-align:center}.ward-print td:nth-child(1),.ward-print td:nth-child(5){text-align:left}.ward-print td:nth-child(2),.ward-print td:nth-child(4){text-align:right}.ward-print thead{display:table-header-group}.ward-print tfoot{display:table-footer-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft td{border:none;height:8.6mm;text-align:center;font-size:8px;line-height:1.35;color:#A3A39E;padding:1mm 2mm 0}}'}</style>
     {/* ── 인쇄 전용: 신청 1건당 A4 1장 · 빈 행으로 표 틀을 채워 수기 추가 기입 가능 ── */}
     <div className="ward-print">
       {printPages.map(r => {
@@ -3725,14 +3738,20 @@ function WardAdmin() {
               <th style={{ width: '44%' }}>약품명</th><th style={{ width: '13%' }}>수량</th>
               <th style={{ width: '12%' }}>단위</th><th style={{ width: '13%' }}>사용량</th><th style={{ width: '18%' }}>비고</th>
             </tr></thead>
+            {/* ★ 저작권을 tfoot에 둔다 — display:table-footer-group이라 표가 지면을 채우면
+                자연히 페이지 **바닥**에 놓이고, 2장이 되면 **장마다 반복**된다.
+                (thead와 짝을 이루므로 어느 장을 떼어 봐도 머리·꼬리가 갖춰진다.)
+                JSX 순서상 tbody보다 앞에 두어도 렌더는 표 맨 아래다. */}
+            <tfoot><tr className="wp-ft"><td colSpan={5}>
+              C O P Y R I G H T&nbsp; ⓒ&nbsp; 2 0 2 6&nbsp; J E O N G H W A&nbsp;&nbsp; L E E<br />
+              All rights reserved. 무단 전재 및 재배포 금지.
+            </td></tr></tfoot>
             <tbody>
               {/* ★ 「(약제과 추가)」는 약품명 열에만 붙인다 · 행 색은 기존 약품과 동일 · 비고 열 무변경 */}
               {list.map(it => <tr key={it.id}><td>{wardItemName(it)}</td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}
               {Array.from({ length: blanks }, (_, i) => <tr key={'b' + i}><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>)}
             </tbody>
           </table>
-          {/* 인쇄용 저작권 — 장마다 1회. break-inside:avoid로 두 줄이 갈라져 다음 장으로 밀리지 않게 한다 */}
-          <div className="wp-ft"><Ft /></div>
         </div>
       })}
     </div>
