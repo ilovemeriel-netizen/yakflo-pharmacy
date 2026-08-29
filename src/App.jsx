@@ -3350,6 +3350,12 @@ const WARD_STATUSES = ['접수', '처리중', '완료']
    ★ 품목이 이 값을 넘으면 빈 행을 채우지 않고 자연스럽게 다음 장으로 넘어간다(표 헤더 반복·행 잘림 방지).
    ★ min-height·vh를 쓰지 않는다(함정 #11) — 행 높이 합으로만 지면을 채운다. */
 const WARD_PRINT_ROWS = 16
+/* ★ 「약제과 추가」 판별 기준 — **신규 컬럼 없이** sort_order 값만으로 구분한다(0083 스키마 무변경).
+   신청 앱(ward-submit)은 담은 순서대로 1..N을 넣고 MAX_ITEMS=100이라 100을 넘지 않는다.
+   따라서 1000 이상은 관리 화면에서 약제과가 추가한 품목뿐이다.
+   ※ ward_request_items에는 created_at이 없어 시각 비교로는 구분할 수 없다(0083 실측). */
+const WARD_ADMIN_SORT_BASE = 1000
+const isAdminAdded = it => Number(it.sort_order) >= WARD_ADMIN_SORT_BASE
 function WardAdmin() {
   const { t, memberRole, profile } = useTheme()
   const { so, TS, sk, sd, setSort } = useSort('submitted_at', 'desc')
@@ -3364,6 +3370,11 @@ function WardAdmin() {
   const [edit, setEdit] = useState(null)                 // {itemId, field}
   const [delTarget, setDelTarget] = useState(null)       // 삭제 확인 대상 신청(헤더 행)
   const [deleting, setDeleting] = useState(false)
+  const [printOne, setPrintOne] = useState(null)         // 이 신청 1건만 인쇄(null이면 필터 전체)
+  const [aq, setAq] = useState('')                       // 약제과 약품 추가 — 검색어
+  const [aFound, setAFound] = useState([]); const [aSearched, setASearched] = useState(false); const [aSearching, setASearching] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const aTimer = useRef(null)
   const flash = (text, kind) => { setMsg({ text, kind }); setTimeout(() => setMsg(null), kind === 'err' ? 3000 : 1800) }
 
   /* ★ 삭제 결과 판정 공통 — RLS DELETE는 admin 한정(0083)인데, 정책에 막히면
@@ -3458,9 +3469,56 @@ function WardAdmin() {
     flash(r.ward + '병동 신청을 삭제했습니다 · 품목도 함께 삭제됩니다'); loadAll()
   }
 
-  /* ── 인쇄: 현재 필터 결과를 병동별 1장씩 ── */
-  /* 인쇄: 현재 필터 결과를 병동 순으로 — 신청 1건당 A4 1장 (병동당 1회 제한이라 사실상 병동별 1장) */
-  const printPages = [...sorted].sort((a, b) => (a.ward === b.ward ? 0 : a.ward < b.ward ? -1 : 1))
+  /* ── 인쇄 ─────────────────────────────────────────────────────
+     · printOne이 있으면 그 신청 1건만, 없으면 현재 필터 결과 전체를 병동 순으로.
+     · 신청 1건당 A4 1장(병동당 1회 제한이라 사실상 병동별 1장) — 레이아웃은 동일하게 재사용한다. */
+  const printPages = printOne
+    ? reqs.filter(x => x.id === printOne).map(x => ({ ...x, submitted_day: (x.submitted_at || '').slice(0, 10) }))
+    : [...sorted].sort((a, b) => (a.ward === b.ward ? 0 : a.ward < b.ward ? -1 : 1))
+  /* printOne이 렌더에 반영된 뒤(=commit 이후) 인쇄하고, 곧바로 전체 인쇄 상태로 되돌린다 */
+  useEffect(() => {
+    if (!printOne) return
+    window.print()
+    /* 인쇄 대화상자가 닫힌 뒤 전체 인쇄 상태로 되돌린다 — 효과 본문에서 동기 setState를 하지 않는다 */
+    const tid = setTimeout(() => setPrintOne(null), 0)
+    return () => clearTimeout(tid)
+  }, [printOne])
+
+  /* ── 약제과 약품 추가 — 관리 화면은 authenticated라 Function 없이 drugs를 직접 조회한다 ── */
+  function onAq(v) {
+    setAq(v); clearTimeout(aTimer.current)
+    if (v.trim().length < 2) { setAFound([]); setASearched(false); return }
+    aTimer.current = setTimeout(() => searchDrugs(v.trim()), 300)
+  }
+  async function searchDrugs(term) {
+    setASearching(true)
+    /* PostgREST or()는 콤마·괄호로 조건을 가른다 — 검색어에서 제거하고 LIKE 와일드카드도 이스케이프 */
+    const safe = term.replace(/[,()]/g, ' ').replace(/[%_\\]/g, m => '\\' + m)
+    const { data, error } = await supabase.from('drugs')
+      .select('drug_code,drug_name,status,unit')
+      .or(`drug_name.ilike.%${safe}%,drug_code.ilike.%${safe}%,ingredient_kr.ilike.%${safe}%,ingredient_en.ilike.%${safe}%`)
+      .limit(30)
+    setASearching(false)
+    if (error) { flash('약품 검색 실패: ' + error.message, 'err'); setAFound([]); return }
+    setAFound(data || []); setASearched(true)
+  }
+  async function addItem(r, d) {
+    const nm = String(d.drug_name || '').trim()
+    if (!nm) { flash('약품명을 입력해 주세요', 'err'); return }
+    const list = itemsOf(r.id)
+    if (list.some(x => (x.drug_code || x.drug_name) === (d.drug_code || nm))) { flash('이미 담긴 약품입니다', 'err'); return }
+    setAdding(true)
+    /* ★ sort_order를 WARD_ADMIN_SORT_BASE 위에서 매겨 「약제과 추가」로 식별한다(스키마 변경 없음) */
+    const nextOrder = Math.max(WARD_ADMIN_SORT_BASE, ...list.map(x => Number(x.sort_order) || 0)) + 1
+    const { error } = await supabase.from('ward_request_items').insert([{
+      request_id: r.id, drug_code: d.drug_code || null, drug_name: nm,
+      qty: 0, unit: d.unit || null, sort_order: nextOrder,
+    }])
+    setAdding(false)
+    if (error) { flash('추가 실패: ' + error.message, 'err'); return }
+    setAq(''); setAFound([]); setASearched(false)
+    flash('「' + nm + '」을(를) 추가했습니다 · 수량을 입력해 주세요'); loadAll()
+  }
 
   const cols = [
     { k: 'submitted_day', h: '신청일', th: { textAlign: 'left' } },
@@ -3469,6 +3527,7 @@ function WardAdmin() {
     { k: 'item_count', h: '품목수', th: { textAlign: 'right' } },
     { k: 'status', h: '상태', th: { textAlign: 'left' } },
     { k: 'notice', h: '비고', th: { textAlign: 'left' } },
+    { k: '_print', h: '', plain: true, th: { textAlign: 'center' } },   // 행별 개별 인쇄(정렬 대상 아님)
   ]
   const td = { padding: '10px 12px', fontSize: 12, textAlign: 'left', color: t.text }
   const ip2 = { padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 11, outline: 'none', background: t.bg, color: t.text, width: '100%', boxSizing: 'border-box' }
@@ -3515,7 +3574,7 @@ function WardAdmin() {
           {opts.map(o => <button key={o} onClick={() => { set(o); setPage(1) }} style={{ padding: '5px 11px', borderRadius: 8, border: '1px solid ' + (val === o ? t.accent : t.border), background: val === o ? t.accentL : t.card, color: val === o ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: val === o ? 700 : 500 }}>{o}</button>)}
         </span>))}
       <div style={{ flex: 1 }} />
-      <button onClick={() => window.print()} disabled={!printPages.length} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: printPages.length ? 'pointer' : 'not-allowed', fontSize: 11, fontWeight: 700 }}>인쇄 (병동별)</button>
+      <button onClick={() => window.print()} disabled={!printPages.length} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: printPages.length ? 'pointer' : 'not-allowed', fontSize: 11, fontWeight: 700 }}>인쇄 (전체)</button>
     </div>
 
     {/* ── 신청 내역 ── */}
@@ -3533,6 +3592,10 @@ function WardAdmin() {
               <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{r.item_count}</td>
               <td style={{ ...td, textAlign: 'left' }}><Bd bg={bg} color={fg}>{r.status}</Bd></td>
               <td style={{ ...td, color: t.textM, fontSize: 11 }}>{r.request_year} {r.season}</td>
+              {/* ★ 인쇄 버튼 — 행 클릭(상세 열기)이 함께 일어나지 않게 셀·버튼 양쪽에서 stopPropagation */}
+              <td style={{ ...td, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                <button onClick={e => { e.stopPropagation(); setPrintOne(r.id) }} title="이 신청만 인쇄" style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>인쇄</button>
+              </td>
             </tr>
           })}</tbody>
       </StandardTable>
@@ -3550,6 +3613,7 @@ function WardAdmin() {
           <div style={{ flex: 1 }} />
           <span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>상태</span>
           <select value={r.status} onChange={e => setStatus(r, e.target.value)} style={{ ...ip2, width: 'auto' }}>{WARD_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select>
+          <button onClick={() => setPrintOne(r.id)} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>인쇄</button>
           {isAdmin && <button onClick={() => setDelTarget(r)} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>신청 삭제</button>}
           <button onClick={() => setOpenRow(null)} style={{ border: 'none', background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12 }}>닫기 ✕</button>
         </div>
@@ -3563,7 +3627,7 @@ function WardAdmin() {
                   : <span onClick={() => setEdit({ itemId: it.id, field: f })} style={{ cursor: 'pointer', color: val == null || val === '' ? t.textL : t.text }}>{val == null || val === '' ? '클릭' : val}</span>}
               </td>
               return <tr key={it.id}>
-                <td style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid ' + t.border, fontWeight: 600 }}>{it.drug_name}{it.drug_code ? <span style={{ color: t.textL, fontSize: 10 }}> ({it.drug_code})</span> : <span style={{ color: t.amber, fontSize: 10 }}> · 코드 없음</span>}</td>
+                <td style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid ' + t.border, fontWeight: 600, color: isAdminAdded(it) ? t.textL : t.text }}>{it.drug_name}{it.drug_code ? <span style={{ color: t.textL, fontSize: 10 }}> ({it.drug_code})</span> : <span style={{ color: t.amber, fontSize: 10 }}> · 코드 없음</span>}{isAdminAdded(it) ? <span style={{ color: t.textL, fontSize: 10, fontWeight: 700 }}> · 약제과 추가</span> : null}</td>
                 {cell('qty', it.qty, 'right')}
                 {cell('unit', it.unit, 'left')}
                 {cell('usage_qty', it.usage_qty, 'right')}
@@ -3573,6 +3637,29 @@ function WardAdmin() {
             })}</tbody>
         </table>
         <div style={{ fontSize: 10, color: t.textM, marginTop: 8, textAlign: 'left' }}>수량·단위·사용량·비고는 클릭해서 수정합니다. 병동은 저장 후 수정할 수 없어 여기서 처리합니다.</div>
+
+        {/* ── ★ 약제과 약품 추가 — 병동이 빠뜨린 약을 여기서 채운다 ── */}
+        <div style={{ borderTop: '1px solid ' + t.border, marginTop: 12, paddingTop: 12, textAlign: 'left' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>약품 추가 <span style={{ fontSize: 10, fontWeight: 400, color: t.textM }}>· 추가한 품목은 「약제과 추가」로 흐리게 표시됩니다</span></div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input value={aq} onChange={e => onAq(e.target.value)} placeholder="약품명·코드·성분명 2자 이상" style={{ ...ip2, width: 260 }} />
+            {aSearching && <span style={{ fontSize: 11, color: t.textL }}>찾는 중...</span>}
+            {/* drug_code는 nullable(0083) — 목록에 없는 약도 이름만으로 추가할 수 있다 */}
+            {aq.trim().length >= 2 && <button onClick={() => addItem(r, { drug_name: aq.trim() })} disabled={adding} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 10, fontWeight: 600 }}>「{aq.trim()}」 직접 추가</button>}
+          </div>
+          {aSearched && !aSearching && (
+            <div style={{ marginTop: 8, border: '1px solid ' + t.border, borderRadius: 8, overflow: 'hidden', maxHeight: 220, overflowY: 'auto' }}>
+              {!aFound.length ? <div style={{ padding: '12px', fontSize: 11, color: t.textL }}>검색 결과가 없습니다 · 위 「직접 추가」로 이름만 넣을 수 있습니다</div>
+                : aFound.map(d => (
+                  <div key={d.drug_code || d.drug_name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderTop: '1px solid ' + t.border, fontSize: 12 }}>
+                    <span style={{ flex: 1, fontWeight: 600, color: t.text }}>{d.drug_name} <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></span>
+                    {/* ★ status로 거르지 않는다 — 약제과가 중지·휴면 약품으로 대체할 수 있어야 하므로 상태만 보여준다 */}
+                    <Bd bg={d.status === '사용' ? t.greenL : t.bg} color={d.status === '사용' ? t.green : t.textM}>{d.status || '-'}</Bd>
+                    <button onClick={() => addItem(r, d)} disabled={adding} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 10, fontWeight: 700 }}>추가</button>
+                  </div>))}
+            </div>
+          )}
+        </div>
       </div>
     })()}
 
@@ -3594,7 +3681,8 @@ function WardAdmin() {
               <th style={{ width: '12%' }}>단위</th><th style={{ width: '13%' }}>사용량</th><th style={{ width: '18%' }}>비고</th>
             </tr></thead>
             <tbody>
-              {list.map(it => <tr key={it.id}><td>{it.drug_name}</td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}
+              {/* ★ 약제과가 추가한 품목은 인쇄물에서도 회색(t.textL)으로 흐리게 — 병동이 적은 것과 구분 */}
+              {list.map(it => <tr key={it.id} style={isAdminAdded(it) ? { color: t.textL } : undefined}><td>{it.drug_name}{isAdminAdded(it) ? ' · 약제과 추가' : ''}</td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}
               {Array.from({ length: blanks }, (_, i) => <tr key={'b' + i}><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>)}
             </tbody>
           </table>

@@ -37,6 +37,7 @@ export default function App() {
   const [done, setDone] = useState(null)        // { ward, name, period, items:[{drug_name, qty}] }
   const [closed, setClosed] = useState(false)   // 접수 기간 밖
   const [backNotice, setBackNotice] = useState(false)   // 뒤로 가기를 한 번 흡수했을 때의 안내
+  const [wardConfirm, setWardConfirm] = useState(null)  // 바꾸려는 병동(확인 대기)
   const timer = useRef(null)
   const submitting = useRef(false)              // ★ 이중 제출 잠금(리렌더와 무관하게 즉시 걸림)
   const pushed = useRef(false)                  // 완료 이력 push를 1회로 제한
@@ -77,6 +78,24 @@ export default function App() {
       if (d.capped) setMsg({ kind: 'info', text: '결과가 많습니다. 검색어를 더 입력해 주세요' })
     } catch { setMsg({ kind: 'err', text: '연결에 실패했습니다. 잠시 후 다시 시도해 주세요' }) }
     finally { setSearching(false) }
+  }
+
+  /* ── 병동 전환 ────────────────────────────────────────────────
+     ★ 병동을 바꾸면 담긴 목록과 작성자 이름을 **모두** 비운다.
+       병동별로 근무자가 다르므로 이름은 병동에 딸린 값이고, 목록이 남으면
+       3병동이 담은 약이 4병동 이름으로 접수되는 데이터 오류가 난다.
+     · 담긴 약품이 있을 때만 확인을 받는다(잃을 것이 큰 경우).
+     · 이름만 있고 목록이 비었으면 모달 없이 전환하고, 이름을 비웠다는 사실만 알린다
+       — 「담긴 약품 N개」 문구가 0건에서는 거짓이 되고, 다시 칠 것은 이름 한 줄뿐이다. */
+  function pickWard(w) {
+    if (w === ward) return
+    if (cart.length) { setWardConfirm(w); return }
+    applyWard(w)
+  }
+  function applyWard(w) {
+    const hadName = !!name.trim()
+    setWard(w); setCart([]); setName(''); setQ(''); setFound([]); setSearched(false); setWardConfirm(null)
+    setMsg(hadName ? { kind: 'info', text: '병동을 바꿔 작성자 이름을 비웠습니다 — 다시 입력해 주세요' } : null)
   }
 
   /* ── 담기 / 편집 / 삭제 ── */
@@ -237,7 +256,7 @@ export default function App() {
               <label style={label}><span style={step()}>1</span>병동 선택</label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
                 {WARDS.map(w => (
-                  <button key={w} onClick={() => setWard(w)} style={{
+                  <button key={w} onClick={() => pickWard(w)} style={{
                     padding: '13px 0', borderRadius: 10, cursor: 'pointer', fontWeight: 800, fontSize: 15,
                     border: '1px solid ' + (ward === w ? PURPLE : rgba(NAVY, 0.2)),
                     background: ward === w ? PURPLE : 'white',
@@ -318,18 +337,54 @@ export default function App() {
                       </div>
                     </div>))}</div>
                 )}
-                {/* ★ 저장 버튼에 품목 수를 실어 누르기 전에 개수가 눈에 들어오게 한다 · 비어 있으면 비활성 */}
+              </div>
+
+              {/* ★ 저장은 목록 카드 **밖** 하단에 둔다 — 목록을 다 확인한 뒤 누르는 동작으로 분리 */}
+              <div style={{ padding: '2px 2px 0' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, textAlign: 'center', marginBottom: 8 }}>
+                  담을 약품을 모두 담으셨나요?
+                </div>
                 <button onClick={tryOpen} disabled={!cart.length || !ready} style={{
-                  width: '100%', padding: '14px 0', borderRadius: 12, border: 'none',
+                  width: '100%', padding: '15px 0', borderRadius: 12, border: 'none',
                   cursor: (!cart.length || !ready) ? 'not-allowed' : 'pointer',
                   background: (!cart.length || !ready) ? rgba(NAVY, 0.15) : PURPLE,
                   color: (!cart.length || !ready) ? rgba(NAVY, 0.5) : 'white',
-                  fontSize: 15, fontWeight: 800, marginTop: 4,
+                  fontSize: 15, fontWeight: 800,
                 }}>{cart.length ? `${cart.length}개 품목 신청하기` : '담은 약품이 없습니다'}</button>
                 <div style={{ fontSize: 12, color: rgba(NAVY, 0.65), textAlign: 'center', marginTop: 10, lineHeight: 1.6 }}>
                   저장하면 내용을 수정할 수 없습니다.<br />병동당 1회만 신청할 수 있습니다.
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ★ 병동 변경 확인 — 담긴 약품이 있을 때만 ── */}
+      {wardConfirm && (
+        <div onClick={() => setWardConfirm(null)} style={{
+          position: 'fixed', inset: 0, background: rgba(NAVY, 0.45), zIndex: 100,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 380, padding: '22px 20px' }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: NAVY, marginBottom: 12 }}>{wardConfirm}병동으로 바꿀까요?</div>
+            <div style={{ ...warn, marginBottom: 14, padding: '13px 14px' }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: PURPLE, lineHeight: 1.6 }}>
+                담긴 약품 {cart.length}개가 있습니다.
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginTop: 8, lineHeight: 1.6 }}>
+                병동을 바꾸면 목록과 작성자 이름이 비워집니다.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setWardConfirm(null)} style={{
+                flex: 1, padding: 13, borderRadius: 10, cursor: 'pointer',
+                border: '1px solid ' + rgba(NAVY, 0.25), background: 'white', color: NAVY, fontSize: 14, fontWeight: 700,
+              }}>취소</button>
+              <button onClick={() => applyWard(wardConfirm)} style={{
+                flex: 2, padding: 13, borderRadius: 10, border: 'none', cursor: 'pointer',
+                background: PURPLE, color: 'white', fontSize: 14, fontWeight: 800,
+              }}>바꾸고 비우기</button>
             </div>
           </div>
         </div>
