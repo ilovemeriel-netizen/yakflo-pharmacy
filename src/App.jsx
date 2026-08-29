@@ -3391,6 +3391,9 @@ function WardAdmin() {
   const [aq, setAq] = useState('')                       // 약제과 약품 추가 — 검색어
   const [aFound, setAFound] = useState([]); const [aSearched, setASearched] = useState(false); const [aSearching, setASearching] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)          // 「약품 추가」 접기·펴기(기본 접힘)
+  /* 상세를 열고 닫거나 다른 신청으로 옮길 때 추가 영역을 초기 상태로 되돌린다 */
+  const resetAdd = () => { setAddOpen(false); setAq(''); setAFound([]); setASearched(false) }
   const aTimer = useRef(null)
   const flash = (text, kind) => { setMsg({ text, kind }); setTimeout(() => setMsg(null), kind === 'err' ? 3000 : 1800) }
 
@@ -3615,7 +3618,7 @@ function WardAdmin() {
           : !paged.length ? <tr><td colSpan={cols.length} style={{ padding: 40, textAlign: 'center', color: t.textL }}>신청 내역이 없습니다</td></tr>
           : paged.map(r => {
             const [bg, fg] = stColor(r.status)
-            return <tr key={r.id} style={{ borderBottom: '1px solid ' + t.border, cursor: 'pointer' }} onClick={() => setOpenRow(openRow === r.id ? null : r.id)}
+            return <tr key={r.id} style={{ borderBottom: '1px solid ' + t.border, cursor: 'pointer' }} onClick={() => { resetAdd(); setOpenRow(openRow === r.id ? null : r.id) }}
               onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
               <td style={{ ...td, color: t.textM }}>{r.submitted_day}</td>
               <td style={{ ...td, fontWeight: 700 }}>{r.ward}병동</td>
@@ -3674,10 +3677,21 @@ function WardAdmin() {
                (품목표는 카드 전체 폭을 쓰므로 그보다 조금 좁게 — 결과 행이 지나치게 길어지지 않게). ── */}
         <div style={{ borderTop: '1px solid ' + t.border, marginTop: 12, paddingTop: 12 }}>
           <div style={{ maxWidth: 720, margin: '0 auto', textAlign: 'center' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 8 }}>약품 추가 <span style={{ fontSize: 10, fontWeight: 400, color: t.textM }}>· 추가한 품목은 약품명 옆에 (약제과 추가)로 표시됩니다</span></div>
-            {/* ★ Enter로 추가 — 신청 앱과 같은 규칙: IME 조합 중 Enter는 무시하고, 결과가 1건일 때만 담는다 */}
-            <input value={aq} onChange={e => onAq(e.target.value)} onKeyDown={e => onAqKeyDown(e, r)} placeholder="약품명·코드·성분명 2자 이상 · Enter로 추가" style={{ ...ip2, width: '100%', maxWidth: 420, textAlign: 'center' }} />
-            {aSearching && <div style={{ fontSize: 11, color: t.textL, marginTop: 6 }}>찾는 중...</div>}
+            {/* ★ 비상조제 btn(LAV, PURPLE) 톤의 버튼 — 라벤더 외곽선·옅은 배경·보라 글자.
+                버튼 모양이면 눌렀을 때 반응해야 하므로 **접기·펴기 토글**로 만들었다.
+                기본은 접힘 — 약품 추가는 병동이 빠뜨린 약을 채우는 예외 동작이고,
+                상세 패널이 이미 길어 평소에는 품목표에 집중하는 편이 낫다. */}
+            <button onClick={() => (addOpen ? resetAdd() : setAddOpen(true))} style={{
+              padding: '7px 18px', borderRadius: 8, border: '1px solid ' + t.lavender,
+              background: t.lavender + '22', color: t.purple, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+            }}>{addOpen ? '− 약품 추가' : '+ 약품 추가'}</button>
+
+            {addOpen && <>
+              {/* 안내는 버튼 아래 별도 줄·중앙·회색 작은 글씨 */}
+              <div style={{ fontSize: 10, fontWeight: 400, color: t.textM, marginTop: 8, marginBottom: 8 }}>추가한 품목은 약품명 옆에 (약제과 추가)로 표시됩니다</div>
+              {/* ★ Enter로 추가 — 신청 앱과 같은 규칙: IME 조합 중 Enter는 무시하고, 결과가 1건일 때만 담는다 */}
+              <input value={aq} onChange={e => onAq(e.target.value)} onKeyDown={e => onAqKeyDown(e, r)} placeholder="약품명·코드·성분명 2자 이상 · Enter로 추가" style={{ ...ip2, width: '100%', maxWidth: 420, textAlign: 'center' }} />
+              {aSearching && <div style={{ fontSize: 11, color: t.textL, marginTop: 6 }}>찾는 중...</div>}
             {/* drug_code는 nullable(0083) — 목록에 없는 약도 이름만으로 추가할 수 있다.
                 「직접 추가」도 [추가]와 같은 가운데 정렬로 맞춘다(검색창 아래 한 줄). */}
             {aq.trim().length >= 2 && <div style={{ marginTop: 8 }}>
@@ -3707,6 +3721,7 @@ function WardAdmin() {
                     </div>))}
               </div>
             )}
+            </>}
           </div>
         </div>
       </div>
