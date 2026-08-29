@@ -3344,18 +3344,25 @@ const WARD_STATUSES = ['접수', '처리중', '완료']
      고정 요소 ≈ 제목 9.7 + 머리말 5.9 + 표 헤더 8.6 + 저작권 24.2 = 48.4mm
      22행 실측(2026-08-30): 저작권만 다음 장으로 밀려 병동당 2장이 됐다
        → 본문 213.4mm는 들어갔고 +저작권 237.6mm는 넘쳤다 → 실제 가용 높이는 213.4 ~ 237.6mm 사이.
-     16행 = 48.4 + 137.6 = 186.0mm → 하한(213.4mm) 대비 약 27mm(3행분) 여유.
+     18행 = 48.4 + 154.8 = 203.2mm → 하한(213.4mm) 대비 약 10.2mm(1.2행분) 여유.
+       ※ 16행(186.0mm·3행분 여유)에서 한 장 확인 후 18행으로 올렸다. 인쇄해 보고 넘치면 17 → 16 순으로 내릴 것.
    ★ 계산에 딱 맞추지 않는다 — 프린터·용지·배율·브라우저 머리글 설정에 따라 경계가 달라진다(ATC #239 전례).
      넘쳐서 2장이 되는 것보다 조금 남는 편이 안전하다.
    ★ 품목이 이 값을 넘으면 빈 행을 채우지 않고 자연스럽게 다음 장으로 넘어간다(표 헤더 반복·행 잘림 방지).
    ★ min-height·vh를 쓰지 않는다(함정 #11) — 행 높이 합으로만 지면을 채운다. */
-const WARD_PRINT_ROWS = 16
+const WARD_PRINT_ROWS = 18
 /* ★ 「약제과 추가」 판별 기준 — **신규 컬럼 없이** sort_order 값만으로 구분한다(0083 스키마 무변경).
    신청 앱(ward-submit)은 담은 순서대로 1..N을 넣고 MAX_ITEMS=100이라 100을 넘지 않는다.
    따라서 1000 이상은 관리 화면에서 약제과가 추가한 품목뿐이다.
    ※ ward_request_items에는 created_at이 없어 시각 비교로는 구분할 수 없다(0083 실측). */
 const WARD_ADMIN_SORT_BASE = 1000
 const isAdminAdded = it => Number(it.sort_order) >= WARD_ADMIN_SORT_BASE
+/* 약품명 표시값 — 「스타빅현탁액 (약제과 추가)」처럼 **약품명 열 한 줄**에서 바로 읽히게 한다.
+   ★ 파생 표시일 뿐 drug_name 컬럼에 저장하지 않는다.
+   ★ 비고 열은 건드리지 않는다 — 약제과가 병동에 전할 말을 쓰는 자리다
+     (예: 「도매 품절로 에스로반연고로 드립니다」).
+   ★ 행 색은 기존 약품과 동일하게 둔다 — 약제과 추가분이 덜 중요한 것이 아니다. */
+const wardItemName = it => it.drug_name + (isAdminAdded(it) ? ' (약제과 추가)' : '')
 function WardAdmin() {
   const { t, memberRole, profile } = useTheme()
   const { so, TS, sk, sd, setSort } = useSort('submitted_at', 'desc')
@@ -3627,7 +3634,7 @@ function WardAdmin() {
                   : <span onClick={() => setEdit({ itemId: it.id, field: f })} style={{ cursor: 'pointer', color: val == null || val === '' ? t.textL : t.text }}>{val == null || val === '' ? '클릭' : val}</span>}
               </td>
               return <tr key={it.id}>
-                <td style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid ' + t.border, fontWeight: 600, color: isAdminAdded(it) ? t.textL : t.text }}>{it.drug_name}{it.drug_code ? <span style={{ color: t.textL, fontSize: 10 }}> ({it.drug_code})</span> : <span style={{ color: t.amber, fontSize: 10 }}> · 코드 없음</span>}{isAdminAdded(it) ? <span style={{ color: t.textL, fontSize: 10, fontWeight: 700 }}> · 약제과 추가</span> : null}</td>
+                <td style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid ' + t.border, fontWeight: 600, color: t.text }}>{wardItemName(it)}{it.drug_code ? <span style={{ color: t.textL, fontSize: 10 }}> ({it.drug_code})</span> : <span style={{ color: t.amber, fontSize: 10 }}> · 코드 없음</span>}</td>
                 {cell('qty', it.qty, 'right')}
                 {cell('unit', it.unit, 'left')}
                 {cell('usage_qty', it.usage_qty, 'right')}
@@ -3681,8 +3688,8 @@ function WardAdmin() {
               <th style={{ width: '12%' }}>단위</th><th style={{ width: '13%' }}>사용량</th><th style={{ width: '18%' }}>비고</th>
             </tr></thead>
             <tbody>
-              {/* ★ 약제과가 추가한 품목은 인쇄물에서도 회색(t.textL)으로 흐리게 — 병동이 적은 것과 구분 */}
-              {list.map(it => <tr key={it.id} style={isAdminAdded(it) ? { color: t.textL } : undefined}><td>{it.drug_name}{isAdminAdded(it) ? ' · 약제과 추가' : ''}</td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}
+              {/* ★ 「(약제과 추가)」는 약품명 열에만 붙인다 · 행 색은 기존 약품과 동일 · 비고 열 무변경 */}
+              {list.map(it => <tr key={it.id}><td>{wardItemName(it)}</td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}
               {Array.from({ length: blanks }, (_, i) => <tr key={'b' + i}><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>)}
             </tbody>
           </table>

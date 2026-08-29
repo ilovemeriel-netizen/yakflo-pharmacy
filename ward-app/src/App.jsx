@@ -39,6 +39,8 @@ export default function App() {
   const [backNotice, setBackNotice] = useState(false)   // 뒤로 가기를 한 번 흡수했을 때의 안내
   const [wardConfirm, setWardConfirm] = useState(null)  // 바꾸려는 병동(확인 대기)
   const timer = useRef(null)
+  const qRef = useRef(null)                     // 검색 입력 — 담기 후 포커스를 되돌린다
+  const lastTerm = useRef('')                   // 마지막으로 실제 조회한 검색어(결과가 최신인지 판정)
   const submitting = useRef(false)              // ★ 이중 제출 잠금(리렌더와 무관하게 즉시 걸림)
   const pushed = useRef(false)                  // 완료 이력 push를 1회로 제한
 
@@ -74,10 +76,28 @@ export default function App() {
       const d = await r.json().catch(() => ({}))
       if (r.status === 403) { setClosed(true); setMsg({ kind: 'err', text: d.msg || '접수 기간이 아닙니다' }); setFound([]); return }
       if (!r.ok || !d.ok) { setMsg({ kind: 'err', text: d.msg || '검색에 실패했습니다' }); setFound([]); return }
-      setFound(d.items || []); setSearched(true)
+      setFound(d.items || []); setSearched(true); lastTerm.current = term
       if (d.capped) setMsg({ kind: 'info', text: '결과가 많습니다. 검색어를 더 입력해 주세요' })
     } catch { setMsg({ kind: 'err', text: '연결에 실패했습니다. 잠시 후 다시 시도해 주세요' }) }
     finally { setSearching(false) }
+  }
+
+  /* ── 검색창 Enter ────────────────────────────────────────────
+     ★ 한글 IME 조합 중의 Enter는 **조합 확정**에 쓰인다. 그때 담기를 실행하면
+       엉뚱한 약이 담기는 오작동이 된다 → isComposing(구형 브라우저는 keyCode 229)이면 무시하고
+       조합이 끝난 뒤의 Enter만 처리한다. 검색 자체(onChange·디바운스)는 건드리지 않는다.
+     ★ 결과가 **정확히 1건일 때만** 담는다 — 여러 건에서 첫 번째를 자동으로 담으면
+       무엇이 담겼는지 모른 채 넘어가고, 병동 신청은 되돌릴 수 없다. 2건 이상이면 골라 담게 안내한다. */
+  function onSearchKeyDown(e) {
+    if (e.key !== 'Enter') return
+    if (e.nativeEvent?.isComposing || e.keyCode === 229) return
+    e.preventDefault()
+    const term = q.trim()
+    if (term.length < MIN_Q) return
+    /* 디바운스가 아직 안 돈 상태(결과가 옛 검색어의 것)면 우선 즉시 조회한다 */
+    if (searching || term !== lastTerm.current) { clearTimeout(timer.current); search(term); return }
+    if (found.length === 1) { add(found[0]); return }
+    if (found.length > 1) setMsg({ kind: 'info', text: `검색 결과가 ${found.length}건입니다 — 담을 약품을 눌러 주세요` })
   }
 
   /* ── 병동 전환 ────────────────────────────────────────────────
@@ -103,7 +123,10 @@ export default function App() {
     if (!ready) { setMsg({ kind: 'err', text: '병동과 작성자 이름을 먼저 입력해 주세요' }); return }
     if (cart.some(c => c.key === (d.drug_code || d.drug_name))) { setMsg({ kind: 'info', text: '이미 담긴 약품입니다' }); return }
     setCart(c => [...c, { key: d.drug_code || d.drug_name, drug_code: d.drug_code || '', drug_name: d.drug_name, qty: '' }])
-    setQ(''); setFound([]); setSearched(false); setMsg(null)
+    /* 담으면 검색어를 비우고 검색창에 포커스를 되돌린다 — 연속으로 담기 쉽게 */
+    setQ(''); setFound([]); setSearched(false); setMsg(null); lastTerm.current = ''
+    clearTimeout(timer.current)
+    qRef.current?.focus()
   }
   const edit = (i, v) => setCart(c => c.map((x, j) => j === i ? { ...x, qty: v } : x))
   const remove = i => setCart(c => c.filter((_, j) => j !== i))
@@ -283,10 +306,12 @@ export default function App() {
                 </div>
               )}
               <input
+                ref={qRef}
                 value={q}
                 onChange={e => onQuery(e.target.value)}
+                onKeyDown={onSearchKeyDown}
                 disabled={!ready}
-                placeholder={ready ? `약품명 ${MIN_Q}자 이상 입력` : '위 1·2를 먼저 입력해 주세요'}
+                placeholder={ready ? `약품명 ${MIN_Q}자 이상 입력 · Enter로 담기` : '위 1·2를 먼저 입력해 주세요'}
                 style={{ ...input, background: ready ? 'white' : rgba(NAVY, 0.05), color: ready ? NAVY : rgba(NAVY, 0.45), cursor: ready ? 'text' : 'not-allowed' }}
               />
               {searching && <div style={{ fontSize: 12, color: rgba(NAVY, 0.6), marginTop: 8 }}>찾는 중…</div>}
@@ -341,14 +366,20 @@ export default function App() {
 
               {/* ★ 저장은 목록 카드 **밖** 하단에 둔다 — 목록을 다 확인한 뒤 누르는 동작으로 분리 */}
               <div style={{ padding: '2px 2px 0' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, textAlign: 'center', marginBottom: 8 }}>
-                  담을 약품을 모두 담으셨나요?
-                </div>
+                {/* 안내는 담긴 것이 있을 때만 — 0건에서 「모두 담으셨나요?」는 물음이 성립하지 않는다 */}
+                {cart.length > 0 && (
+                  <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, textAlign: 'center', marginBottom: 8 }}>
+                    담을 약품을 모두 담으셨나요?
+                  </div>
+                )}
+                {/* ★ 톤 낮춤 — 여기서는 최종 동작이 아니라 확인 모달로 넘어가는 단계다.
+                    라벤더 외곽선 + 옅은 배경 + 보라 글자(브랜드 4색의 rgba 파생 · 신규 hex 없음). */}
                 <button onClick={tryOpen} disabled={!cart.length || !ready} style={{
-                  width: '100%', padding: '15px 0', borderRadius: 12, border: 'none',
+                  width: '100%', padding: '15px 0', borderRadius: 12,
                   cursor: (!cart.length || !ready) ? 'not-allowed' : 'pointer',
-                  background: (!cart.length || !ready) ? rgba(NAVY, 0.15) : PURPLE,
-                  color: (!cart.length || !ready) ? rgba(NAVY, 0.5) : 'white',
+                  border: '1px solid ' + ((!cart.length || !ready) ? rgba(NAVY, 0.15) : LAVENDER),
+                  background: (!cart.length || !ready) ? rgba(NAVY, 0.05) : rgba(LAVENDER, 0.14),
+                  color: (!cart.length || !ready) ? rgba(NAVY, 0.45) : PURPLE,
                   fontSize: 15, fontWeight: 800,
                 }}>{cart.length ? `${cart.length}개 품목 신청하기` : '담은 약품이 없습니다'}</button>
                 <div style={{ fontSize: 12, color: rgba(NAVY, 0.65), textAlign: 'center', marginTop: 10, lineHeight: 1.6 }}>
