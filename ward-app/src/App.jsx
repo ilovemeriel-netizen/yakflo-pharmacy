@@ -40,6 +40,7 @@ export default function App() {
   const [closed, setClosed] = useState(false)   // 접수 기간 밖
   const [backNotice, setBackNotice] = useState(false)   // 뒤로 가기를 한 번 흡수했을 때의 안내
   const [wardConfirm, setWardConfirm] = useState(null)  // 바꾸려는 병동(확인 대기)
+  const [dupWards, setDupWards] = useState([])          // 409로 확인된 「이미 접수된 병동」
   const timer = useRef(null)
   const qRef = useRef(null)                     // 검색 입력 — 담기 후 포커스를 되돌린다
   const firstQtyRef = useRef(null)              // 결과 1건일 때 Enter로 옮겨 갈 수량 칸
@@ -49,6 +50,12 @@ export default function App() {
 
   /* ★ 필수 입력 — 병동과 작성자 이름이 채워지기 전에는 검색·담기·저장을 모두 막는다 */
   const ready = !!ward && !!name.trim()
+  /* ★ 이미 접수된 병동이면 잠근다. 서버가 409로 막아 주지만 그때까지 헛수고를 하게 된다.
+     ※ 어느 병동이 접수했는지는 **409를 받은 뒤에만** 안다 — 미리 조회하면 비회원에게
+       「어느 병동이 이미 냈는지」를 노출하게 되므로 하지 않는다.
+     ※ 잠가도 병동 버튼은 그대로 눌린다 — 잘못 고른 경우 다른 병동으로 옮겨 계속 진행할 수 있어야 한다. */
+  const locked = dupWards.includes(ward)
+  const canEdit = ready && !locked
   const keyOf = d => d.drug_code || d.drug_name
 
   /* ── 완료 시 뒤로 가기 1회 흡수 ──────────────────────────────
@@ -69,7 +76,7 @@ export default function App() {
   function onQuery(v) {
     setQ(v)
     clearTimeout(timer.current)
-    if (!ready) { setFound([]); setSearched(false); return }
+    if (!canEdit) { setFound([]); setSearched(false); return }
     if (v.trim().length < MIN_Q) { setFound([]); setSearched(false); return }
     timer.current = setTimeout(() => search(v.trim()), 300)
   }
@@ -131,7 +138,7 @@ export default function App() {
 
   /* ── 담기 / 편집 / 삭제 ── */
   function addWithQty(d) {
-    if (!ready) { setMsg({ kind: 'err', text: '병동과 작성자 이름을 먼저 입력해 주세요' }); return }
+    if (!canEdit) { setMsg({ kind: 'err', text: locked ? `${ward}병동은 이미 신청이 접수되었습니다` : '병동과 작성자 이름을 먼저 입력해 주세요' }); return }
     const raw = qtyMap[keyOf(d)]
     const n = Number(raw)
     if (!raw || !Number.isFinite(n) || n <= 0) { setMsg({ kind: 'err', text: `「${d.drug_name}」의 수량을 1 이상으로 입력해 주세요` }); return }
@@ -184,6 +191,9 @@ export default function App() {
       })
       const d = await r.json().catch(() => ({}))
       if (r.status === 403) { setConfirmOpen(false); setClosed(true); setMsg({ kind: 'err', text: d.msg || '접수 기간이 아닙니다' }); return }
+      /* ★ 409 = 이 병동은 이미 접수됨. 그 병동을 잠가 더 이상 헛수고하지 않게 한다.
+         다른 병동으로 바꾸면 잠금이 풀린다(dupWards에 없는 병동이므로). */
+      if (r.status === 409) { setConfirmOpen(false); setDupWards(w => w.includes(ward) ? w : [...w, ward]); setMsg({ kind: 'err', text: d.msg || '이미 신청이 접수되었습니다' }); return }
       if (!r.ok || !d.ok) { setConfirmOpen(false); setMsg({ kind: 'err', text: d.msg || '저장에 실패했습니다' }); return }
       /* d.period = 「2026 추석」 — 접수 기간(window) 스냅샷. 신청번호(uuid)는 응답에 없다. */
       setConfirmOpen(false); setDone({ ward, name: name.trim(), period: d.period || '', items: snapshot })
@@ -283,7 +293,23 @@ export default function App() {
           border: '1px solid ' + rgba(msg.kind === 'err' ? PURPLE : LAVENDER, 0.5),
           color: msg.kind === 'err' ? PURPLE : NAVY,
           borderRadius: 10, padding: '10px 12px', fontSize: 13, fontWeight: 600, marginBottom: 12, lineHeight: 1.6,
+          textAlign: 'center',   /* ★ 안내 배너는 모두 가운데 정렬 — 배너 폭·색은 현행 유지 */
         }}>{msg.text}</div>
+      )}
+
+      {/* ★ 이미 접수된 병동 — 409를 받은 뒤에만 알 수 있다(비회원에게 사전 노출하지 않는다) */}
+      {locked && (
+        <div style={{
+          background: rgba(PURPLE, 0.09), border: '2px solid ' + rgba(PURPLE, 0.45), borderRadius: 12,
+          padding: '13px 14px', marginBottom: 12, textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: PURPLE, lineHeight: 1.5 }}>
+            {ward}병동은 이미 신청이 접수되었습니다
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginTop: 8, lineHeight: 1.6 }}>
+            변경이 필요하면 약제과 내선 217<br />다른 병동을 고르면 그대로 신청할 수 있습니다
+          </div>
+        </div>
       )}
 
       {closed ? null : (
@@ -300,7 +326,8 @@ export default function App() {
                       border: '1px solid ' + (ward === w ? PURPLE : rgba(NAVY, 0.2)),
                       background: ward === w ? PURPLE : 'white',
                       color: ward === w ? 'white' : NAVY,
-                    }}>{w}병동</button>
+                    /* ★ 이미 접수된 병동에도 ✓만 붙이고 버튼은 막지 않는다 — 잘못 고른 경우 옮겨 갈 수 있어야 한다 */
+                    }}>{w}병동{dupWards.includes(w) ? ' ✓' : ''}</button>
                   ))}
                 </div>
               </div>
@@ -331,9 +358,9 @@ export default function App() {
                   value={q}
                   onChange={e => onQuery(e.target.value)}
                   onKeyDown={onSearchKeyDown}
-                  disabled={!ready}
-                  placeholder={ready ? `약품명 ${MIN_Q}자 이상 입력 · Enter` : '위에서 병동·작성자를 먼저 입력해 주세요'}
-                  style={{ ...input, background: ready ? 'white' : rgba(NAVY, 0.05), color: ready ? NAVY : rgba(NAVY, 0.45), cursor: ready ? 'text' : 'not-allowed' }}
+                  disabled={!canEdit}
+                  placeholder={canEdit ? `약품명 ${MIN_Q}자 이상 입력 · Enter` : (locked ? '이미 접수된 병동입니다' : '위에서 병동·작성자를 먼저 입력해 주세요')}
+                  style={{ ...input, background: canEdit ? 'white' : rgba(NAVY, 0.05), color: canEdit ? NAVY : rgba(NAVY, 0.45), cursor: canEdit ? 'text' : 'not-allowed' }}
                 />
                 {searching && <div style={{ fontSize: 12, color: rgba(NAVY, 0.6), marginTop: 8 }}>찾는 중…</div>}
                 {searched && !searching && (
@@ -413,12 +440,12 @@ export default function App() {
               </div>
             )}
             {/* ★ 톤 낮춤 — 여기서는 최종 동작이 아니라 확인 모달로 넘어가는 단계다. */}
-            <button onClick={tryOpen} disabled={!cart.length || !ready} style={{
+            <button onClick={tryOpen} disabled={!cart.length || !canEdit} style={{
               width: '100%', padding: '15px 0', borderRadius: 12,
-              cursor: (!cart.length || !ready) ? 'not-allowed' : 'pointer',
-              border: '1px solid ' + ((!cart.length || !ready) ? rgba(NAVY, 0.15) : LAVENDER),
-              background: (!cart.length || !ready) ? rgba(NAVY, 0.05) : rgba(LAVENDER, 0.14),
-              color: (!cart.length || !ready) ? rgba(NAVY, 0.45) : PURPLE,
+              cursor: (!cart.length || !canEdit) ? 'not-allowed' : 'pointer',
+              border: '1px solid ' + ((!cart.length || !canEdit) ? rgba(NAVY, 0.15) : LAVENDER),
+              background: (!cart.length || !canEdit) ? rgba(NAVY, 0.05) : rgba(LAVENDER, 0.14),
+              color: (!cart.length || !canEdit) ? rgba(NAVY, 0.45) : PURPLE,
               fontSize: 15, fontWeight: 800,
             }}>{cart.length ? `${cart.length}개 품목 신청하기` : '담은 약품이 없습니다'}</button>
             <div style={{ fontSize: 12, color: rgba(NAVY, 0.65), textAlign: 'center', marginTop: 10, lineHeight: 1.6 }}>
