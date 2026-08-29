@@ -40,7 +40,8 @@ export default function App() {
   const [closed, setClosed] = useState(false)   // 접수 기간 밖
   const [backNotice, setBackNotice] = useState(false)   // 뒤로 가기를 한 번 흡수했을 때의 안내
   const [wardConfirm, setWardConfirm] = useState(null)  // 바꾸려는 병동(확인 대기)
-  const [dupWards, setDupWards] = useState([])          // 409로 확인된 「이미 접수된 병동」
+  const [dupWards, setDupWards] = useState([])          // 신청완료 병동 — ward-status 조회 또는 409로 채워진다
+  const [dupMsg, setDupMsg] = useState('')              // 서버(DUP_MSG)에서 받은 안내 — 409 문구와 글자 단위 동일
   const timer = useRef(null)
   const qRef = useRef(null)                     // 검색 입력 — 담기 후 포커스를 되돌린다
   const firstQtyRef = useRef(null)              // 결과 1건일 때 Enter로 옮겨 갈 수량 칸
@@ -50,13 +51,26 @@ export default function App() {
 
   /* ★ 필수 입력 — 병동과 작성자 이름이 채워지기 전에는 검색·담기·저장을 모두 막는다 */
   const ready = !!ward && !!name.trim()
-  /* ★ 이미 접수된 병동이면 잠근다. 서버가 409로 막아 주지만 그때까지 헛수고를 하게 된다.
-     ※ 어느 병동이 접수했는지는 **409를 받은 뒤에만** 안다 — 미리 조회하면 비회원에게
-       「어느 병동이 이미 냈는지」를 노출하게 되므로 하지 않는다.
-     ※ 잠가도 병동 버튼은 그대로 눌린다 — 잘못 고른 경우 다른 병동으로 옮겨 계속 진행할 수 있어야 한다. */
+  /* ★ 신청완료 병동이면 검색·저장을 잠근다. 서버가 409로 막아 주지만 그때까지 헛수고를 하게 된다.
+     ※ 목록은 /api/ward/status(병동명만 반환)에서 받고, 409를 받으면 그 병동도 더한다.
+     ※ 잠가도 병동 **버튼은 그대로 눌린다** — 고른 뒤 이유를 알려야 하고,
+       잘못 고른 경우 다른 병동으로 옮겨 계속 진행할 수 있어야 한다. */
   const locked = dupWards.includes(ward)
   const canEdit = ready && !locked
   const keyOf = d => d.drug_code || d.drug_name
+
+  /* ── 신청완료 병동 조회 ──────────────────────────────────────
+     ★ fail-open. 이 조회는 **표시용 편의**일 뿐이고, 진짜 방어선은 ward-submit의 409다.
+       실패하면 표시만 생략하고 신청은 그대로 허용한다 — 조회가 죽었다고 접수를 막지 않는다.
+     ★ 안내 문구는 서버가 준 msg(=DUP_MSG)를 그대로 쓴다 → 409 문구와 글자 단위로 같아진다. */
+  useEffect(() => {
+    let on = true
+    fetch('/api/ward/status')
+      .then(r => r.json())
+      .then(d => { if (on && d && d.ok) { setDupWards(Array.isArray(d.wards) ? d.wards.map(String) : []); if (d.msg) setDupMsg(d.msg) } })
+      .catch(() => { /* fail-open — 아무것도 하지 않는다 */ })
+    return () => { on = false }
+  }, [])
 
   /* ── 완료 시 뒤로 가기 1회 흡수 ──────────────────────────────
      앱은 이력에 항목을 쌓지 않는 상태 기반 단일 화면이라, 완료 화면에서 뒤로 가기를 누르면
@@ -138,7 +152,7 @@ export default function App() {
 
   /* ── 담기 / 편집 / 삭제 ── */
   function addWithQty(d) {
-    if (!canEdit) { setMsg({ kind: 'err', text: locked ? `${ward}병동은 이미 신청이 접수되었습니다` : '병동과 작성자 이름을 먼저 입력해 주세요' }); return }
+    if (!canEdit) { setMsg({ kind: 'err', text: locked ? `${ward}병동 신청완료 — ${dupMsg}` : '병동과 작성자 이름을 먼저 입력해 주세요' }); return }
     const raw = qtyMap[keyOf(d)]
     const n = Number(raw)
     if (!raw || !Number.isFinite(n) || n <= 0) { setMsg({ kind: 'err', text: `「${d.drug_name}」의 수량을 1 이상으로 입력해 주세요` }); return }
@@ -193,7 +207,7 @@ export default function App() {
       if (r.status === 403) { setConfirmOpen(false); setClosed(true); setMsg({ kind: 'err', text: d.msg || '접수 기간이 아닙니다' }); return }
       /* ★ 409 = 이 병동은 이미 접수됨. 그 병동을 잠가 더 이상 헛수고하지 않게 한다.
          다른 병동으로 바꾸면 잠금이 풀린다(dupWards에 없는 병동이므로). */
-      if (r.status === 409) { setConfirmOpen(false); setDupWards(w => w.includes(ward) ? w : [...w, ward]); setMsg({ kind: 'err', text: d.msg || '이미 신청이 접수되었습니다' }); return }
+      if (r.status === 409) { setConfirmOpen(false); setDupWards(w => w.includes(ward) ? w : [...w, ward]); if (d.msg) setDupMsg(d.msg); setMsg({ kind: 'err', text: d.msg || '이미 신청이 접수되었습니다' }); return }
       if (!r.ok || !d.ok) { setConfirmOpen(false); setMsg({ kind: 'err', text: d.msg || '저장에 실패했습니다' }); return }
       /* d.period = 「2026 추석」 — 접수 기간(window) 스냅샷. 신청번호(uuid)는 응답에 없다. */
       setConfirmOpen(false); setDone({ ward, name: name.trim(), period: d.period || '', items: snapshot })
@@ -297,17 +311,18 @@ export default function App() {
         }}>{msg.text}</div>
       )}
 
-      {/* ★ 이미 접수된 병동 — 409를 받은 뒤에만 알 수 있다(비회원에게 사전 노출하지 않는다) */}
+      {/* ★ 신청완료 병동 — 버튼은 막지 않고, 고르면 이유를 알린다(막기만 하면 217 문의가 는다).
+             안내 문구는 서버가 준 msg(=ward-submit의 DUP_MSG)를 그대로 쓴다 → 409와 글자 단위 동일. */}
       {locked && (
         <div style={{
           background: rgba(PURPLE, 0.09), border: '2px solid ' + rgba(PURPLE, 0.45), borderRadius: 12,
           padding: '13px 14px', marginBottom: 12, textAlign: 'center',
         }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: PURPLE, lineHeight: 1.5 }}>
-            {ward}병동은 이미 신청이 접수되었습니다
+            {ward}병동 신청완료
           </div>
           <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginTop: 8, lineHeight: 1.6 }}>
-            변경이 필요하면 약제과 내선 217
+            {dupMsg}
           </div>
         </div>
       )}
@@ -318,21 +333,31 @@ export default function App() {
           <div style={card}>
             <div className="wa-top">
               <div className="wa-top-ward">
-                <span style={tag}>병동</span>
+                <span style={tag}>① 병동</span>
                 <div className="wa-grow" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
                   {WARDS.map(w => (
+                    /* ★ 신청완료 병동도 버튼을 막지 않는다 — 클릭은 되고, 고른 뒤 위 배너로 이유를 알린다.
+                          보조줄은 신청완료가 하나라도 있을 때만 4개 버튼에 **동일하게** 넣어 높이를 맞춘다
+                          (아무도 신청하지 않은 평상시에는 기존 모양 그대로). 색은 브랜드 파생 회색만 쓴다. */
                     <button key={w} onClick={() => pickWard(w)} style={{
                       padding: '10px 0', borderRadius: 9, cursor: 'pointer', fontWeight: 800, fontSize: 14,
                       border: '1px solid ' + (ward === w ? PURPLE : rgba(NAVY, 0.2)),
                       background: ward === w ? PURPLE : 'white',
                       color: ward === w ? 'white' : NAVY,
-                    /* ★ 이미 접수된 병동에도 ✓만 붙이고 버튼은 막지 않는다 — 잘못 고른 경우 옮겨 갈 수 있어야 한다 */
-                    }}>{w}병동{dupWards.includes(w) ? ' ✓' : ''}</button>
+                    }}>
+                      <div>{w}병동</div>
+                      {dupWards.length > 0 && (
+                        <div style={{
+                          fontSize: 9, fontWeight: 700, height: 12, lineHeight: '12px', marginTop: 2,
+                          color: ward === w ? rgba(LAVENDER, 0.95) : rgba(NAVY, 0.5),
+                        }}>{dupWards.includes(w) ? '신청완료' : ''}</div>
+                      )}
+                    </button>
                   ))}
                 </div>
               </div>
               <div className="wa-top-name">
-                <span style={tag}>작성자</span>
+                <span style={tag}>② 작성자</span>
                 <input className="wa-grow" value={name} onChange={e => setName(e.target.value)} maxLength={20}
                   placeholder="이름을 입력해 주세요" style={{ ...input, padding: '10px 12px' }} />
               </div>
@@ -352,7 +377,7 @@ export default function App() {
             {/* ── 왼쪽: 약품 검색 · 결과에서 수량까지 입력 ── */}
             <div>
               <div style={card}>
-                <label style={label}>약품 검색</label>
+                <label style={label}>③ 약품 검색</label>
                 <input
                   ref={qRef}
                   value={q}
@@ -449,7 +474,7 @@ export default function App() {
               fontSize: 15, fontWeight: 800,
             }}>{cart.length ? `${cart.length}개 품목 신청하기` : '담은 약품이 없습니다'}</button>
             <div style={{ fontSize: 12, color: rgba(NAVY, 0.65), textAlign: 'center', marginTop: 10, lineHeight: 1.6 }}>
-              저장하면 내용을 수정할 수 없습니다.<br />병동당 1회만 신청할 수 있습니다.
+              저장하면 내용을 수정할 수 없습니다.<br />병동당 1회만 신청할 수 있습니다 · 변경은 약제과 내선 217
             </div>
           </div>
         </>

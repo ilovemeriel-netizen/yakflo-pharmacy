@@ -17,7 +17,9 @@ import { createClient } from '@supabase/supabase-js'
 import { currentWindow, corsHeaders, json } from './ward-drugs.js'
 
 const CLOSED_MSG = '접수 기간이 아닙니다 · 문의 약제과 내선 217'
-const DUP_MSG = '이미 신청이 접수되었습니다. 수정이 필요하면 약제과 담당자에게 연락해 주세요 (내선 217)'
+/* ★ ward-status.js가 이 상수를 그대로 가져다 응답에 실어, 화면 안내와 409 문구가
+   **글자 단위로 같은 하나의 상수**를 쓰게 한다. 정의는 여기 한 곳뿐이다. 409 로직은 변경 없음. */
+export const DUP_MSG = '이미 신청이 접수되었습니다. 수정이 필요하면 약제과 담당자에게 연락해 주세요 (내선 217)'
 const WARDS = ['3', '4', '5', '6']          // ward CHECK 미부여(0083) → 여기서 검증
 const MAX_ITEMS = 100
 
