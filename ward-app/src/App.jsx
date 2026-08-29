@@ -488,7 +488,7 @@ export default function App() {
               fontSize: 15, fontWeight: 800,
             }}>{cart.length ? `${cart.length}개 품목 신청하기` : '담은 약품이 없습니다'}</button>
             <div style={{ fontSize: 12, color: rgba(NAVY, 0.65), textAlign: 'center', marginTop: 10, lineHeight: 1.6 }}>
-              저장하면 내용을 수정할 수 없습니다.<br />병동당 1회만 신청할 수 있습니다
+              저장하면 내용을 수정할 수 없습니다.<br />병동당 1회만 신청할 수 있습니다 · 문의 약제과 내선 217
             </div>
           </div>
         </>
