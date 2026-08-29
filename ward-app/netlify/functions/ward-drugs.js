@@ -14,8 +14,7 @@ const CLOSED_MSG = '접수 기간이 아닙니다 · 문의 약제과 내선 217
 const MAX_ROWS = 50   // 응답 상한(노출 범위·전송량 억제)
 
 export default async (req) => {
-  const cors = corsHeaders(req)
-  if (req.method === 'OPTIONS') return new Response('', { headers: cors })
+  const cors = corsHeaders()
   if (req.method !== 'GET') return json({ ok: false, msg: 'GET only' }, 405, cors)
 
   const supaUrl = process.env.SUPABASE_URL
@@ -70,14 +69,12 @@ export async function currentWindow(admin) {
   return { row }
 }
 
-/* 허용 오리진: WARD_ALLOWED_ORIGINS(콤마 구분). 미설정이면 CORS 헤더를 내리지 않는다
-   → 브라우저 호출은 차단되고 서버/curl 점검은 가능. 값은 4단계(앱 도메인 확정) 때 설정. */
-export function corsHeaders(req) {
-  const origin = req.headers.get('origin') || ''
-  const allow = (process.env.WARD_ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean)
-  const base = { 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }
-  if (origin && allow.includes(origin)) return { ...base, 'Access-Control-Allow-Origin': origin, Vary: 'Origin' }
-  return base
+/* ★ CORS 헤더를 내리지 않는다 — 이 Function은 ward-app과 **같은 사이트**에 배포되므로
+   신청 페이지의 호출은 동일 출처(same-origin)라 CORS가 아예 개입하지 않는다.
+   헤더를 주지 않음으로써 **다른 도메인에서의 브라우저 호출은 기본 차단**된다(가장 좁은 노출면).
+   ※ 환경변수(WARD_ALLOWED_ORIGINS) 의존을 제거했다 — 미설정 상태에서 신청 페이지가 막히는 일이 없다. */
+export function corsHeaders() {
+  return {}
 }
 
 export function json(obj, status, cors) {

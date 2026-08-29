@@ -18,8 +18,7 @@ const WARDS = ['3', '4', '5', '6']          // ward CHECK 미부여(0083) → �
 const MAX_ITEMS = 100
 
 export default async (req) => {
-  const cors = corsHeaders(req)
-  if (req.method === 'OPTIONS') return new Response('', { headers: cors })
+  const cors = corsHeaders()
   if (req.method !== 'POST') return json({ ok: false, msg: 'POST only' }, 405, cors)
 
   const supaUrl = process.env.SUPABASE_URL
