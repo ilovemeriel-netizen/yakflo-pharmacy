@@ -117,6 +117,7 @@ export default function App() {
           저장된 신청은 수정할 수 없습니다.<br />변경이 필요하면 약제과 담당자에게 연락해 주세요.
         </div>
       </div>
+      <Ft />
     </div>
   )
 
@@ -247,6 +248,21 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <Ft />
+    </div>
+  )
+}
+
+/* 저작권 — 본체와 동일한 자간 넓은 대문자 형식 */
+function Ft() {
+  return (
+    <div style={{
+      textAlign: 'center', padding: '20px 0 12px', fontSize: 11, color: rgba(NAVY, 0.5),
+      borderTop: '1px solid ' + rgba(NAVY, 0.12), marginTop: 24, lineHeight: 1.6,
+    }}>
+      C O P Y R I G H T&nbsp; ⓒ&nbsp; 2 0 2 6&nbsp; J E O N G H W A&nbsp;&nbsp; L E E<br />
+      All rights reserved. 무단 전재 및 재배포 금지.
     </div>
   )
 }

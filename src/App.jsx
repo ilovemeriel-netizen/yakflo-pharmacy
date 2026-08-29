@@ -970,7 +970,7 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
     { id: 'dashboard', l: '대시보드' },
     { id: 'alerts', l: '🔔 알림' },
     { id: 'druglist', l: '약품관리', landing: 'druglist', children: [{ id: 'druglist', l: '약품목록' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }] },
-    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }] },
+    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }, { id: 'ward', l: '병동신청' }] },
     { id: 'transaction', l: '입출고' },
     { id: 'report', l: '보고서' },
     { id: 'atc', l: '조제관리', landing: 'atc', children: [{ id: 'atc', l: 'ATC편집' }, { id: 'emergency', l: '비상조제' }] },
@@ -3335,6 +3335,258 @@ function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
   </div>
 }
 
+/* ═══ 병동신청 관리 — 접수 기간 개폐 · 신청 내역 확인 · 사용량 기입 · 병동별 인쇄 (0083) ═══ */
+const WARD_SEASONS = ['설', '추석']
+const WARD_LIST = ['3', '4', '5', '6']
+const WARD_STATUSES = ['접수', '처리중', '완료']
+function WardAdmin() {
+  const { t, memberRole, profile } = useTheme()
+  const { so, TS, sk, sd, setSort } = useSort('submitted_at', 'desc')
+  const isAdmin = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
+  const [wins, setWins] = useState([]); const [reqs, setReqs] = useState([]); const [items, setItems] = useState([])
+  const [ld, setLd] = useState(true); const [msg, setMsg] = useState(null)
+  const [openRow, setOpenRow] = useState(null)          // 상세 대상 신청 id
+  const [regOpen, setRegOpen] = useState(false)
+  const [nf, setNf] = useState({ season: '추석', request_year: new Date().getFullYear(), opens_at: '', closes_at: '', notice: '' })
+  const [fWard, setFWard] = useState('전체'); const [fPeriod, setFPeriod] = useState('전체'); const [fStatus, setFStatus] = useState('전체')
+  const [page, setPage] = useState(1); const PP_W = 20
+  const [edit, setEdit] = useState(null)                 // {itemId, field}
+  const flash = (text, kind) => { setMsg({ text, kind }); setTimeout(() => setMsg(null), kind === 'err' ? 3000 : 1800) }
+
+  useEffect(() => { loadAll() }, [])
+  async function loadAll() {
+    setLd(true)
+    const [w, r, i] = await Promise.all([
+      supabase.from('ward_request_window').select('*').order('request_year', { ascending: false }),
+      supabase.from('ward_requests').select('*').order('submitted_at', { ascending: false }),
+      supabase.from('ward_request_items').select('*').order('sort_order'),
+    ])
+    setWins(w.data || []); setReqs(r.data || []); setItems(i.data || []); setLd(false)
+  }
+
+  /* ── 접수 기간 ── */
+  const openWins = wins.filter(w => w.is_open)
+  async function toggleWin(w) {
+    const { error } = await supabase.from('ward_request_window').update({ is_open: !w.is_open, updated_at: new Date().toISOString() }).eq('id', w.id)
+    if (error) { flash('변경 실패: ' + error.message, 'err'); return }
+    flash(!w.is_open ? '접수를 열었습니다' : '접수를 닫았습니다'); loadAll()
+  }
+  async function createWin() {
+    const y = Number(nf.request_year)
+    if (!WARD_SEASONS.includes(nf.season)) { flash('명절을 선택해 주세요', 'err'); return }
+    if (!Number.isInteger(y) || y < 2000 || y > 2100) { flash('연도를 확인해 주세요', 'err'); return }
+    const row = { season: nf.season, request_year: y, is_open: false, notice: nf.notice || null,
+      opens_at: nf.opens_at ? new Date(nf.opens_at).toISOString() : null,
+      closes_at: nf.closes_at ? new Date(nf.closes_at).toISOString() : null }
+    const { error } = await supabase.from('ward_request_window').insert([row])   // tenant_id는 trg_set_tenant_id가 부여
+    if (error) { flash('생성 실패: ' + error.message, 'err'); return }
+    setRegOpen(false); flash('기간을 만들었습니다 · 아직 닫힘 상태입니다'); loadAll()
+  }
+  async function delWin(w) {
+    if (!isAdmin) { flash('관리자만 삭제할 수 있습니다', 'err'); return }
+    const { error } = await supabase.from('ward_request_window').delete().eq('id', w.id)
+    if (error) { flash('삭제 실패: ' + error.message, 'err'); return }
+    flash('삭제했습니다'); loadAll()
+  }
+
+  /* ── 신청 내역 ── */
+  const itemsOf = id => items.filter(x => x.request_id === id)
+  const periods = [...new Set(reqs.map(r => r.request_year + ' ' + r.season))]
+  const rows = reqs
+    .filter(r => fWard === '전체' || r.ward === fWard)
+    .filter(r => fPeriod === '전체' || (r.request_year + ' ' + r.season) === fPeriod)
+    .filter(r => fStatus === '전체' || r.status === fStatus)
+    .map(r => ({ ...r, item_count: itemsOf(r.id).length, submitted_day: (r.submitted_at || '').slice(0, 10) }))
+  const sorted = so(rows); const tp = Math.max(1, Math.ceil(sorted.length / PP_W))
+  const pg = Math.min(page, tp); const paged = sorted.slice((pg - 1) * PP_W, pg * PP_W)
+
+  async function setStatus(r, v) {
+    const { error } = await supabase.from('ward_requests').update({ status: v }).eq('id', r.id)
+    if (error) { flash('상태 변경 실패: ' + error.message, 'err'); return }
+    flash('상태를 바꿨습니다'); loadAll()
+  }
+  async function saveItem(it, field, value) {
+    const ud = {}
+    if (field === 'usage_qty') { const n = value === '' ? null : Number(value); if (value !== '' && (!Number.isFinite(n) || n < 0)) { flash('사용량은 0 이상 숫자여야 합니다', 'err'); setEdit(null); return } ud.usage_qty = n }
+    else if (field === 'qty') { const n = Number(value); if (!Number.isFinite(n) || n <= 0) { flash('수량은 0보다 커야 합니다', 'err'); setEdit(null); return } ud.qty = n }
+    else if (field === 'unit') ud.unit = value || null
+    else if (field === 'memo') ud.memo = value || null
+    const { error } = await supabase.from('ward_request_items').update(ud).eq('id', it.id)
+    setEdit(null)
+    if (error) { flash('저장 실패: ' + error.message, 'err'); return }
+    loadAll()
+  }
+  async function delItem(it) {
+    if (!isAdmin) { flash('관리자만 삭제할 수 있습니다', 'err'); return }
+    const { error } = await supabase.from('ward_request_items').delete().eq('id', it.id)
+    if (error) { flash('삭제 실패: ' + error.message, 'err'); return }
+    flash('품목을 삭제했습니다'); loadAll()
+  }
+
+  /* ── 인쇄: 현재 필터 결과를 병동별 1장씩 ── */
+  const printGroups = WARD_LIST.map(w => ({ ward: w, list: sorted.filter(r => r.ward === w) })).filter(g => g.list.length)
+
+  const cols = [
+    { k: 'submitted_day', h: '신청일', th: { textAlign: 'left' } },
+    { k: 'ward', h: '병동', th: { textAlign: 'left' } },
+    { k: 'requester_name', h: '작성자', th: { textAlign: 'left' } },
+    { k: 'item_count', h: '품목수', th: { textAlign: 'right' } },
+    { k: 'status', h: '상태', th: { textAlign: 'left' } },
+    { k: 'notice', h: '비고', th: { textAlign: 'left' } },
+  ]
+  const td = { padding: '10px 12px', fontSize: 12, textAlign: 'left', color: t.text }
+  const ip2 = { padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 11, outline: 'none', background: t.bg, color: t.text, width: '100%', boxSizing: 'border-box' }
+  const stColor = s => s === '완료' ? [t.greenL, t.green] : s === '처리중' ? [t.amberL, t.amber] : [t.accentL, t.accent]
+
+  return <div style={{ padding: '20px 24px' }}>
+    <div style={{ marginBottom: 10 }}><div style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>병동신청 <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>· 명절 대비 병동 약품 신청 접수·확인</span></div></div>
+
+    {msg && <div className="no-print" style={{ background: msg.kind === 'err' ? t.redL : t.greenL, color: msg.kind === 'err' ? t.red : t.green, borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>{msg.text}</div>}
+
+    {/* ── 접수 기간 관리 ── */}
+    <div className="no-print" style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, padding: '14px 16px', marginBottom: 12, boxShadow: t.shadow }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>접수 기간</div>
+        <div style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 10, background: openWins.length ? t.greenL : t.bg, color: openWins.length ? t.green : t.textM }}>
+          {openWins.length ? '접수 중 · ' + openWins[0].request_year + ' ' + openWins[0].season : '접수 닫힘'}
+        </div>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setRegOpen(true)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: t.accent, color: t.card, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>+ 기간 생성</button>
+      </div>
+      {openWins.length > 1 && <div style={{ background: t.redL, color: t.red, borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+        ⚠ 열려 있는 기간이 {openWins.length}개입니다 — 신청 앱은 그중 하나만 사용합니다. 하나만 남기고 닫아 주세요.
+      </div>}
+      {ld ? <div style={{ fontSize: 12, color: t.textL, padding: '10px 0' }}>불러오는 중...</div>
+        : !wins.length ? <div style={{ fontSize: 12, color: t.textL, padding: '14px 0', textAlign: 'left' }}>만들어진 기간이 없습니다. <b>[+ 기간 생성]</b>으로 먼저 만든 뒤 열어 주세요.</div>
+        : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{wins.map(w => (
+          <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: '1px solid ' + (w.is_open ? t.green : t.border), borderRadius: 10, background: w.is_open ? t.greenL : 'transparent' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: t.text, minWidth: 90, textAlign: 'left' }}>{w.request_year} {w.season}</div>
+            <div style={{ fontSize: 11, color: t.textM, flex: 1, textAlign: 'left' }}>
+              {w.opens_at ? String(w.opens_at).slice(0, 16).replace('T', ' ') : '-'} ~ {w.closes_at ? String(w.closes_at).slice(0, 16).replace('T', ' ') : '-'}
+              {w.notice ? ' · ' + w.notice : ''}
+            </div>
+            <button onClick={() => toggleWin(w)} style={{ padding: '5px 14px', borderRadius: 8, border: '1px solid ' + (w.is_open ? t.green : t.border), background: w.is_open ? t.green : t.card, color: w.is_open ? t.card : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{w.is_open ? '열림 · 닫기' : '닫힘 · 열기'}</button>
+            {isAdmin && <button onClick={() => delWin(w)} style={{ border: 'none', background: 'transparent', color: t.textL, cursor: 'pointer', fontSize: 11 }}>삭제</button>}
+          </div>))}</div>}
+    </div>
+
+    {/* ── 필터 ── */}
+    <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+      {[['병동', fWard, setFWard, ['전체', ...WARD_LIST]], ['기간', fPeriod, setFPeriod, ['전체', ...periods]], ['상태', fStatus, setFStatus, ['전체', ...WARD_STATUSES]]].map(([lb, val, set, opts]) => (
+        <span key={lb} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>{lb}</span>
+          {opts.map(o => <button key={o} onClick={() => { set(o); setPage(1) }} style={{ padding: '5px 11px', borderRadius: 8, border: '1px solid ' + (val === o ? t.accent : t.border), background: val === o ? t.accentL : t.card, color: val === o ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: val === o ? 700 : 500 }}>{o}</button>)}
+        </span>))}
+      <div style={{ flex: 1 }} />
+      <button onClick={() => window.print()} disabled={!printGroups.length} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: printGroups.length ? 'pointer' : 'not-allowed', fontSize: 11, fontWeight: 700 }}>인쇄 (병동별)</button>
+    </div>
+
+    {/* ── 신청 내역 ── */}
+    <div className="no-print" style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, overflow: 'hidden', boxShadow: t.shadow }}>
+      <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={(k, d) => { setSort(k, d); setPage(1) }} hf={{}} cols={cols}>
+        <tbody>{ld ? <tr><td colSpan={cols.length} style={{ padding: 30, textAlign: 'center', color: t.textL }}>불러오는 중...</td></tr>
+          : !paged.length ? <tr><td colSpan={cols.length} style={{ padding: 40, textAlign: 'center', color: t.textL }}>신청 내역이 없습니다</td></tr>
+          : paged.map(r => {
+            const [bg, fg] = stColor(r.status)
+            return <tr key={r.id} style={{ borderBottom: '1px solid ' + t.border, cursor: 'pointer' }} onClick={() => setOpenRow(openRow === r.id ? null : r.id)}
+              onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
+              <td style={{ ...td, color: t.textM }}>{r.submitted_day}</td>
+              <td style={{ ...td, fontWeight: 700 }}>{r.ward}병동</td>
+              <td style={td}>{r.requester_name}</td>
+              <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{r.item_count}</td>
+              <td style={{ ...td, textAlign: 'left' }}><Bd bg={bg} color={fg}>{r.status}</Bd></td>
+              <td style={{ ...td, color: t.textM, fontSize: 11 }}>{r.request_year} {r.season}</td>
+            </tr>
+          })}</tbody>
+      </StandardTable>
+      <Pg page={pg} setPage={setPage} tp={tp} fl={sorted} pp={PP_W} ends />
+    </div>
+
+    {/* ── 상세 ── */}
+    {openRow && (() => {
+      const r = reqs.find(x => x.id === openRow); if (!r) return null
+      const list = itemsOf(r.id)
+      return <div className="no-print" style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.accent, padding: '14px 16px', marginTop: 12, boxShadow: t.shadow }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: t.accent }}>{r.ward}병동 · {r.requester_name}</div>
+          <div style={{ fontSize: 11, color: t.textM }}>{(r.submitted_at || '').slice(0, 16).replace('T', ' ')} · {r.request_year} {r.season}</div>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>상태</span>
+          <select value={r.status} onChange={e => setStatus(r, e.target.value)} style={{ ...ip2, width: 'auto' }}>{WARD_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select>
+          <button onClick={() => setOpenRow(null)} style={{ border: 'none', background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12 }}>닫기 ✕</button>
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead><tr>{['약품명', '수량', '단위', '사용량', '비고', ''].map((h, i) => <th key={h + i} style={{ padding: '8px 10px', textAlign: i === 1 || i === 3 ? 'right' : 'left', color: t.textM, fontWeight: 600, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+          <tbody>{!list.length ? <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: t.textL }}>품목이 없습니다</td></tr>
+            : list.map(it => {
+              const ed = (f) => edit && edit.itemId === it.id && edit.field === f
+              const cell = (f, val, align) => <td style={{ padding: '7px 10px', textAlign: align || 'left', borderBottom: '1px solid ' + t.border }}>
+                {ed(f) ? <input autoFocus defaultValue={val ?? ''} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEdit(null) }} onBlur={e => saveItem(it, f, e.target.value)} style={ip2} />
+                  : <span onClick={() => setEdit({ itemId: it.id, field: f })} style={{ cursor: 'pointer', color: val == null || val === '' ? t.textL : t.text }}>{val == null || val === '' ? '클릭' : val}</span>}
+              </td>
+              return <tr key={it.id}>
+                <td style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid ' + t.border, fontWeight: 600 }}>{it.drug_name}{it.drug_code ? <span style={{ color: t.textL, fontSize: 10 }}> ({it.drug_code})</span> : <span style={{ color: t.amber, fontSize: 10 }}> · 코드 없음</span>}</td>
+                {cell('qty', it.qty, 'right')}
+                {cell('unit', it.unit, 'left')}
+                {cell('usage_qty', it.usage_qty, 'right')}
+                {cell('memo', it.memo, 'left')}
+                <td style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid ' + t.border }}>{isAdmin && <button onClick={() => delItem(it)} style={{ border: 'none', background: 'transparent', color: t.textL, cursor: 'pointer', fontSize: 11 }}>삭제</button>}</td>
+              </tr>
+            })}</tbody>
+        </table>
+        <div style={{ fontSize: 10, color: t.textM, marginTop: 8, textAlign: 'left' }}>수량·단위·사용량·비고는 클릭해서 수정합니다. 병동은 저장 후 수정할 수 없어 여기서 처리합니다.</div>
+      </div>
+    })()}
+
+    {/* ── 인쇄 전용: 병동별 1장 ── */}
+    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:1.2mm 2mm;font-size:11px;text-align:left}.ward-print thead{display:table-header-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-min{min-height:0!important}}'}</style>
+    <div className="ward-print wp-min">
+      {printGroups.map(g => (
+        <div key={g.ward} className="wp-page">
+          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>{g.ward}병동 약품 신청서</div>
+          {g.list.map(r => (
+            <div key={r.id} style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>작성자 {r.requester_name} · 신청일 {r.submitted_day} · {r.request_year} {r.season} · 상태 {r.status}</div>
+              <table><thead><tr><th style={{ width: '46%' }}>약품명</th><th style={{ width: '14%' }}>수량</th><th style={{ width: '12%' }}>단위</th><th style={{ width: '14%' }}>사용량</th><th style={{ width: '14%' }}>비고</th></tr></thead>
+                <tbody>{itemsOf(r.id).map(it => <tr key={it.id}><td>{it.drug_name}</td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}</tbody></table>
+            </div>))}
+        </div>))}
+    </div>
+
+    {/* ── 기간 생성 모달 ── */}
+    {regOpen && <WardWindowModal t={t} nf={nf} setNf={setNf} onClose={() => setRegOpen(false)} onSave={createWin} />}
+    <Ft />
+  </div>
+}
+/* 접수 기간 생성 모달 — 훅A(useDraggableModal)·제목줄 한정(함정 #13) */
+function WardWindowModal({ t, nf, setNf, onClose, onSave }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos)
+  const ip = { width: '100%', padding: '9px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }
+  const lb = { fontSize: 10, color: t.textM, display: 'block', marginBottom: 4 }
+  const sf = (k, v) => setNf(p => ({ ...p, [k]: v }))
+  return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
+    <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: '1px solid ' + t.border, boxShadow: t.shadowH, maxHeight: '92vh', overflowY: 'auto', transform: 'translate(' + _dmPos.x + 'px, ' + _dmPos.y + 'px)' }} onClick={e => e.stopPropagation()}>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: '1px solid ' + t.border }}><div style={{ fontSize: 15, fontWeight: 700, color: t.accent }}>접수 기간 생성</div></div>
+      <div style={{ padding: '16px 20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div><label style={lb}>명절 *</label><select value={nf.season} onChange={e => sf('season', e.target.value)} style={ip}>{WARD_SEASONS.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+          <div><label style={lb}>연도 *</label><input value={nf.request_year} onChange={e => sf('request_year', e.target.value)} inputMode="numeric" style={ip} /></div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div><label style={lb}>시작(선택)</label><input type="datetime-local" value={nf.opens_at} onChange={e => sf('opens_at', e.target.value)} style={ip} /></div>
+          <div><label style={lb}>종료(선택)</label><input type="datetime-local" value={nf.closes_at} onChange={e => sf('closes_at', e.target.value)} style={ip} /></div>
+        </div>
+        <div style={{ marginBottom: 14 }}><label style={lb}>안내 문구(선택)</label><input value={nf.notice} onChange={e => sf('notice', e.target.value)} placeholder="신청 화면 상단에 표시" style={ip} /></div>
+        <div style={{ fontSize: 11, color: t.textM, marginBottom: 12, lineHeight: 1.6 }}>만든 직후에는 <b>닫힘</b> 상태입니다. 목록에서 <b>열기</b>를 눌러야 신청을 받습니다.</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button>
+          <button onClick={onSave} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: 'pointer', background: t.accent, color: t.card, fontSize: 13, fontWeight: 700 }}>생성</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
 /* ═══ 사용 점검 — 장기 미사용 약품 보유 판단 이력(drug_idle_reviews 누적·조회 시 재계산) ═══ */
 const IDLE_BANDS_DEFAULT = [90, 180, 365]
 const IDLE_STATUSES = ['관찰', '중지', '보유유지', '해제']
@@ -4574,7 +4826,7 @@ function Schedule({ drugs, onNav }) {
   </div>;
 }
 
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive'];
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'narcotic', 'nonins', 'ordering', 'ward', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); const m = h.split('/')[0]; return ROUTES.includes(m) ? m : 'dashboard'; }
 function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
 /* 입출고 월 선택: 해시 3번째 세그먼트(#transaction/out/2026-08). 없으면 현재 월(하위호환). 「전체」는 URL에 월 세그먼트 없음(→새로고침 시 현재 월로 복원). */
@@ -5155,6 +5407,7 @@ export default function App() {
         {menu === 'archive' && <DrugList drugs={drugs} navFilter={{ status: ['중지'], archive: true }} onEdit={setEditDrug} onReload={load} />}
         {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} onDispose={setDisposeDrug} />}
         {menu === 'idle' && <IdleCheck drugs={drugs} onReload={load} />}
+        {menu === 'ward' && <WardAdmin />}
         {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
         {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
