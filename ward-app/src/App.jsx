@@ -333,36 +333,19 @@ export default function App() {
                 <span style={tag}><span style={{ fontSize: 16, fontWeight: 900, lineHeight: '13px' }}>①</span> 병동</span>
                 <div className="wa-grow" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
                   {WARDS.map(w => (
-                    /* ★ 신청완료 병동도 버튼을 막지 않는다 — 클릭은 되고, 고른 뒤 위 배너로 이유를 알린다.
-                          보조줄은 신청완료가 하나라도 있을 때만 4개 버튼에 **동일하게** 넣어 높이를 맞춘다
-                          (아무도 신청하지 않은 평상시에는 기존 모양 그대로). 색은 브랜드 파생 회색만 쓴다. */
+                    /* ★ 버튼은 4개가 **완전히 같은 크기·형태**여야 한다 — 보조줄을 없앴고,
+                          신청완료 여부로 배경·테두리를 바꾸지 않는다(채움은 선택된 하나뿐).
+                          상태는 라벨 뒤 작은 ✓와 아래 한 줄 안내(M-2)로만 알린다.
+                          신청완료 병동도 버튼은 그대로 눌린다 — 고르면 위 배너가 이유를 알린다. */
                     <button key={w} onClick={() => pickWard(w)} style={{
                       padding: '10px 0', borderRadius: 9, cursor: 'pointer', fontWeight: 800, fontSize: 14,
-                      /* ★ 색 우선순위 — **선택 상태가 신청완료보다 우선**한다.
-                            ward === w 이면 신청완료 여부와 무관하게 보라 채움(지금 무엇을 보고 있는지가 색으로 남아야 함).
-                            비선택 + 신청완료면 녹색 채움 + 흰 글씨. 그 외는 흰 배경 + 회색 테두리 그대로.
-                            두께 1px·padding·borderRadius·fontSize·fontWeight는 건드리지 않아 폭·높이가 변하지 않는다. */
-                      border: '1px solid ' + (ward === w ? PURPLE : (dupWards.includes(w) ? GREEN : rgba(NAVY, 0.2))),
-                      background: ward === w ? PURPLE : (dupWards.includes(w) ? GREEN : 'white'),
-                      color: ward === w ? 'white' : (dupWards.includes(w) ? 'white' : NAVY),
+                      border: '1px solid ' + (ward === w ? PURPLE : rgba(NAVY, 0.2)),
+                      background: ward === w ? PURPLE : 'white',
+                      color: ward === w ? 'white' : NAVY,
                     }}>
-                      <div>{w}병동</div>
-                      {/* ★ 바깥 div가 height:12 · lineHeight:'12px'로 줄 상자를 붙든다.
-                             배지를 버튼의 직계 inline-block으로 두면 버튼 자신의 strut(fontSize 14 · normal ≈ 16.8px)이
-                             줄 상자를 지배해 **버튼이 약 4.8px 높아진다**. 그래서 배지는 이 div 안의 span으로 넣는다.
-                             세로 padding은 0이라 높이는 12px 그대로다. */}
-                      {dupWards.length > 0 && (
-                        <div style={{ height: 12, lineHeight: '12px', marginTop: 2 }}>
-                          {dupWards.includes(w) && (
-                            /* ★ 버튼 자체가 녹색 채움이 되었으므로 녹색 배지를 그 위에 얹을 수 없다
-                                  → 배경·테두리·padding 없는 흰 글씨 텍스트로 되돌린다.
-                                  선택된 병동은 보라 배경 위라 라벤더 글자를 그대로 쓴다. */
-                            <span style={{
-                              fontSize: 9, fontWeight: 800,
-                              color: ward === w ? rgba(LAVENDER, 0.95) : 'white',
-                            }}>신청완료</span>
-                          )}
-                        </div>
+                      {w}병동{dupWards.includes(w) && (
+                        /* 선택된 병동은 보라 배경 위라 녹색 대비가 나쁘다 → 흰색으로 */
+                        <span style={{ color: ward === w ? 'white' : GREEN, fontSize: 11, marginLeft: 3 }}>✓</span>
                       )}
                     </button>
                   ))}
@@ -374,6 +357,15 @@ export default function App() {
                   placeholder="이름을 입력해 주세요" style={{ ...input, padding: '10px 12px' }} />
               </div>
             </div>
+            {/* ★ 상태 한 줄 — 신청완료 병동이 1개 이상일 때만. 배경·테두리 없는 텍스트 한 줄.
+                   0개면 이 노드 자체가 렌더되지 않아 여백도 남지 않는다(marginTop이 자기 자신에만 있음).
+                   위치는 .wa-top(배지 행) 바로 아래·입력 안내 배너 위 — 900px 이상에서 .wa-top이
+                   가로 배치로 바뀌므로 그 안이 아니라 밖에 두어야 두 레이아웃에서 모두 한 줄로 놓인다. */}
+            {dupWards.length > 0 && (
+              <div style={{ fontSize: 11, color: GREEN, marginTop: 6 }}>
+                신청완료 · {dupWards.map(w => w + '병동').join(' ')}
+              </div>
+            )}
             {/* ★ 상단이 작아진 만큼 미입력 안내를 눈에 띄게 남긴다 — 진행 차단은 그대로 */}
             {!ready && (
               <div style={{
