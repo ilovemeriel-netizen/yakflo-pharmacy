@@ -3339,6 +3339,10 @@ function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
 const WARD_SEASONS = ['설', '추석']
 const WARD_LIST = ['3', '4', '5', '6']
 const WARD_STATUSES = ['접수', '처리중', '완료']
+/* 인쇄 1장에 들어가는 표 행수 — A4 세로 기준(행 8.6mm × 22 ≒ 189mm + 제목·머리말·헤더·저작권).
+   품목이 적어도 빈 행으로 틀을 채워 약제과가 수기로 추가 기입할 수 있게 한다.
+   ★ min-height·vh를 쓰지 않는다(함정 #11) — 행 높이 합으로만 지면을 채운다. */
+const WARD_PRINT_ROWS = 22
 function WardAdmin() {
   const { t, memberRole, profile } = useTheme()
   const { so, TS, sk, sd, setSort } = useSort('submitted_at', 'desc')
@@ -3424,7 +3428,8 @@ function WardAdmin() {
   }
 
   /* ── 인쇄: 현재 필터 결과를 병동별 1장씩 ── */
-  const printGroups = WARD_LIST.map(w => ({ ward: w, list: sorted.filter(r => r.ward === w) })).filter(g => g.list.length)
+  /* 인쇄: 현재 필터 결과를 병동 순으로 — 신청 1건당 A4 1장 (병동당 1회 제한이라 사실상 병동별 1장) */
+  const printPages = [...sorted].sort((a, b) => (a.ward === b.ward ? 0 : a.ward < b.ward ? -1 : 1))
 
   const cols = [
     { k: 'submitted_day', h: '신청일', th: { textAlign: 'left' } },
@@ -3439,7 +3444,7 @@ function WardAdmin() {
   const stColor = s => s === '완료' ? [t.greenL, t.green] : s === '처리중' ? [t.amberL, t.amber] : [t.accentL, t.accent]
 
   return <div style={{ padding: '20px 24px' }}>
-    <div style={{ marginBottom: 10 }}><div style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>병동신청 <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>· 명절 대비 병동 약품 신청 접수·확인</span></div></div>
+    <div className="no-print" style={{ marginBottom: 10 }}><div style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>병동신청 <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>· 명절 대비 병동 약품 신청 접수·확인</span></div></div>
 
     {msg && <div className="no-print" style={{ background: msg.kind === 'err' ? t.redL : t.greenL, color: msg.kind === 'err' ? t.red : t.green, borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>{msg.text}</div>}
 
@@ -3478,7 +3483,7 @@ function WardAdmin() {
           {opts.map(o => <button key={o} onClick={() => { set(o); setPage(1) }} style={{ padding: '5px 11px', borderRadius: 8, border: '1px solid ' + (val === o ? t.accent : t.border), background: val === o ? t.accentL : t.card, color: val === o ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: val === o ? 700 : 500 }}>{o}</button>)}
         </span>))}
       <div style={{ flex: 1 }} />
-      <button onClick={() => window.print()} disabled={!printGroups.length} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: printGroups.length ? 'pointer' : 'not-allowed', fontSize: 11, fontWeight: 700 }}>인쇄 (병동별)</button>
+      <button onClick={() => window.print()} disabled={!printPages.length} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: printPages.length ? 'pointer' : 'not-allowed', fontSize: 11, fontWeight: 700 }}>인쇄 (병동별)</button>
     </div>
 
     {/* ── 신청 내역 ── */}
@@ -3539,20 +3544,29 @@ function WardAdmin() {
     })()}
 
     {/* ── 인쇄 전용: 병동별 1장 ── */}
-    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:1.2mm 2mm;font-size:11px;text-align:left}.ward-print thead{display:table-header-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-min{min-height:0!important}}'}</style>
-    <div className="ward-print wp-min">
-      {printGroups.map(g => (
-        <div key={g.ward} className="wp-page">
-          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>{g.ward}병동 약품 신청서</div>
-          {g.list.map(r => (
-            <div key={r.id} style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>작성자 {r.requester_name} · 신청일 {r.submitted_day} · {r.request_year} {r.season} · 상태 {r.status}</div>
-              <table><thead><tr><th style={{ width: '46%' }}>약품명</th><th style={{ width: '14%' }}>수량</th><th style={{ width: '12%' }}>단위</th><th style={{ width: '14%' }}>사용량</th><th style={{ width: '14%' }}>비고</th></tr></thead>
-                <tbody>{itemsOf(r.id).map(it => <tr key={it.id}><td>{it.drug_name}</td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}</tbody></table>
-            </div>))}
-        </div>))}
+    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;text-align:left;vertical-align:middle}.ward-print thead{display:table-header-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}}'}</style>
+    {/* ── 인쇄 전용: 신청 1건당 A4 1장 · 빈 행으로 표 틀을 채워 수기 추가 기입 가능 ── */}
+    <div className="ward-print">
+      {printPages.map(r => {
+        const list = itemsOf(r.id)
+        const blanks = Math.max(0, WARD_PRINT_ROWS - list.length)   // A4 한 장을 채우는 빈 행
+        return <div key={r.id} className="wp-page">
+          <div style={{ fontSize: 24, fontWeight: 800, color: t.accent, marginBottom: 8 }}>{r.ward}병동 약품 신청서</div>
+          <div style={{ fontSize: 12, marginBottom: 8 }}>작성자 {r.requester_name} · 신청일 {r.submitted_day} · {r.request_year} {r.season} · 상태 {r.status}</div>
+          <table>
+            <thead><tr>
+              <th style={{ width: '44%' }}>약품명</th><th style={{ width: '13%' }}>수량</th>
+              <th style={{ width: '12%' }}>단위</th><th style={{ width: '13%' }}>사용량</th><th style={{ width: '18%' }}>비고</th>
+            </tr></thead>
+            <tbody>
+              {list.map(it => <tr key={it.id}><td>{it.drug_name}</td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}
+              {Array.from({ length: blanks }, (_, i) => <tr key={'b' + i}><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>)}
+            </tbody>
+          </table>
+          <Ft />
+        </div>
+      })}
     </div>
-
     {/* ── 기간 생성 모달 ── */}
     {regOpen && <WardWindowModal t={t} nf={nf} setNf={setNf} onClose={() => setRegOpen(false)} onSave={createWin} />}
     <Ft />
