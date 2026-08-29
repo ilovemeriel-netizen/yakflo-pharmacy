@@ -6,6 +6,14 @@
     <meta name="theme-color" content="#804A87" />
     <meta name="robots" content="noindex, nofollow" />
     <title>병동 약품 신청</title>
+    <!-- 파비콘 — 브랜드 보라 배경 + 흰 십자. 색은 리터럴 hex 고정(파비콘은 테마를 상속하지 못한다).
+         ※ 이 파일은 ward-app 전용이다. 관리 화면(루트 public/favicon.svg)과 공유하지 않는다. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- iOS 홈 화면 — 180×180. iOS가 모서리를 자동으로 깎으므로 favicon.svg의 rx="7"을 빼고
+         사각형으로 만들었다(안 그러면 이중으로 깎여 어색해진다). 배경은 투명이 아닌 #804A87로 완전히 채움.
+         ※ manifest.webmanifest는 두지 않는다 — 설치 프롬프트가 병동 담당자에게 혼란을 준다.
+           그래서 Android 홈 화면은 브라우저 자동 생성 아이콘이 되며, 이는 의도된 범위다. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://cdn.jsdelivr.net" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
   </head>
