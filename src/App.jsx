@@ -3362,23 +3362,31 @@ const WARD_STATUSES = ['접수', '처리중', '완료']
    ★ 품목이 이 값을 넘으면 빈 행을 채우지 않고 자연스럽게 다음 장으로 넘어간다(thead·tfoot 매 장 반복).
    ★ min-height·vh를 쓰지 않는다(함정 #11) — 행 높이 합으로만 지면을 채운다. */
 const WARD_PRINT_ROWS = 20
-/* ★ 「약제과 추가」 판별 기준 — **신규 컬럼 없이** sort_order 값만으로 구분한다(0083 스키마 무변경).
+/* ★ 관리 화면 추가분 판별 — **신규 컬럼 없이** sort_order 값만으로 구분한다(0083 스키마 무결).
    신청 앱(ward-submit)은 담은 순서대로 1..N을 넣고 MAX_ITEMS=100이라 100을 넘지 않는다.
-   따라서 1000 이상은 관리 화면에서 약제과가 추가한 품목뿐이다.
+   따라서 1000 이상은 관리 화면에서 추가한 품목뿐이다.
+   ★ 판정은 오직 이 수치 비교다 — 표시 문자열을 비교·파싱하지 않는다(문구가 바뀌어도 판정이 깨지지 않게).
    ※ ward_request_items에는 created_at이 없어 시각 비교로는 구분할 수 없다(0083 실측). */
 const WARD_ADMIN_SORT_BASE = 1000
 const isAdminAdded = it => Number(it.sort_order) >= WARD_ADMIN_SORT_BASE
-/* 약품명 표시값 — 「스타빅현탁액 (약제과 추가)」처럼 **약품명 열 한 줄**에서 바로 읽히게 한다.
+/* 약품명 표시값 — 「스타빅현탁액 (추가)」처럼 **약품명 열 한 줄**에서 바로 읽히게 한다.
    ★ 파생 표시일 뿐 drug_name 컬럼에 저장하지 않는다.
    ★ 비고 열은 건드리지 않는다 — 약제과가 병동에 전할 말을 쓰는 자리다
      (예: 「도매 품절로 에스로반연고로 드립니다」).
-   ★ 행 색은 기존 약품과 동일하게 둔다 — 약제과 추가분이 덜 중요한 것이 아니다. */
-/* 표시용 — 「(약제과 추가)」만 한 단계 작게(인쇄 CSS의 .wp-add). 인라인 span이라
-   부모 행보다 커지지 않으므로 행 높이(8.6mm)에 영향이 없다. 화면에서는 .wp-add에 스타일이 없어 동일 크기. */
-const WardItemName = ({ it }) => <>{it.drug_name}{isAdminAdded(it) ? <span className="wp-add"> (약제과 추가)</span> : null}</>
+   ★ 행 색은 기존 약품과 동일하게 둔다 — 추가분이 덜 중요한 것이 아니다.
+   ★ 「(추가)」만 한 단계 작게(인쇄 CSS의 .wp-add). 인라인 span이라 부모 행보다 커지지 않으므로
+     행 높이(8.6mm)에 영향이 없다. 화면에서는 .wp-add에 스타일이 없어 동일 크기. */
+const WardItemName = ({ it }) => <>{it.drug_name}{isAdminAdded(it) ? <span className="wp-add"> (추가)</span> : null}</>
 function WardAdmin() {
   const { t, memberRole, profile } = useTheme()
   const { so, TS, sk, sd, setSort } = useSort('submitted_at', 'desc')
+  /* ★ 상세 품목표 전용 정렬 — 신청 목록(so)과 **독립된 훅 인스턴스**다.
+     초기 키가 ''이라 so2()는 원본 배열을 그대로 돌려주고, hs2()의 3순환(오름▲→내림▼→해제)에서
+     해제 상태로 돌아오면 로드 순서(= .order('sort_order') 오름차순)가 되살아난다
+     → 신청분 1..N → 추가분 1000+ 구조 복귀.
+     ★ 인쇄는 이 정렬을 쓰지 않는다 — 인쇄 블록은 itemsOf()를 다시 호출해 원본 순서를 그대로 쓴다.
+       so2()는 [...a].sort()로 **사본**을 만들므로 원본 items 배열도 오염되지 않는다. */
+  const { so: so2, hs: hs2, SI: SI2, sk: sk2 } = useSort('')
   const isAdmin = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
   const [wins, setWins] = useState([]); const [reqs, setReqs] = useState([]); const [items, setItems] = useState([])
   const [ld, setLd] = useState(true); const [msg, setMsg] = useState(null)
@@ -3545,7 +3553,7 @@ function WardAdmin() {
     const list = itemsOf(r.id)
     if (list.some(x => (x.drug_code || x.drug_name) === (d.drug_code || nm))) { flash('이미 담긴 약품입니다', 'err'); return }
     setAdding(true)
-    /* ★ sort_order를 WARD_ADMIN_SORT_BASE 위에서 매겨 「약제과 추가」로 식별한다(스키마 변경 없음) */
+    /* ★ sort_order를 WARD_ADMIN_SORT_BASE 위에서 매겨 추가분으로 식별한다(스키마 변경 없음) */
     const nextOrder = Math.max(WARD_ADMIN_SORT_BASE, ...list.map(x => Number(x.sort_order) || 0)) + 1
     const { error } = await supabase.from('ward_request_items').insert([{
       request_id: r.id, drug_code: d.drug_code || null, drug_name: nm,
@@ -3642,7 +3650,8 @@ function WardAdmin() {
     {/* ── 상세 ── */}
     {openRow && (() => {
       const r = reqs.find(x => x.id === openRow); if (!r) return null
-      const list = itemsOf(r.id)
+      /* ★ 화면 표시용만 정렬한다(so2는 사본 반환) — 인쇄는 아래에서 itemsOf를 다시 호출해 원본 순서를 쓴다 */
+      const list = so2(itemsOf(r.id))
       return <div className="no-print" style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.accent, padding: '14px 16px', marginTop: 12, boxShadow: t.shadow }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: t.accent }}>{r.ward}병동 · {r.requester_name}</div>
@@ -3655,7 +3664,10 @@ function WardAdmin() {
           <button onClick={() => setOpenRow(null)} style={{ border: 'none', background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12 }}>닫기 ✕</button>
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead><tr>{['약품명', '수량', '단위', '사용량', '비고', ''].map((h, i) => <th key={h + i} style={{ padding: '8px 10px', textAlign: i === 1 || i === 3 ? 'right' : 'left', color: t.textM, fontWeight: 600, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+          {/* ★ 정렬만 적용 — 필터 드롭다운·sticky 열·가로스크롤·페이지네이션은 두지 않는다(5열 소규모 표).
+                삼각형 1개로 오름▲ → 내림▼ → 해제(⇅) 3순환. 비고·작업 열은 정렬 대상이 아니다. */}
+          <thead><tr>{[['약품명', 'drug_name'], ['수량', 'qty'], ['단위', 'unit'], ['사용량', 'usage_qty'], ['비고', null], ['', null]].map(([h, k], i) => (
+            <th key={h + i} onClick={k ? () => hs2(k) : undefined} style={{ padding: '8px 10px', textAlign: i === 1 || i === 3 ? 'right' : 'left', color: k && sk2 === k ? t.accent : t.textM, fontWeight: 600, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap', cursor: k ? 'pointer' : 'default', userSelect: 'none' }}>{h}{k ? <SI2 col={k} /> : null}</th>))}</tr></thead>
           <tbody>{!list.length ? <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: t.textL }}>품목이 없습니다</td></tr>
             : list.map(it => {
               const ed = (f) => edit && edit.itemId === it.id && edit.field === f
@@ -3691,9 +3703,11 @@ function WardAdmin() {
 
             {addOpen && <>
               {/* 안내는 버튼 아래 별도 줄·중앙·회색 작은 글씨 */}
-              <div style={{ fontSize: 10, fontWeight: 400, color: t.textM, marginTop: 8, marginBottom: 8 }}>추가한 품목은 약품명 옆에 (약제과 추가)로 표시됩니다</div>
+              <div style={{ fontSize: 10, fontWeight: 400, color: t.textM, marginTop: 8, marginBottom: 8 }}>추가한 품목은 약품명 옆에 (추가)로 표시됩니다</div>
               {/* ★ Enter로 추가 — 신청 앱과 같은 규칙: IME 조합 중 Enter는 무시하고, 결과가 1건일 때만 담는다 */}
-              <input value={aq} onChange={e => onAq(e.target.value)} onKeyDown={e => onAqKeyDown(e, r)} placeholder="약품명·코드·성분명 2자 이상 · Enter로 추가" style={{ ...ip2, width: '100%', maxWidth: 420, textAlign: 'center' }} />
+              {/* ★ height만 [+ 약품 추가] 버튼과 같은 30px로 덧씌운다. 공유 스타일 ip2는 손대지 않는다
+                     (상세 표 인라인 편집 칸이 같은 객체를 쓰므로). 배경·테두리·폰트·placeholder·너비 불변. */}
+              <input value={aq} onChange={e => onAq(e.target.value)} onKeyDown={e => onAqKeyDown(e, r)} placeholder="약품명·코드·성분명 2자 이상 · Enter로 추가" style={{ ...ip2, width: '100%', maxWidth: 420, textAlign: 'center', height: 30 }} />
               {aSearching && <div style={{ fontSize: 11, color: t.textL, marginTop: 6 }}>찾는 중...</div>}
             {/* drug_code는 nullable(0083) — 목록에 없는 약도 이름만으로 추가할 수 있다.
                 「직접 추가」도 [추가]와 같은 가운데 정렬로 맞춘다(검색창 아래 한 줄). */}
@@ -3740,7 +3754,7 @@ function WardAdmin() {
           방식(약 24.2mm)보다 15.6mm를 회수해 그만큼 표를 아래까지 늘렸다.
           position:fixed·@page margin-box는 브라우저 인쇄 지원이 갈려 쓰지 않는다.
         정렬: 헤더는 전부 가운데. 본문은 약품명·비고 좌측 / 수량·사용량 우측 / 단위 가운데. */}
-    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important;color:black}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print .wp-title{color:#804A87}.ward-print .wp-meta{color:#52524E}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;vertical-align:middle;color:black}.ward-print th{text-align:center;font-weight:700;background:#E8E6E1;border-bottom:2px solid black;-webkit-print-color-adjust:exact;print-color-adjust:exact}.ward-print td{text-align:center}.ward-print td:nth-child(1),.ward-print td:nth-child(5){text-align:left}.ward-print td:nth-child(1){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ward-print .wp-add{font-size:9px}.ward-print td:nth-child(2),.ward-print td:nth-child(4){text-align:right}.ward-print thead{display:table-header-group}.ward-print tfoot{display:table-footer-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft td{border:none;height:8.6mm;text-align:center;font-size:8px;line-height:1.35;color:#A3A39E;padding:1mm 2mm 0}}'}</style>
+    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important;color:black}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print .wp-title{color:#804A87}.ward-print .wp-meta{color:#52524E}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;vertical-align:middle;color:black}.ward-print th{text-align:center;font-weight:700;background:#E8E6E1;border-bottom:2px solid black;-webkit-print-color-adjust:exact;print-color-adjust:exact}.ward-print td{text-align:center}.ward-print td:nth-child(1),.ward-print td:nth-child(5){text-align:left}.ward-print td:nth-child(1){white-space:nowrap}.ward-print .wp-add{font-size:9px}.ward-print td:nth-child(2),.ward-print td:nth-child(4){text-align:right}.ward-print thead{display:table-header-group}.ward-print tfoot{display:table-footer-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft td{border:none;height:8.6mm;text-align:center;font-size:8px;line-height:1.35;color:#A3A39E;padding:1mm 2mm 0}}'}</style>
     {/* ── 인쇄 전용: 신청 1건당 A4 1장 · 빈 행으로 표 틀을 채워 수기 추가 기입 가능 ── */}
     <div className="ward-print">
       {printPages.map(r => {
@@ -3768,7 +3782,8 @@ function WardAdmin() {
               All rights reserved. 무단 전재 및 재배포 금지.
             </td></tr></tfoot>
             <tbody>
-              {/* ★ 「(약제과 추가)」는 약품명 열에만 붙인다 · 행 색은 기존 약품과 동일 · 비고 열 무변경 */}
+              {/* ★ 「(추가)」는 약품명 열에만 붙인다 · 행 색은 기존 약품과 동일 · 비고 열 무변경
+                     ★ 인쇄는 화면 정렬을 따르지 않는다 — itemsOf(원본 sort_order 순)를 그대로 쓴다 */}
               {list.map(it => <tr key={it.id}><td><WardItemName it={it} /></td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}
               {Array.from({ length: blanks }, (_, i) => <tr key={'b' + i}><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>)}
             </tbody>
