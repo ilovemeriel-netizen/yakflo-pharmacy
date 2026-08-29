@@ -3373,7 +3373,9 @@ const isAdminAdded = it => Number(it.sort_order) >= WARD_ADMIN_SORT_BASE
    ★ 비고 열은 건드리지 않는다 — 약제과가 병동에 전할 말을 쓰는 자리다
      (예: 「도매 품절로 에스로반연고로 드립니다」).
    ★ 행 색은 기존 약품과 동일하게 둔다 — 약제과 추가분이 덜 중요한 것이 아니다. */
-const wardItemName = it => it.drug_name + (isAdminAdded(it) ? ' (약제과 추가)' : '')
+/* 표시용 — 「(약제과 추가)」만 한 단계 작게(인쇄 CSS의 .wp-add). 인라인 span이라
+   부모 행보다 커지지 않으므로 행 높이(8.6mm)에 영향이 없다. 화면에서는 .wp-add에 스타일이 없어 동일 크기. */
+const WardItemName = ({ it }) => <>{it.drug_name}{isAdminAdded(it) ? <span className="wp-add"> (약제과 추가)</span> : null}</>
 function WardAdmin() {
   const { t, memberRole, profile } = useTheme()
   const { so, TS, sk, sd, setSort } = useSort('submitted_at', 'desc')
@@ -3662,7 +3664,7 @@ function WardAdmin() {
                   : <span onClick={() => setEdit({ itemId: it.id, field: f })} style={{ cursor: 'pointer', color: val == null || val === '' ? t.textL : t.text }}>{val == null || val === '' ? '클릭' : val}</span>}
               </td>
               return <tr key={it.id}>
-                <td style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid ' + t.border, fontWeight: 600, color: t.text }}>{wardItemName(it)}{it.drug_code ? <span style={{ color: t.textL, fontSize: 10 }}> ({it.drug_code})</span> : <span style={{ color: t.amber, fontSize: 10 }}> · 코드 없음</span>}</td>
+                <td style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid ' + t.border, fontWeight: 600, color: t.text }}><WardItemName it={it} />{it.drug_code ? <span style={{ color: t.textL, fontSize: 10 }}> ({it.drug_code})</span> : <span style={{ color: t.amber, fontSize: 10 }}> · 코드 없음</span>}</td>
                 {cell('qty', it.qty, 'right')}
                 {cell('unit', it.unit, 'left')}
                 {cell('usage_qty', it.usage_qty, 'right')}
@@ -3738,7 +3740,7 @@ function WardAdmin() {
           방식(약 24.2mm)보다 15.6mm를 회수해 그만큼 표를 아래까지 늘렸다.
           position:fixed·@page margin-box는 브라우저 인쇄 지원이 갈려 쓰지 않는다.
         정렬: 헤더는 전부 가운데. 본문은 약품명·비고 좌측 / 수량·사용량 우측 / 단위 가운데. */}
-    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important;color:black}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print .wp-title{color:#804A87}.ward-print .wp-meta{color:#52524E}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;vertical-align:middle;color:black}.ward-print th{text-align:center;font-weight:700}.ward-print td{text-align:center}.ward-print td:nth-child(1),.ward-print td:nth-child(5){text-align:left}.ward-print td:nth-child(2),.ward-print td:nth-child(4){text-align:right}.ward-print thead{display:table-header-group}.ward-print tfoot{display:table-footer-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft td{border:none;height:8.6mm;text-align:center;font-size:8px;line-height:1.35;color:#A3A39E;padding:1mm 2mm 0}}'}</style>
+    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important;color:black}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print .wp-title{color:#804A87}.ward-print .wp-meta{color:#52524E}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;vertical-align:middle;color:black}.ward-print th{text-align:center;font-weight:700;background:#E8E6E1;border-bottom:2px solid black;-webkit-print-color-adjust:exact;print-color-adjust:exact}.ward-print td{text-align:center}.ward-print td:nth-child(1),.ward-print td:nth-child(5){text-align:left}.ward-print td:nth-child(1){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ward-print .wp-add{font-size:9px}.ward-print td:nth-child(2),.ward-print td:nth-child(4){text-align:right}.ward-print thead{display:table-header-group}.ward-print tfoot{display:table-footer-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft td{border:none;height:8.6mm;text-align:center;font-size:8px;line-height:1.35;color:#A3A39E;padding:1mm 2mm 0}}'}</style>
     {/* ── 인쇄 전용: 신청 1건당 A4 1장 · 빈 행으로 표 틀을 채워 수기 추가 기입 가능 ── */}
     <div className="ward-print">
       {printPages.map(r => {
@@ -3751,8 +3753,11 @@ function WardAdmin() {
           <div className="wp-meta" style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>작성자 {r.requester_name} · 신청일 {r.submitted_day} · {r.request_year} {r.season} · 상태 {r.status}</div>
           <table>
             <thead><tr>
-              <th style={{ width: '44%' }}>약품명</th><th style={{ width: '13%' }}>수량</th>
-              <th style={{ width: '12%' }}>단위</th><th style={{ width: '13%' }}>사용량</th><th style={{ width: '18%' }}>비고</th>
+              {/* ★ 열 너비 재배분 — 수량·단위·사용량은 짧은 값만 들어가므로 줄이고,
+                    약제과가 손으로 적는 비고를 18% → 26%로 넓혔다. 약품명은 44% → 46%.
+                    (drugs 실측 2026-08-30: 1,115건 · 최대 30자 · p99 24자 · 평균 9자) */}
+              <th style={{ width: '46%' }}>약품명</th><th style={{ width: '9%' }}>수량</th>
+              <th style={{ width: '9%' }}>단위</th><th style={{ width: '10%' }}>사용량</th><th style={{ width: '26%' }}>비고</th>
             </tr></thead>
             {/* ★ 저작권을 tfoot에 둔다 — display:table-footer-group이라 표가 지면을 채우면
                 자연히 페이지 **바닥**에 놓이고, 2장이 되면 **장마다 반복**된다.
@@ -3764,7 +3769,7 @@ function WardAdmin() {
             </td></tr></tfoot>
             <tbody>
               {/* ★ 「(약제과 추가)」는 약품명 열에만 붙인다 · 행 색은 기존 약품과 동일 · 비고 열 무변경 */}
-              {list.map(it => <tr key={it.id}><td>{wardItemName(it)}</td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}
+              {list.map(it => <tr key={it.id}><td><WardItemName it={it} /></td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}
               {Array.from({ length: blanks }, (_, i) => <tr key={'b' + i}><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>)}
             </tbody>
           </table>
