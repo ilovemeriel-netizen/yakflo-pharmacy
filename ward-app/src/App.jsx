@@ -338,12 +338,13 @@ export default function App() {
                           (아무도 신청하지 않은 평상시에는 기존 모양 그대로). 색은 브랜드 파생 회색만 쓴다. */
                     <button key={w} onClick={() => pickWard(w)} style={{
                       padding: '10px 0', borderRadius: 9, cursor: 'pointer', fontWeight: 800, fontSize: 14,
-                      /* ★ 신청완료이면서 **비선택**인 병동만 테두리를 녹색으로 — 한눈에 갈리게.
-                            선택 병동은 보라 그대로, 신청완료가 아닌 병동은 기존 회색 그대로.
-                            두께 1px·배경색은 건드리지 않으므로 버튼 폭은 변하지 않는다. */
+                      /* ★ 색 우선순위 — **선택 상태가 신청완료보다 우선**한다.
+                            ward === w 이면 신청완료 여부와 무관하게 보라 채움(지금 무엇을 보고 있는지가 색으로 남아야 함).
+                            비선택 + 신청완료면 녹색 채움 + 흰 글씨. 그 외는 흰 배경 + 회색 테두리 그대로.
+                            두께 1px·padding·borderRadius·fontSize·fontWeight는 건드리지 않아 폭·높이가 변하지 않는다. */
                       border: '1px solid ' + (ward === w ? PURPLE : (dupWards.includes(w) ? GREEN : rgba(NAVY, 0.2))),
-                      background: ward === w ? PURPLE : 'white',
-                      color: ward === w ? 'white' : NAVY,
+                      background: ward === w ? PURPLE : (dupWards.includes(w) ? GREEN : 'white'),
+                      color: ward === w ? 'white' : (dupWards.includes(w) ? 'white' : NAVY),
                     }}>
                       <div>{w}병동</div>
                       {/* ★ 바깥 div가 height:12 · lineHeight:'12px'로 줄 상자를 붙든다.
@@ -353,13 +354,12 @@ export default function App() {
                       {dupWards.length > 0 && (
                         <div style={{ height: 12, lineHeight: '12px', marginTop: 2 }}>
                           {dupWards.includes(w) && (
+                            /* ★ 버튼 자체가 녹색 채움이 되었으므로 녹색 배지를 그 위에 얹을 수 없다
+                                  → 배경·테두리·padding 없는 흰 글씨 텍스트로 되돌린다.
+                                  선택된 병동은 보라 배경 위라 라벤더 글자를 그대로 쓴다. */
                             <span style={{
-                              fontSize: 9, fontWeight: 800, height: 12, lineHeight: '12px', display: 'inline-block',
-                              /* ★ 비선택 병동은 녹색 배경 배지로 한눈에 갈리게.
-                                    선택된 병동은 보라 배경 위라 녹색 대비가 나빠지므로 라벤더 글자 그대로. */
-                              ...(ward === w
-                                ? { color: rgba(LAVENDER, 0.95) }
-                                : { background: GREEN, color: 'white', borderRadius: 6, padding: '0 6px' }),
+                              fontSize: 9, fontWeight: 800,
+                              color: ward === w ? rgba(LAVENDER, 0.95) : 'white',
                             }}>신청완료</span>
                           )}
                         </div>
