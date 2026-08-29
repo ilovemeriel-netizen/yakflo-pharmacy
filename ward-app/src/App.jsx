@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from 'react'
    ★ Supabase 클라이언트·키를 일절 포함하지 않는다. 데이터 접근은 같은 사이트의
      Netlify Function(/api/ward/*) 상대 경로 호출뿐이며, service_role 키는 서버에만 있다.
    ★ 외부 도메인·브랜드명을 노출하지 않는다.
-   ★ 색상은 브랜드 4색만 사용 — 그 외는 white/black 키워드와 그 4색의 rgba 파생.
+   ★ 색상은 브랜드 4색 + DONE_GREY(관리 화면 구분 필터에서 재사용) — 그 외는 white/black 키워드와 rgba 파생.
    ★ 입력은 약품과 수량뿐 — 단위·비고는 약제과가 관리 화면에서 채운다(DB 컬럼은 유지).
    ★ 신청번호(uuid)는 쓰지 않는다 — 병동당 1회라 병동·작성자·명절로 식별된다.
    ★ 병동·작성자를 먼저 입력해야 검색·담기·저장이 열린다(오조작 방지).
@@ -20,6 +20,12 @@ const PURPLE = '#804A87'   // 보라 — 강조·경고
 const GREEN = '#019748'    // 녹색 — 완료·담기
 const LAVENDER = '#BFA6D9' // 라벤더 — 보조 배경·은은한 강조
 const NAVY = '#2E4A62'     // 네이비 — 본문
+/* 신청완료 병동 표시용 회색.
+   ★ 이 회색은 브랜드 4색 밖이지만 신규 도입이 아니라
+     관리 화면 구분 필터(수액제)에 이미 쓰이는 색의 재사용이다.
+     2026-08-30 이정화 님 지시로 적용.
+   (본체 themes.light.textM = '#52524E' — MP 컴포넌트의 grey 상수와 같은 값) */
+const DONE_GREY = '#52524E'
 
 const WARDS = ['3', '4', '5', '6']
 const MIN_Q = 2            // 검색 최소 글자수
@@ -336,27 +342,22 @@ export default function App() {
                 <span style={tag}><span style={{ fontSize: 16, fontWeight: 900, lineHeight: '13px' }}>①</span> 병동</span>
                 <div className="wa-grow" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
                   {WARDS.map(w => (
-                    /* ★ 버튼은 4개가 **완전히 같은 크기·형태**여야 한다 — 보조줄을 없앴고,
-                          신청완료 여부로 배경·테두리를 바꾸지 않는다(채움은 선택된 하나뿐).
-                          상태는 라벨 뒤 작은 ✓와 아래 한 줄 안내(M-2)로만 알린다.
-                          신청완료 병동도 버튼은 그대로 눌린다 — 고르면 위 배너가 이유를 알린다. */
-                    /* ★ height를 고정하고 내용은 flex 중앙 정렬 — 안에 무엇이 들어오든(라벨만/라벨+보조줄)
-                          4개 버튼의 높이가 흔들리지 않고, 내용이 한 덩어리로 세로 정중앙에 온다.
-                          padding은 0으로 두고 높이는 height가 결정한다(box-sizing:border-box라 테두리 포함 52px). */
+                    /* ★ 버튼 안에는 라벨 한 줄만 둔다 — 보조줄을 넣지 않으므로 신청완료 유무로
+                          높이가 갈리지 않고 4개가 같은 크기다. 상태는 배지 행 아래 한 줄이 담당한다.
+                          크기는 padding:'10px 0' 기반으로 원복(N-1의 height:52·flex 중앙 정렬 철회).
+                       ★ 색 우선순위 — **선택이 신청완료보다 우선**. ward === w 이면 신청완료 여부와
+                          무관하게 보라 채움(지금 무엇을 보고 있는지가 색으로 남아야 한다).
+                          비선택 + 신청완료면 회색 채움, 미신청은 흰 배경 그대로. */
                     <button key={w} onClick={() => pickWard(w)} style={{
-                      height: 52, padding: 0, display: 'flex', flexDirection: 'column',
-                      alignItems: 'center', justifyContent: 'center',
-                      borderRadius: 9, cursor: 'pointer', fontWeight: 800, fontSize: 14,
-                      border: '1px solid ' + (ward === w ? PURPLE : rgba(NAVY, 0.2)),
-                      background: ward === w ? PURPLE : 'white',
-                      color: ward === w ? 'white' : NAVY,
+                      padding: '10px 0', borderRadius: 9, cursor: 'pointer', fontWeight: 800, fontSize: 14,
+                      border: '1px solid ' + (ward === w ? PURPLE : (dupWards.includes(w) ? DONE_GREY : rgba(NAVY, 0.2))),
+                      background: ward === w ? PURPLE : (dupWards.includes(w) ? DONE_GREY : 'white'),
+                      color: (ward === w || dupWards.includes(w)) ? 'white' : NAVY,
                     }}>
-                      {/* ★ 라벨과 ✓를 한 div로 묶는다 — flex column에서 텍스트 노드와 span이
-                             각각 별개의 익명 flex 항목이 되어 위아래로 갈라지는 것을 막는다. */}
-                      <div>{w}병동{dupWards.includes(w) && (
-                        /* 선택된 병동은 보라 배경 위라 녹색 대비가 나쁘다 → 흰색으로 */
-                        <span style={{ color: ward === w ? 'white' : GREEN, fontSize: 11, marginLeft: 3 }}>✓</span>
-                      )}</div>
+                      {w}병동{dupWards.includes(w) && (
+                        /* 보라·회색 채움 위 모두 흰색 */
+                        <span style={{ color: 'white', fontSize: 11, marginLeft: 3 }}>✓</span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -372,7 +373,7 @@ export default function App() {
                    위치는 .wa-top(배지 행) 바로 아래·입력 안내 배너 위 — 900px 이상에서 .wa-top이
                    가로 배치로 바뀌므로 그 안이 아니라 밖에 두어야 두 레이아웃에서 모두 한 줄로 놓인다. */}
             {dupWards.length > 0 && (
-              <div style={{ fontSize: 11, color: GREEN, marginTop: 6 }}>
+              <div style={{ fontSize: 11, color: DONE_GREY, marginTop: 6 }}>
                 신청완료 · {dupWards.map(w => w + '병동').join(' ')}
               </div>
             )}
