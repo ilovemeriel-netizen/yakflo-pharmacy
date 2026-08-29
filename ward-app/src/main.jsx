@@ -20,6 +20,15 @@ base.textContent = `
   .wa-cols { display: block; }
   .wa-sticky { position: static; }
 
+  /* ★ 최소 지원 폭 360px · 임계 346.7px
+     — 병동 신청 링크는 메신저·QR로 전달돼 폰 접속이 기본 경로다. 720px 상향은 채택하지 않는다.
+     ★ 배지 행에 요소를 추가할 때는 900px 이상을 기준으로 재계산할 것.
+       .wa-top-ward가 360px **고정**이라 창을 넓혀도 버튼 1칸은 68.1px로 늘지 않는다
+       — 가장 빡빡한 지점은 좁은 화면이 아니라 여기다.
+     [계산식] 버튼1칸 = (viewport − 28(wrap padding) − 32(card padding)
+                        − 배지폭 − 8(gap) − 18(grid gap)) ÷ 4                (<900px)
+              버튼1칸 = (360 − 배지폭 − 8 − 18) ÷ 4                          (≥900px) */
+
   /* 상단 한 줄: [병동] 3 4 5 6 | [작성자] ____ — 좁은 화면에서는 두 줄로 쌓임 */
   .wa-top { display: flex; flex-direction: column; gap: 10px; }
   .wa-top-ward, .wa-top-name { display: flex; align-items: center; gap: 8px; }

@@ -330,7 +330,7 @@ export default function App() {
           <div style={card}>
             <div className="wa-top">
               <div className="wa-top-ward">
-                <span style={tag}>① 병동</span>
+                <span style={tag}><span style={{ fontSize: 16, fontWeight: 900, lineHeight: '13px' }}>①</span> 병동</span>
                 <div className="wa-grow" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
                   {WARDS.map(w => (
                     /* ★ 신청완료 병동도 버튼을 막지 않는다 — 클릭은 되고, 고른 뒤 위 배너로 이유를 알린다.
@@ -346,21 +346,30 @@ export default function App() {
                       color: ward === w ? 'white' : NAVY,
                     }}>
                       <div>{w}병동</div>
+                      {/* ★ 바깥 div가 height:12 · lineHeight:'12px'로 줄 상자를 붙든다.
+                             배지를 버튼의 직계 inline-block으로 두면 버튼 자신의 strut(fontSize 14 · normal ≈ 16.8px)이
+                             줄 상자를 지배해 **버튼이 약 4.8px 높아진다**. 그래서 배지는 이 div 안의 span으로 넣는다.
+                             세로 padding은 0이라 높이는 12px 그대로다. */}
                       {dupWards.length > 0 && (
-                        <div style={{
-                          fontSize: 9, fontWeight: 800, height: 12, lineHeight: '12px', marginTop: 2,
-                          /* ★ 비선택 병동은 브랜드 녹색 — 회색이면 「비활성 버튼」으로 읽히는데
-                                실제로는 눌리는 버튼이라 신호가 어긋난다. 선택된 병동은 보라 배경 위라
-                                대비가 나빠지므로 라벤더를 유지한다. 텍스트 색만 바꾼다. */
-                          color: ward === w ? rgba(LAVENDER, 0.95) : GREEN,
-                        }}>{dupWards.includes(w) ? '신청완료' : ''}</div>
+                        <div style={{ height: 12, lineHeight: '12px', marginTop: 2 }}>
+                          {dupWards.includes(w) && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 800, height: 12, lineHeight: '12px', display: 'inline-block',
+                              /* ★ 비선택 병동은 녹색 배경 배지로 한눈에 갈리게.
+                                    선택된 병동은 보라 배경 위라 녹색 대비가 나빠지므로 라벤더 글자 그대로. */
+                              ...(ward === w
+                                ? { color: rgba(LAVENDER, 0.95) }
+                                : { background: GREEN, color: 'white', borderRadius: 6, padding: '0 6px' }),
+                            }}>신청완료</span>
+                          )}
+                        </div>
                       )}
                     </button>
                   ))}
                 </div>
               </div>
               <div className="wa-top-name">
-                <span style={tag}>② 작성자</span>
+                <span style={tag}><span style={{ fontSize: 16, fontWeight: 900, lineHeight: '13px' }}>②</span> 작성자</span>
                 <input className="wa-grow" value={name} onChange={e => setName(e.target.value)} maxLength={20}
                   placeholder="이름을 입력해 주세요" style={{ ...input, padding: '10px 12px' }} />
               </div>
@@ -380,7 +389,7 @@ export default function App() {
             {/* ── 왼쪽: 약품 검색 · 결과에서 수량까지 입력 ── */}
             <div>
               <div style={card}>
-                <label style={label}>③ 약품 검색</label>
+                <label style={label}><span style={{ fontSize: 16, fontWeight: 900, lineHeight: '14px', color: PURPLE }}>③</span> 약품 검색</label>
                 <input
                   ref={qRef}
                   value={q}
