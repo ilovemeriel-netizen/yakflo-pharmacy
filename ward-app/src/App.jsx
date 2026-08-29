@@ -148,6 +148,21 @@ export default function App() {
     if (cart.length) { setWardConfirm(w); return }
     applyWard(w)
   }
+  /* ── 제목 클릭 → 처음으로 ──────────────────────────────────────
+     ★ 확인 모달은 병동 변경용을 그대로 재사용한다 — wardConfirm에 병동명 대신 HOME 표식을 넣고
+       모달 안에서 문구·확인 동작만 갈라 쓴다(새 모달 컴포넌트를 만들지 않는다).
+     ※ 완료 화면(done)은 아래에서 먼저 return되어 이 제목 자체가 렌더되지 않으므로,
+       저장이 끝난 뒤에는 이 동작이 닿지 않는다. */
+  const HOME = '__home'
+  function goHome() {
+    if (cart.length) { setWardConfirm(HOME); return }
+    applyHome()
+  }
+  function applyHome() {
+    setWard(''); setName(''); setCart([]); setQ(''); setFound([]); setSearched(false); setQtyMap({})
+    setWardConfirm(null); setMsg(null)
+    lastTerm.current = ''
+  }
   function applyWard(w) {
     const hadName = !!name.trim()
     setWard(w); setCart([]); setName(''); setQ(''); setFound([]); setSearched(false); setQtyMap({}); setWardConfirm(null)
@@ -299,7 +314,8 @@ export default function App() {
   return (
     <div className="wa-wrap">
       <div style={{ padding: '10px 2px 12px' }}>
-        <div style={{ fontSize: 20, fontWeight: 800, color: PURPLE }}>병동 약품 신청</div>
+        {/* ★ 클릭하면 처음 상태로 — cursor만 더한다. 색·크기·굵기는 그대로. */}
+        <div onClick={goHome} title="처음으로" style={{ fontSize: 20, fontWeight: 800, color: PURPLE, cursor: 'pointer' }}>병동 약품 신청</div>
         <div style={{ fontSize: 12, color: rgba(NAVY, 0.7), marginTop: 4 }}>명절 대비 약품을 신청합니다</div>
       </div>
 
@@ -313,22 +329,26 @@ export default function App() {
         }}>{msg.text}</div>
       )}
 
-      {/* ★ 신청완료 병동 — 버튼은 막지 않고, 고르면 이유를 알린다(막기만 하면 217 문의가 는다).
-             안내 문구는 서버가 준 msg(=ward-submit의 DUP_MSG)를 그대로 쓴다 → 409와 글자 단위 동일. */}
-      {locked && (
+      {/* ★ 신청완료 배너 — 3분기. 배너 스타일(배경·테두리·색·padding)은 그대로 두고 문구만 갈린다.
+             (a) 완료 병동을 **선택**한 상태 → 제목 「N병동 신청완료」 + 본문 「변경은 약제과 내선 217」
+                 (막힌 상황이므로 여기에만 217을 둔다)
+             (b) 완료 병동이 있으나 **미선택** → 「신청완료 · 3병동 5병동」 한 줄. 정보 안내라 217 없음
+             (c) 완료 병동 0개 → 렌더하지 않음
+             ※ 본문은 서버 상수 DUP_MSG를 쓰지 않는다 — 409 응답은 단독으로 읽히므로
+               완료 사실을 포함한 채여야 하고, 여기선 제목이 그 역할을 한다(표시만 분리). */}
+      {dupWards.length > 0 && (
         <div style={{
           background: rgba(PURPLE, 0.09), border: '2px solid ' + rgba(PURPLE, 0.45), borderRadius: 12,
           padding: '13px 14px', marginBottom: 12, textAlign: 'center',
         }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: PURPLE, lineHeight: 1.5 }}>
-            {ward}병동 신청완료
+            {locked ? `${ward}병동 신청완료` : `신청완료 · ${dupWards.map(w => w + '병동').join(' ')}`}
           </div>
-          {/* ★ 제목이 이미 완료 사실을 전달하므로 본문은 연락처만 남긴다.
-                 서버 상수 DUP_MSG는 건드리지 않는다 — 409 응답은 단독으로 읽히므로
-                 완료 사실을 포함한 채여야 한다(표시만 여기서 분리). */}
-          <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginTop: 8, lineHeight: 1.6 }}>
-            변경은 약제과 내선 217
-          </div>
+          {locked && (
+            <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginTop: 8, lineHeight: 1.6 }}>
+              변경은 약제과 내선 217
+            </div>
+          )}
         </div>
       )}
 
@@ -497,13 +517,18 @@ export default function App() {
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
         }}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 380, padding: '22px 20px' }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: NAVY, marginBottom: 12 }}>{wardConfirm}병동으로 바꿀까요?</div>
+            {/* ★ 병동 변경 확인 모달을 제목 클릭(처음으로)에도 그대로 재사용한다 — 문구만 갈린다 */}
+            <div style={{ fontSize: 16, fontWeight: 800, color: NAVY, marginBottom: 12 }}>
+              {wardConfirm === HOME ? '처음부터 다시 시작할까요?' : `${wardConfirm}병동으로 바꿀까요?`}
+            </div>
             <div style={{ ...warn, marginBottom: 14, padding: '13px 14px' }}>
               <div style={{ fontSize: 14, fontWeight: 800, color: PURPLE, lineHeight: 1.6 }}>
                 담긴 약품 {cart.length}개가 있습니다.
               </div>
               <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginTop: 8, lineHeight: 1.6 }}>
-                병동을 바꾸면 목록과 작성자 이름이 비워집니다.
+                {wardConfirm === HOME
+                  ? '처음으로 돌아가면 목록과 작성자 이름이 비워집니다.'
+                  : '병동을 바꾸면 목록과 작성자 이름이 비워집니다.'}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -511,10 +536,10 @@ export default function App() {
                 flex: 1, padding: 13, borderRadius: 10, cursor: 'pointer',
                 border: '1px solid ' + rgba(NAVY, 0.25), background: 'white', color: NAVY, fontSize: 14, fontWeight: 700,
               }}>취소</button>
-              <button onClick={() => applyWard(wardConfirm)} style={{
+              <button onClick={() => (wardConfirm === HOME ? applyHome() : applyWard(wardConfirm))} style={{
                 flex: 2, padding: 13, borderRadius: 10, border: 'none', cursor: 'pointer',
                 background: PURPLE, color: 'white', fontSize: 14, fontWeight: 800,
-              }}>바꾸고 비우기</button>
+              }}>{wardConfirm === HOME ? '비우고 처음으로' : '바꾸고 비우기'}</button>
             </div>
           </div>
         </div>
