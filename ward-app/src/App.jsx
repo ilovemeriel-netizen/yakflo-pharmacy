@@ -337,16 +337,23 @@ export default function App() {
                           신청완료 여부로 배경·테두리를 바꾸지 않는다(채움은 선택된 하나뿐).
                           상태는 라벨 뒤 작은 ✓와 아래 한 줄 안내(M-2)로만 알린다.
                           신청완료 병동도 버튼은 그대로 눌린다 — 고르면 위 배너가 이유를 알린다. */
+                    /* ★ height를 고정하고 내용은 flex 중앙 정렬 — 안에 무엇이 들어오든(라벨만/라벨+보조줄)
+                          4개 버튼의 높이가 흔들리지 않고, 내용이 한 덩어리로 세로 정중앙에 온다.
+                          padding은 0으로 두고 높이는 height가 결정한다(box-sizing:border-box라 테두리 포함 52px). */
                     <button key={w} onClick={() => pickWard(w)} style={{
-                      padding: '10px 0', borderRadius: 9, cursor: 'pointer', fontWeight: 800, fontSize: 14,
+                      height: 52, padding: 0, display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center',
+                      borderRadius: 9, cursor: 'pointer', fontWeight: 800, fontSize: 14,
                       border: '1px solid ' + (ward === w ? PURPLE : rgba(NAVY, 0.2)),
                       background: ward === w ? PURPLE : 'white',
                       color: ward === w ? 'white' : NAVY,
                     }}>
-                      {w}병동{dupWards.includes(w) && (
+                      {/* ★ 라벨과 ✓를 한 div로 묶는다 — flex column에서 텍스트 노드와 span이
+                             각각 별개의 익명 flex 항목이 되어 위아래로 갈라지는 것을 막는다. */}
+                      <div>{w}병동{dupWards.includes(w) && (
                         /* 선택된 병동은 보라 배경 위라 녹색 대비가 나쁘다 → 흰색으로 */
                         <span style={{ color: ward === w ? 'white' : GREEN, fontSize: 11, marginLeft: 3 }}>✓</span>
-                      )}
+                      )}</div>
                     </button>
                   ))}
                 </div>
