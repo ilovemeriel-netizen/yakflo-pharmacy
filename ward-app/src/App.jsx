@@ -307,7 +307,7 @@ export default function App() {
             {ward}병동은 이미 신청이 접수되었습니다
           </div>
           <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginTop: 8, lineHeight: 1.6 }}>
-            변경이 필요하면 약제과 내선 217<br />다른 병동을 고르면 그대로 신청할 수 있습니다
+            변경이 필요하면 약제과 내선 217
           </div>
         </div>
       )}
