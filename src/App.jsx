@@ -3747,14 +3747,14 @@ function WardAdmin() {
     {/* ── 인쇄 전용: 병동별 1장 ── */}
     {/* ★ 인쇄 색은 화면 테마와 무관하게 고정한다 — 다크 테마에서 t.text가 #E8E6E1(거의 흰색)이라
         인쇄물 전체가 연한 회색으로 나오던 원인이다. 본문은 black 키워드(신규 hex 아님),
-        제목은 브랜드 보라, 머리말은 회색 토큰(#52524E — 제목·본문보다 흐리되 인쇄에서 읽히는 농도),
+        제목은 브랜드 보라, 머리말은 회색 토큰(#6B7B8B — 제목·본문보다 한 단계 연하되 종이에서 읽히는 농도),
         저작권만 옅은 회색으로 못 박는다.
         ★ 저작권은 표의 <tfoot>에 넣는다 — display:table-footer-group이라 표가 지면을 채우면
           자연히 페이지 바닥에 놓이고, 2장이 되면 장마다 반복된다. 별도 블록으로 뒤에 붙이던
           방식(약 24.2mm)보다 15.6mm를 회수해 그만큼 표를 아래까지 늘렸다.
           position:fixed·@page margin-box는 브라우저 인쇄 지원이 갈려 쓰지 않는다.
         정렬: 헤더는 전부 가운데. 본문은 약품명·비고 좌측 / 수량·사용량 우측 / 단위 가운데. */}
-    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important;color:black}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print .wp-title{color:#804A87}.ward-print .wp-meta{color:#52524E}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;vertical-align:middle;color:black}.ward-print th{text-align:center;font-weight:700;background:#E8E6E1;border-bottom:2px solid black;-webkit-print-color-adjust:exact;print-color-adjust:exact}.ward-print td{text-align:center}.ward-print td:nth-child(1),.ward-print td:nth-child(5){text-align:left}.ward-print td:nth-child(1){white-space:nowrap}.ward-print .wp-add{font-size:9px}.ward-print td:nth-child(2),.ward-print td:nth-child(4){text-align:right}.ward-print thead{display:table-header-group}.ward-print tfoot{display:table-footer-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft td{border:none;height:8.6mm;text-align:center;font-size:8px;line-height:1.35;color:#A3A39E;padding:1mm 2mm 0}}'}</style>
+    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important;color:black}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print .wp-title{color:#804A87}.ward-print .wp-meta{color:#6B7B8B}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;vertical-align:middle;color:black}.ward-print th{text-align:center;font-weight:700;background:#E8E6E1;border-bottom:2px solid black;-webkit-print-color-adjust:exact;print-color-adjust:exact}.ward-print td{text-align:center}.ward-print td:nth-child(1),.ward-print td:nth-child(5){text-align:left}.ward-print td:nth-child(1){white-space:nowrap}.ward-print .wp-add{font-size:9px}.ward-print td:nth-child(2),.ward-print td:nth-child(4){text-align:right}.ward-print thead{display:table-header-group}.ward-print tfoot{display:table-footer-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft td{border:none;height:8.6mm;text-align:center;font-size:8px;line-height:1.35;color:#A3A39E;padding:1mm 2mm 0}}'}</style>
     {/* ── 인쇄 전용: 신청 1건당 A4 1장 · 빈 행으로 표 틀을 채워 수기 추가 기입 가능 ── */}
     <div className="ward-print">
       {printPages.map(r => {

@@ -340,8 +340,14 @@ export default function App() {
         <div style={{
           background: rgba(PURPLE, 0.09), border: '2px solid ' + rgba(PURPLE, 0.45), borderRadius: 12,
           padding: '13px 14px', marginBottom: 12, textAlign: 'center',
+          /* ★ 1줄(b)·2줄(a) 상태의 높이를 2줄 기준으로 고정해 아래 요소가 위아래로 움직이지 않게 한다.
+                81px = padding 26 + border 4 + 제목 22.5 + 본문 marginTop 8 + 본문 20.8.
+                배경·테두리·색·padding은 건드리지 않고 minHeight와 세로 중앙 정렬만 더한다. */
+          minHeight: 81, display: 'flex', flexDirection: 'column', justifyContent: 'center',
         }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: PURPLE, lineHeight: 1.5 }}>
+            {/* ★ 이모지 대신 병동 버튼과 같은 ✓ — 색은 상속(배너 텍스트와 동일) */}
+            <span style={{ fontWeight: 900, marginRight: 4 }}>✓</span>
             {locked ? `${ward}병동 신청완료` : `신청완료 · ${dupWards.map(w => w + '병동').join(' ')}`}
           </div>
           {locked && (
@@ -393,12 +399,16 @@ export default function App() {
               </div>
             </div>
             {/* ★ 상단이 작아진 만큼 미입력 안내를 눈에 띄게 남긴다 — 진행 차단은 그대로 */}
-            {!ready && !locked && (
+            {/* ★ R-5의 「잠금 시 숨김」을 철회한다 — 숨기면 58.4px가 통째로 사라져
+                   위 배너의 minHeight 고정이 무의미해지고 아래 요소가 더 크게 밀린다(T-0 실측).
+                   렌더는 유지하고 문구만 갈아, 잠금 전환 시 순 이동량을 0으로 만든다.
+                   배경·색·크기·padding 무변경. */}
+            {!ready && (
               <div style={{
                 marginTop: 12, background: rgba(LAVENDER, 0.24), border: '1px solid ' + rgba(LAVENDER, 0.7), borderRadius: 10,
                 padding: '11px 12px', fontSize: 14, fontWeight: 800, color: PURPLE, textAlign: 'center', lineHeight: 1.6,
               }}>
-                병동과 작성자 이름을 먼저 입력해 주세요
+                {locked ? '이미 신청이 완료되어 수정할 수 없습니다' : '병동과 작성자 이름을 먼저 입력해 주세요'}
               </div>
             )}
           </div>
