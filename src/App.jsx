@@ -970,7 +970,7 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
     { id: 'dashboard', l: '대시보드' },
     { id: 'alerts', l: '🔔 알림' },
     { id: 'druglist', l: '약품관리', landing: 'druglist', children: [{ id: 'druglist', l: '약품목록' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }] },
-    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }] },
+    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }, { id: 'ward', l: '병동신청' }] },
     { id: 'transaction', l: '입출고' },
     { id: 'report', l: '보고서' },
     { id: 'atc', l: '조제관리', landing: 'atc', children: [{ id: 'atc', l: 'ATC편집' }, { id: 'emergency', l: '비상조제' }] },
@@ -3335,6 +3335,527 @@ function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
   </div>
 }
 
+/* ═══ 병동신청 관리 — 접수 기간 개폐 · 신청 내역 확인 · 사용량 기입 · 병동별 인쇄 (0083) ═══ */
+const WARD_SEASONS = ['설', '추석']
+const WARD_LIST = ['3', '4', '5', '6']
+const WARD_STATUSES = ['접수', '처리중', '완료']
+/* ★ 인쇄 1장에 들어가는 표 행수 — 실제 인쇄 후 미세 조정하는 **유일한 손잡이**.
+   [기준]  A4 세로 297mm. 행 높이 8.6mm(아래 인쇄 CSS와 반드시 함께 움직일 것).
+   [가용 높이]  22행 실측(2026-08-30): 저작권만 다음 장으로 밀려 병동당 2장이 됐다
+       → 본문 213.4mm는 들어갔고 +저작권 237.6mm는 넘쳤다 → 실제 가용 높이는 213.4 ~ 237.6mm.
+       아래 계산은 **하한 213.4mm**를 기준으로 한다.
+
+   [저작권을 표 안(tfoot)으로 옮겨 공간을 회수]
+     이전: 표 뒤에 별도 블록 <Ft/> — 여백 24px + 구분선 + 패딩 20/12px + 2줄 ≈ **24.2mm**
+     현재: <tfoot> 한 행 — **8.6mm** (본문 행과 같은 높이)
+     → 회수 ≈ **15.6mm ≈ 1.8행**
+     ※ tfoot는 display:table-footer-group이라 표가 지면을 채우면 자연히 **페이지 바닥**에 놓인다.
+       position:fixed·@page margin-box는 브라우저 인쇄에서 동작이 갈려 쓰지 않는다.
+
+   [고정 요소]  제목 9.7 + 머리말 5.9 + thead 8.6 + tfoot 8.6 = **32.8mm**
+   [행 예산]    213.4 − 32.8 = 180.6mm → 계산상으로는 21.0행
+   [21행 실측]  ★ **2026-08-30 실제 인쇄에서 2페이지로 넘쳤다.** 계산(213.4mm)은 하한과 정확히
+       일치했지만 실물은 들어가지 않았다 → **계산상 상한을 그대로 쓰면 안 된다**(ATC #239와 같은 교훈).
+   [채택 20행]  32.8 + 172.0 = **204.8mm** → 실측으로 확인된 마지막 안전값. **20이 상한이다.**
+       ★ 추가로 넘치면 **19 → 18** 순으로 내릴 것.
+       ※ 16 → 18 → 19 → 20 → 21(넘침) → 20으로 되돌아왔다. 21 이상은 다시 시도하지 말 것.
+   ★ 품목이 이 값을 넘으면 빈 행을 채우지 않고 자연스럽게 다음 장으로 넘어간다(thead·tfoot 매 장 반복).
+   ★ min-height·vh를 쓰지 않는다(함정 #11) — 행 높이 합으로만 지면을 채운다. */
+const WARD_PRINT_ROWS = 20
+/* ★ 관리 화면 추가분 판별 — **신규 컬럼 없이** sort_order 값만으로 구분한다(0083 스키마 무결).
+   신청 앱(ward-submit)은 담은 순서대로 1..N을 넣고 MAX_ITEMS=100이라 100을 넘지 않는다.
+   따라서 1000 이상은 관리 화면에서 추가한 품목뿐이다.
+   ★ 판정은 오직 이 수치 비교다 — 표시 문자열을 비교·파싱하지 않는다(문구가 바뀌어도 판정이 깨지지 않게).
+   ※ ward_request_items에는 created_at이 없어 시각 비교로는 구분할 수 없다(0083 실측). */
+const WARD_ADMIN_SORT_BASE = 1000
+const isAdminAdded = it => Number(it.sort_order) >= WARD_ADMIN_SORT_BASE
+/* 약품명 표시값 — 「스타빅현탁액 (추가)」처럼 **약품명 열 한 줄**에서 바로 읽히게 한다.
+   ★ 파생 표시일 뿐 drug_name 컬럼에 저장하지 않는다.
+   ★ 비고 열은 건드리지 않는다 — 약제과가 병동에 전할 말을 쓰는 자리다
+     (예: 「도매 품절로 에스로반연고로 드립니다」).
+   ★ 행 색은 기존 약품과 동일하게 둔다 — 추가분이 덜 중요한 것이 아니다.
+   ★ 「(추가)」만 한 단계 작게(인쇄 CSS의 .wp-add). 인라인 span이라 부모 행보다 커지지 않으므로
+     행 높이(8.6mm)에 영향이 없다. 화면에서는 .wp-add에 스타일이 없어 동일 크기. */
+const WardItemName = ({ it }) => <>{it.drug_name}{isAdminAdded(it) ? <span className="wp-add"> (추가)</span> : null}</>
+function WardAdmin() {
+  const { t, memberRole, profile } = useTheme()
+  const { so, TS, sk, sd, setSort } = useSort('submitted_at', 'desc')
+  /* ★ 상세 품목표 전용 정렬 — 신청 목록(so)과 **독립된 훅 인스턴스**다.
+     초기 키가 ''이라 so2()는 원본 배열을 그대로 돌려주고, hs2()의 3순환(오름▲→내림▼→해제)에서
+     해제 상태로 돌아오면 로드 순서(= .order('sort_order') 오름차순)가 되살아난다
+     → 신청분 1..N → 추가분 1000+ 구조 복귀.
+     ★ 인쇄도 이 정렬을 공유한다 — 인쇄 블록이 같은 so2를 쓰므로 인쇄물 순서 = 화면 순서다.
+       so2()는 [...a].sort()로 **사본**을 만들므로 원본 items 배열도 오염되지 않는다. */
+  const { so: so2, hs: hs2, SI: SI2, sk: sk2 } = useSort('')
+  const isAdmin = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
+  const [wins, setWins] = useState([]); const [reqs, setReqs] = useState([]); const [items, setItems] = useState([])
+  const [ld, setLd] = useState(true); const [msg, setMsg] = useState(null)
+  const [openRow, setOpenRow] = useState(null)          // 상세 대상 신청 id
+  const [regOpen, setRegOpen] = useState(false)
+  const [nf, setNf] = useState({ season: '추석', request_year: new Date().getFullYear(), opens_at: '', closes_at: '', notice: '' })
+  const [fWard, setFWard] = useState('전체'); const [fPeriod, setFPeriod] = useState('전체'); const [fStatus, setFStatus] = useState('전체')
+  const [page, setPage] = useState(1); const PP_W = 20
+  const [edit, setEdit] = useState(null)                 // {itemId, field}
+  const [delTarget, setDelTarget] = useState(null)       // 삭제 확인 대상 신청(헤더 행)
+  const [deleting, setDeleting] = useState(false)
+  const [printOne, setPrintOne] = useState(null)         // 이 신청 1건만 인쇄(null이면 필터 전체)
+  const [aq, setAq] = useState('')                       // 약제과 약품 추가 — 검색어
+  const [aFound, setAFound] = useState([]); const [aSearched, setASearched] = useState(false); const [aSearching, setASearching] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)          // 「약품 추가」 접기·펴기(기본 접힘)
+  /* 상세를 열고 닫거나 다른 신청으로 옮길 때 추가 영역을 초기 상태로 되돌린다 */
+  const resetAdd = () => { setAddOpen(false); setAq(''); setAFound([]); setASearched(false) }
+  const aTimer = useRef(null)
+  const flash = (text, kind) => { setMsg({ text, kind }); setTimeout(() => setMsg(null), kind === 'err' ? 3000 : 1800) }
+
+  /* ★ 삭제 결과 판정 공통 — RLS DELETE는 admin 한정(0083)인데, 정책에 막히면
+     PostgREST는 **오류 없이 0행**을 지운다(성공처럼 보인다). 반드시 .select()로
+     실제 삭제된 행을 돌려받아 0건이면 실패로 처리한다. */
+  function delOutcome({ data, error }, what) {
+    if (error) return '삭제 실패: ' + error.message
+    if (!data || !data.length) return what + '을(를) 삭제하지 못했습니다 — 관리자 권한이 필요합니다'
+    return null
+  }
+
+  useEffect(() => { loadAll() }, [])
+  async function loadAll() {
+    setLd(true)
+    const [w, r, i] = await Promise.all([
+      supabase.from('ward_request_window').select('*').order('request_year', { ascending: false }),
+      supabase.from('ward_requests').select('*').order('submitted_at', { ascending: false }),
+      supabase.from('ward_request_items').select('*').order('sort_order'),
+    ])
+    setWins(w.data || []); setReqs(r.data || []); setItems(i.data || []); setLd(false)
+  }
+
+  /* ── 접수 기간 ── */
+  const openWins = wins.filter(w => w.is_open)
+  async function toggleWin(w) {
+    const { error } = await supabase.from('ward_request_window').update({ is_open: !w.is_open, updated_at: new Date().toISOString() }).eq('id', w.id)
+    if (error) { flash('변경 실패: ' + error.message, 'err'); return }
+    flash(!w.is_open ? '접수를 열었습니다' : '접수를 닫았습니다'); loadAll()
+  }
+  async function createWin() {
+    const y = Number(nf.request_year)
+    if (!WARD_SEASONS.includes(nf.season)) { flash('명절을 선택해 주세요', 'err'); return }
+    if (!Number.isInteger(y) || y < 2000 || y > 2100) { flash('연도를 확인해 주세요', 'err'); return }
+    const row = { season: nf.season, request_year: y, is_open: false, notice: nf.notice || null,
+      opens_at: nf.opens_at ? new Date(nf.opens_at).toISOString() : null,
+      closes_at: nf.closes_at ? new Date(nf.closes_at).toISOString() : null }
+    const { error } = await supabase.from('ward_request_window').insert([row])   // tenant_id는 trg_set_tenant_id가 부여
+    if (error) { flash('생성 실패: ' + error.message, 'err'); return }
+    setRegOpen(false); flash('기간을 만들었습니다 · 아직 닫힘 상태입니다'); loadAll()
+  }
+  async function delWin(w) {
+    if (!isAdmin) { flash('관리자만 삭제할 수 있습니다', 'err'); return }
+    const bad = delOutcome(await supabase.from('ward_request_window').delete().eq('id', w.id).select('id'), '접수 기간')
+    if (bad) { flash(bad, 'err'); return }
+    flash('삭제했습니다'); loadAll()
+  }
+
+  /* ── 신청 내역 ── */
+  const itemsOf = id => items.filter(x => x.request_id === id)
+  const periods = [...new Set(reqs.map(r => r.request_year + ' ' + r.season))]
+  const rows = reqs
+    .filter(r => fWard === '전체' || r.ward === fWard)
+    .filter(r => fPeriod === '전체' || (r.request_year + ' ' + r.season) === fPeriod)
+    .filter(r => fStatus === '전체' || r.status === fStatus)
+    .map(r => ({ ...r, item_count: itemsOf(r.id).length, submitted_day: (r.submitted_at || '').slice(0, 10) }))
+  const sorted = so(rows); const tp = Math.max(1, Math.ceil(sorted.length / PP_W))
+  const pg = Math.min(page, tp); const paged = sorted.slice((pg - 1) * PP_W, pg * PP_W)
+
+  async function setStatus(r, v) {
+    const { error } = await supabase.from('ward_requests').update({ status: v }).eq('id', r.id)
+    if (error) { flash('상태 변경 실패: ' + error.message, 'err'); return }
+    flash('상태를 바꿨습니다'); loadAll()
+  }
+  async function saveItem(it, field, value) {
+    const ud = {}
+    if (field === 'usage_qty') { const n = value === '' ? null : Number(value); if (value !== '' && (!Number.isFinite(n) || n < 0)) { flash('사용량은 0 이상 숫자여야 합니다', 'err'); setEdit(null); return } ud.usage_qty = n }
+    else if (field === 'qty') { const n = Number(value); if (!Number.isFinite(n) || n <= 0) { flash('수량은 0보다 커야 합니다', 'err'); setEdit(null); return } ud.qty = n }
+    else if (field === 'unit') ud.unit = value || null
+    else if (field === 'memo') ud.memo = value || null
+    const { error } = await supabase.from('ward_request_items').update(ud).eq('id', it.id)
+    setEdit(null)
+    if (error) { flash('저장 실패: ' + error.message, 'err'); return }
+    loadAll()
+  }
+  async function delItem(it) {
+    if (!isAdmin) { flash('관리자만 삭제할 수 있습니다', 'err'); return }
+    const bad = delOutcome(await supabase.from('ward_request_items').delete().eq('id', it.id).select('id'), '품목')
+    if (bad) { flash(bad, 'err'); return }
+    flash('품목을 삭제했습니다'); loadAll()
+  }
+
+  /* ★ 신청 건 삭제 — 품목은 ward_request_items의 on delete cascade로 함께 사라진다(0083).
+     cascade는 참조 무결성 동작이라 자식 테이블 RLS의 영향을 받지 않는다. */
+  async function delReq() {
+    const r = delTarget; if (!r) return
+    if (!isAdmin) { flash('관리자만 삭제할 수 있습니다', 'err'); setDelTarget(null); return }
+    setDeleting(true)
+    const bad = delOutcome(await supabase.from('ward_requests').delete().eq('id', r.id).select('id'), '신청')
+    setDeleting(false); setDelTarget(null)
+    if (bad) { flash(bad, 'err'); return }
+    if (openRow === r.id) setOpenRow(null)
+    flash(r.ward + '병동 신청을 삭제했습니다 · 품목도 함께 삭제됩니다'); loadAll()
+  }
+
+  /* ── 인쇄 ─────────────────────────────────────────────────────
+     · printOne이 있으면 그 신청 1건만, 없으면 현재 필터 결과 전체를 병동 순으로.
+     · 신청 1건당 A4 1장(병동당 1회 제한이라 사실상 병동별 1장) — 레이아웃은 동일하게 재사용한다. */
+  const printPages = printOne
+    ? reqs.filter(x => x.id === printOne).map(x => ({ ...x, submitted_day: (x.submitted_at || '').slice(0, 10) }))
+    : [...sorted].sort((a, b) => (a.ward === b.ward ? 0 : a.ward < b.ward ? -1 : 1))
+  /* printOne이 렌더에 반영된 뒤(=commit 이후) 인쇄하고, 곧바로 전체 인쇄 상태로 되돌린다 */
+  useEffect(() => {
+    if (!printOne) return
+    window.print()
+    /* 인쇄 대화상자가 닫힌 뒤 전체 인쇄 상태로 되돌린다 — 효과 본문에서 동기 setState를 하지 않는다 */
+    const tid = setTimeout(() => setPrintOne(null), 0)
+    return () => clearTimeout(tid)
+  }, [printOne])
+
+  /* ── 약제과 약품 추가 — 관리 화면은 authenticated라 Function 없이 drugs를 직접 조회한다 ── */
+  function onAq(v) {
+    setAq(v); clearTimeout(aTimer.current)
+    if (v.trim().length < 2) { setAFound([]); setASearched(false); return }
+    aTimer.current = setTimeout(() => searchDrugs(v.trim()), 300)
+  }
+  async function searchDrugs(term) {
+    setASearching(true)
+    /* PostgREST or()는 콤마·괄호로 조건을 가른다 — 검색어에서 제거하고 LIKE 와일드카드도 이스케이프 */
+    const safe = term.replace(/[,()]/g, ' ').replace(/[%_\\]/g, m => '\\' + m)
+    const { data, error } = await supabase.from('drugs')
+      .select('drug_code,drug_name,status,unit')
+      .or(`drug_name.ilike.%${safe}%,drug_code.ilike.%${safe}%,ingredient_kr.ilike.%${safe}%,ingredient_en.ilike.%${safe}%`)
+      .limit(30)
+    setASearching(false)
+    if (error) { flash('약품 검색 실패: ' + error.message, 'err'); setAFound([]); return }
+    setAFound(data || []); setASearched(true)
+  }
+  /* ★ 검색창 Enter로 추가 — 신청 앱과 같은 규칙.
+     한글 IME 조합 중 Enter는 조합 확정용이라 무시하고(isComposing·keyCode 229),
+     결과가 **정확히 1건일 때만** 담는다(여러 건에서 첫 번째를 자동으로 담으면 오추가가 된다). */
+  function onAqKeyDown(e, r) {
+    if (e.key !== 'Enter') return
+    if (e.nativeEvent?.isComposing || e.keyCode === 229) return
+    e.preventDefault()
+    const term = aq.trim()
+    if (term.length < 2) return
+    if (aSearching) return
+    if (aFound.length === 1) { addItem(r, aFound[0]); return }
+    if (aFound.length > 1) { flash(`검색 결과가 ${aFound.length}건입니다 — 추가할 약품을 눌러 주세요`, 'err'); return }
+    if (aSearched) addItem(r, { drug_name: term })   // 결과 0건이면 자유 입력으로 추가
+  }
+  async function addItem(r, d) {
+    const nm = String(d.drug_name || '').trim()
+    if (!nm) { flash('약품명을 입력해 주세요', 'err'); return }
+    const list = itemsOf(r.id)
+    if (list.some(x => (x.drug_code || x.drug_name) === (d.drug_code || nm))) { flash('이미 담긴 약품입니다', 'err'); return }
+    setAdding(true)
+    /* ★ sort_order를 WARD_ADMIN_SORT_BASE 위에서 매겨 추가분으로 식별한다(스키마 변경 없음) */
+    const nextOrder = Math.max(WARD_ADMIN_SORT_BASE, ...list.map(x => Number(x.sort_order) || 0)) + 1
+    const { error } = await supabase.from('ward_request_items').insert([{
+      request_id: r.id, drug_code: d.drug_code || null, drug_name: nm,
+      qty: 0, unit: d.unit || null, sort_order: nextOrder,
+    }])
+    setAdding(false)
+    if (error) { flash('추가 실패: ' + error.message, 'err'); return }
+    setAq(''); setAFound([]); setASearched(false)
+    flash('「' + nm + '」을(를) 추가했습니다 · 수량을 입력해 주세요'); loadAll()
+  }
+
+  const cols = [
+    { k: 'submitted_day', h: '신청일', th: { textAlign: 'left' } },
+    { k: 'ward', h: '병동', th: { textAlign: 'left' } },
+    { k: 'requester_name', h: '작성자', th: { textAlign: 'left' } },
+    { k: 'item_count', h: '품목수', th: { textAlign: 'right' } },
+    { k: 'status', h: '상태', th: { textAlign: 'left' } },
+    { k: 'notice', h: '비고', th: { textAlign: 'left' } },
+    { k: '_print', h: '', plain: true, th: { textAlign: 'center' } },   // 행별 개별 인쇄(정렬 대상 아님)
+  ]
+  const td = { padding: '10px 12px', fontSize: 12, textAlign: 'left', color: t.text }
+  const ip2 = { padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 11, outline: 'none', background: t.bg, color: t.text, width: '100%', boxSizing: 'border-box' }
+  const stColor = s => s === '완료' ? [t.greenL, t.green] : s === '처리중' ? [t.amberL, t.amber] : [t.accentL, t.accent]
+
+  return <div style={{ padding: '20px 24px' }}>
+    {/* ★ textAlign:'left' 명시 — #root{text-align:center} 상속으로 제목이 가운데 렌더되는 회귀(함정 #20) */}
+    <div className="no-print" style={{ marginBottom: 10, textAlign: 'left' }}><div style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>병동신청 <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>· 명절 대비 병동 약품 신청 접수·확인</span></div></div>
+
+    {msg && <div className="no-print" style={{ background: msg.kind === 'err' ? t.redL : t.greenL, color: msg.kind === 'err' ? t.red : t.green, borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>{msg.text}</div>}
+
+    {/* ── 접수 기간 관리 ── */}
+    <div className="no-print" style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, padding: '14px 16px', marginBottom: 12, boxShadow: t.shadow }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>접수 기간</div>
+        <div style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 10, background: openWins.length ? t.greenL : t.bg, color: openWins.length ? t.green : t.textM }}>
+          {openWins.length ? '접수 중 · ' + openWins[0].request_year + ' ' + openWins[0].season : '접수 닫힘'}
+        </div>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setRegOpen(true)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: t.accent, color: t.card, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>+ 기간 생성</button>
+      </div>
+      {openWins.length > 1 && <div style={{ background: t.redL, color: t.red, borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+        ⚠ 열려 있는 기간이 {openWins.length}개입니다 — 신청 앱은 그중 하나만 사용합니다. 하나만 남기고 닫아 주세요.
+      </div>}
+      {ld ? <div style={{ fontSize: 12, color: t.textL, padding: '10px 0' }}>불러오는 중...</div>
+        : !wins.length ? <div style={{ fontSize: 12, color: t.textL, padding: '14px 0', textAlign: 'left' }}>만들어진 기간이 없습니다. <b>[+ 기간 생성]</b>으로 먼저 만든 뒤 열어 주세요.</div>
+        : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{wins.map(w => (
+          <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: '1px solid ' + (w.is_open ? t.green : t.border), borderRadius: 10, background: w.is_open ? t.greenL : 'transparent' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: t.text, minWidth: 90, textAlign: 'left' }}>{w.request_year} {w.season}</div>
+            <div style={{ fontSize: 11, color: t.textM, flex: 1, textAlign: 'left' }}>
+              {w.opens_at ? String(w.opens_at).slice(0, 16).replace('T', ' ') : '-'} ~ {w.closes_at ? String(w.closes_at).slice(0, 16).replace('T', ' ') : '-'}
+              {w.notice ? ' · ' + w.notice : ''}
+            </div>
+            <button onClick={() => toggleWin(w)} style={{ padding: '5px 14px', borderRadius: 8, border: '1px solid ' + (w.is_open ? t.green : t.border), background: w.is_open ? t.green : t.card, color: w.is_open ? t.card : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{w.is_open ? '열림 · 닫기' : '닫힘 · 열기'}</button>
+            {isAdmin && <button onClick={() => delWin(w)} style={{ border: 'none', background: 'transparent', color: t.textL, cursor: 'pointer', fontSize: 11 }}>삭제</button>}
+          </div>))}</div>}
+    </div>
+
+    {/* ── 필터 ── */}
+    <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+      {[['병동', fWard, setFWard, ['전체', ...WARD_LIST]], ['기간', fPeriod, setFPeriod, ['전체', ...periods]], ['상태', fStatus, setFStatus, ['전체', ...WARD_STATUSES]]].map(([lb, val, set, opts]) => (
+        <span key={lb} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>{lb}</span>
+          {opts.map(o => <button key={o} onClick={() => { set(o); setPage(1) }} style={{ padding: '5px 11px', borderRadius: 8, border: '1px solid ' + (val === o ? t.accent : t.border), background: val === o ? t.accentL : t.card, color: val === o ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: val === o ? 700 : 500 }}>{o}</button>)}
+        </span>))}
+      <div style={{ flex: 1 }} />
+      <button onClick={() => window.print()} disabled={!printPages.length} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: printPages.length ? 'pointer' : 'not-allowed', fontSize: 11, fontWeight: 700 }}>인쇄 (전체)</button>
+    </div>
+
+    {/* ── 신청 내역 ── */}
+    <div className="no-print" style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, overflow: 'hidden', boxShadow: t.shadow }}>
+      <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={(k, d) => { setSort(k, d); setPage(1) }} hf={{}} cols={cols}>
+        <tbody>{ld ? <tr><td colSpan={cols.length} style={{ padding: 30, textAlign: 'center', color: t.textL }}>불러오는 중...</td></tr>
+          : !paged.length ? <tr><td colSpan={cols.length} style={{ padding: 40, textAlign: 'center', color: t.textL }}>신청 내역이 없습니다</td></tr>
+          : paged.map(r => {
+            const [bg, fg] = stColor(r.status)
+            return <tr key={r.id} style={{ borderBottom: '1px solid ' + t.border, cursor: 'pointer' }} onClick={() => { resetAdd(); setOpenRow(openRow === r.id ? null : r.id) }}
+              onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
+              <td style={{ ...td, color: t.textM }}>{r.submitted_day}</td>
+              <td style={{ ...td, fontWeight: 700 }}>{r.ward}병동</td>
+              <td style={td}>{r.requester_name}</td>
+              <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{r.item_count}</td>
+              <td style={{ ...td, textAlign: 'left' }}><Bd bg={bg} color={fg}>{r.status}</Bd></td>
+              <td style={{ ...td, color: t.textM, fontSize: 11 }}>{r.request_year} {r.season}</td>
+              {/* ★ 인쇄 버튼 — 행 클릭(상세 열기)이 함께 일어나지 않게 셀·버튼 양쪽에서 stopPropagation */}
+              <td style={{ ...td, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                <button onClick={e => { e.stopPropagation(); setPrintOne(r.id) }} title="이 신청만 인쇄" style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>인쇄</button>
+              </td>
+            </tr>
+          })}</tbody>
+      </StandardTable>
+      <Pg page={pg} setPage={setPage} tp={tp} fl={sorted} pp={PP_W} ends />
+    </div>
+
+    {/* ── 상세 ── */}
+    {openRow && (() => {
+      const r = reqs.find(x => x.id === openRow); if (!r) return null
+      /* ★ 화면 표시용만 정렬한다(so2는 사본 반환) — 인쇄는 아래에서 itemsOf를 다시 호출해 원본 순서를 쓴다 */
+      const list = so2(itemsOf(r.id))
+      return <div className="no-print" style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.accent, padding: '14px 16px', marginTop: 12, boxShadow: t.shadow }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: t.accent }}>{r.ward}병동 · {r.requester_name}</div>
+          <div style={{ fontSize: 11, color: t.textM }}>{(r.submitted_at || '').slice(0, 16).replace('T', ' ')} · {r.request_year} {r.season}</div>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>상태</span>
+          <select value={r.status} onChange={e => setStatus(r, e.target.value)} style={{ ...ip2, width: 'auto' }}>{WARD_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select>
+          <button onClick={() => setPrintOne(r.id)} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>인쇄</button>
+          {isAdmin && <button onClick={() => setDelTarget(r)} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>신청 삭제</button>}
+          <button onClick={() => setOpenRow(null)} style={{ border: 'none', background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12 }}>닫기 ✕</button>
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          {/* ★ 정렬만 적용 — 필터 드롭다운·sticky 열·가로스크롤·페이지네이션은 두지 않는다(5열 소규모 표).
+                삼각형 1개로 오름▲ → 내림▼ → 해제(⇅) 3순환. 비고·작업 열은 정렬 대상이 아니다. */}
+          <thead><tr>{[['약품명', 'drug_name'], ['수량', 'qty'], ['단위', 'unit'], ['사용량', 'usage_qty'], ['비고', null], ['', null]].map(([h, k], i) => (
+            <th key={h + i} onClick={k ? () => hs2(k) : undefined} style={{ padding: '8px 10px', textAlign: i === 1 || i === 3 ? 'right' : 'left', color: k && sk2 === k ? t.accent : t.textM, fontWeight: 600, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap', cursor: k ? 'pointer' : 'default', userSelect: 'none' }}>{h}{k ? <SI2 col={k} /> : null}</th>))}</tr></thead>
+          <tbody>{!list.length ? <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: t.textL }}>품목이 없습니다</td></tr>
+            : list.map(it => {
+              const ed = (f) => edit && edit.itemId === it.id && edit.field === f
+              const cell = (f, val, align) => <td style={{ padding: '7px 10px', textAlign: align || 'left', borderBottom: '1px solid ' + t.border }}>
+                {ed(f) ? <input autoFocus defaultValue={val ?? ''} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEdit(null) }} onBlur={e => saveItem(it, f, e.target.value)} style={ip2} />
+                  : <span onClick={() => setEdit({ itemId: it.id, field: f })} style={{ cursor: 'pointer', color: val == null || val === '' ? t.textL : t.text }}>{val == null || val === '' ? '클릭' : val}</span>}
+              </td>
+              return <tr key={it.id}>
+                <td style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid ' + t.border, fontWeight: 600, color: t.text }}><WardItemName it={it} />{it.drug_code ? <span style={{ color: t.textL, fontSize: 10 }}> ({it.drug_code})</span> : <span style={{ color: t.amber, fontSize: 10 }}> · 코드 없음</span>}</td>
+                {cell('qty', it.qty, 'right')}
+                {cell('unit', it.unit, 'left')}
+                {cell('usage_qty', it.usage_qty, 'right')}
+                {cell('memo', it.memo, 'left')}
+                <td style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid ' + t.border }}>{isAdmin && <button onClick={() => delItem(it)} style={{ border: 'none', background: 'transparent', color: t.textL, cursor: 'pointer', fontSize: 11 }}>삭제</button>}</td>
+              </tr>
+            })}</tbody>
+        </table>
+        <div style={{ fontSize: 10, color: t.textM, marginTop: 8, textAlign: 'left' }}>수량·단위·사용량·비고는 클릭해서 수정합니다. 병동은 저장 후 수정할 수 없어 여기서 처리합니다.</div>
+
+        {/* ── ★ 약제과 약품 추가 — 병동이 빠뜨린 약을 여기서 채운다.
+               영역 전체를 상세 카드 안에서 가운데로 모으고 폭을 720px로 제한한다
+               (품목표는 카드 전체 폭을 쓰므로 그보다 조금 좁게 — 결과 행이 지나치게 길어지지 않게). ── */}
+        <div style={{ borderTop: '1px solid ' + t.border, marginTop: 12, paddingTop: 12 }}>
+          <div style={{ maxWidth: 720, margin: '0 auto', textAlign: 'center' }}>
+            {/* ★ 비상조제 btn(LAV, PURPLE) 톤의 버튼 — 라벤더 외곽선·옅은 배경·보라 글자.
+                버튼 모양이면 눌렀을 때 반응해야 하므로 **접기·펴기 토글**로 만들었다.
+                기본은 접힘 — 약품 추가는 병동이 빠뜨린 약을 채우는 예외 동작이고,
+                상세 패널이 이미 길어 평소에는 품목표에 집중하는 편이 낫다. */}
+            <button onClick={() => (addOpen ? resetAdd() : setAddOpen(true))} style={{
+              padding: '7px 18px', borderRadius: 8, border: '1px solid ' + t.lavender,
+              background: t.lavender + '22', color: t.purple, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+            }}>{addOpen ? '− 약품 추가' : '+ 약품 추가'}</button>
+
+            {addOpen && <>
+              {/* 안내는 버튼 아래 별도 줄·중앙·회색 작은 글씨 */}
+              <div style={{ fontSize: 10, fontWeight: 400, color: t.textM, marginTop: 8, marginBottom: 8 }}>추가한 품목은 약품명 옆에 (추가)로 표시됩니다</div>
+              {/* ★ Enter로 추가 — 신청 앱과 같은 규칙: IME 조합 중 Enter는 무시하고, 결과가 1건일 때만 담는다 */}
+              {/* ★ height만 [+ 약품 추가] 버튼과 같은 30px로 덧씌운다. 공유 스타일 ip2는 손대지 않는다
+                     (상세 표 인라인 편집 칸이 같은 객체를 쓰므로). 배경·테두리·폰트·placeholder·너비 불변. */}
+              <input value={aq} onChange={e => onAq(e.target.value)} onKeyDown={e => onAqKeyDown(e, r)} placeholder="약품명·코드·성분명 2자 이상 · Enter로 추가" style={{ ...ip2, width: '100%', maxWidth: 420, textAlign: 'center', height: 30 }} />
+              {aSearching && <div style={{ fontSize: 11, color: t.textL, marginTop: 6 }}>찾는 중...</div>}
+            {/* drug_code는 nullable(0083) — 목록에 없는 약도 이름만으로 추가할 수 있다.
+                「직접 추가」도 [추가]와 같은 가운데 정렬로 맞춘다(검색창 아래 한 줄). */}
+            {aq.trim().length >= 2 && <div style={{ marginTop: 8 }}>
+              <button onClick={() => addItem(r, { drug_name: aq.trim() })} disabled={adding} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 10, fontWeight: 600 }}>「{aq.trim()}」 직접 추가</button>
+            </div>}
+            {aSearched && !aSearching && (
+              <div style={{ marginTop: 10, border: '1px solid ' + t.border, borderRadius: 8, overflow: 'hidden', maxHeight: 240, overflowY: 'auto', textAlign: 'left' }}>
+                {!aFound.length ? <div style={{ padding: '12px', fontSize: 11, color: t.textL, textAlign: 'center' }}>검색 결과가 없습니다 · 위 「직접 추가」로 이름만 넣을 수 있습니다</div>
+                  : aFound.map(d => (
+                    /* ★ 행 전체가 클릭 대상 — 약품명·코드·상태 배지 어디를 눌러도 추가된다.
+                       상태 배지도 포함한다: 배지는 표시 전용이라 따로 눌릴 일이 없고,
+                       행 안에 「눌러도 안 되는 구멍」을 두면 어디를 눌러야 하는지 예측이 어긋난다.
+                       호버 시 배경 강조 + 커서 pointer로 「누를 수 있는 줄」임을 알린다. */
+                    /* ★ [추가]를 행 **가운데**에 두기 위해 `1fr auto 1fr` 그리드를 쓴다 —
+                       좌우 1fr이 같아 가운데 칸(버튼)이 행 정중앙에 놓이고, 약품명과 가까워 겨냥이 쉽다.
+                       처음 쓰는 사람에게 명시적 표시가 필요하므로 버튼 자체는 남긴다.
+                       행 클릭과 겹쳐 두 번 실행되지 않도록 버튼에서 stopPropagation. */
+                    <div key={d.drug_code || d.drug_name} onClick={() => addItem(r, d)} title="눌러서 추가"
+                      style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 8, padding: '8px 10px', borderTop: '1px solid ' + t.border, fontSize: 12, cursor: adding ? 'not-allowed' : 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
+                      <span style={{ minWidth: 0, fontWeight: 600, color: t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_name} <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></span>
+                      <button onClick={e => { e.stopPropagation(); addItem(r, d) }} disabled={adding} style={{ padding: '4px 14px', borderRadius: 8, border: '1px solid ' + t.lavender, background: t.lavender + '22', color: t.purple, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700 }}>추가</button>
+                      {/* ★ status로 거르지 않는다 — 약제과가 중지·휴면 약품으로 대체할 수 있어야 하므로 상태만 보여준다 */}
+                      <span style={{ minWidth: 0, display: 'flex', justifyContent: 'flex-end' }}>
+                        <Bd bg={d.status === '사용' ? t.greenL : t.bg} color={d.status === '사용' ? t.green : t.textM}>{d.status || '-'}</Bd>
+                      </span>
+                    </div>))}
+              </div>
+            )}
+            </>}
+          </div>
+        </div>
+      </div>
+    })()}
+
+    {/* ── 인쇄 전용: 병동별 1장 ── */}
+    {/* ★ 인쇄 색은 화면 테마와 무관하게 고정한다 — 다크 테마에서 t.text가 #E8E6E1(거의 흰색)이라
+        인쇄물 전체가 연한 회색으로 나오던 원인이다. 본문은 black 키워드(신규 hex 아님),
+        제목은 브랜드 보라, 머리말은 회색 토큰(#888 — 흰 배경 대비 3.54:1로 3:1 하한 위. 이보다 낮추면 종이에서 사라진다),
+        저작권만 옅은 회색으로 못 박는다.
+        ★ 저작권은 표의 <tfoot>에 넣는다 — display:table-footer-group이라 표가 지면을 채우면
+          자연히 페이지 바닥에 놓이고, 2장이 되면 장마다 반복된다. 별도 블록으로 뒤에 붙이던
+          방식(약 24.2mm)보다 15.6mm를 회수해 그만큼 표를 아래까지 늘렸다.
+          position:fixed·@page margin-box는 브라우저 인쇄 지원이 갈려 쓰지 않는다.
+        정렬: 헤더는 전부 가운데. 본문은 약품명·비고 좌측 / 수량·사용량 우측 / 단위 가운데. */}
+    <style>{'.ward-print{display:none}@media print{.ward-print{display:block!important;color:black}.ward-print .wp-page{page-break-after:always;break-after:page}.ward-print .wp-page:last-child{page-break-after:auto;break-after:auto}.ward-print .wp-title{color:#804A87}.ward-print .wp-meta{color:#888}.ward-print table{width:100%;border-collapse:collapse;table-layout:fixed}.ward-print th,.ward-print td{border:1px solid #bbb;padding:0 2mm;height:8.6mm;font-size:11px;vertical-align:middle;color:black}.ward-print th{text-align:center;font-weight:700;background:#E8E6E1;border-bottom:2px solid black;-webkit-print-color-adjust:exact;print-color-adjust:exact}.ward-print td{text-align:center}.ward-print td:nth-child(1),.ward-print td:nth-child(5){text-align:left}.ward-print td:nth-child(1){white-space:nowrap}.ward-print .wp-add{font-size:9px}.ward-print td:nth-child(2),.ward-print td:nth-child(4){text-align:right}.ward-print thead{display:table-header-group}.ward-print tfoot{display:table-footer-group}.ward-print tr{break-inside:avoid;page-break-inside:avoid}.ward-print .wp-ft td{border:none;height:8.6mm;text-align:center;font-size:8px;line-height:1.35;color:#A3A39E;padding:1mm 2mm 0}}'}</style>
+    {/* ── 인쇄 전용: 신청 1건당 A4 1장 · 빈 행으로 표 틀을 채워 수기 추가 기입 가능 ── */}
+    <div className="ward-print">
+      {printPages.map(r => {
+        /* ★ 인쇄는 **화면 정렬 상태를 그대로 따른다** — 상세 표(3654)와 같은 so2를 쓴다.
+           정렬 해제(sk2==='') 상태에서는 so2가 인자를 그대로 반환하므로
+           로드 순서(.order('sort_order') 오름차순 = 신청분 1..N → 추가분 1000+)가 유지된다.
+           so2는 [...a].sort()로 사본을 만들므로 원본 items 배열은 오염되지 않는다. */
+        const list = so2(itemsOf(r.id))
+        /* ★ 품목이 WARD_PRINT_ROWS를 넘으면 빈 행 0 — 표가 이미 가득 찼으므로 채우지 않고
+           자연스럽게 다음 장으로 넘긴다(thead 반복 · tr break-inside:avoid로 행 잘림 방지). */
+        const blanks = Math.max(0, WARD_PRINT_ROWS - list.length)
+        return <div key={r.id} className="wp-page">
+          <div className="wp-title" style={{ fontSize: 24, fontWeight: 800, marginBottom: 8 }}>{r.ward}병동 약품 신청서</div>
+          <div className="wp-meta" style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>작성자 {r.requester_name} · 신청일 {r.submitted_day} · {r.request_year} {r.season} · 상태 {r.status}</div>
+          <table>
+            <thead><tr>
+              {/* ★ 열 너비 재배분 — 수량·단위·사용량은 짧은 값만 들어가므로 줄이고,
+                    약제과가 손으로 적는 비고를 18% → 26%로 넓혔다. 약품명은 44% → 46%.
+                    (drugs 실측 2026-08-30: 1,115건 · 최대 30자 · p99 24자 · 평균 9자) */}
+              <th style={{ width: '46%' }}>약품명</th><th style={{ width: '9%' }}>수량</th>
+              <th style={{ width: '9%' }}>단위</th><th style={{ width: '10%' }}>사용량</th><th style={{ width: '26%' }}>비고</th>
+            </tr></thead>
+            {/* ★ 저작권을 tfoot에 둔다 — display:table-footer-group이라 표가 지면을 채우면
+                자연히 페이지 **바닥**에 놓이고, 2장이 되면 **장마다 반복**된다.
+                (thead와 짝을 이루므로 어느 장을 떼어 봐도 머리·꼬리가 갖춰진다.)
+                JSX 순서상 tbody보다 앞에 두어도 렌더는 표 맨 아래다. */}
+            <tfoot><tr className="wp-ft"><td colSpan={5}>
+              C O P Y R I G H T&nbsp; ⓒ&nbsp; 2 0 2 6&nbsp; J E O N G H W A&nbsp;&nbsp; L E E<br />
+              All rights reserved. 무단 전재 및 재배포 금지.
+            </td></tr></tfoot>
+            <tbody>
+              {/* ★ 「(추가)」는 약품명 열에만 붙인다 · 행 색은 기존 약품과 동일 · 비고 열 무변경
+                     ★ 인쇄는 화면 정렬 상태를 그대로 따른다(so2 공유) */}
+              {list.map(it => <tr key={it.id}><td><WardItemName it={it} /></td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}
+              {Array.from({ length: blanks }, (_, i) => <tr key={'b' + i}><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>)}
+            </tbody>
+          </table>
+        </div>
+      })}
+    </div>
+    {/* ── 기간 생성 모달 ── */}
+    {regOpen && <WardWindowModal t={t} nf={nf} setNf={setNf} onClose={() => setRegOpen(false)} onSave={createWin} />}
+    {/* ★ 삭제 확인 모달 — 병동·작성자·품목수를 보여주고 확인받는다 */}
+    {delTarget && <WardDeleteModal t={t} r={delTarget} count={itemsOf(delTarget.id).length} busy={deleting} onClose={() => setDelTarget(null)} onConfirm={delReq} />}
+    {/* ★ 화면 하단 저작권은 인쇄에서 제외한다 — 인쇄용 저작권은 각 wp-page 안에 따로 있다.
+        no-print가 없으면 마지막 병동 뒤에 저작권만 있는 백지 장이 붙는다. */}
+    <div className="no-print"><Ft /></div>
+  </div>
+}
+/* ★ 신청 삭제 확인 모달 — 병동·작성자·품목수를 보여주고 확인받는다.
+   품목은 ward_request_items의 on delete cascade로 함께 삭제된다(0083). 되돌릴 수 없다. */
+function WardDeleteModal({ t, r, count, busy, onClose, onConfirm }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos)
+  return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => !busy && onClose()}>
+    <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 400, border: '1px solid ' + t.border, boxShadow: t.shadowH, transform: 'translate(' + _dmPos.x + 'px, ' + _dmPos.y + 'px)' }} onClick={e => e.stopPropagation()}>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: '1px solid ' + t.border }}><div style={{ fontSize: 15, fontWeight: 700, color: t.red, textAlign: 'left' }}>신청 삭제</div></div>
+      <div style={{ padding: '16px 20px', textAlign: 'left' }}>
+        <div style={{ background: t.bg, border: '1px solid ' + t.border, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{r.ward}병동 · {r.requester_name}</div>
+          <div style={{ fontSize: 11, color: t.textM, marginTop: 5 }}>{r.request_year} {r.season} · 신청일 {(r.submitted_at || '').slice(0, 10)} · 상태 {r.status}</div>
+          <div style={{ fontSize: 12, color: t.text, fontWeight: 700, marginTop: 7 }}>품목 {count}건</div>
+        </div>
+        <div style={{ fontSize: 12, color: t.red, fontWeight: 700, marginBottom: 4 }}>되돌릴 수 없습니다.</div>
+        <div style={{ fontSize: 11, color: t.textM, marginBottom: 14, lineHeight: 1.6 }}>신청과 함께 품목 {count}건이 모두 삭제됩니다. 삭제는 관리자만 가능합니다.</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClose} disabled={busy} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button>
+          <button onClick={onConfirm} disabled={busy} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer', background: t.red, color: t.card, fontSize: 13, fontWeight: 700 }}>{busy ? '삭제 중...' : '영구 삭제'}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+/* 접수 기간 생성 모달 — 훅A(useDraggableModal)·제목줄 한정(함정 #13) */
+function WardWindowModal({ t, nf, setNf, onClose, onSave }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos)
+  const ip = { width: '100%', padding: '9px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }
+  const lb = { fontSize: 10, color: t.textM, display: 'block', marginBottom: 4 }
+  const sf = (k, v) => setNf(p => ({ ...p, [k]: v }))
+  return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
+    <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: '1px solid ' + t.border, boxShadow: t.shadowH, maxHeight: '92vh', overflowY: 'auto', transform: 'translate(' + _dmPos.x + 'px, ' + _dmPos.y + 'px)' }} onClick={e => e.stopPropagation()}>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: '1px solid ' + t.border }}><div style={{ fontSize: 15, fontWeight: 700, color: t.accent }}>접수 기간 생성</div></div>
+      <div style={{ padding: '16px 20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div><label style={lb}>명절 *</label><select value={nf.season} onChange={e => sf('season', e.target.value)} style={ip}>{WARD_SEASONS.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+          <div><label style={lb}>연도 *</label><input value={nf.request_year} onChange={e => sf('request_year', e.target.value)} inputMode="numeric" style={ip} /></div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div><label style={lb}>시작(선택)</label><input type="datetime-local" value={nf.opens_at} onChange={e => sf('opens_at', e.target.value)} style={ip} /></div>
+          <div><label style={lb}>종료(선택)</label><input type="datetime-local" value={nf.closes_at} onChange={e => sf('closes_at', e.target.value)} style={ip} /></div>
+        </div>
+        <div style={{ marginBottom: 14 }}><label style={lb}>안내 문구(선택)</label><input value={nf.notice} onChange={e => sf('notice', e.target.value)} placeholder="신청 화면 상단에 표시" style={ip} /></div>
+        <div style={{ fontSize: 11, color: t.textM, marginBottom: 12, lineHeight: 1.6 }}>만든 직후에는 <b>닫힘</b> 상태입니다. 목록에서 <b>열기</b>를 눌러야 신청을 받습니다.</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button>
+          <button onClick={onSave} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: 'pointer', background: t.accent, color: t.card, fontSize: 13, fontWeight: 700 }}>생성</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
 /* ═══ 사용 점검 — 장기 미사용 약품 보유 판단 이력(drug_idle_reviews 누적·조회 시 재계산) ═══ */
 const IDLE_BANDS_DEFAULT = [90, 180, 365]
 const IDLE_STATUSES = ['관찰', '중지', '보유유지', '해제']
@@ -3381,7 +3902,8 @@ function IdleCheck({ drugs, onReload }) {
   const ip2 = { padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 11, outline: 'none', background: t.bg, color: t.text, width: '100%', boxSizing: 'border-box' }
   const stBg = { '관찰': t.accentL, '중지': t.redL, '보유유지': t.greenL, '해제': t.bg }; const stFg = { '관찰': t.accent, '중지': t.red, '보유유지': t.green, '해제': t.textM }
   return <div style={{ padding: '20px 24px' }}>
-    <div style={{ marginBottom: 10 }}><div style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>사용 점검 <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>· 경과일은 마지막 사용일 기준 · 조회 시 재계산</span></div></div>
+    {/* ★ textAlign:'left' 명시 — #root{text-align:center} 상속으로 제목이 가운데 렌더되는 회귀(함정 #20) */}
+    <div style={{ marginBottom: 10, textAlign: 'left' }}><div style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>사용 점검 <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>· 경과일은 마지막 사용일 기준 · 조회 시 재계산</span></div></div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 12 }}>{lvs.map(l => <div key={l.k} onClick={() => { setALv(aLv === l.k ? null : l.k); setPage(1) }} style={{ background: t.card, border: '1px solid ' + (aLv === l.k ? l.c : t.border), borderRadius: 12, padding: '12px 14px', cursor: 'pointer', boxShadow: aLv === l.k ? '0 0 12px ' + l.c + '15' : 'none' }} onMouseEnter={e => e.currentTarget.style.borderColor = l.c} onMouseLeave={e => { if (aLv !== l.k) e.currentTarget.style.borderColor = t.border }}><div style={{ fontSize: 12, color: l.c, fontWeight: 700, textAlign: 'left' }}>{l.l}</div><div style={{ fontSize: 26, fontWeight: 700, color: l.c, marginTop: 2, textAlign: 'left' }}>{bandCnt(l.k)}</div><div style={{ fontSize: 10, color: t.textM, marginTop: 2, textAlign: 'left' }}>{l.sub}</div></div>)}</div>
     <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{['전체', ...IDLE_STATUSES].map(s => <button key={s} onClick={() => { setStatusF(s); setPage(1) }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (statusF === s ? t.accent : t.border), background: statusF === s ? t.accentL : t.card, color: statusF === s ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: statusF === s ? 700 : 500 }}>{s}</button>)}</div>
@@ -4574,7 +5096,7 @@ function Schedule({ drugs, onNav }) {
   </div>;
 }
 
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'narcotic', 'nonins', 'ordering', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive'];
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'narcotic', 'nonins', 'ordering', 'ward', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); const m = h.split('/')[0]; return ROUTES.includes(m) ? m : 'dashboard'; }
 function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
 /* 입출고 월 선택: 해시 3번째 세그먼트(#transaction/out/2026-08). 없으면 현재 월(하위호환). 「전체」는 URL에 월 세그먼트 없음(→새로고침 시 현재 월로 복원). */
@@ -5155,6 +5677,7 @@ export default function App() {
         {menu === 'archive' && <DrugList drugs={drugs} navFilter={{ status: ['중지'], archive: true }} onEdit={setEditDrug} onReload={load} />}
         {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} onDispose={setDisposeDrug} />}
         {menu === 'idle' && <IdleCheck drugs={drugs} onReload={load} />}
+        {menu === 'ward' && <WardAdmin />}
         {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
         {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}

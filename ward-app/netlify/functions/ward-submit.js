@@ -1,19 +1,27 @@
 /* ════════════════════════════════════════════════════════════════
    병동 신청 — 신청 저장 (비회원 API)
    ─────────────────────────────────────────────────────────────────
-   POST /api/ward/submit  { ward, requester_name, items:[{drug_code?, drug_name, qty, unit?, memo?}] }
+   POST /api/ward/submit  { ward, requester_name, items:[{drug_code?, drug_name, qty}] }
+   ※ unit·memo는 신청 화면에서 입력받지 않는다(약제과가 관리 화면에서 채움). 컬럼은 유지·null 저장.
    흐름: 기간 확인 → 입력 검증 → ward_requests + ward_request_items INSERT(service_role).
    ★ tenant_id는 window 행에서 가져와 **명시 지정**한다 — set_tenant_id_from_user()는 auth.uid() 기반이라
      비회원 경로에서 무발동. 트리거는 `new.tenant_id is null`일 때만 채우므로 명시값을 덮어쓰지 않는다(0083).
    ★ season·request_year는 window 값을 스냅샷 복사한다(window가 바뀌어도 과거 신청 소속 유지).
-   ★ 같은 병동의 복수 신청을 허용한다(빠뜨린 품목을 추가하는 흐름 · 관리 화면에서 묶어 봄).
-   ★ 응답은 신청 id만. 키·스택트레이스·DB 오류 원문을 절대 싣지 않는다(서버 콘솔에만 기록).
-   응답: { ok, id } 또는 { ok:false, msg }
+   ★ 병동당 1회 — 같은 (병동·season·year) 조합이 이미 있으면 409로 거부한다. DB UNIQUE는 두지 않는다(0083)
+     — 약제과가 관리 화면에서 추가 등록할 여지를 남기고, 제한은 이 비회원 경로에서만 건다.
+   ★ 신청번호(uuid)는 반환하지 않는다 — 병동당 1회라 불필요. 키·스택트레이스·DB 오류 원문도 절대 싣지 않는다.
+   ★ period(「2026 추석」)만 함께 돌려준다 — 완료 화면 표시용. window의 공개 정보이며 uuid와 무관하다.
+   응답: { ok:true, period } 또는 { ok:false, msg }
    ════════════════════════════════════════════════════════════════ */
 import { createClient } from '@supabase/supabase-js'
 import { currentWindow, corsHeaders, json } from './ward-drugs.js'
 
 const CLOSED_MSG = '접수 기간이 아닙니다 · 문의 약제과 내선 217'
+/* ★ ward-status.js가 이 상수를 그대로 가져다 응답에 실어, 화면 안내와 409 문구가
+   **글자 단위로 같은 하나의 상수**를 쓰게 한다. 정의는 여기 한 곳뿐이다. 409 로직은 변경 없음.
+   ★ 217 표기는 전 경로 통일 — 구분자 `·` + 「내선 217」. 괄호로 감싸는 표기는 쓰지 않는다
+     (CLOSED_MSG·화면 안내와 같은 형식). 문장 내용·길이는 그대로 두고 표기만 맞췄다. */
+export const DUP_MSG = '이미 신청이 완료된 병동입니다 · 변경은 약제과 내선 217'
 const WARDS = ['3', '4', '5', '6']          // ward CHECK 미부여(0083) → 여기서 검증
 const MAX_ITEMS = 100
 
@@ -38,6 +46,20 @@ export default async (req) => {
   /* 2) 입력 검증 */
   const v = validate(body)
   if (v.msg) return json({ ok: false, msg: v.msg }, 400, cors)
+
+  /* 2-1) 병동당 1회 — 같은 (병동·season·year) 조합이 이미 있으면 거부.
+     ★ DB UNIQUE 제약은 두지 않는다(0083 설계) — 약제과가 관리 화면에서 추가 등록할 여지를 남기고,
+     제한은 이 경로(비회원 신청)에서만 건다. */
+  const { data: dup, error: dErr } = await admin
+    .from('ward_requests')
+    .select('id')
+    .eq('tenant_id', win.row.tenant_id)
+    .eq('ward', v.ward)
+    .eq('season', win.row.season)
+    .eq('request_year', win.row.request_year)
+    .limit(1)
+  if (dErr) { console.error('[ward-submit] 중복 확인 실패:', dErr.message); return json({ ok: false, msg: '일시적인 오류입니다. 잠시 후 다시 시도해 주세요' }, 500, cors) }
+  if ((dup || []).length) return json({ ok: false, msg: DUP_MSG }, 409, cors)
 
   /* 3) 헤더 INSERT — tenant_id 명시 지정 · season/year는 window 스냅샷 */
   const { data: hdr, error: hErr } = await admin
@@ -73,7 +95,8 @@ export default async (req) => {
     return json({ ok: false, msg: '저장에 실패했습니다. 잠시 후 다시 시도해 주세요' }, 500, cors)
   }
 
-  return json({ ok: true, id: hdr.id }, 200, cors)
+  /* ★ 신청번호(uuid) 미반환 — 병동당 1회라 번호가 불필요하고, 화면은 병동·작성자·명절로 안내한다 */
+  return json({ ok: true, period: `${win.row.request_year} ${win.row.season}` }, 200, cors)
 }
 
 /* ── 입력 검증: 타입·길이·범위 ── */
