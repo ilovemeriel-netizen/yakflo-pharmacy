@@ -61,7 +61,7 @@ export default function App() {
 
   /* ── 신청완료 병동 조회 ──────────────────────────────────────
      ★ fail-open. 이 조회는 **표시용 편의**일 뿐이고, 진짜 방어선은 ward-submit의 409다.
-       실패하면 표시만 생략하고 신청은 그대로 허용한다 — 조회가 죽었다고 접수를 막지 않는다.
+       실패하면 표시만 생략하고 신청은 그대로 허용한다 — 조회가 죽었다고 신청을 막지 않는다.
      ★ 안내 문구는 서버가 준 msg(=DUP_MSG)를 그대로 쓴다 → 409 문구와 글자 단위로 같아진다. */
   useEffect(() => {
     let on = true
@@ -135,7 +135,7 @@ export default function App() {
   /* ── 병동 전환 ────────────────────────────────────────────────
      ★ 병동을 바꾸면 담긴 목록과 작성자 이름을 **모두** 비운다.
        병동별로 근무자가 다르므로 이름은 병동에 딸린 값이고, 목록이 남으면
-       3병동이 담은 약이 4병동 이름으로 접수되는 데이터 오류가 난다.
+       3병동이 담은 약이 4병동 이름으로 저장되는 데이터 오류가 난다.
      · 담긴 약품이 있을 때만 확인을 받는다(잃을 것이 큰 경우).
      · 이름만 있고 목록이 비었으면 모달 없이 전환하고, 이름을 비웠다는 사실만 알린다. */
   function pickWard(w) {
@@ -205,9 +205,9 @@ export default function App() {
       })
       const d = await r.json().catch(() => ({}))
       if (r.status === 403) { setConfirmOpen(false); setClosed(true); setMsg({ kind: 'err', text: d.msg || '접수 기간이 아닙니다' }); return }
-      /* ★ 409 = 이 병동은 이미 접수됨. 그 병동을 잠가 더 이상 헛수고하지 않게 한다.
+      /* ★ 409 = 이 병동은 이미 신청 완료. 그 병동을 잠가 더 이상 헛수고하지 않게 한다.
          다른 병동으로 바꾸면 잠금이 풀린다(dupWards에 없는 병동이므로). */
-      if (r.status === 409) { setConfirmOpen(false); setDupWards(w => w.includes(ward) ? w : [...w, ward]); if (d.msg) setDupMsg(d.msg); setMsg({ kind: 'err', text: d.msg || '이미 신청이 접수되었습니다' }); return }
+      if (r.status === 409) { setConfirmOpen(false); setDupWards(w => w.includes(ward) ? w : [...w, ward]); if (d.msg) setDupMsg(d.msg); setMsg({ kind: 'err', text: d.msg || '이미 신청이 완료된 병동입니다' }); return }
       if (!r.ok || !d.ok) { setConfirmOpen(false); setMsg({ kind: 'err', text: d.msg || '저장에 실패했습니다' }); return }
       /* d.period = 「2026 추석」 — 접수 기간(window) 스냅샷. 신청번호(uuid)는 응답에 없다. */
       setConfirmOpen(false); setDone({ ward, name: name.trim(), period: d.period || '', items: snapshot })
@@ -237,14 +237,14 @@ export default function App() {
           background: rgba(LAVENDER, 0.28), border: '1px solid ' + rgba(LAVENDER, 0.7), borderRadius: 12,
           padding: '12px 14px', fontSize: 14, fontWeight: 700, color: NAVY, marginBottom: 12, textAlign: 'center', lineHeight: 1.6,
         }}>
-          접수가 완료되었습니다. 창을 닫으셔도 됩니다.
+          신청이 완료되었습니다. 창을 닫으셔도 됩니다.
         </div>
       )}
 
-      {/* 카드 1 — 접수 완료 */}
+      {/* 카드 1 — 신청 완료 */}
       <div style={{ ...card, textAlign: 'center', paddingTop: 30, paddingBottom: 26 }}>
         <div style={{ width: 56, height: 56, borderRadius: 28, background: rgba(GREEN, 0.12), color: GREEN, fontSize: 28, lineHeight: '56px', margin: '0 auto 14px' }}>✓</div>
-        <div style={{ fontSize: 19, fontWeight: 800, color: NAVY, marginBottom: 12 }}>접수 완료</div>
+        <div style={{ fontSize: 19, fontWeight: 800, color: NAVY, marginBottom: 12 }}>신청 완료</div>
         <div style={{
           display: 'inline-block', fontSize: 15, fontWeight: 800, color: PURPLE,
           background: rgba(LAVENDER, 0.22), borderRadius: 10, padding: '9px 16px', lineHeight: 1.6,
@@ -270,23 +270,20 @@ export default function App() {
         </div>
       </div>
 
-      {/* 카드 3 — ★ 경고 강조 */}
+      {/* 카드 3 — ★ 경고 강조. 두 줄을 한 줄로 합쳤다(구분자 `·` + 「내선 217」 표기 통일) */}
       <div style={{ ...card, ...warn }}>
         <div style={{ fontSize: 17, fontWeight: 800, color: PURPLE, lineHeight: 1.5 }}>
-          저장된 신청은 수정할 수 없습니다
-        </div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: NAVY, marginTop: 10, lineHeight: 1.6 }}>
-          변경이 필요하면 약제과 내선 217
+          저장된 신청은 수정할 수 없습니다 · 변경은 약제과 내선 217
         </div>
       </div>
 
       {/* 카드 4 — ★ 이탈 안내(뒤로 가기를 누를 이유 자체를 줄인다) */}
       <div style={{ ...card, textAlign: 'center' }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.6 }}>
-          접수가 끝났습니다. 이 창을 닫으셔도 됩니다.
+          신청이 끝났습니다. 이 창을 닫으셔도 됩니다.
         </div>
         <div style={{ fontSize: 12, color: rgba(NAVY, 0.7), marginTop: 8, lineHeight: 1.7 }}>
-          접수된 내용은 약제과에서 확인합니다.<br />병동당 1회만 신청할 수 있습니다.
+          신청 내용은 약제과에서 확인합니다.<br />병동당 1회만 신청할 수 있습니다.
         </div>
       </div>
 
@@ -349,7 +346,10 @@ export default function App() {
                       {dupWards.length > 0 && (
                         <div style={{
                           fontSize: 9, fontWeight: 700, height: 12, lineHeight: '12px', marginTop: 2,
-                          color: ward === w ? rgba(LAVENDER, 0.95) : rgba(NAVY, 0.5),
+                          /* ★ 비선택 병동은 브랜드 녹색 — 회색이면 「비활성 버튼」으로 읽히는데
+                                실제로는 눌리는 버튼이라 신호가 어긋난다. 선택된 병동은 보라 배경 위라
+                                대비가 나빠지므로 라벤더를 유지한다. 텍스트 색만 바꾼다. */
+                          color: ward === w ? rgba(LAVENDER, 0.95) : GREEN,
                         }}>{dupWards.includes(w) ? '신청완료' : ''}</div>
                       )}
                     </button>
@@ -384,7 +384,7 @@ export default function App() {
                   onChange={e => onQuery(e.target.value)}
                   onKeyDown={onSearchKeyDown}
                   disabled={!canEdit}
-                  placeholder={canEdit ? `약품명 ${MIN_Q}자 이상 입력 · Enter` : (locked ? '이미 접수된 병동입니다' : '위에서 병동·작성자를 먼저 입력해 주세요')}
+                  placeholder={canEdit ? `약품명 ${MIN_Q}자 이상 입력 · Enter` : (locked ? '신청이 완료된 병동입니다' : '위에서 병동·작성자를 먼저 입력해 주세요')}
                   style={{ ...input, background: canEdit ? 'white' : rgba(NAVY, 0.05), color: canEdit ? NAVY : rgba(NAVY, 0.45), cursor: canEdit ? 'text' : 'not-allowed' }}
                 />
                 {searching && <div style={{ fontSize: 12, color: rgba(NAVY, 0.6), marginTop: 8 }}>찾는 중…</div>}
@@ -461,7 +461,7 @@ export default function App() {
             {/* 안내는 담긴 것이 있을 때만 — 0건에서 「모두 담으셨나요?」는 물음이 성립하지 않는다 */}
             {cart.length > 0 && (
               <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, textAlign: 'center', marginBottom: 8 }}>
-                담을 약품을 모두 담으셨나요?
+                신청 전 목록을 확인해 주세요
               </div>
             )}
             {/* ★ 톤 낮춤 — 여기서는 최종 동작이 아니라 확인 모달로 넘어가는 단계다. */}
