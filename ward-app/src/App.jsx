@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 /* ════════════════════════════════════════════════════════════════
    병동 약품 신청 — 단일 화면
@@ -9,12 +9,16 @@ import { useState, useRef } from 'react'
    ★ 색상은 브랜드 4색만 사용 — 그 외는 white 키워드와 그 4색의 rgba 파생.
    ★ 입력은 약품과 수량뿐 — 단위·비고는 약제과가 관리 화면에서 채운다(DB 컬럼은 유지).
    ★ 신청번호(uuid)는 쓰지 않는다 — 병동당 1회라 병동·작성자·명절로 식별된다.
+   ★ 병동·작성자를 먼저 입력해야 검색·담기·저장이 열린다(오조작 방지).
+   ★ 저장은 useRef로 잠근다 — disabled는 리렌더 이후에나 걸려 더블탭 사이를 막지 못한다.
+   ★ 라우터·해시 라우팅을 쓰지 않는다. 완료 시 pushState 1회로 뒤로 가기를 **한 번만** 흡수하고,
+     두 번째 뒤로 가기는 막지 않는다. beforeunload는 쓰지 않는다(bfcache 무효화 방지).
    ════════════════════════════════════════════════════════════════ */
 
-const PURPLE = '#804A87'   // 보라
-const GREEN = '#019748'    // 녹색
-const LAVENDER = '#BFA6D9' // 라벤더
-const NAVY = '#2E4A62'     // 네이비
+const PURPLE = '#804A87'   // 보라 — 강조·경고
+const GREEN = '#019748'    // 녹색 — 완료
+const LAVENDER = '#BFA6D9' // 라벤더 — 보조 배경
+const NAVY = '#2E4A62'     // 네이비 — 본문
 
 const WARDS = ['3', '4', '5', '6']
 const MIN_Q = 2            // 검색 최소 글자수
@@ -30,15 +34,35 @@ export default function App() {
   const [msg, setMsg] = useState(null)          // { kind:'err'|'info', text }
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [done, setDone] = useState(null)        // { ward, name, period }
+  const [done, setDone] = useState(null)        // { ward, name, period, items:[{drug_name, qty}] }
   const [closed, setClosed] = useState(false)   // 접수 기간 밖
-  const [period, setPeriod] = useState('')      // 완료 화면 표시용(안내문에서 얻으면 사용)
+  const [backNotice, setBackNotice] = useState(false)   // 뒤로 가기를 한 번 흡수했을 때의 안내
   const timer = useRef(null)
+  const submitting = useRef(false)              // ★ 이중 제출 잠금(리렌더와 무관하게 즉시 걸림)
+  const pushed = useRef(false)                  // 완료 이력 push를 1회로 제한
+
+  /* ★ 필수 입력 — 병동과 작성자 이름이 채워지기 전에는 검색·담기·저장을 모두 막는다 */
+  const ready = !!ward && !!name.trim()
+
+  /* ── 완료 시 뒤로 가기 1회 흡수 ──────────────────────────────
+     앱은 이력에 항목을 쌓지 않는 상태 기반 단일 화면이라, 완료 화면에서 뒤로 가기를 누르면
+     곧바로 앱 바깥(직전 방문 페이지)으로 나간다. 완료 시 같은 URL로 항목을 1개 밀어 넣어
+     첫 번째 뒤로 가기를 여기서 받아내고, 화면은 완료 그대로 유지하며 안내만 띄운다.
+     두 번째 뒤로 가기는 그대로 흘려보낸다(이탈을 막지 않는다).
+     ★ beforeunload를 쓰지 않으므로 bfcache는 살아 있다 — forward 복귀 시 완료 화면이 그대로 돌아온다. */
+  useEffect(() => {
+    if (!done) return
+    if (!pushed.current) { pushed.current = true; window.history.pushState({ wa: 'done' }, '') }
+    const onPop = () => setBackNotice(true)
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [done])
 
   /* ── 약품 검색 (디바운스 300ms) ── */
   function onQuery(v) {
     setQ(v)
     clearTimeout(timer.current)
+    if (!ready) { setFound([]); setSearched(false); return }
     if (v.trim().length < MIN_Q) { setFound([]); setSearched(false); return }
     timer.current = setTimeout(() => search(v.trim()), 300)
   }
@@ -57,6 +81,7 @@ export default function App() {
 
   /* ── 담기 / 편집 / 삭제 ── */
   function add(d) {
+    if (!ready) { setMsg({ kind: 'err', text: '병동과 작성자 이름을 먼저 입력해 주세요' }); return }
     if (cart.some(c => c.key === (d.drug_code || d.drug_name))) { setMsg({ kind: 'info', text: '이미 담긴 약품입니다' }); return }
     setCart(c => [...c, { key: d.drug_code || d.drug_name, drug_code: d.drug_code || '', drug_name: d.drug_name, qty: '' }])
     setQ(''); setFound([]); setSearched(false); setMsg(null)
@@ -82,7 +107,15 @@ export default function App() {
     setMsg(null); setConfirmOpen(true)
   }
   async function submit() {
+    /* ★ 이중 제출 잠금 — disabled는 리렌더 이후에나 반영되어 더블탭 사이(수백 ms)를 막지 못한다.
+       ref는 클릭 핸들러가 도는 즉시 걸리므로 두 번째 탭은 여기서 곧바로 빠져나간다.
+       서버(ward-submit)의 중복 검사(409)는 두 요청이 거의 동시에 오면 둘 다 통과할 수 있고,
+       0083 설계상 DB UNIQUE가 없어 최후 방어선이 없다 — 그래서 클라이언트 잠금이 필요하다. */
+    if (submitting.current) return
+    submitting.current = true
     setSaving(true); setMsg(null)
+    /* 완료 화면에 남길 품목 요약 — 저장 성공 후 cart를 참조하지 않도록 미리 굳혀 둔다 */
+    const snapshot = cart.map(c => ({ drug_name: c.drug_name, qty: Number(c.qty) }))
     try {
       const r = await fetch('/api/ward/submit', {
         method: 'POST',
@@ -96,9 +129,14 @@ export default function App() {
       const d = await r.json().catch(() => ({}))
       if (r.status === 403) { setConfirmOpen(false); setClosed(true); setMsg({ kind: 'err', text: d.msg || '접수 기간이 아닙니다' }); return }
       if (!r.ok || !d.ok) { setConfirmOpen(false); setMsg({ kind: 'err', text: d.msg || '저장에 실패했습니다' }); return }
-      setConfirmOpen(false); setDone({ ward, name: name.trim(), period })
+      /* d.period = 「2026 추석」 — 접수 기간(window) 스냅샷. 신청번호(uuid)는 응답에 없다. */
+      setConfirmOpen(false); setDone({ ward, name: name.trim(), period: d.period || '', items: snapshot })
     } catch { setConfirmOpen(false); setMsg({ kind: 'err', text: '연결에 실패했습니다. 잠시 후 다시 시도해 주세요' }) }
-    finally { setSaving(false) }
+    finally {
+      /* ★ 실패 시에도 반드시 풀어 재시도가 가능하게 한다 */
+      submitting.current = false
+      setSaving(false)
+    }
   }
 
   /* ── 스타일 ── */
@@ -106,20 +144,71 @@ export default function App() {
   const label = { fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 8, display: 'block' }
   const input = { width: '100%', padding: '11px 12px', border: '1px solid ' + rgba(NAVY, 0.2), borderRadius: 10, outline: 'none', background: 'white', color: NAVY }
   const step = () => ({ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 10, background: PURPLE, color: 'white', fontSize: 11, fontWeight: 800, marginRight: 8 })
+  /* 경고 강조 — 브랜드 보라를 경고색으로 사용(신규 색상값 없음) */
+  const warn = { background: rgba(PURPLE, 0.09), border: '2px solid ' + rgba(PURPLE, 0.45), borderRadius: 12, padding: '14px 16px', textAlign: 'center' }
 
-  /* ── 완료 화면 — ★ 신청번호 없음 ── */
+  /* ── 완료 화면 — ★ 카드 형식 · 품목 요약 포함 · 신청번호 없음 ── */
   if (done) return (
     <div className="wa-wrap">
-      <div style={{ ...card, textAlign: 'center', paddingTop: 32, paddingBottom: 32 }}>
-        <div style={{ width: 56, height: 56, borderRadius: 28, background: rgba(GREEN, 0.12), color: GREEN, fontSize: 28, lineHeight: '56px', margin: '0 auto 14px' }}>✓</div>
-        <div style={{ fontSize: 18, fontWeight: 800, color: NAVY, marginBottom: 10 }}>접수 완료</div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: PURPLE }}>
-          {done.ward}병동 · {done.name}{done.period ? ' · ' + done.period : ''}
+      {/* 뒤로 가기를 한 번 흡수했을 때만 표시 */}
+      {backNotice && (
+        <div style={{
+          background: rgba(LAVENDER, 0.28), border: '1px solid ' + rgba(LAVENDER, 0.7), borderRadius: 12,
+          padding: '12px 14px', fontSize: 14, fontWeight: 700, color: NAVY, marginBottom: 12, textAlign: 'center', lineHeight: 1.6,
+        }}>
+          접수가 완료되었습니다. 창을 닫으셔도 됩니다.
         </div>
-        <div style={{ fontSize: 12, color: rgba(NAVY, 0.7), marginTop: 20, lineHeight: 1.7 }}>
-          저장된 신청은 수정할 수 없습니다.<br />변경이 필요하면 약제과 담당자에게 연락해 주세요.
+      )}
+
+      {/* 카드 1 — 접수 완료 */}
+      <div style={{ ...card, textAlign: 'center', paddingTop: 30, paddingBottom: 26 }}>
+        <div style={{ width: 56, height: 56, borderRadius: 28, background: rgba(GREEN, 0.12), color: GREEN, fontSize: 28, lineHeight: '56px', margin: '0 auto 14px' }}>✓</div>
+        <div style={{ fontSize: 19, fontWeight: 800, color: NAVY, marginBottom: 12 }}>접수 완료</div>
+        <div style={{
+          display: 'inline-block', fontSize: 15, fontWeight: 800, color: PURPLE,
+          background: rgba(LAVENDER, 0.22), borderRadius: 10, padding: '9px 16px', lineHeight: 1.6,
+        }}>
+          {done.ward}병동 · {done.name}{done.period ? ' · ' + done.period : ''} · 총 {done.items.length}개 품목
         </div>
       </div>
+
+      {/* 카드 2 — ★ 신청 품목 요약(「뭘 신청했더라」를 여기서 해소) */}
+      <div style={card}>
+        <label style={label}>신청한 품목 {done.items.length}건</label>
+        <div style={{ border: '1px solid ' + rgba(NAVY, 0.12), borderRadius: 10, overflow: 'hidden' }}>
+          {done.items.map((it, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', fontSize: 13, color: NAVY,
+              borderTop: i === 0 ? 'none' : '1px solid ' + rgba(NAVY, 0.08),
+            }}>
+              <span style={{ color: rgba(NAVY, 0.5), fontSize: 11, minWidth: 14 }}>{i + 1}</span>
+              <span style={{ flex: 1, fontWeight: 700, lineHeight: 1.4 }}>{it.drug_name}</span>
+              <span style={{ fontWeight: 800, color: PURPLE, whiteSpace: 'nowrap' }}>{it.qty}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 카드 3 — ★ 경고 강조 */}
+      <div style={{ ...card, ...warn }}>
+        <div style={{ fontSize: 17, fontWeight: 800, color: PURPLE, lineHeight: 1.5 }}>
+          저장된 신청은 수정할 수 없습니다
+        </div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: NAVY, marginTop: 10, lineHeight: 1.6 }}>
+          변경이 필요하면 약제과 내선 217
+        </div>
+      </div>
+
+      {/* 카드 4 — ★ 이탈 안내(뒤로 가기를 누를 이유 자체를 줄인다) */}
+      <div style={{ ...card, textAlign: 'center' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.6 }}>
+          접수가 끝났습니다. 이 창을 닫으셔도 됩니다.
+        </div>
+        <div style={{ fontSize: 12, color: rgba(NAVY, 0.7), marginTop: 8, lineHeight: 1.7 }}>
+          접수된 내용은 약제과에서 확인합니다.<br />병동당 1회만 신청할 수 있습니다.
+        </div>
+      </div>
+
       <Ft />
     </div>
   )
@@ -165,7 +254,22 @@ export default function App() {
 
             <div style={card}>
               <label style={label}><span style={step()}>3</span>약품 검색</label>
-              <input value={q} onChange={e => onQuery(e.target.value)} placeholder={`약품명 ${MIN_Q}자 이상 입력`} style={input} />
+              {/* ★ 필수 입력 안내 — 병동·작성자가 비면 검색창을 잠근다 */}
+              {!ready && (
+                <div style={{
+                  background: rgba(LAVENDER, 0.22), border: '1px solid ' + rgba(LAVENDER, 0.6), borderRadius: 10,
+                  padding: '11px 12px', fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 10, lineHeight: 1.6,
+                }}>
+                  병동과 작성자 이름을 먼저 입력해 주세요
+                </div>
+              )}
+              <input
+                value={q}
+                onChange={e => onQuery(e.target.value)}
+                disabled={!ready}
+                placeholder={ready ? `약품명 ${MIN_Q}자 이상 입력` : '위 1·2를 먼저 입력해 주세요'}
+                style={{ ...input, background: ready ? 'white' : rgba(NAVY, 0.05), color: ready ? NAVY : rgba(NAVY, 0.45), cursor: ready ? 'text' : 'not-allowed' }}
+              />
               {searching && <div style={{ fontSize: 12, color: rgba(NAVY, 0.6), marginTop: 8 }}>찾는 중…</div>}
               {searched && !searching && (
                 <div style={{ marginTop: 12, border: '1px solid ' + rgba(NAVY, 0.12), borderRadius: 10, overflow: 'hidden' }}>
@@ -214,10 +318,14 @@ export default function App() {
                       </div>
                     </div>))}</div>
                 )}
-                <button onClick={tryOpen} style={{
-                  width: '100%', padding: '14px 0', borderRadius: 12, border: 'none', cursor: 'pointer',
-                  background: PURPLE, color: 'white', fontSize: 15, fontWeight: 800, marginTop: 4,
-                }}>저장</button>
+                {/* ★ 저장 버튼에 품목 수를 실어 누르기 전에 개수가 눈에 들어오게 한다 · 비어 있으면 비활성 */}
+                <button onClick={tryOpen} disabled={!cart.length || !ready} style={{
+                  width: '100%', padding: '14px 0', borderRadius: 12, border: 'none',
+                  cursor: (!cart.length || !ready) ? 'not-allowed' : 'pointer',
+                  background: (!cart.length || !ready) ? rgba(NAVY, 0.15) : PURPLE,
+                  color: (!cart.length || !ready) ? rgba(NAVY, 0.5) : 'white',
+                  fontSize: 15, fontWeight: 800, marginTop: 4,
+                }}>{cart.length ? `${cart.length}개 품목 신청하기` : '담은 약품이 없습니다'}</button>
                 <div style={{ fontSize: 12, color: rgba(NAVY, 0.65), textAlign: 'center', marginTop: 10, lineHeight: 1.6 }}>
                   저장하면 내용을 수정할 수 없습니다.<br />병동당 1회만 신청할 수 있습니다.
                 </div>
@@ -227,21 +335,43 @@ export default function App() {
         </div>
       )}
 
-      {/* 확인 모달 */}
+      {/* ── 확인 모달 — ★ 품목 요약을 보여주고, 더 담을 수 있음을 안내 ── */}
       {confirmOpen && (
         <div onClick={() => !saving && setConfirmOpen(false)} style={{
           position: 'fixed', inset: 0, background: rgba(NAVY, 0.45), zIndex: 100,
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
         }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 380, padding: '22px 20px' }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: NAVY, marginBottom: 12 }}>이대로 저장할까요?</div>
-            <div style={{ fontSize: 13, color: rgba(NAVY, 0.8), lineHeight: 1.7, marginBottom: 8 }}>
-              저장 후에는 수정할 수 없습니다.<br />
-              변경이 필요하면 약제과 담당자에게 연락해 주세요.
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 420, padding: '22px 20px', maxHeight: '88vh', overflowY: 'auto' }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: NAVY, marginBottom: 12 }}>이대로 신청할까요?</div>
+
+            <div style={{ fontSize: 14, fontWeight: 700, color: NAVY, background: rgba(LAVENDER, 0.22), borderRadius: 10, padding: '11px 12px', marginBottom: 10, lineHeight: 1.6 }}>
+              {ward}병동 · {name.trim()} · 아래 {cart.length}개 품목을 신청합니다
             </div>
-            <div style={{ fontSize: 12, color: rgba(NAVY, 0.65), background: rgba(LAVENDER, 0.18), borderRadius: 8, padding: '9px 10px', marginBottom: 16 }}>
-              {ward}병동 · {name} · 약품 {cart.length}종
+
+            {/* 품목 요약 — 이름과 수량을 그대로 나열 */}
+            <div style={{ border: '1px solid ' + rgba(NAVY, 0.12), borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
+              {cart.map((c, i) => (
+                <div key={c.key} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', fontSize: 13, color: NAVY,
+                  borderTop: i === 0 ? 'none' : '1px solid ' + rgba(NAVY, 0.08),
+                }}>
+                  <span style={{ color: rgba(NAVY, 0.5), fontSize: 11, minWidth: 14 }}>{i + 1}</span>
+                  <span style={{ flex: 1, fontWeight: 700, lineHeight: 1.4 }}>{c.drug_name}</span>
+                  <span style={{ fontWeight: 800, color: PURPLE, whiteSpace: 'nowrap' }}>{c.qty}</span>
+                </div>
+              ))}
             </div>
+
+            {/* ★ 경고 강조 */}
+            <div style={{ ...warn, marginBottom: 10, padding: '12px 14px' }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: PURPLE, lineHeight: 1.5 }}>저장 후에는 수정할 수 없습니다</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: NAVY, marginTop: 6 }}>변경이 필요하면 약제과 내선 217</div>
+            </div>
+
+            <div style={{ fontSize: 12, color: rgba(NAVY, 0.7), textAlign: 'center', marginBottom: 16, lineHeight: 1.6 }}>
+              담을 약품이 더 있으면 <b>취소</b>하고 계속 담아 주세요.
+            </div>
+
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setConfirmOpen(false)} disabled={saving} style={{
                 flex: 1, padding: 13, borderRadius: 10, cursor: saving ? 'not-allowed' : 'pointer',
@@ -250,7 +380,7 @@ export default function App() {
               <button onClick={submit} disabled={saving} style={{
                 flex: 2, padding: 13, borderRadius: 10, border: 'none', cursor: saving ? 'not-allowed' : 'pointer',
                 background: saving ? rgba(PURPLE, 0.5) : PURPLE, color: 'white', fontSize: 14, fontWeight: 800,
-              }}>{saving ? '저장 중…' : '확인하고 저장'}</button>
+              }}>{saving ? '저장 중…' : `${cart.length}개 품목 신청하기`}</button>
             </div>
           </div>
         </div>

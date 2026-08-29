@@ -10,7 +10,8 @@
    ★ 병동당 1회 — 같은 (병동·season·year) 조합이 이미 있으면 409로 거부한다. DB UNIQUE는 두지 않는다(0083)
      — 약제과가 관리 화면에서 추가 등록할 여지를 남기고, 제한은 이 비회원 경로에서만 건다.
    ★ 신청번호(uuid)는 반환하지 않는다 — 병동당 1회라 불필요. 키·스택트레이스·DB 오류 원문도 절대 싣지 않는다.
-   응답: { ok:true } 또는 { ok:false, msg }
+   ★ period(「2026 추석」)만 함께 돌려준다 — 완료 화면 표시용. window의 공개 정보이며 uuid와 무관하다.
+   응답: { ok:true, period } 또는 { ok:false, msg }
    ════════════════════════════════════════════════════════════════ */
 import { createClient } from '@supabase/supabase-js'
 import { currentWindow, corsHeaders, json } from './ward-drugs.js'
@@ -91,7 +92,7 @@ export default async (req) => {
   }
 
   /* ★ 신청번호(uuid) 미반환 — 병동당 1회라 번호가 불필요하고, 화면은 병동·작성자·명절로 안내한다 */
-  return json({ ok: true }, 200, cors)
+  return json({ ok: true, period: `${win.row.request_year} ${win.row.season}` }, 200, cors)
 }
 
 /* ── 입력 검증: 타입·길이·범위 ── */
