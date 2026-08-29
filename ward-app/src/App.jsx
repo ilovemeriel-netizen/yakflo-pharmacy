@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from 'react'
    ★ Supabase 클라이언트·키를 일절 포함하지 않는다. 데이터 접근은 같은 사이트의
      Netlify Function(/api/ward/*) 상대 경로 호출뿐이며, service_role 키는 서버에만 있다.
    ★ 외부 도메인·브랜드명을 노출하지 않는다.
-   ★ 색상은 브랜드 4색 + DONE_GREY(관리 화면 구분 필터에서 재사용) — 그 외는 white/black 키워드와 rgba 파생.
+   ★ 색상은 브랜드 4색 + DONE_BG(관리 화면 「엑셀」 버튼에서 재사용) — 그 외는 white/black 키워드와 rgba 파생.
    ★ 입력은 약품과 수량뿐 — 단위·비고는 약제과가 관리 화면에서 채운다(DB 컬럼은 유지).
    ★ 신청번호(uuid)는 쓰지 않는다 — 병동당 1회라 병동·작성자·명절로 식별된다.
    ★ 병동·작성자를 먼저 입력해야 검색·담기·저장이 열린다(오조작 방지).
@@ -20,12 +20,11 @@ const PURPLE = '#804A87'   // 보라 — 강조·경고
 const GREEN = '#019748'    // 녹색 — 완료·담기
 const LAVENDER = '#BFA6D9' // 라벤더 — 보조 배경·은은한 강조
 const NAVY = '#2E4A62'     // 네이비 — 본문
-/* 신청완료 병동 표시용 회색.
-   ★ 이 회색은 브랜드 4색 밖이지만 신규 도입이 아니라
-     관리 화면 구분 필터(수액제)에 이미 쓰이는 색의 재사용이다.
-     2026-08-30 이정화 님 지시로 적용.
-   (본체 themes.light.textM = '#52524E' — MP 컴포넌트의 grey 상수와 같은 값) */
-const DONE_GREY = '#52524E'
+/* 신청완료 병동 표시 — 연녹색 틴트.
+   ★ 연녹색 틴트는 관리 화면 재고현황 「엑셀」 버튼과 동일 값 재사용.
+     브랜드 녹색 파생. 2026-08-30 이정화 님 지시.
+   (본체 themes.light.greenL = '#E6F7EE' · green = '#019748' — 글자·테두리는 GREEN 그대로 쓴다) */
+const DONE_BG = '#E6F7EE'
 
 const WARDS = ['3', '4', '5', '6']
 const MIN_Q = 2            // 검색 최소 글자수
@@ -350,13 +349,18 @@ export default function App() {
                           비선택 + 신청완료면 회색 채움, 미신청은 흰 배경 그대로. */
                     <button key={w} onClick={() => pickWard(w)} style={{
                       padding: '10px 0', borderRadius: 9, cursor: 'pointer', fontWeight: 800, fontSize: 14,
-                      border: '1px solid ' + (ward === w ? PURPLE : (dupWards.includes(w) ? DONE_GREY : rgba(NAVY, 0.2))),
-                      background: ward === w ? PURPLE : (dupWards.includes(w) ? DONE_GREY : 'white'),
-                      color: (ward === w || dupWards.includes(w)) ? 'white' : NAVY,
+                      border: '1px solid ' + (ward === w ? PURPLE : (dupWards.includes(w) ? GREEN : rgba(NAVY, 0.2))),
+                      background: ward === w ? PURPLE : (dupWards.includes(w) ? DONE_BG : 'white'),
+                      color: ward === w ? 'white' : (dupWards.includes(w) ? GREEN : NAVY),
                     }}>
                       {w}병동{dupWards.includes(w) && (
-                        /* 보라·회색 채움 위 모두 흰색 */
-                        <span style={{ color: 'white', fontSize: 11, marginLeft: 3 }}>✓</span>
+                        /* ★ 배경 위에서 읽히는 색 — 연녹색 틴트 위는 GREEN, 보라 채움 위는 흰색.
+                              lineHeight를 라벨 줄 상자(fontSize 14 · normal ≈ 16.8px) 이하로 묶어
+                              15px로 키워도 버튼 높이가 변하지 않게 한다. */
+                        <span style={{
+                          color: ward === w ? 'white' : GREEN,
+                          fontSize: 15, fontWeight: 900, lineHeight: '16px', marginLeft: 3,
+                        }}>✓</span>
                       )}
                     </button>
                   ))}
@@ -368,17 +372,8 @@ export default function App() {
                   placeholder="이름을 입력해 주세요" style={{ ...input, padding: '10px 12px' }} />
               </div>
             </div>
-            {/* ★ 상태 한 줄 — 신청완료 병동이 1개 이상일 때만. 배경·테두리 없는 텍스트 한 줄.
-                   0개면 이 노드 자체가 렌더되지 않아 여백도 남지 않는다(marginTop이 자기 자신에만 있음).
-                   위치는 .wa-top(배지 행) 바로 아래·입력 안내 배너 위 — 900px 이상에서 .wa-top이
-                   가로 배치로 바뀌므로 그 안이 아니라 밖에 두어야 두 레이아웃에서 모두 한 줄로 놓인다. */}
-            {dupWards.length > 0 && (
-              <div style={{ fontSize: 11, color: DONE_GREY, marginTop: 6 }}>
-                신청완료 · {dupWards.map(w => w + '병동').join(' ')}
-              </div>
-            )}
             {/* ★ 상단이 작아진 만큼 미입력 안내를 눈에 띄게 남긴다 — 진행 차단은 그대로 */}
-            {!ready && (
+            {!ready && !locked && (
               <div style={{
                 marginTop: 12, background: rgba(LAVENDER, 0.24), border: '1px solid ' + rgba(LAVENDER, 0.7), borderRadius: 10,
                 padding: '11px 12px', fontSize: 14, fontWeight: 800, color: PURPLE, textAlign: 'center', lineHeight: 1.6,
@@ -487,7 +482,7 @@ export default function App() {
               background: (!cart.length || !canEdit) ? rgba(NAVY, 0.05) : rgba(LAVENDER, 0.14),
               color: (!cart.length || !canEdit) ? rgba(NAVY, 0.45) : PURPLE,
               fontSize: 15, fontWeight: 800,
-            }}>{cart.length ? `${cart.length}개 품목 신청하기` : '담은 약품이 없습니다'}</button>
+            }}>{locked ? '신청할 수 없습니다' : (cart.length ? `${cart.length}개 품목 신청하기` : '담은 약품이 없습니다')}</button>
             <div style={{ fontSize: 12, color: rgba(NAVY, 0.65), textAlign: 'center', marginTop: 10, lineHeight: 1.6 }}>
               저장하면 내용을 수정할 수 없습니다.<br />병동당 1회만 신청할 수 있습니다 · 문의 약제과 내선 217
             </div>

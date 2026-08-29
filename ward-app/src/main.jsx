@@ -43,7 +43,11 @@ base.textContent = `
     .wa-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
     .wa-sticky { position: sticky; top: 16px; }
     .wa-top { flex-direction: row; align-items: center; gap: 20px; }
-    .wa-top-ward { flex: 0 0 360px; }
+    /* ★ 병동 버튼을 넓게 — 360px → 480px. .wa-top-name(flex:1)이 남는 폭을 가져간다.
+       하한 검증: 900px 창에서 이름 입력칸 = 828(카드) − 480 − 20(gap) − 72.5(② 배지) − 8 = 247.5px.
+       placeholder 「이름을 입력해 주세요」(한글 9 + 공백 2 @16px = 160px) + padding 24 + 테두리 2
+       = **186px**가 하한이므로 61.5px 여유가 남는다. 900px 미만 구간은 건드리지 않는다. */
+    .wa-top-ward { flex: 0 0 480px; }
     .wa-top-name { flex: 1; min-width: 0; }
   }
 `
