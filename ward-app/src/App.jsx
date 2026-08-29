@@ -295,7 +295,7 @@ export default function App() {
     <div className="wa-wrap">
       <div style={{ padding: '10px 2px 12px' }}>
         <div style={{ fontSize: 20, fontWeight: 800, color: PURPLE }}>병동 약품 신청</div>
-        <div style={{ fontSize: 12, color: rgba(NAVY, 0.7), marginTop: 4 }}>명절 대비 약품을 신청합니다 · 문의 약제과 내선 217</div>
+        <div style={{ fontSize: 12, color: rgba(NAVY, 0.7), marginTop: 4 }}>명절 대비 약품을 신청합니다</div>
       </div>
 
       {msg && (
@@ -318,8 +318,11 @@ export default function App() {
           <div style={{ fontSize: 15, fontWeight: 800, color: PURPLE, lineHeight: 1.5 }}>
             {ward}병동 신청완료
           </div>
+          {/* ★ 제목이 이미 완료 사실을 전달하므로 본문은 연락처만 남긴다.
+                 서버 상수 DUP_MSG는 건드리지 않는다 — 409 응답은 단독으로 읽히므로
+                 완료 사실을 포함한 채여야 한다(표시만 여기서 분리). */}
           <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginTop: 8, lineHeight: 1.6 }}>
-            {dupMsg}
+            변경은 약제과 내선 217
           </div>
         </div>
       )}
@@ -485,7 +488,7 @@ export default function App() {
               fontSize: 15, fontWeight: 800,
             }}>{cart.length ? `${cart.length}개 품목 신청하기` : '담은 약품이 없습니다'}</button>
             <div style={{ fontSize: 12, color: rgba(NAVY, 0.65), textAlign: 'center', marginTop: 10, lineHeight: 1.6 }}>
-              저장하면 내용을 수정할 수 없습니다.<br />병동당 1회만 신청할 수 있습니다 · 변경은 약제과 내선 217
+              저장하면 내용을 수정할 수 없습니다.<br />병동당 1회만 신청할 수 있습니다
             </div>
           </div>
         </>
@@ -551,7 +554,6 @@ export default function App() {
             {/* ★ 경고 강조 */}
             <div style={{ ...warn, marginBottom: 10, padding: '12px 14px' }}>
               <div style={{ fontSize: 15, fontWeight: 800, color: PURPLE, lineHeight: 1.5 }}>저장 후에는 수정할 수 없습니다</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: NAVY, marginTop: 6 }}>변경이 필요하면 약제과 내선 217</div>
             </div>
 
             <div style={{ fontSize: 12, color: rgba(NAVY, 0.7), textAlign: 'center', marginBottom: 16, lineHeight: 1.6 }}>
