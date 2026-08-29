@@ -3660,33 +3660,45 @@ function WardAdmin() {
         </table>
         <div style={{ fontSize: 10, color: t.textM, marginTop: 8, textAlign: 'left' }}>수량·단위·사용량·비고는 클릭해서 수정합니다. 병동은 저장 후 수정할 수 없어 여기서 처리합니다.</div>
 
-        {/* ── ★ 약제과 약품 추가 — 병동이 빠뜨린 약을 여기서 채운다 ── */}
-        <div style={{ borderTop: '1px solid ' + t.border, marginTop: 12, paddingTop: 12, textAlign: 'left' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>약품 추가 <span style={{ fontSize: 10, fontWeight: 400, color: t.textM }}>· 추가한 품목은 「약제과 추가」로 흐리게 표시됩니다</span></div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* ── ★ 약제과 약품 추가 — 병동이 빠뜨린 약을 여기서 채운다.
+               영역 전체를 상세 카드 안에서 가운데로 모으고 폭을 720px로 제한한다
+               (품목표는 카드 전체 폭을 쓰므로 그보다 조금 좁게 — 결과 행이 지나치게 길어지지 않게). ── */}
+        <div style={{ borderTop: '1px solid ' + t.border, marginTop: 12, paddingTop: 12 }}>
+          <div style={{ maxWidth: 720, margin: '0 auto', textAlign: 'center' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 8 }}>약품 추가 <span style={{ fontSize: 10, fontWeight: 400, color: t.textM }}>· 추가한 품목은 약품명 옆에 (약제과 추가)로 표시됩니다</span></div>
             {/* ★ Enter로 추가 — 신청 앱과 같은 규칙: IME 조합 중 Enter는 무시하고, 결과가 1건일 때만 담는다 */}
-            <input value={aq} onChange={e => onAq(e.target.value)} onKeyDown={e => onAqKeyDown(e, r)} placeholder="약품명·코드·성분명 2자 이상 · Enter로 추가" style={{ ...ip2, width: 300 }} />
-            {aSearching && <span style={{ fontSize: 11, color: t.textL }}>찾는 중...</span>}
-            {/* drug_code는 nullable(0083) — 목록에 없는 약도 이름만으로 추가할 수 있다 */}
-            {aq.trim().length >= 2 && <button onClick={() => addItem(r, { drug_name: aq.trim() })} disabled={adding} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 10, fontWeight: 600 }}>「{aq.trim()}」 직접 추가</button>}
+            <input value={aq} onChange={e => onAq(e.target.value)} onKeyDown={e => onAqKeyDown(e, r)} placeholder="약품명·코드·성분명 2자 이상 · Enter로 추가" style={{ ...ip2, width: '100%', maxWidth: 420, textAlign: 'center' }} />
+            {aSearching && <div style={{ fontSize: 11, color: t.textL, marginTop: 6 }}>찾는 중...</div>}
+            {/* drug_code는 nullable(0083) — 목록에 없는 약도 이름만으로 추가할 수 있다.
+                「직접 추가」도 [추가]와 같은 가운데 정렬로 맞춘다(검색창 아래 한 줄). */}
+            {aq.trim().length >= 2 && <div style={{ marginTop: 8 }}>
+              <button onClick={() => addItem(r, { drug_name: aq.trim() })} disabled={adding} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 10, fontWeight: 600 }}>「{aq.trim()}」 직접 추가</button>
+            </div>}
+            {aSearched && !aSearching && (
+              <div style={{ marginTop: 10, border: '1px solid ' + t.border, borderRadius: 8, overflow: 'hidden', maxHeight: 240, overflowY: 'auto', textAlign: 'left' }}>
+                {!aFound.length ? <div style={{ padding: '12px', fontSize: 11, color: t.textL, textAlign: 'center' }}>검색 결과가 없습니다 · 위 「직접 추가」로 이름만 넣을 수 있습니다</div>
+                  : aFound.map(d => (
+                    /* ★ 행 전체가 클릭 대상 — 약품명·코드·상태 배지 어디를 눌러도 추가된다.
+                       상태 배지도 포함한다: 배지는 표시 전용이라 따로 눌릴 일이 없고,
+                       행 안에 「눌러도 안 되는 구멍」을 두면 어디를 눌러야 하는지 예측이 어긋난다.
+                       호버 시 배경 강조 + 커서 pointer로 「누를 수 있는 줄」임을 알린다. */
+                    /* ★ [추가]를 행 **가운데**에 두기 위해 `1fr auto 1fr` 그리드를 쓴다 —
+                       좌우 1fr이 같아 가운데 칸(버튼)이 행 정중앙에 놓이고, 약품명과 가까워 겨냥이 쉽다.
+                       처음 쓰는 사람에게 명시적 표시가 필요하므로 버튼 자체는 남긴다.
+                       행 클릭과 겹쳐 두 번 실행되지 않도록 버튼에서 stopPropagation. */
+                    <div key={d.drug_code || d.drug_name} onClick={() => addItem(r, d)} title="눌러서 추가"
+                      style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 8, padding: '8px 10px', borderTop: '1px solid ' + t.border, fontSize: 12, cursor: adding ? 'not-allowed' : 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
+                      <span style={{ minWidth: 0, fontWeight: 600, color: t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_name} <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></span>
+                      <button onClick={e => { e.stopPropagation(); addItem(r, d) }} disabled={adding} style={{ padding: '4px 14px', borderRadius: 8, border: '1px solid ' + t.lavender, background: t.lavender + '22', color: t.purple, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700 }}>추가</button>
+                      {/* ★ status로 거르지 않는다 — 약제과가 중지·휴면 약품으로 대체할 수 있어야 하므로 상태만 보여준다 */}
+                      <span style={{ minWidth: 0, display: 'flex', justifyContent: 'flex-end' }}>
+                        <Bd bg={d.status === '사용' ? t.greenL : t.bg} color={d.status === '사용' ? t.green : t.textM}>{d.status || '-'}</Bd>
+                      </span>
+                    </div>))}
+              </div>
+            )}
           </div>
-          {aSearched && !aSearching && (
-            <div style={{ marginTop: 8, border: '1px solid ' + t.border, borderRadius: 8, overflow: 'hidden', maxHeight: 220, overflowY: 'auto' }}>
-              {!aFound.length ? <div style={{ padding: '12px', fontSize: 11, color: t.textL }}>검색 결과가 없습니다 · 위 「직접 추가」로 이름만 넣을 수 있습니다</div>
-                : aFound.map(d => (
-                  /* ★ 어느 행을 고르는지 보이도록 호버 시 배경 강조 */
-                  <div key={d.drug_code || d.drug_name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderTop: '1px solid ' + t.border, fontSize: 12 }}
-                    onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
-                    <span style={{ flex: 1, fontWeight: 600, color: t.text }}>{d.drug_name} <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></span>
-                    {/* ★ status로 거르지 않는다 — 약제과가 중지·휴면 약품으로 대체할 수 있어야 하므로 상태만 보여준다 */}
-                    <Bd bg={d.status === '사용' ? t.greenL : t.bg} color={d.status === '사용' ? t.green : t.textM}>{d.status || '-'}</Bd>
-                    {/* ★ 비상조제의 btn(LAV, PURPLE) 톤 — 라벤더 외곽선·옅은 배경·보라 글자. 고정폭 안에서 가운데 정렬 */}
-                    <span style={{ width: 72, display: 'flex', justifyContent: 'center' }}>
-                      <button onClick={() => addItem(r, d)} disabled={adding} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.lavender, background: t.lavender + '22', color: t.purple, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700 }}>추가</button>
-                    </span>
-                  </div>))}
-            </div>
-          )}
         </div>
       </div>
     })()}
