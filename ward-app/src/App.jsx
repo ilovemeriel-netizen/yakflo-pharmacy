@@ -338,14 +338,17 @@ export default function App() {
                           (아무도 신청하지 않은 평상시에는 기존 모양 그대로). 색은 브랜드 파생 회색만 쓴다. */
                     <button key={w} onClick={() => pickWard(w)} style={{
                       padding: '10px 0', borderRadius: 9, cursor: 'pointer', fontWeight: 800, fontSize: 14,
-                      border: '1px solid ' + (ward === w ? PURPLE : rgba(NAVY, 0.2)),
+                      /* ★ 신청완료이면서 **비선택**인 병동만 테두리를 녹색으로 — 한눈에 갈리게.
+                            선택 병동은 보라 그대로, 신청완료가 아닌 병동은 기존 회색 그대로.
+                            두께 1px·배경색은 건드리지 않으므로 버튼 폭은 변하지 않는다. */
+                      border: '1px solid ' + (ward === w ? PURPLE : (dupWards.includes(w) ? GREEN : rgba(NAVY, 0.2))),
                       background: ward === w ? PURPLE : 'white',
                       color: ward === w ? 'white' : NAVY,
                     }}>
                       <div>{w}병동</div>
                       {dupWards.length > 0 && (
                         <div style={{
-                          fontSize: 9, fontWeight: 700, height: 12, lineHeight: '12px', marginTop: 2,
+                          fontSize: 9, fontWeight: 800, height: 12, lineHeight: '12px', marginTop: 2,
                           /* ★ 비선택 병동은 브랜드 녹색 — 회색이면 「비활성 버튼」으로 읽히는데
                                 실제로는 눌리는 버튼이라 신호가 어긋난다. 선택된 병동은 보라 배경 위라
                                 대비가 나빠지므로 라벤더를 유지한다. 텍스트 색만 바꾼다. */
