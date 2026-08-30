@@ -48,12 +48,20 @@ const validQty = v => {
   if (!(n >= QTY_MIN && n <= QTY_MAX)) return false
   return Math.round(n * 100) % 25 === 0
 }
-/* 입력 정화 — 숫자와 소수점만. `.`은 1개 · 맨 앞 `.` 금지 · 소수점 이하 3자리째 차단 */
+/* 입력 정화 — 숫자와 소수점만. `.`은 1개 · 소수점 이하 3자리째 차단.
+   ★ 반환 null = **입력 거부**(이전 값 유지). 호출부는 null이면 state를 건드리지 않는다.
+   ★ 값이 조용히 바뀌는 두 경로를 막는다:
+     · 맨 앞 `.` → 앞에 0을 붙인다(`.5` → `0.5`). 떼어내면 `5`가 되어 **10배 값**이 되고,
+       5는 0.25 배수라 검증에도 걸리지 않아 사용자가 오류를 인지하지 못한다.
+     · `-` 포함 → **거부**. 부호만 떼면 `-3`이 `3`으로 통과해 역시 인지하지 못한다.
+       (`+`는 떼어도 값이 그대로라 기존대로 제거한다) */
 const sanitizeQty = v => {
-  let s = String(v).replace(/[^0-9.]/g, '')
+  const raw = String(v)
+  if (raw.includes('-')) return null
+  let s = raw.replace(/[^0-9.]/g, '')
   const i = s.indexOf('.')
   if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '')
-  if (s.startsWith('.')) s = s.slice(1)
+  if (s.startsWith('.')) s = '0' + s
   const [a, b] = s.split('.')
   return b === undefined ? a : a + '.' + b.slice(0, 2)
 }
@@ -202,7 +210,11 @@ export default function App() {
   /* ── 수량 입력 정화 ────────────────────────────────────────────
      ★ 문자·공백·`-`·`+`는 **입력 단계에서 제거**한다(붙여넣기도 걸린다).
        범위(0.25~999)와 0.25 배수 판정은 validQty가 맡아 담기 버튼 비활성으로 알린다. */
-  const onQtyInput = (key, v) => setQtyMap(m => ({ ...m, [key]: sanitizeQty(v) }))
+  function onQtyInput(key, v) {
+    const s = sanitizeQty(v)
+    if (s === null) return          // 거부 — 이전 값 유지
+    setQtyMap(m => ({ ...m, [key]: s }))
+  }
 
   /* ── 담기 / 편집 / 삭제 ── */
   function addWithQty(d) {
@@ -219,7 +231,11 @@ export default function App() {
     qRef.current?.focus()
   }
   /* 목록 수량 편집 — 검색 결과 칸과 같은 정화 규칙 */
-  const editQty = (i, v) => setCart(c => c.map((x, j) => j === i ? { ...x, qty: sanitizeQty(v) } : x))
+  function editQty(i, v) {
+    const s = sanitizeQty(v)
+    if (s === null) return          // 거부 — 이전 값 유지
+    setCart(c => c.map((x, j) => j === i ? { ...x, qty: s } : x))
+  }
   const remove = i => setCart(c => c.filter((_, j) => j !== i))
 
   /* ── 저장 ── */

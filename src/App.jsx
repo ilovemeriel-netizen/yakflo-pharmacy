@@ -3384,12 +3384,17 @@ const wardValidQty = v => {
   if (!(n >= WARD_QTY_MIN && n <= WARD_QTY_MAX)) return false
   return Math.round(n * 100) % 25 === 0
 }
-/* 입력 정화 — 숫자와 소수점만 · `.`은 1개 · 맨 앞 `.` 금지 · 소수점 이하 3자리째 차단 */
+/* 입력 정화 — 숫자와 소수점만 · `.`은 1개 · 소수점 이하 3자리째 차단.
+   ★ 반환 null = **입력 거부**(이전 값 유지). 신청 앱 sanitizeQty와 같은 규칙이다.
+   ★ 맨 앞 `.`은 앞에 0을 붙이고(`.5` → `0.5`), `-`가 섞이면 거부한다 —
+     떼어내면 각각 10배 값·양수로 조용히 바뀌어 사용자가 오류를 인지하지 못한다. */
 const wardSanitizeQty = v => {
-  let s = String(v).replace(/[^0-9.]/g, '')
+  const raw = String(v)
+  if (raw.includes('-')) return null
+  let s = raw.replace(/[^0-9.]/g, '')
   const i = s.indexOf('.')
   if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '')
-  if (s.startsWith('.')) s = s.slice(1)
+  if (s.startsWith('.')) s = '0' + s
   const [a, b] = s.split('.')
   return b === undefined ? a : a + '.' + b.slice(0, 2)
 }
@@ -3579,7 +3584,11 @@ function WardAdmin() {
     if (aSearched) addItem(r, { drug_name: term })   // 결과 0건이면 자유 입력으로 추가
   }
   /* 수량 칸 정화 — 신청 앱과 같은 규칙(숫자와 소수점만). 범위·0.25 배수 판정은 wardValidQty가 맡는다 */
-  const onAQtyInput = v => setAQty(wardSanitizeQty(v))
+  function onAQtyInput(v) {
+    const s = wardSanitizeQty(v)
+    if (s === null) return          // 거부 — 이전 값 유지
+    setAQty(s)
+  }
   async function addItem(r, d) {
     const nm = String(d.drug_name || '').trim()
     if (!nm) { flash('약품명을 입력해 주세요', 'err'); return }
