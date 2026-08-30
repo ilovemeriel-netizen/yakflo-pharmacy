@@ -28,6 +28,43 @@ const DONE_BG = '#E6F7EE'
 
 const WARDS = ['3', '4', '5', '6']
 const MIN_Q = 2            // 검색 최소 글자수
+/* ★ 수량 규칙 — **0.25의 배수**, 0.25 이상 999 이하 (반 알·1/4 알 신청을 받기 위함).
+   ★ 품목 구분(경구제·주사제)에 따라 분기하지 않는다 — 신청 앱은 drug_code·drug_name만 받는 구조라
+     구분 정보가 없고, 받아오면 반환 필드 최소화 원칙이 무너진다.
+     부적절한 값은 약제과가 관리 화면에서 확인해 조정한다.
+   ★ QTY_MSG는 netlify/functions/ward-submit.js · src/App.jsx(관리 화면)의 같은 상수와
+     **글자 단위로 같아야 한다**. Function을 import하면 supabase 클라이언트가 이 번들로 새어 들어오므로
+     리터럴을 복제하고 주석으로 연결해 둔다. 고칠 때는 세 곳을 함께 고칠 것.
+   ★ DB에는 CHECK를 걸지 않는다 — 검증은 여기(UI)와 Function 두 층뿐이다. */
+const QTY_MIN = 0.25
+const QTY_MAX = 999
+const QTY_MSG = '0.25 단위로 입력해 주세요'
+/* ★ 부동소수 오차를 피해 정수 연산으로 판정한다 — 0.1+0.2 문제.
+   형식(숫자·소수점 1개·소수 2자리 이하)까지 함께 본다. */
+const validQty = v => {
+  if (v == null || v === '') return false
+  if (!/^\d+(\.\d{1,2})?$/.test(String(v))) return false
+  const n = Number(v)
+  if (!(n >= QTY_MIN && n <= QTY_MAX)) return false
+  return Math.round(n * 100) % 25 === 0
+}
+/* 입력 정화 — 숫자와 소수점만. `.`은 1개 · 소수점 이하 3자리째 차단.
+   ★ 반환 null = **입력 거부**(이전 값 유지). 호출부는 null이면 state를 건드리지 않는다.
+   ★ 값이 조용히 바뀌는 두 경로를 막는다:
+     · 맨 앞 `.` → 앞에 0을 붙인다(`.5` → `0.5`). 떼어내면 `5`가 되어 **10배 값**이 되고,
+       5는 0.25 배수라 검증에도 걸리지 않아 사용자가 오류를 인지하지 못한다.
+     · `-` 포함 → **거부**. 부호만 떼면 `-3`이 `3`으로 통과해 역시 인지하지 못한다.
+       (`+`는 떼어도 값이 그대로라 기존대로 제거한다) */
+const sanitizeQty = v => {
+  const raw = String(v)
+  if (raw.includes('-')) return null
+  let s = raw.replace(/[^0-9.]/g, '')
+  const i = s.indexOf('.')
+  if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '')
+  if (s.startsWith('.')) s = '0' + s
+  const [a, b] = s.split('.')
+  return b === undefined ? a : a + '.' + b.slice(0, 2)
+}
 
 export default function App() {
   const [ward, setWard] = useState('')
@@ -170,12 +207,22 @@ export default function App() {
     setMsg(hadName ? { kind: 'info', text: '병동을 바꿔 작성자 이름을 비웠습니다 — 다시 입력해 주세요' } : null)
   }
 
+  /* ── 수량 입력 정화 ────────────────────────────────────────────
+     ★ 문자·공백·`-`·`+`는 **입력 단계에서 제거**한다(붙여넣기도 걸린다).
+       범위(0.25~999)와 0.25 배수 판정은 validQty가 맡아 담기 버튼 비활성으로 알린다. */
+  function onQtyInput(key, v) {
+    const s = sanitizeQty(v)
+    if (s === null) return          // 거부 — 이전 값 유지
+    setQtyMap(m => ({ ...m, [key]: s }))
+  }
+
   /* ── 담기 / 편집 / 삭제 ── */
   function addWithQty(d) {
     if (!canEdit) { setMsg({ kind: 'err', text: locked ? `${ward}병동 신청완료 — ${dupMsg}` : '병동과 작성자 이름을 먼저 입력해 주세요' }); return }
     const raw = qtyMap[keyOf(d)]
+    /* 버튼이 이미 비활성이라 도달하지 않지만, Enter 경로까지 같은 기준으로 한 번 더 막는다 */
+    if (!validQty(raw)) { setMsg({ kind: 'err', text: QTY_MSG }); return }
     const n = Number(raw)
-    if (!raw || !Number.isFinite(n) || n <= 0) { setMsg({ kind: 'err', text: `「${d.drug_name}」의 수량을 1 이상으로 입력해 주세요` }); return }
     if (cart.some(c => c.key === keyOf(d))) { setMsg({ kind: 'info', text: '이미 담긴 약품입니다' }); return }
     setCart(c => [...c, { key: keyOf(d), drug_code: d.drug_code || '', drug_name: d.drug_name, qty: String(n) }])
     /* 담으면 검색어를 비우고 검색창에 포커스를 되돌린다 — 연속으로 담기 쉽게 */
@@ -183,7 +230,12 @@ export default function App() {
     clearTimeout(timer.current)
     qRef.current?.focus()
   }
-  const edit = (i, v) => setCart(c => c.map((x, j) => j === i ? { ...x, qty: v } : x))
+  /* 목록 수량 편집 — 검색 결과 칸과 같은 정화 규칙 */
+  function editQty(i, v) {
+    const s = sanitizeQty(v)
+    if (s === null) return          // 거부 — 이전 값 유지
+    setCart(c => c.map((x, j) => j === i ? { ...x, qty: s } : x))
+  }
   const remove = i => setCart(c => c.filter((_, j) => j !== i))
 
   /* ── 저장 ── */
@@ -192,9 +244,9 @@ export default function App() {
     if (!name.trim()) return '작성자 이름을 입력해 주세요'
     if (name.trim().length > 20) return '작성자 이름은 20자까지 입력할 수 있습니다'
     if (!cart.length) return '신청할 약품을 1개 이상 담아 주세요'
+    /* 목록에서 수량을 지우거나 고쳤을 수 있으므로 저장 직전에 다시 본다 — 서버와 같은 기준 */
     for (let i = 0; i < cart.length; i++) {
-      const n = Number(cart[i].qty)
-      if (!cart[i].qty || !Number.isFinite(n) || n <= 0) return `${i + 1}번 「${cart[i].drug_name}」의 수량을 입력해 주세요`
+      if (!validQty(cart[i].qty)) return `${i + 1}번 「${cart[i].drug_name}」 — ${QTY_MSG}`
     }
     return null
   }
@@ -431,7 +483,8 @@ export default function App() {
                 {searched && !searching && (
                   <div style={{ marginTop: 12, border: '1px solid ' + rgba(NAVY, 0.12), borderRadius: 10, overflow: 'hidden' }}>
                     <div style={{ padding: '8px 12px', background: rgba(LAVENDER, 0.18), fontSize: 11, fontWeight: 700, color: NAVY }}>
-                      검색 결과 {found.length}건 · 수량을 넣고 담아 주세요
+                      {/* ★ 담기 비활성 이유를 알리는 한 줄 — 기존 결과 머리글 자리를 그대로 쓴다(새 배너 없음) */}
+                      검색 결과 {found.length}건 · {QTY_MSG}
                     </div>
                     {!found.length
                       ? <div style={{ padding: '16px 12px', fontSize: 12, color: rgba(NAVY, 0.55), textAlign: 'center' }}>검색 결과가 없습니다</div>
@@ -441,16 +494,19 @@ export default function App() {
                             borderTop: '1px solid ' + rgba(NAVY, 0.08), background: 'white',
                           }}>
                             <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 14, color: NAVY, lineHeight: 1.4 }}>{d.drug_name}</span>
+                            {/* ★ 숫자와 소수점만 · 최대 6자(999.75). inputMode="decimal" — 반 알 입력을 받아야 한다. */}
                             <input
                               ref={i === 0 ? firstQtyRef : null}
                               value={qtyMap[keyOf(d)] ?? ''}
-                              onChange={e => setQtyMap(m => ({ ...m, [keyOf(d)]: e.target.value }))}
+                              onChange={e => onQtyInput(keyOf(d), e.target.value)}
                               onKeyDown={e => onQtyKeyDown(e, d)}
-                              inputMode="decimal" placeholder="수량" style={qtyBox}
+                              inputMode="decimal" maxLength={6} placeholder="수량" style={qtyBox}
                             />
-                            {/* 담기는 이 화면의 반복 동작이라 은은한 녹색 외곽선으로 둔다(최종 동작 아님) */}
-                            <button onClick={() => addWithQty(d)} style={{
-                              padding: '8px 12px', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap',
+                            {/* 담기는 이 화면의 반복 동작이라 은은한 녹색 외곽선으로 둔다(최종 동작 아님).
+                                ★ 수량이 정수 1~999가 아니면 비활성 — 스타일·색·크기는 그대로 두고 cursor만 바꾼다. */}
+                            <button onClick={() => addWithQty(d)} disabled={!validQty(qtyMap[keyOf(d)])} style={{
+                              padding: '8px 12px', borderRadius: 8, whiteSpace: 'nowrap',
+                              cursor: validQty(qtyMap[keyOf(d)]) ? 'pointer' : 'not-allowed',
                               border: '1px solid ' + GREEN, background: rgba(GREEN, 0.1), color: GREEN, fontSize: 13, fontWeight: 800,
                             }}>담기 +</button>
                           </div>))}</div>}
@@ -482,7 +538,8 @@ export default function App() {
                           borderTop: i === 0 ? 'none' : '1px solid ' + rgba(NAVY, 0.08),
                         }}>
                           <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: NAVY, lineHeight: 1.35 }}>{c.drug_name}</span>
-                          <input value={c.qty} onChange={e => edit(i, e.target.value)} inputMode="decimal" placeholder="0"
+                          {/* 목록에서 고칠 때도 같은 정화 규칙 */}
+                          <input value={c.qty} onChange={e => editQty(i, e.target.value)} inputMode="decimal" maxLength={6} placeholder="수량"
                             style={{ ...qtyBox, width: 64, padding: '6px 8px', fontSize: 13 }} />
                           <button onClick={() => remove(i)} title="빼기" style={{
                             border: 'none', background: 'transparent', color: rgba(NAVY, 0.5),
