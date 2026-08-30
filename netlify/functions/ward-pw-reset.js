@@ -21,14 +21,20 @@
 import { createClient } from '@supabase/supabase-js'
 import { randomBytes, scrypt as _scrypt } from 'node:crypto'
 
-/* ★ ward-app/netlify/functions/ward-submit.js의 해시 규격과 **동일해야 한다**
-   (PW_LEN 4 · salt 16바이트 hex · scrypt keylen 64 · hex 출력).
-   두 사이트가 별개 npm 프로젝트라 import할 수 없어 복제한다. 고칠 때는 두 곳을 함께 고칠 것. */
-const PW_LEN = 4
-const PW_KEYLEN = 64
-const PW_MSG = '비밀번호는 숫자 4자리로 입력해 주세요'
+/* ★ scrypt 규격 이중 정의 방어 — 두 사이트가 별개 npm 프로젝트라 import할 수 없어 복제한다.
+   ★ 한쪽만 고치면 해시가 어긋나 검증이 **조용히 실패**한다(폴백이 실패를 숨기는 함정 #22와 같은 성격).
+     저장은 성공하는데 조회만 안 되므로 사용자에게는 「비밀번호가 틀림」으로만 보인다.
+   ★ 아래 PW_SPEC 블록을 고치면 반대편 파일의 같은 블록도 **함께** 고쳐야 한다.
+     반대편: ward-app/netlify/functions/ward-submit.js  (신청 앱 · 저장 시 해시)
+     검사:   node scripts/check_pw_spec.mjs   (수동 실행 · 두 블록을 문자 단위로 비교) */
+// PW_SPEC:BEGIN ── 이 블록은 반대편 파일과 문자 단위로 동일해야 한다
+export const PW_LEN    = 4    // 비밀번호 자릿수(숫자만)
+export const PW_SALT_B = 16   // 행별 salt 바이트 수 — hex 32자로 저장
+export const PW_KEYLEN = 64   // scrypt 파생키 바이트 수 — hex 128자로 저장
+export const PW_MSG    = `비밀번호는 숫자 ${PW_LEN}자리로 입력해 주세요`
+// PW_SPEC:END
 const validPw = v => typeof v === 'string' && new RegExp(`^\\d{${PW_LEN}}$`).test(v)
-const makeSalt = () => randomBytes(16).toString('hex')
+const makeSalt = () => randomBytes(PW_SALT_B).toString('hex')
 const hashPw = (pw, salt) => new Promise((res, rej) =>
   _scrypt(pw, salt, PW_KEYLEN, (e, dk) => (e ? rej(e) : res(dk.toString('hex')))))
 
