@@ -3428,6 +3428,10 @@ function WardAdmin() {
   const [edit, setEdit] = useState(null)                 // {itemId, field}
   const [delTarget, setDelTarget] = useState(null)       // 삭제 확인 대상 신청(헤더 행)
   const [deleting, setDeleting] = useState(false)
+  /* 비밀번호 재설정(0084) — 대상 신청과 새 4자리. 상세 헤더 버튼으로 연다. */
+  const [pwTarget, setPwTarget] = useState(null)
+  const [pwNew, setPwNew] = useState('')
+  const [pwBusy, setPwBusy] = useState(false)
   const [printOne, setPrintOne] = useState(null)         // 이 신청 1건만 인쇄(null이면 필터 전체)
   const [aq, setAq] = useState('')                       // 약제과 약품 추가 — 검색어
   const [aFound, setAFound] = useState([]); const [aSearched, setASearched] = useState(false); const [aSearching, setASearching] = useState(false)
@@ -3519,6 +3523,30 @@ function WardAdmin() {
     const bad = delOutcome(await supabase.from('ward_request_items').delete().eq('id', it.id).select('id'), '품목')
     if (bad) { flash(bad, 'err'); return }
     flash('품목을 삭제했습니다'); loadAll()
+  }
+
+  /* ★ 재조회 비밀번호 재설정(0084) — 해시가 Node crypto.scrypt이고 브라우저에는 scrypt가 없어
+     Function(/api/ward/pw-reset)에 맡긴다. 해시 방식을 한 가지로 유지하기 위한 선택이다.
+     Function이 JWT를 검증하고 호출자 tenant의 신청인지 확인한 뒤 갱신한다. */
+  async function resetPw() {
+    const r = pwTarget; if (!r) return
+    if (!WARD_PW_RE.test(pwNew)) { flash(WARD_PW_MSG, 'err'); return }
+    setPwBusy(true)
+    try {
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess?.session?.access_token
+      if (!token) { flash('세션이 만료되었습니다 · 다시 로그인해 주세요', 'err'); return }
+      const res = await fetch('/api/ward/pw-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ requestId: r.id, pw: pwNew }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok || !d.ok) { flash(d.msg || '재설정에 실패했습니다', 'err'); return }
+      setPwTarget(null); setPwNew('')
+      flash(r.ward + '병동 비밀번호를 재설정했습니다 · 잠금도 해제됩니다')
+    } catch { flash('연결에 실패했습니다 · 잠시 후 다시 시도해 주세요', 'err') }
+    finally { setPwBusy(false) }
   }
 
   /* ★ 신청 건 삭제 — 품목은 ward_request_items의 on delete cascade로 함께 사라진다(0083).
@@ -3704,6 +3732,8 @@ function WardAdmin() {
           <span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>상태</span>
           <select value={r.status} onChange={e => setStatus(r, e.target.value)} style={{ ...ip2, width: 'auto' }}>{WARD_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select>
           <button onClick={() => setPrintOne(r.id)} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>인쇄</button>
+          {/* ★ 비밀번호 재설정(0084) — 기존 버튼 스타일 재사용. 배치는 인쇄 옆 한 자리만 늘린다 */}
+          <button onClick={() => { setPwTarget(r); setPwNew('') }} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + t.lavender, background: t.lavender + '22', color: t.purple, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>비밀번호 재설정</button>
           {isAdmin && <button onClick={() => setDelTarget(r)} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>신청 삭제</button>}
           <button onClick={() => setOpenRow(null)} style={{ border: 'none', background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12 }}>닫기 ✕</button>
         </div>
@@ -3851,11 +3881,46 @@ function WardAdmin() {
     {regOpen && <WardWindowModal t={t} nf={nf} setNf={setNf} onClose={() => setRegOpen(false)} onSave={createWin} />}
     {/* ★ 삭제 확인 모달 — 병동·작성자·품목수를 보여주고 확인받는다 */}
     {delTarget && <WardDeleteModal t={t} r={delTarget} count={itemsOf(delTarget.id).length} busy={deleting} onClose={() => setDelTarget(null)} onConfirm={delReq} />}
+    {/* ★ 비밀번호 재설정 모달 — 삭제 모달과 같은 골격·스타일을 그대로 쓴다(새 디자인 없음) */}
+    {pwTarget && <WardPwModal t={t} r={pwTarget} pw={pwNew} setPw={setPwNew} busy={pwBusy} onClose={() => setPwTarget(null)} onConfirm={resetPw} />}
     {/* ★ 화면 하단 저작권은 인쇄에서 제외한다 — 인쇄용 저작권은 각 wp-page 안에 따로 있다.
         no-print가 없으면 마지막 병동 뒤에 저작권만 있는 백지 장이 붙는다. */}
     <div className="no-print"><Ft /></div>
   </div>
 }
+/* ★ 재조회 비밀번호 — 숫자 4자리. ward-app/netlify/functions/ward-submit.js의 PW_MSG와
+   **글자 단위로 같아야 한다**(별개 npm 프로젝트라 import 불가 — 리터럴 복제 + 주석 연결). */
+const WARD_PW_RE = /^\d{4}$/
+const WARD_PW_MSG = '비밀번호는 숫자 4자리로 입력해 주세요'
+const wardSanitizePw = v => String(v).replace(/[^0-9]/g, '').slice(0, 4)
+
+/* ★ 비밀번호 재설정 모달 — 삭제 모달과 같은 골격·스타일. 입력 1칸만 다르다. */
+function WardPwModal({ t, r, pw, setPw, busy, onClose, onConfirm }) {
+  const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos)
+  const ok = WARD_PW_RE.test(pw)
+  return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => !busy && onClose()}>
+    <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 400, border: '1px solid ' + t.border, boxShadow: t.shadowH, transform: 'translate(' + _dmPos.x + 'px, ' + _dmPos.y + 'px)' }} onClick={e => e.stopPropagation()}>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: '1px solid ' + t.border }}><div style={{ fontSize: 15, fontWeight: 700, color: t.accent, textAlign: 'left' }}>비밀번호 재설정</div></div>
+      <div style={{ padding: '16px 20px', textAlign: 'left' }}>
+        <div style={{ background: t.bg, border: '1px solid ' + t.border, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{r.ward}병동 · {r.requester_name}</div>
+          <div style={{ fontSize: 11, color: t.textM, marginTop: 5 }}>{r.request_year} {r.season} · 신청일 {(r.submitted_at || '').slice(0, 10)}</div>
+        </div>
+        <label style={{ fontSize: 10, color: t.textM, display: 'block', marginBottom: 4 }}>새 비밀번호 (숫자 4자리)</label>
+        <input value={pw} onChange={e => setPw(wardSanitizePw(e.target.value))} inputMode="numeric" maxLength={4} placeholder="0000"
+          style={{ width: '100%', padding: '9px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 15, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text, textAlign: 'center', letterSpacing: 6, fontWeight: 800 }} />
+        <div style={{ fontSize: 11, color: t.textM, margin: '10px 0 14px', lineHeight: 1.6 }}>
+          기존 비밀번호는 더 이상 쓸 수 없습니다. <b>실패 잠금도 함께 해제</b>됩니다.<br />새 비밀번호를 병동에 알려 주세요.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClose} disabled={busy} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button>
+          <button onClick={onConfirm} disabled={busy || !ok} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: (busy || !ok) ? 'not-allowed' : 'pointer', background: (busy || !ok) ? t.border : t.accent, color: t.card, fontSize: 13, fontWeight: 700 }}>{busy ? '재설정 중...' : '재설정'}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
 /* ★ 신청 삭제 확인 모달 — 병동·작성자·품목수를 보여주고 확인받는다.
    품목은 ward_request_items의 on delete cascade로 함께 삭제된다(0083). 되돌릴 수 없다. */
 function WardDeleteModal({ t, r, count, busy, onClose, onConfirm }) {

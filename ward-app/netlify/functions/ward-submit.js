@@ -1,7 +1,7 @@
 /* ════════════════════════════════════════════════════════════════
    병동 신청 — 신청 저장 (비회원 API)
    ─────────────────────────────────────────────────────────────────
-   POST /api/ward/submit  { ward, requester_name, items:[{drug_code?, drug_name, qty}] }
+   POST /api/ward/submit  { ward, requester_name, pw, items:[{drug_code?, drug_name, qty}] }
    ※ unit·memo는 신청 화면에서 입력받지 않는다(약제과가 관리 화면에서 채움). 컬럼은 유지·null 저장.
    흐름: 기간 확인 → 입력 검증 → ward_requests + ward_request_items INSERT(service_role).
    ★ tenant_id는 window 행에서 가져와 **명시 지정**한다 — set_tenant_id_from_user()는 auth.uid() 기반이라
@@ -14,9 +14,36 @@
    응답: { ok:true, period } 또는 { ok:false, msg }
    ════════════════════════════════════════════════════════════════ */
 import { createClient } from '@supabase/supabase-js'
+import { randomBytes, scrypt as _scrypt, timingSafeEqual } from 'node:crypto'
 import { currentWindow, corsHeaders, json } from './ward-drugs.js'
 
 const CLOSED_MSG = '접수 기간이 아닙니다 · 문의 약제과 내선 217'
+
+/* ── 재조회 비밀번호 ────────────────────────────────────────────
+   ★ Node 내장 crypto.scrypt만 쓴다 — 외부 의존성을 넣지 않는다.
+     bcryptjs 등을 쓰면 ward-app/package.json에 명시해야 하고, 누락 시 502가 난다(함정 #25).
+   ★ 행별 salt 필수 — 4자리는 경우의 수 1만이라 salt가 없으면 무지개표로 즉시 역산된다.
+   ★ 검증은 timingSafeEqual로 — 바이트 비교 시간이 값에 따라 달라지지 않게.
+   ※ ward-verify.js가 이 함수들을 그대로 import한다(해시 방식을 한 곳에만 둔다). */
+export const PW_LEN = 4
+export const PW_MSG = '비밀번호는 숫자 4자리로 입력해 주세요'
+export const PW_KEYLEN = 64
+export const validPw = v => typeof v === 'string' && new RegExp(`^\\d{${PW_LEN}}$`).test(v)
+
+export function makeSalt() { return randomBytes(16).toString('hex') }
+export function hashPw(pw, salt) {
+  return new Promise((resolve, reject) => {
+    _scrypt(pw, salt, PW_KEYLEN, (err, dk) => (err ? reject(err) : resolve(dk.toString('hex'))))
+  })
+}
+/* 길이가 다르면 timingSafeEqual이 던지므로 먼저 걸러낸다(길이 자체는 비밀이 아니다) */
+export async function verifyPw(pw, salt, expectedHex) {
+  if (!salt || !expectedHex) return false
+  const actual = Buffer.from(await hashPw(pw, salt), 'hex')
+  const expected = Buffer.from(expectedHex, 'hex')
+  if (actual.length !== expected.length) return false
+  return timingSafeEqual(actual, expected)
+}
 /* ★ ward-status.js가 이 상수를 그대로 가져다 응답에 실어, 화면 안내와 409 문구가
    **글자 단위로 같은 하나의 상수**를 쓰게 한다. 정의는 여기 한 곳뿐이다. 409 로직은 변경 없음.
    ★ 217 표기는 전 경로 통일 — 구분자 `·` + 「내선 217」. 괄호로 감싸는 표기는 쓰지 않는다
@@ -72,6 +99,12 @@ export default async (req) => {
   if (dErr) { console.error('[ward-submit] 중복 확인 실패:', dErr.message); return json({ ok: false, msg: '일시적인 오류입니다. 잠시 후 다시 시도해 주세요' }, 500, cors) }
   if ((dup || []).length) return json({ ok: false, msg: DUP_MSG }, 409, cors)
 
+  /* 2-2) 재조회 비밀번호 해시 — 행별 salt(0084). 해시 실패는 저장 전에 끊는다. */
+  const pw_salt = makeSalt()
+  let pw_hash
+  try { pw_hash = await hashPw(v.pw, pw_salt) }
+  catch (e) { console.error('[ward-submit] 해시 실패:', e.message); return json({ ok: false, msg: '저장에 실패했습니다. 잠시 후 다시 시도해 주세요' }, 500, cors) }
+
   /* 3) 헤더 INSERT — tenant_id 명시 지정 · season/year는 window 스냅샷 */
   const { data: hdr, error: hErr } = await admin
     .from('ward_requests')
@@ -81,6 +114,7 @@ export default async (req) => {
       requester_name: v.requester_name,
       season: win.row.season,
       request_year: win.row.request_year,
+      pw_hash, pw_salt,          // 0084 — 재조회용. pw 원문은 어디에도 남기지 않는다.
     }])
     .select('id')
     .single()
@@ -120,6 +154,10 @@ function validate(b) {
   const requester_name = String(b.requester_name ?? '').trim()
   if (requester_name.length < 1 || requester_name.length > 20) return { msg: '작성자 이름을 1~20자로 입력해 주세요' }
 
+  /* ★ 재조회 비밀번호 — 숫자 4자리만. 3자리·5자리·문자는 400. 원문은 로그에도 남기지 않는다. */
+  const pw = String(b.pw ?? '')
+  if (!validPw(pw)) return { msg: PW_MSG }
+
   if (!Array.isArray(b.items) || b.items.length < 1) return { msg: '신청 품목을 1개 이상 담아 주세요' }
   if (b.items.length > MAX_ITEMS) return { msg: `신청 품목은 ${MAX_ITEMS}개까지 가능합니다` }
 
@@ -152,7 +190,7 @@ function validate(b) {
 
     items.push({ drug_code, drug_name, qty, unit, memo })
   }
-  return { ward, requester_name, items }
+  return { ward, requester_name, pw, items }
 }
 
 export const config = { path: '/api/ward/submit' }
