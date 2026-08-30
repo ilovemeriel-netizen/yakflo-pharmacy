@@ -3428,6 +3428,10 @@ function WardAdmin() {
   const [edit, setEdit] = useState(null)                 // {itemId, field}
   const [delTarget, setDelTarget] = useState(null)       // 삭제 확인 대상 신청(헤더 행)
   const [deleting, setDeleting] = useState(false)
+  /* ★ 접수 기간 삭제도 확인 단계를 거친다 — 오클릭 한 번으로 병동 신청 경로가 통째로 막히기 때문.
+     모달은 WardDeleteModal을 그대로 재사용한다(문구만 주입). */
+  const [delWinTarget, setDelWinTarget] = useState(null)
+  const [deletingWin, setDeletingWin] = useState(false)
   /* 비밀번호 재설정(0084) — 대상 신청과 새 4자리. 상세 헤더 버튼으로 연다. */
   const [pwTarget, setPwTarget] = useState(null)
   const [pwNew, setPwNew] = useState('')
@@ -3483,12 +3487,17 @@ function WardAdmin() {
     if (error) { flash('생성 실패: ' + error.message, 'err'); return }
     setRegOpen(false); flash('기간을 만들었습니다 · 아직 닫힘 상태입니다'); loadAll()
   }
-  async function delWin(w) {
-    if (!isAdmin) { flash('관리자만 삭제할 수 있습니다', 'err'); return }
+  async function delWin() {
+    const w = delWinTarget; if (!w) return
+    if (!isAdmin) { flash('관리자만 삭제할 수 있습니다', 'err'); setDelWinTarget(null); return }
+    setDeletingWin(true)
     const bad = delOutcome(await supabase.from('ward_request_window').delete().eq('id', w.id).select('id'), '접수 기간')
+    setDeletingWin(false); setDelWinTarget(null)
     if (bad) { flash(bad, 'err'); return }
     flash('삭제했습니다'); loadAll()
   }
+  /* 기간 표기 — 목록 행과 같은 규칙(값이 없으면 '-') */
+  const winRange = w => (w.opens_at ? String(w.opens_at).slice(0, 16).replace('T', ' ') : '-') + ' ~ ' + (w.closes_at ? String(w.closes_at).slice(0, 16).replace('T', ' ') : '-')
 
   /* ── 신청 내역 ── */
   const itemsOf = id => items.filter(x => x.request_id === id)
@@ -3684,7 +3693,7 @@ function WardAdmin() {
               {w.notice ? ' · ' + w.notice : ''}
             </div>
             <button onClick={() => toggleWin(w)} style={{ padding: '5px 14px', borderRadius: 8, border: '1px solid ' + (w.is_open ? t.green : t.border), background: w.is_open ? t.green : t.card, color: w.is_open ? t.card : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{w.is_open ? '열림 · 닫기' : '닫힘 · 열기'}</button>
-            {isAdmin && <button onClick={() => delWin(w)} style={{ border: 'none', background: 'transparent', color: t.textL, cursor: 'pointer', fontSize: 11 }}>삭제</button>}
+            {isAdmin && <button onClick={() => setDelWinTarget(w)} style={{ border: 'none', background: 'transparent', color: t.textL, cursor: 'pointer', fontSize: 11 }}>삭제</button>}
           </div>))}</div>}
     </div>
 
@@ -3886,6 +3895,14 @@ function WardAdmin() {
     {regOpen && <WardWindowModal t={t} nf={nf} setNf={setNf} onClose={() => setRegOpen(false)} onSave={createWin} />}
     {/* ★ 삭제 확인 모달 — 병동·작성자·품목수를 보여주고 확인받는다 */}
     {delTarget && <WardDeleteModal t={t} r={delTarget} count={itemsOf(delTarget.id).length} busy={deleting} onClose={() => setDelTarget(null)} onConfirm={delReq} />}
+    {/* ★ 같은 모달을 문구만 바꿔 재사용 — 새 컴포넌트를 만들지 않는다 */}
+    {delWinTarget && <WardDeleteModal t={t} r={delWinTarget} count={0} busy={deletingWin}
+      onClose={() => setDelWinTarget(null)} onConfirm={delWin}
+      title="접수 기간 삭제"
+      head={delWinTarget.request_year + ' ' + delWinTarget.season}
+      meta={'기간 ' + winRange(delWinTarget) + (delWinTarget.notice ? ' · ' + delWinTarget.notice : '')}
+      strong={'현재 ' + (delWinTarget.is_open ? '열림 · 접수 중' : '닫힘')}
+      warn="병동이 신청 페이지에 접속할 수 없게 됩니다. 삭제는 관리자만 가능합니다." />}
     {/* ★ 비밀번호 재설정 모달 — 삭제 모달과 같은 골격·스타일을 그대로 쓴다(새 디자인 없음) */}
     {pwTarget && <WardPwModal t={t} r={pwTarget} pw={pwNew} setPw={setPwNew} busy={pwBusy} onClose={() => setPwTarget(null)} onConfirm={resetPw} />}
     {/* ★ 화면 하단 저작권은 인쇄에서 제외한다 — 인쇄용 저작권은 각 wp-page 안에 따로 있다.
@@ -3926,21 +3943,28 @@ function WardPwModal({ t, r, pw, setPw, busy, onClose, onConfirm }) {
   </div>
 }
 
-/* ★ 신청 삭제 확인 모달 — 병동·작성자·품목수를 보여주고 확인받는다.
-   품목은 ward_request_items의 on delete cascade로 함께 삭제된다(0083). 되돌릴 수 없다. */
-function WardDeleteModal({ t, r, count, busy, onClose, onConfirm }) {
+/* ★ 삭제 확인 모달 — 신청 삭제와 접수 기간 삭제가 함께 쓴다.
+   신청: 병동·작성자·품목수를 보여준다. 품목은 on delete cascade로 함께 삭제된다(0083).
+   기간: 연도·명절·기간과 「병동이 신청 페이지에 접속할 수 없게 됩니다」 경고를 보여준다.
+   ★ 기본값이 신청 삭제의 기존 문구를 그대로 만들어 내므로, 인자를 넘기지 않으면 동작이 같다. */
+function WardDeleteModal({ t, r, count, busy, onClose, onConfirm,
+  title = '신청 삭제',
+  head = r.ward + '병동 · ' + r.requester_name,
+  meta = r.request_year + ' ' + r.season + ' · 신청일 ' + (r.submitted_at || '').slice(0, 10) + ' · 상태 ' + r.status,
+  strong = '품목 ' + count + '건',
+  warn = '신청과 함께 품목 ' + count + '건이 모두 삭제됩니다. 삭제는 관리자만 가능합니다.' }) {
   const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos)
   return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => !busy && onClose()}>
     <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 400, border: '1px solid ' + t.border, boxShadow: t.shadowH, transform: 'translate(' + _dmPos.x + 'px, ' + _dmPos.y + 'px)' }} onClick={e => e.stopPropagation()}>
-      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: '1px solid ' + t.border }}><div style={{ fontSize: 15, fontWeight: 700, color: t.red, textAlign: 'left' }}>신청 삭제</div></div>
+      <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: '1px solid ' + t.border }}><div style={{ fontSize: 15, fontWeight: 700, color: t.red, textAlign: 'left' }}>{title}</div></div>
       <div style={{ padding: '16px 20px', textAlign: 'left' }}>
         <div style={{ background: t.bg, border: '1px solid ' + t.border, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{r.ward}병동 · {r.requester_name}</div>
-          <div style={{ fontSize: 11, color: t.textM, marginTop: 5 }}>{r.request_year} {r.season} · 신청일 {(r.submitted_at || '').slice(0, 10)} · 상태 {r.status}</div>
-          <div style={{ fontSize: 12, color: t.text, fontWeight: 700, marginTop: 7 }}>품목 {count}건</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{head}</div>
+          <div style={{ fontSize: 11, color: t.textM, marginTop: 5 }}>{meta}</div>
+          <div style={{ fontSize: 12, color: t.text, fontWeight: 700, marginTop: 7 }}>{strong}</div>
         </div>
         <div style={{ fontSize: 12, color: t.red, fontWeight: 700, marginBottom: 4 }}>되돌릴 수 없습니다.</div>
-        <div style={{ fontSize: 11, color: t.textM, marginBottom: 14, lineHeight: 1.6 }}>신청과 함께 품목 {count}건이 모두 삭제됩니다. 삭제는 관리자만 가능합니다.</div>
+        <div style={{ fontSize: 11, color: t.textM, marginBottom: 14, lineHeight: 1.6 }}>{warn}</div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={onClose} disabled={busy} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button>
           <button onClick={onConfirm} disabled={busy} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer', background: t.red, color: t.card, fontSize: 13, fontWeight: 700 }}>{busy ? '삭제 중...' : '영구 삭제'}</button>
