@@ -3587,8 +3587,13 @@ function WardAdmin() {
     setASearching(true)
     /* PostgREST or()는 콤마·괄호로 조건을 가른다 — 검색어에서 제거하고 LIKE 와일드카드도 이스케이프 */
     const safe = term.replace(/[,()]/g, ' ').replace(/[%_\\]/g, m => '\\' + m)
+    /* ★ status='사용'만 반환 — 신청 앱 ward-drugs.js와 같은 기준.
+       중지·휴면 약품이 신청서에 담기면 실제로 낼 수 없는 품목이 접수된다.
+       ★ 자유입력 경로(「직접 추가」·결과 0건 Enter)는 이 필터를 타지 않는다 —
+         마스터에 없는 품목을 넣는 통로라 막으면 실무가 막힌다. */
     const { data, error } = await supabase.from('drugs')
       .select('drug_code,drug_name,status,unit')
+      .eq('status', '사용')
       .or(`drug_name.ilike.%${safe}%,drug_code.ilike.%${safe}%,ingredient_kr.ilike.%${safe}%,ingredient_en.ilike.%${safe}%`)
       .limit(30)
     setASearching(false)

@@ -10,6 +10,8 @@
      문구는 FAIL_MSG 하나로 통일하고, 행이 없을 때도 **더미 해시 검증을 수행**해
      응답 시간이 눈에 띄게 갈리지 않도록 한다(scrypt 비용을 양쪽 모두 치른다).
    ★ 레이트 리미팅 — 연속 실패 PW_MAX_FAIL회면 PW_LOCK_MIN분 잠금.
+     임계치가 20회인 이유: 4자리를 손으로 20번 연속 틀리려면 상당한 시도인 반면,
+     병동 근무자가 실수로 잠기는 피해가 훨씬 잦다. 1만분의 20(0.2%)이라 무차별 대입에는 여전히 무의미하다.
      상태를 행(pw_fail·pw_locked_until)에 둔다 — 비회원이라 세션이 없고,
      Function 인스턴스가 요청마다 갈려 메모리 카운터를 쓸 수 없다(0084 (d)).
    ★ pw_hash가 null인 행(0084 이전 신청)은 잠금 대상이 아니라 **안내 대상**이다 — NOPW_MSG.
@@ -25,7 +27,7 @@ const CLOSED_MSG = '접수 기간이 아닙니다 · 문의 약제과 내선 217
 /* ★ 실패 문구는 하나 — 병동 유무와 비밀번호 오류를 구분하지 않는다 */
 const FAIL_MSG = '병동 또는 비밀번호가 올바르지 않습니다'
 const NOPW_MSG = '이 신청은 비밀번호가 없습니다 · 약제과 내선 217로 문의해 주세요'
-export const PW_MAX_FAIL = 10
+export const PW_MAX_FAIL = 20
 export const PW_LOCK_MIN = 10
 const LOCK_MSG = `여러 번 틀렸습니다 · ${PW_LOCK_MIN}분 후 다시 시도해 주세요`
 const WARDS = ['3', '4', '5', '6']
