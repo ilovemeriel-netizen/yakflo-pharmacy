@@ -4103,7 +4103,11 @@ function IdleReasonModal({ t, row, onClose, onSave }) {
         <div style={{ marginBottom: 10 }}><label style={lb}>변경할 상태</label><div style={{ background: stBg[row.status] || t.bg, color: stFg[row.status] || t.textM, borderRadius: 8, padding: '8px 10px', fontSize: 13, fontWeight: 700 }}>{row.status}</div></div>
         <div style={{ marginBottom: 14 }}><label style={lb}>사유 <span style={{ color: t.textL, fontWeight: 400 }}>· 선택 (비워도 저장됩니다)</span></label>
           <textarea value={memo} onChange={e => setMemo(e.target.value)} placeholder="판단 근거 등" style={ta} autoFocus />
-          {row.status === '중지' && <div style={{ fontSize: 10, color: t.red, marginTop: 4 }}>중지는 되돌리기 어려운 판단입니다 — 사유를 남겨 두시길 권합니다.</div>}</div>
+          {/* ★ 상태와 무관하게 항상 표시 — 「중지」일 때만 뜨던 조건부 렌더를 없애 모달 높이 변동을 제거했다.
+              옛 문구(「중지는 되돌리기 어려운 판단입니다」)는 사실과 달라 폐기 — 드롭다운으로 언제든 되돌릴 수 있고,
+              이 화면은 drug_idle_reviews에만 INSERT 한다(drugs.status·다른 화면에 파급 0건 · AP-0 진단).
+              남는 것은 이력 행뿐이라 그 사실만 중립적으로 알린다. 경고색(t.red)이 아니라 안내색(t.textL). */}
+          <div style={{ fontSize: 10, color: t.textL, marginTop: 4 }}>판단은 이력으로 쌓입니다 · 상태는 언제든 다시 바꿀 수 있습니다</div></div>
         <div style={{ display: 'flex', gap: 8 }}><button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button><button onClick={submit} disabled={saving} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', background: saving ? t.textL : t.accent, color: t.card, fontSize: 13, fontWeight: 700 }}>{saving ? '저장 중...' : '저장'}</button></div>
       </div>
     </div>
