@@ -3368,14 +3368,31 @@ const WARD_PRINT_ROWS = 20
    ★ 판정은 오직 이 수치 비교다 — 표시 문자열을 비교·파싱하지 않는다(문구가 바뀌어도 판정이 깨지지 않게).
    ※ ward_request_items에는 created_at이 없어 시각 비교로는 구분할 수 없다(0083 실측). */
 const WARD_ADMIN_SORT_BASE = 1000
-/* ★ 수량 허용 범위 — 정수 1~999. ward-app/netlify/functions/ward-submit.js의 QTY_MIN/MAX/MSG와
-   **같은 기준·같은 문구**다. 그 파일을 import하면 supabase 클라이언트가 딸려오므로 리터럴을 복제하고
-   주석으로 연결해 둔다. 고칠 때는 세 곳(여기 · ward-app/src/App.jsx · ward-submit.js)을 함께 고칠 것.
+/* ★ 수량 규칙 — **0.25의 배수**, 0.25 이상 999 이하 (반 알·1/4 알).
+   ward-app/netlify/functions/ward-submit.js · ward-app/src/App.jsx의 같은 상수와
+   **같은 기준·같은 문구**다. Function을 import하면 supabase 클라이언트가 딸려오므로 리터럴을 복제하고
+   주석으로 연결해 둔다. 고칠 때는 세 곳을 함께 고칠 것.
+   ★ 부동소수 오차(0.1+0.2)를 피해 정수 연산으로 판정한다.
    ★ DB에는 CHECK를 걸지 않는다 — 접수 기간이 열려 있는 동안 스키마를 바꾸지 않는다. */
-const WARD_QTY_MIN = 1
+const WARD_QTY_MIN = 0.25
 const WARD_QTY_MAX = 999
-const WARD_QTY_MSG = '수량은 1~999 사이 숫자로 입력해 주세요'
-const wardValidQty = v => { const n = Number(v); return v !== '' && v != null && Number.isInteger(n) && n >= WARD_QTY_MIN && n <= WARD_QTY_MAX }
+const WARD_QTY_MSG = '0.25 단위로 입력해 주세요'
+const wardValidQty = v => {
+  if (v == null || v === '') return false
+  if (!/^\d+(\.\d{1,2})?$/.test(String(v))) return false
+  const n = Number(v)
+  if (!(n >= WARD_QTY_MIN && n <= WARD_QTY_MAX)) return false
+  return Math.round(n * 100) % 25 === 0
+}
+/* 입력 정화 — 숫자와 소수점만 · `.`은 1개 · 맨 앞 `.` 금지 · 소수점 이하 3자리째 차단 */
+const wardSanitizeQty = v => {
+  let s = String(v).replace(/[^0-9.]/g, '')
+  const i = s.indexOf('.')
+  if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '')
+  if (s.startsWith('.')) s = s.slice(1)
+  const [a, b] = s.split('.')
+  return b === undefined ? a : a + '.' + b.slice(0, 2)
+}
 const isAdminAdded = it => Number(it.sort_order) >= WARD_ADMIN_SORT_BASE
 /* 약품명 표시값 — 「스타빅현탁액 (추가)」처럼 **약품명 열 한 줄**에서 바로 읽히게 한다.
    ★ 파생 표시일 뿐 drug_name 컬럼에 저장하지 않는다.
@@ -3561,12 +3578,8 @@ function WardAdmin() {
     if (aFound.length > 1) { flash(`검색 결과가 ${aFound.length}건입니다 — 추가할 약품을 눌러 주세요`, 'err'); return }
     if (aSearched) addItem(r, { drug_name: term })   // 결과 0건이면 자유 입력으로 추가
   }
-  /* 수량 칸 정화 — 숫자만 · 999 초과는 받지 않고 안내(신청 앱과 같은 규칙) */
-  function onAQtyInput(v) {
-    const digits = String(v).replace(/[^0-9]/g, '')
-    if (digits !== '' && Number(digits) > WARD_QTY_MAX) { flash(WARD_QTY_MSG, 'err'); return }
-    setAQty(digits === '' ? '' : String(Number(digits)))
-  }
+  /* 수량 칸 정화 — 신청 앱과 같은 규칙(숫자와 소수점만). 범위·0.25 배수 판정은 wardValidQty가 맡는다 */
+  const onAQtyInput = v => setAQty(wardSanitizeQty(v))
   async function addItem(r, d) {
     const nm = String(d.drug_name || '').trim()
     if (!nm) { flash('약품명을 입력해 주세요', 'err'); return }
@@ -3731,8 +3744,8 @@ function WardAdmin() {
                      (상세 표 인라인 편집 칸이 같은 객체를 쓰므로). 배경·테두리·폰트·placeholder·너비 불변. */}
               <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', width: '100%', maxWidth: 420 }}>
                 <input value={aq} onChange={e => onAq(e.target.value)} onKeyDown={e => onAqKeyDown(e, r)} placeholder="약품명·코드·성분명 2자 이상 · Enter로 추가" style={{ ...ip2, flex: 1, minWidth: 0, textAlign: 'center', height: 30 }} />
-                {/* ★ A안 — 수량 칸 **1개**. 5개 추가 경로가 모두 이 값을 쓴다. 숫자만 · 최대 3자리 */}
-                <input value={aQty} onChange={e => onAQtyInput(e.target.value)} inputMode="numeric" maxLength={3} placeholder="수량" style={{ ...ip2, width: 62, textAlign: 'center', height: 30 }} />
+                {/* ★ A안 — 수량 칸 **1개**. 5개 추가 경로가 모두 이 값을 쓴다. 숫자와 소수점만 · 0.25 배수 */}
+                <input value={aQty} onChange={e => onAQtyInput(e.target.value)} inputMode="decimal" maxLength={6} placeholder="수량" style={{ ...ip2, width: 62, textAlign: 'center', height: 30 }} />
               </span>
               {aSearching && <div style={{ fontSize: 11, color: t.textL, marginTop: 6 }}>찾는 중...</div>}
             {/* drug_code는 nullable(0083) — 목록에 없는 약도 이름만으로 추가할 수 있다.

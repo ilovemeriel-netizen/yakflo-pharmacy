@@ -24,14 +24,17 @@ const CLOSED_MSG = '접수 기간이 아닙니다 · 문의 약제과 내선 217
 export const DUP_MSG = '이미 신청이 완료된 병동입니다 · 변경은 약제과 내선 217'
 const WARDS = ['3', '4', '5', '6']          // ward CHECK 미부여(0083) → 여기서 검증
 const MAX_ITEMS = 100
-/* ★ 수량 허용 범위 — 정수 1~999. DB에는 CHECK를 걸지 않는다(접수 기간이 열려 있는 동안 스키마 무변경).
-   검증은 **UI + 이 Function 두 층**으로만 한다.
-   ★ QTY_MSG는 신청 앱 화면 안내와 **글자 단위로 같아야 한다**.
+/* ★ 수량 규칙 — **0.25의 배수**, 0.25 이상 999 이하 (반 알·1/4 알 신청을 받기 위함).
+   ★ 품목 구분(경구제·주사제)으로 분기하지 않는다 — 신청 경로에는 구분 정보가 없고,
+     받아오면 반환 필드 최소화 원칙이 무너진다. 부적절한 값은 약제과가 관리 화면에서 조정한다.
+   ★ DB에는 CHECK를 걸지 않는다(접수 기간이 열려 있는 동안 스키마 무변경).
+     검증은 **UI + 이 Function 두 층**으로만 한다.
+   ★ QTY_MSG는 ward-app/src/App.jsx · src/App.jsx(관리 화면)의 같은 상수와 **글자 단위로 같아야 한다**.
      화면은 이 Function을 import할 수 없으므로(그러면 supabase 클라이언트가 번들로 새어 들어간다)
-     ward-app/src/App.jsx에 같은 리터럴을 두고 양쪽 주석으로 연결해 둔다. 고칠 때는 반드시 함께 고칠 것. */
-export const QTY_MIN = 1
+     리터럴을 복제하고 주석으로 연결해 둔다. 고칠 때는 세 곳을 함께 고칠 것. */
+export const QTY_MIN = 0.25
 export const QTY_MAX = 999
-export const QTY_MSG = '수량은 1~999 사이 숫자로 입력해 주세요'
+export const QTY_MSG = '0.25 단위로 입력해 주세요'
 
 export default async (req) => {
   const cors = corsHeaders()
@@ -129,10 +132,14 @@ function validate(b) {
     if (!drug_name) return { msg: `${n}번 품목의 약품명이 비어 있습니다` }
     if (drug_name.length > 100) return { msg: `${n}번 품목의 약품명이 너무 깁니다` }
 
-    /* ★ 정수 1~999만 통과. 소수·0·음수·문자 전부 400으로 거부한다.
+    /* ★ 0.25 배수 · 0.25~999만 통과. 0·음수·문자·0.25 배수가 아닌 소수(0.13·2.47·0.333)를
+       전부 400으로 거부한다. 기존 Number.isFinite 검사만으로는 2.5·2.333이 통과했다.
+       ★ 부동소수 오차(0.1+0.2)를 피해 정수 연산으로 판정한다.
        거부 문구는 QTY_MSG 하나로 통일 — 화면 안내와 글자 단위로 같다. */
     const qty = Number(it.qty)
-    if (!Number.isInteger(qty) || qty < QTY_MIN || qty > QTY_MAX) return { msg: `${n}번 품목 — ${QTY_MSG}` }
+    if (!Number.isFinite(qty) || qty < QTY_MIN || qty > QTY_MAX || Math.round(qty * 100) % 25 !== 0) {
+      return { msg: `${n}번 품목 — ${QTY_MSG}` }
+    }
 
     const drug_code = it.drug_code == null ? '' : String(it.drug_code).trim()
     if (drug_code.length > 40) return { msg: `${n}번 품목의 약품코드가 너무 깁니다` }

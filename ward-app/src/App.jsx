@@ -28,16 +28,35 @@ const DONE_BG = '#E6F7EE'
 
 const WARDS = ['3', '4', '5', '6']
 const MIN_Q = 2            // 검색 최소 글자수
-/* ★ 수량 허용 범위 — 정수 1~999.
-   ★ QTY_MSG는 netlify/functions/ward-submit.js의 QTY_MSG와 **글자 단위로 같아야 한다**.
-     그 파일을 import하면 supabase 클라이언트가 이 번들로 새어 들어오므로 리터럴을 복제하고
-     양쪽 주석으로 연결해 둔다. 고칠 때는 반드시 함께 고칠 것.
+/* ★ 수량 규칙 — **0.25의 배수**, 0.25 이상 999 이하 (반 알·1/4 알 신청을 받기 위함).
+   ★ 품목 구분(경구제·주사제)에 따라 분기하지 않는다 — 신청 앱은 drug_code·drug_name만 받는 구조라
+     구분 정보가 없고, 받아오면 반환 필드 최소화 원칙이 무너진다.
+     부적절한 값은 약제과가 관리 화면에서 확인해 조정한다.
+   ★ QTY_MSG는 netlify/functions/ward-submit.js · src/App.jsx(관리 화면)의 같은 상수와
+     **글자 단위로 같아야 한다**. Function을 import하면 supabase 클라이언트가 이 번들로 새어 들어오므로
+     리터럴을 복제하고 주석으로 연결해 둔다. 고칠 때는 세 곳을 함께 고칠 것.
    ★ DB에는 CHECK를 걸지 않는다 — 검증은 여기(UI)와 Function 두 층뿐이다. */
-const QTY_MIN = 1
+const QTY_MIN = 0.25
 const QTY_MAX = 999
-const QTY_MSG = '수량은 1~999 사이 숫자로 입력해 주세요'
-/* 정수 1~999인지 — 담기 버튼 활성 판정과 저장 직전 검사에 같이 쓴다 */
-const validQty = v => { const n = Number(v); return v !== '' && v != null && Number.isInteger(n) && n >= QTY_MIN && n <= QTY_MAX }
+const QTY_MSG = '0.25 단위로 입력해 주세요'
+/* ★ 부동소수 오차를 피해 정수 연산으로 판정한다 — 0.1+0.2 문제.
+   형식(숫자·소수점 1개·소수 2자리 이하)까지 함께 본다. */
+const validQty = v => {
+  if (v == null || v === '') return false
+  if (!/^\d+(\.\d{1,2})?$/.test(String(v))) return false
+  const n = Number(v)
+  if (!(n >= QTY_MIN && n <= QTY_MAX)) return false
+  return Math.round(n * 100) % 25 === 0
+}
+/* 입력 정화 — 숫자와 소수점만. `.`은 1개 · 맨 앞 `.` 금지 · 소수점 이하 3자리째 차단 */
+const sanitizeQty = v => {
+  let s = String(v).replace(/[^0-9.]/g, '')
+  const i = s.indexOf('.')
+  if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '')
+  if (s.startsWith('.')) s = s.slice(1)
+  const [a, b] = s.split('.')
+  return b === undefined ? a : a + '.' + b.slice(0, 2)
+}
 
 export default function App() {
   const [ward, setWard] = useState('')
@@ -181,15 +200,9 @@ export default function App() {
   }
 
   /* ── 수량 입력 정화 ────────────────────────────────────────────
-     ★ 숫자 외 문자·소수점·음수 기호·공백은 **입력 단계에서 제거**한다(붙여넣기도 걸린다).
-       999를 넘으면 값을 받지 않고 안내만 띄운다 — 이미 들어간 값은 지우지 않는다. */
-  function onQtyInput(key, v) {
-    const digits = String(v).replace(/[^0-9]/g, '')
-    if (digits === '') { setQtyMap(m => ({ ...m, [key]: '' })); return }
-    if (Number(digits) > QTY_MAX) { setMsg({ kind: 'err', text: QTY_MSG }); return }
-    setMsg(null)
-    setQtyMap(m => ({ ...m, [key]: String(Number(digits)) }))   // 앞자리 0 제거
-  }
+     ★ 문자·공백·`-`·`+`는 **입력 단계에서 제거**한다(붙여넣기도 걸린다).
+       범위(0.25~999)와 0.25 배수 판정은 validQty가 맡아 담기 버튼 비활성으로 알린다. */
+  const onQtyInput = (key, v) => setQtyMap(m => ({ ...m, [key]: sanitizeQty(v) }))
 
   /* ── 담기 / 편집 / 삭제 ── */
   function addWithQty(d) {
@@ -205,13 +218,8 @@ export default function App() {
     clearTimeout(timer.current)
     qRef.current?.focus()
   }
-  /* 목록 수량 편집 — 검색 결과 칸과 같은 정화 규칙(숫자만 · 999 초과는 받지 않고 안내) */
-  function editQty(i, v) {
-    const digits = String(v).replace(/[^0-9]/g, '')
-    if (digits !== '' && Number(digits) > QTY_MAX) { setMsg({ kind: 'err', text: QTY_MSG }); return }
-    if (digits !== '') setMsg(null)
-    setCart(c => c.map((x, j) => j === i ? { ...x, qty: digits === '' ? '' : String(Number(digits)) } : x))
-  }
+  /* 목록 수량 편집 — 검색 결과 칸과 같은 정화 규칙 */
+  const editQty = (i, v) => setCart(c => c.map((x, j) => j === i ? { ...x, qty: sanitizeQty(v) } : x))
   const remove = i => setCart(c => c.filter((_, j) => j !== i))
 
   /* ── 저장 ── */
@@ -470,13 +478,13 @@ export default function App() {
                             borderTop: '1px solid ' + rgba(NAVY, 0.08), background: 'white',
                           }}>
                             <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 14, color: NAVY, lineHeight: 1.4 }}>{d.drug_name}</span>
-                            {/* ★ 숫자만 · 최대 3자리. inputMode="numeric"으로 모바일 숫자 키패드를 띄운다. */}
+                            {/* ★ 숫자와 소수점만 · 최대 6자(999.75). inputMode="decimal" — 반 알 입력을 받아야 한다. */}
                             <input
                               ref={i === 0 ? firstQtyRef : null}
                               value={qtyMap[keyOf(d)] ?? ''}
                               onChange={e => onQtyInput(keyOf(d), e.target.value)}
                               onKeyDown={e => onQtyKeyDown(e, d)}
-                              inputMode="numeric" maxLength={3} placeholder="수량" style={qtyBox}
+                              inputMode="decimal" maxLength={6} placeholder="수량" style={qtyBox}
                             />
                             {/* 담기는 이 화면의 반복 동작이라 은은한 녹색 외곽선으로 둔다(최종 동작 아님).
                                 ★ 수량이 정수 1~999가 아니면 비활성 — 스타일·색·크기는 그대로 두고 cursor만 바꾼다. */}
@@ -514,8 +522,8 @@ export default function App() {
                           borderTop: i === 0 ? 'none' : '1px solid ' + rgba(NAVY, 0.08),
                         }}>
                           <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: NAVY, lineHeight: 1.35 }}>{c.drug_name}</span>
-                          {/* 목록에서 고칠 때도 같은 규칙 — 숫자만 · 최대 3자리 · 999 초과 시 안내 */}
-                          <input value={c.qty} onChange={e => editQty(i, e.target.value)} inputMode="numeric" maxLength={3} placeholder="수량"
+                          {/* 목록에서 고칠 때도 같은 정화 규칙 */}
+                          <input value={c.qty} onChange={e => editQty(i, e.target.value)} inputMode="decimal" maxLength={6} placeholder="수량"
                             style={{ ...qtyBox, width: 64, padding: '6px 8px', fontSize: 13 }} />
                           <button onClick={() => remove(i)} title="빼기" style={{
                             border: 'none', background: 'transparent', color: rgba(NAVY, 0.5),
