@@ -39,6 +39,12 @@ const MIN_Q = 2            // 검색 최소 글자수
 const QTY_MIN = 0.25
 const QTY_MAX = 999
 const QTY_MSG = '0.25 단위로 입력해 주세요'
+/* ★ 재조회 비밀번호 — 숫자 4자리.
+   PW_MSG는 netlify/functions/ward-submit.js의 PW_MSG와 **글자 단위로 같아야 한다**(같은 이유로 리터럴 복제). */
+const PW_LEN = 4
+const PW_MSG = '비밀번호는 숫자 4자리로 입력해 주세요'
+const sanitizePw = v => String(v).replace(/[^0-9]/g, '').slice(0, PW_LEN)   // 문자 차단 · 4자리 제한
+const validPwStr = v => new RegExp(`^\\d{${PW_LEN}}$`).test(String(v))
 /* ★ 부동소수 오차를 피해 정수 연산으로 판정한다 — 0.1+0.2 문제.
    형식(숫자·소수점 1개·소수 2자리 이하)까지 함께 본다. */
 const validQty = v => {
@@ -84,6 +90,11 @@ export default function App() {
   const [wardConfirm, setWardConfirm] = useState(null)  // 바꾸려는 병동(확인 대기)
   const [dupWards, setDupWards] = useState([])          // 신청완료 병동 — ward-status 조회 또는 409로 채워진다
   const [dupMsg, setDupMsg] = useState('')              // 서버(DUP_MSG)에서 받은 안내 — 409 문구와 글자 단위 동일
+  const [pw, setPw] = useState('')                      // 저장 시 만드는 재조회 비밀번호
+  const [vPw, setVPw] = useState('')                    // 배너에서 입력하는 조회용 비밀번호
+  const [vItems, setVItems] = useState(null)            // 조회 성공 시 품목(읽기 전용) — null이면 미조회
+  const [vMsg, setVMsg] = useState('')                  // 조회 실패 안내(서버 문구 그대로)
+  const [vBusy, setVBusy] = useState(false)
   const timer = useRef(null)
   const qRef = useRef(null)                     // 검색 입력 — 담기 후 포커스를 되돌린다
   const firstQtyRef = useRef(null)              // 결과 1건일 때 Enter로 옮겨 갈 수량 칸
@@ -113,6 +124,25 @@ export default function App() {
       .catch(() => { /* fail-open — 아무것도 하지 않는다 */ })
     return () => { on = false }
   }, [])
+
+  /* ── 신청 내역 조회 ────────────────────────────────────────────
+     ★ 서버 문구를 그대로 보여 준다 — 「병동 없음」과 「비밀번호 틀림」을 화면에서도 구분하지 않는다.
+     ★ 결과는 읽기 전용. 수정 경로를 두지 않는다. */
+  async function doVerify() {
+    if (!validPwStr(vPw) || vBusy) return
+    setVBusy(true); setVMsg(''); setVItems(null)
+    try {
+      const r = await fetch('/api/ward/verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ward, pw: vPw }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || !d.ok) { setVMsg(d.msg || '조회에 실패했습니다'); return }
+      setVItems(Array.isArray(d.items) ? d.items : [])
+      setVPw('')
+    } catch { setVMsg('연결에 실패했습니다. 잠시 후 다시 시도해 주세요') }
+    finally { setVBusy(false) }
+  }
 
   /* ── 완료 시 뒤로 가기 1회 흡수 ──────────────────────────────
      앱은 이력에 항목을 쌓지 않는 상태 기반 단일 화면이라, 완료 화면에서 뒤로 가기를 누르면
@@ -197,12 +227,14 @@ export default function App() {
   }
   function applyHome() {
     setWard(''); setName(''); setCart([]); setQ(''); setFound([]); setSearched(false); setQtyMap({})
+    setPw(''); setVPw(''); setVItems(null); setVMsg('')
     setWardConfirm(null); setMsg(null)
     lastTerm.current = ''
   }
   function applyWard(w) {
     const hadName = !!name.trim()
     setWard(w); setCart([]); setName(''); setQ(''); setFound([]); setSearched(false); setQtyMap({}); setWardConfirm(null)
+    setPw(''); setVPw(''); setVItems(null); setVMsg('')   /* 병동이 바뀌면 조회 결과도 버린다 — 다른 병동 내역이 남지 않게 */
     lastTerm.current = ''
     setMsg(hadName ? { kind: 'info', text: '병동을 바꿔 작성자 이름을 비웠습니다 — 다시 입력해 주세요' } : null)
   }
@@ -271,7 +303,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         /* unit·memo는 보내지 않는다 — 약제과가 관리 화면에서 채운다(Function이 null 저장) */
         body: JSON.stringify({
-          ward, requester_name: name.trim(),
+          ward, requester_name: name.trim(), pw,
           items: cart.map(c => ({ drug_code: c.drug_code || undefined, drug_name: c.drug_name, qty: Number(c.qty) })),
         }),
       })
@@ -405,6 +437,56 @@ export default function App() {
           {locked && (
             <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginTop: 8, lineHeight: 1.6 }}>
               변경은 약제과 내선 217
+            </div>
+          )}
+
+          {/* ★ 신청 내역 조회 — 완료 병동을 고른 상태에서만. 배너 스타일·minHeight는 그대로 두고
+                 안쪽에 입력 1칸 + 버튼만 얹는다(내용이 늘어도 minHeight가 하한이라 레이아웃이 흔들리지 않는다).
+                 ★ 읽기 전용 — 수정 경로를 두지 않는다. 인쇄 기능도 넣지 않는다(인쇄는 관리 화면 단독). */}
+          {locked && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <input
+                  value={vPw}
+                  onChange={e => { setVPw(sanitizePw(e.target.value)); setVMsg('') }}
+                  onKeyDown={e => { if (e.key === 'Enter' && !(e.nativeEvent?.isComposing || e.keyCode === 229)) { e.preventDefault(); doVerify() } }}
+                  inputMode="numeric" maxLength={PW_LEN} placeholder="비밀번호 4자리"
+                  style={{ ...input, width: 150, padding: '9px 10px', textAlign: 'center', letterSpacing: 4, fontWeight: 800 }}
+                />
+                <button onClick={doVerify} disabled={vBusy || !validPwStr(vPw)} style={{
+                  padding: '9px 16px', borderRadius: 10, whiteSpace: 'nowrap',
+                  cursor: (vBusy || !validPwStr(vPw)) ? 'not-allowed' : 'pointer',
+                  border: '1px solid ' + LAVENDER, background: rgba(LAVENDER, 0.14), color: PURPLE, fontSize: 14, fontWeight: 800,
+                }}>{vBusy ? '확인 중…' : '내역 보기'}</button>
+              </div>
+              {vMsg && (
+                <div style={{ fontSize: 13, fontWeight: 700, color: PURPLE, marginTop: 8, lineHeight: 1.6 }}>{vMsg}</div>
+              )}
+              {vItems && (
+                <div style={{ marginTop: 10, background: 'white', border: '1px solid ' + rgba(NAVY, 0.12), borderRadius: 10, overflow: 'hidden', textAlign: 'left' }}>
+                  <div style={{ padding: '8px 12px', background: rgba(LAVENDER, 0.18), fontSize: 11, fontWeight: 700, color: NAVY }}>
+                    신청한 품목 {vItems.length}건 · 읽기 전용
+                  </div>
+                  {!vItems.length
+                    ? <div style={{ padding: '14px 12px', fontSize: 12, color: rgba(NAVY, 0.55), textAlign: 'center' }}>품목이 없습니다</div>
+                    : vItems.map((it, i) => (
+                        /* 한 줄 카드 — 360px에서도 가로로 넘치지 않도록 flex 배치 */
+                        <div key={i} style={{
+                          display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', fontSize: 13, color: NAVY,
+                          borderTop: i === 0 ? 'none' : '1px solid ' + rgba(NAVY, 0.08),
+                        }}>
+                          <span style={{ color: rgba(NAVY, 0.5), fontSize: 11, minWidth: 14 }}>{i + 1}</span>
+                          <span style={{ flex: 1, minWidth: 0, fontWeight: 700, lineHeight: 1.4 }}>{it.drug_name}</span>
+                          <span style={{ fontWeight: 800, color: PURPLE, whiteSpace: 'nowrap' }}>{it.qty}{it.unit ? ' ' + it.unit : ''}</span>
+                        </div>
+                      ))}
+                  {vItems.some(it => it.memo) && (
+                    <div style={{ padding: '8px 12px', borderTop: '1px solid ' + rgba(NAVY, 0.08), fontSize: 11, color: rgba(NAVY, 0.7), lineHeight: 1.6 }}>
+                      {vItems.filter(it => it.memo).map((it, i) => <div key={i}>{it.drug_name} · {it.memo}</div>)}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -639,6 +721,21 @@ export default function App() {
               ))}
             </div>
 
+            {/* ★ 재조회 비밀번호 — 입력 1칸만 추가. 모달 구조·스타일은 그대로 둔다. */}
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ ...label, marginBottom: 6 }}>비밀번호 (숫자 4자리)</label>
+              <input
+                value={pw}
+                onChange={e => setPw(sanitizePw(e.target.value))}
+                inputMode="numeric" maxLength={PW_LEN} placeholder="0000"
+                style={{ ...input, textAlign: 'center', letterSpacing: 6, fontWeight: 800 }}
+              />
+              <div style={{ fontSize: 12, color: rgba(NAVY, 0.7), marginTop: 6, lineHeight: 1.6 }}>
+                저장 뒤 이 비밀번호로 신청 내역을 다시 볼 수 있습니다.<br />
+                <b>비밀번호를 기억해 주세요</b> — 분실하면 약제과 내선 217로 문의해야 합니다.
+              </div>
+            </div>
+
             {/* ★ 경고 강조 */}
             <div style={{ ...warn, marginBottom: 10, padding: '12px 14px' }}>
               <div style={{ fontSize: 15, fontWeight: 800, color: PURPLE, lineHeight: 1.5 }}>저장 후에는 수정할 수 없습니다</div>
@@ -654,9 +751,9 @@ export default function App() {
                 border: '1px solid ' + rgba(NAVY, 0.25), background: 'white', color: NAVY, fontSize: 14, fontWeight: 700,
               }}>취소</button>
               {/* 최종 동작 — 여기서는 보라 채움으로 강조를 유지한다 */}
-              <button onClick={submit} disabled={saving} style={{
-                flex: 2, padding: 13, borderRadius: 10, border: 'none', cursor: saving ? 'not-allowed' : 'pointer',
-                background: saving ? rgba(PURPLE, 0.5) : PURPLE, color: 'white', fontSize: 14, fontWeight: 800,
+              <button onClick={submit} disabled={saving || !validPwStr(pw)} style={{
+                flex: 2, padding: 13, borderRadius: 10, border: 'none', cursor: (saving || !validPwStr(pw)) ? 'not-allowed' : 'pointer',
+                background: (saving || !validPwStr(pw)) ? rgba(PURPLE, 0.5) : PURPLE, color: 'white', fontSize: 14, fontWeight: 800,
               }}>{saving ? '저장 중…' : `${cart.length}개 품목 신청하기`}</button>
             </div>
           </div>
