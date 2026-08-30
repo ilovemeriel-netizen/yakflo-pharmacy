@@ -24,6 +24,14 @@ const CLOSED_MSG = '접수 기간이 아닙니다 · 문의 약제과 내선 217
 export const DUP_MSG = '이미 신청이 완료된 병동입니다 · 변경은 약제과 내선 217'
 const WARDS = ['3', '4', '5', '6']          // ward CHECK 미부여(0083) → 여기서 검증
 const MAX_ITEMS = 100
+/* ★ 수량 허용 범위 — 정수 1~999. DB에는 CHECK를 걸지 않는다(접수 기간이 열려 있는 동안 스키마 무변경).
+   검증은 **UI + 이 Function 두 층**으로만 한다.
+   ★ QTY_MSG는 신청 앱 화면 안내와 **글자 단위로 같아야 한다**.
+     화면은 이 Function을 import할 수 없으므로(그러면 supabase 클라이언트가 번들로 새어 들어간다)
+     ward-app/src/App.jsx에 같은 리터럴을 두고 양쪽 주석으로 연결해 둔다. 고칠 때는 반드시 함께 고칠 것. */
+export const QTY_MIN = 1
+export const QTY_MAX = 999
+export const QTY_MSG = '수량은 1~999 사이 숫자로 입력해 주세요'
 
 export default async (req) => {
   const cors = corsHeaders()
@@ -121,9 +129,10 @@ function validate(b) {
     if (!drug_name) return { msg: `${n}번 품목의 약품명이 비어 있습니다` }
     if (drug_name.length > 100) return { msg: `${n}번 품목의 약품명이 너무 깁니다` }
 
+    /* ★ 정수 1~999만 통과. 소수·0·음수·문자 전부 400으로 거부한다.
+       거부 문구는 QTY_MSG 하나로 통일 — 화면 안내와 글자 단위로 같다. */
     const qty = Number(it.qty)
-    if (!Number.isFinite(qty) || qty <= 0) return { msg: `${n}번 품목의 수량은 0보다 큰 숫자여야 합니다` }
-    if (qty > 1e6) return { msg: `${n}번 품목의 수량이 너무 큽니다` }
+    if (!Number.isInteger(qty) || qty < QTY_MIN || qty > QTY_MAX) return { msg: `${n}번 품목 — ${QTY_MSG}` }
 
     const drug_code = it.drug_code == null ? '' : String(it.drug_code).trim()
     if (drug_code.length > 40) return { msg: `${n}번 품목의 약품코드가 너무 깁니다` }
