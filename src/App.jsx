@@ -3788,7 +3788,11 @@ function WardAdmin() {
             <tbody>
               {/* ★ 「(추가)」는 약품명 열에만 붙인다 · 행 색은 기존 약품과 동일 · 비고 열 무변경
                      ★ 인쇄는 화면 정렬 상태를 그대로 따른다(so2 공유) */}
-              {list.map(it => <tr key={it.id}><td><WardItemName it={it} /></td><td>{it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}
+              {/* ★ 수량 0은 인쇄에서 **공란**으로 낸다 — 관리 화면 addItem이 qty:0으로 INSERT하므로
+                     미기입 상태가 종이에 「0」으로 찍히면 「0개 필요」로 오독된다.
+                     ※ DB 값은 그대로 두고 표시만 비운다. 화면 상세 표에서는 0을 그대로 보여
+                       약제과가 미기입을 인지하게 한다(cell('qty', …) 무변경). */}
+              {list.map(it => <tr key={it.id}><td><WardItemName it={it} /></td><td>{Number(it.qty) === 0 ? '' : it.qty}</td><td>{it.unit || ''}</td><td>{it.usage_qty ?? ''}</td><td>{it.memo || ''}</td></tr>)}
               {Array.from({ length: blanks }, (_, i) => <tr key={'b' + i}><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>)}
             </tbody>
           </table>
