@@ -356,7 +356,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   const canDelete = profile?.role === 'admin' || memberRole === 'owner' || memberRole === 'admin'
   const isNew = !!dr.__register
   const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [f, sF] = useState({ drug_code: oc, drug_name: dr.drug_name || '', category: dr.category || '', ingredient_en: dr.ingredient_en || '', ingredient_kr: dr.ingredient_kr || '', efficacy_class: dr.efficacy_class || '', efficacy: dr.efficacy || '', manufacturer: dr.manufacturer || '', specification: dr.specification || '', unit: dr.unit || '', packaging: dr.packaging || dr.unit || '', total_qty: dr.total_qty ?? '', price_unit: dr.price_unit || 0, insurance_price: dr.insurance_price || 0, purchase_price: dr.purchase_price ?? '', edi_price: dr.edi_price ?? '', insurance_code: dr.insurance_code || '', current_qty: dr.current_qty || 0, expiry_date: dr.expiry_date || '', status: dr.status || '사용', narcotic_type: (dr.narcotic_type === '한외마약' ? '한외마약' : getNT(dr)), safety_stock: dr.safety_stock || 0, max_stock: dr.max_stock || 0, lot_no: dr.lot_no || '', insurance_type: dr.insurance_type || '급여', prescription_type: dr.prescription_type || '', atc_code: dr.atc_code || '', storage_method: dr.storage_method || '실온', storage_location: dr.storage_location || '', memo: dr.memo || '', standard_code: dr.standard_code || '', additive: dr.additive || '', compound_type: dr.compound_type || '단일제', supplier_id: dr.supplier_id || '', is_high_alert: !!dr.is_high_alert })
+  const [f, sF] = useState({ drug_code: oc, drug_name: dr.drug_name || '', category: dr.category || '', ingredient_en: dr.ingredient_en || '', ingredient_kr: dr.ingredient_kr || '', efficacy_class: dr.efficacy_class || '', efficacy: dr.efficacy || '', manufacturer: dr.manufacturer || '', specification: dr.specification || '', unit: dr.unit || '', packaging: dr.packaging || dr.unit || '', total_qty: dr.total_qty ?? '', price_unit: dr.price_unit || 0, insurance_price: dr.insurance_price || 0, purchase_price: dr.purchase_price ?? '', edi_price: dr.edi_price ?? '', insurance_code: dr.insurance_code || '', current_qty: dr.current_qty || 0, expiry_date: dr.expiry_date || '', status: dr.status || '사용', narcotic_type: (dr.narcotic_type === '한외마약' ? '한외마약' : getNT(dr)), safety_stock: dr.safety_stock || 0, max_stock: dr.max_stock || 0, lot_no: dr.lot_no || '', insurance_type: dr.insurance_type || '급여', unit_mgmt: dr.unit_mgmt || '', prescription_type: dr.prescription_type || '', atc_code: dr.atc_code || '', storage_method: dr.storage_method || '실온', storage_location: dr.storage_location || '', memo: dr.memo || '', standard_code: dr.standard_code || '', additive: dr.additive || '', compound_type: dr.compound_type || '단일제', supplier_id: dr.supplier_id || '', is_high_alert: !!dr.is_high_alert })
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null); const [apiLd, setApiLd] = useState(false)
   const [apiResults, setApiResults] = useState([])
   const [lookupInfo, setLookupInfo] = useState(null)
@@ -596,7 +596,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     const ud = { status: f.status, is_narcotic: f.narcotic_type === '향정' || f.narcotic_type === '마약' }
     if (_has(f.drug_name)) ud.drug_name = f.drug_name
     if (f.drug_code.trim() && f.drug_code.trim() !== oc) ud.drug_code = f.drug_code.trim()
-    ;['category', 'narcotic_type', 'insurance_type', 'storage_method', 'ingredient_kr', 'ingredient_en', 'manufacturer', 'lot_no', 'insurance_code', 'efficacy', 'efficacy_class', 'specification', 'storage_location', 'memo', 'prescription_type'].forEach(k => { if (_has(f[k])) ud[k] = f[k] }); ud.packaging = f.packaging || null; ud.unit = f.packaging || null; ud.total_qty = (f.total_qty === '' || f.total_qty == null) ? null : Number(f.total_qty); ud.standard_code = f.standard_code || null
+    ;['category', 'narcotic_type', 'insurance_type', 'storage_method', 'ingredient_kr', 'ingredient_en', 'manufacturer', 'lot_no', 'insurance_code', 'efficacy', 'efficacy_class', 'specification', 'storage_location', 'memo', 'prescription_type', 'unit_mgmt'].forEach(k => { if (_has(f[k])) ud[k] = f[k] }); ud.packaging = f.packaging || null; ud.unit = f.packaging || null; ud.total_qty = (f.total_qty === '' || f.total_qty == null) ? null : Number(f.total_qty); ud.standard_code = f.standard_code || null
     if (_has(f.expiry_date)) ud.expiry_date = f.expiry_date
     ;['safety_stock', 'max_stock', 'purchase_price', 'edi_price'].forEach(k => { if (_num(f[k])) ud[k] = Number(f[k]) }); ud.supplier_id = f.supplier_id ? f.supplier_id : null
     if (_has(f.atc_code)) { const _atc = decomposeAtc(f.atc_code); ud.atc_code = f.atc_code.trim().toUpperCase(); ud.atc_l1 = _atc.atc_l1 || null; ud.atc_l2 = _atc.atc_l2 || null; ud.atc_l3 = _atc.atc_l3 || null }
@@ -670,6 +670,9 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
               <button type="button" onClick={() => setDetailOpen(o => !o)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: t.textM, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>상세 입력<span style={{ fontSize: 10, color: t.textL }}>{detailOpen ? '▲ 접기' : '▼ 펼치기'}</span></button>
               {detailOpen && <div style={{ padding: '0 12px 12px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>상태</label><select value={f.status} onChange={e => set('status', e.target.value)} style={ip}>{STATS.map(s => <option key={s}>{s}</option>)}</select></div><div><label style={lb}>급여구분</label><select value={f.insurance_type} onChange={e => set('insurance_type', e.target.value)} style={ip}>{['급여', '비급여'].map(s => <option key={s}>{s}</option>)}</select></div></div>
+                {/* ★ 낱알 관리 대상(0085) — 실사에서 참고 표시로만 쓴다. 비어도 무방하며 재고반영을 막지 않는다.
+                    기존 grid 를 건드리지 않고 같은 lb·ip 스타일로 한 줄만 얹는다. */}
+                <div style={{ marginBottom: 10 }}><label style={lb}>낱알 관리 대상</label><input value={f.unit_mgmt} onChange={e => set('unit_mgmt', e.target.value)} placeholder="예: 반알 · 1/4알 (선택)" style={ip} /></div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>마약구분</label><select value={f.narcotic_type} onChange={e => set('narcotic_type', e.target.value)} style={ip}>{['일반', '향정', '마약', '한외마약'].map(s => <option key={s}>{s}</option>)}</select></div><div><label style={lb}>복합/단일</label><select value={f.compound_type || '단일제'} onChange={e => set('compound_type', e.target.value)} style={ip}>{['단일제', '복합제'].map(s => <option key={s}>{s}</option>)}</select></div></div>
                 <div style={{ marginBottom: 10 }}><label style={lb}>첨가제</label><input value={f.additive || ''} onChange={e => set('additive', e.target.value)} placeholder="자동채움(약가마스터)·수정 가능" style={ip} /></div>
                 <div style={{ marginBottom: 10 }}><label style={lb}>분류</label><div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>{RX_TOGGLE.map(x => <button key={x} type="button" onClick={() => set('prescription_type', f.prescription_type === x ? '' : x)} style={{ flex: 1, padding: '8px', borderRadius: 6, border: '1px solid ' + (f.prescription_type === x ? t.accent : t.border), cursor: 'pointer', fontSize: 12, fontWeight: 600, background: f.prescription_type === x ? t.accent : 'transparent', color: f.prescription_type === x ? '#fff' : t.textL }}>{x}</button>)}<select value={RX_MORE.includes(f.prescription_type) ? f.prescription_type : ''} onChange={e => set('prescription_type', e.target.value)} style={{ ...ip, flex: 1 }}><option value="">기타…</option>{RX_MORE.map(x => <option key={x} value={x}>{x}</option>)}</select></div></div>
@@ -970,7 +973,7 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
     { id: 'dashboard', l: '대시보드' },
     { id: 'alerts', l: '🔔 알림' },
     { id: 'druglist', l: '약품관리', landing: 'druglist', children: [{ id: 'druglist', l: '약품목록' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }] },
-    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }, { id: 'ward', l: '병동신청' }] },
+    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'count', l: '실사' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }, { id: 'ward', l: '병동신청' }] },
     { id: 'transaction', l: '입출고' },
     { id: 'report', l: '보고서' },
     { id: 'atc', l: '조제관리', landing: 'atc', children: [{ id: 'atc', l: 'ATC편집' }, { id: 'emergency', l: '비상조제' }] },
@@ -4002,6 +4005,471 @@ function WardWindowModal({ t, nf, setNf, onClose, onSave }) {
   </div>
 }
 
+/* ═══ 실사 — 세션 목록 + 상세 (0085) ═══════════════════════════════════════
+   흐름: 「+ 실사 시작」 → 작성중 세션 → 수동·엑셀로 항목 적재
+         → 「재고반영」 시 차이만큼 조정 거래 생성(반영완료)
+         → 「되돌리기」는 ★ A안 역거래 — 반대 부호 조정 거래를 **신규 생성**(반영취소).
+   ★ current_qty 를 직접 UPDATE 하지 않는다(0055). transactions 에 type='조정' 을 INSERT 하면
+     트리거 apply_tx_to_inventory() 가 drugs·inventory_stock 을 함께 갱신한다(실측 확인).
+   ★ 거래를 삭제하지 않는다 — 월마감 스냅샷이 거래를 근거로 산출되므로 삭제는 정합성을 깬다.
+   ★ 낱알 관리 대상(drugs.unit_mgmt)은 **참고 표시 전용** — 검증·차단에 쓰지 않는다. */
+const CNT_STATUSES = ['작성중', '반영완료', '반영취소']
+const CNT_PP = 20
+const CNT_SOURCES = ['수동', '엑셀', '스캔']
+
+/* ═══ 스캔 처리 인터페이스 — 2단계 연결 지점 ═══════════════════════════════
+   ★ 1단계에서는 **어디서도 호출하지 않는다**(입력 경로는 수동·엑셀 둘뿐).
+     2단계에서 스캐너(키보드 웨지)와 카메라(getUserMedia)가 이 함수 하나로 합류한다.
+   ★ 인식 실패를 예외로 던지지 않는다 — 실사 도중 예외가 튀면 세션이 끊긴다.
+     항상 { ok:false, msg } 로 돌려 화면이 msg 를 그대로 보여주게 한다. */
+/* 스캔 원문 1건 → 실사 항목 후보.
+   raw    : 스캐너가 보낸 문자열 또는 카메라 디코더 결과
+   origin : 'scanner' | 'camera' — 입력 장치. ★ source 컬럼은 둘 다 '스캔' 으로 기록한다
+            (장치 구분은 실사 결과에 의미가 없다).
+   반환   : { ok:true, item:{ drug_code, lot_no, expiry_date, counted_qty } } | { ok:false, msg } */
+// eslint-disable-next-line no-unused-vars -- 2단계에서 채운다. 인자를 지우면 연결 규약이 사라진다
+async function handleScan(_raw, _origin) {
+  return { ok: false, msg: '스캔 인식은 2단계입니다 — 지금은 수동·엑셀로 입력해 주세요' }
+}
+/* GS1-128 / DataMatrix AI 파싱 자리. (01)GTIN (17)유효기한 (10)LOT (30)수량.
+   drugs.gtin ↔ (01) 매칭도 2단계에서 붙인다. */
+// eslint-disable-next-line no-unused-vars -- 위와 같은 이유
+function decodeGs1(_raw) { return null }
+/* ★ 2단계 연결 지점은 여기 한 곳 — 스캐너·카메라를 붙일 때 이 두 함수만 채우면 된다.
+   묶어 두는 이유: 1단계에는 호출부가 없어 각 함수가 미사용으로 잡힌다. */
+const SCAN_API = { handleScan, decodeGs1 }
+
+function InventoryCount({ drugs, onReload }) {
+  const { t, profile, memberRole } = useTheme()
+  const { so, sk, sd, setSort, TS } = useSort('count_date', 'desc')
+  const isAdmin = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
+  const [sess, setSess] = useState([]); const [items, setItems] = useState([])
+  const [closed, setClosed] = useState([])          // 마감월 [{y,m}]
+  const [ld, setLd] = useState(true); const [msg, setMsg] = useState(null)
+  const [sel, setSel] = useState(null)              // 열려 있는 세션 id
+  const [fStatus, setFStatus] = useState('전체'); const [page, setPage] = useState(1)
+  const [titleEdit, setTitleEdit] = useState(null)  // 제목 수정 중인 세션 id
+  /* 수동 입력 — 검색어·결과·수량·LOT·유효기한 */
+  const [q, setQ] = useState(''); const [found, setFound] = useState([]); const [searched, setSearched] = useState(false)
+  const [aQty, setAQty] = useState(''); const [aLot, setALot] = useState(''); const [aExp, setAExp] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [applyT, setApplyT] = useState(null); const [revertT, setRevertT] = useState(null)
+  const [delT, setDelT] = useState(null); const [rReason, setRReason] = useState('')
+  const fileRef = useRef(null); const qTimer = useRef(null)
+  const flash = (text, kind) => { setMsg({ text, kind }); setTimeout(() => setMsg(null), kind === 'err' ? 3200 : 1800) }
+  /* ★ RLS 에 막히면 오류 없이 0행이 돌아온다 — 행 수로 성공을 판정한다(WardAdmin 과 같은 규약) */
+  const cntDelOutcome = ({ data, error }, what) => error ? '삭제 실패: ' + error.message
+    : (!data || !data.length) ? what + '을(를) 삭제하지 못했습니다 — 권한을 확인해 주세요' : null
+
+  useEffect(() => { loadAll() }, [])
+  async function loadAll() {
+    setLd(true)
+    const [s, i, m] = await Promise.all([
+      supabase.from('inventory_counts').select('*').order('count_date', { ascending: false }),
+      supabase.from('inventory_count_items').select('*').order('created_at'),
+      supabase.from('monthly_snapshots').select('snap_year,snap_month'),
+    ])
+    setSess(s.data || []); setItems(i.data || [])
+    const seen = new Set(); const cm = []
+    ;(m.data || []).forEach(r => { const k = r.snap_year + '-' + r.snap_month; if (!seen.has(k)) { seen.add(k); cm.push({ y: r.snap_year, m: r.snap_month }) } })
+    setClosed(cm); setLd(false)
+  }
+
+  const drugMap = {}; (drugs || []).forEach(d => { drugMap[d.drug_code] = d })
+  const itemsOf = id => items.filter(x => x.count_id === id)
+  const bookOf = code => Number(drugMap[code]?.current_qty ?? 0)          // 장부수량 = drugs.current_qty
+  const isClosedYm = dateStr => { const d = new Date(dateStr); return closed.some(c => c.y === d.getFullYear() && c.m === d.getMonth() + 1) }
+
+  /* ── 세션 생성 — 제목 자동 「YYYY-MM 정기실사」(수정 가능) ── */
+  async function createSession() {
+    const now = new Date(); const ym = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0')
+    setBusy(true)
+    const { data, error } = await supabase.from('inventory_counts')
+      .insert([{ count_date: now.toISOString().slice(0, 10), title: ym + ' 정기실사' }]).select('id').single()
+    setBusy(false)
+    if (error) { flash('실사 생성 실패: ' + error.message, 'err'); return }
+    flash('실사를 시작했습니다'); await loadAll(); setSel(data.id)
+  }
+  async function saveTitle(r, v) {
+    const nv = String(v || '').trim(); if (!nv || nv === r.title) { setTitleEdit(null); return }
+    const { error } = await supabase.from('inventory_counts').update({ title: nv }).eq('id', r.id)
+    setTitleEdit(null)
+    if (error) { flash('제목 저장 실패: ' + error.message, 'err'); return }
+    flash('제목을 바꿨습니다'); loadAll()
+  }
+  async function delSession() {
+    const r = delT; if (!r) return
+    if (!isAdmin) { flash('세션 삭제는 관리자만 가능합니다', 'err'); setDelT(null); return }
+    setBusy(true)
+    const bad = cntDelOutcome(await supabase.from('inventory_counts').delete().eq('id', r.id).select('id'), '실사')
+    setBusy(false); setDelT(null)
+    if (bad) { flash(bad, 'err'); return }
+    if (sel === r.id) setSel(null)
+    flash('삭제했습니다 · 항목도 함께 삭제됩니다'); loadAll()
+  }
+
+  /* ── 수동 입력 — ★ status='사용' 한정(ward-drugs·관리 화면과 같은 기준) ── */
+  function onQ(v) {
+    setQ(v); clearTimeout(qTimer.current)
+    if (v.trim().length < 2) { setFound([]); setSearched(false); return }
+    qTimer.current = setTimeout(() => {
+      const s = v.trim().toLowerCase()
+      const hit = (drugs || []).filter(d => d.status === '사용' &&
+        ((d.drug_name || '').toLowerCase().includes(s) || (d.drug_code || '').toLowerCase().includes(s) ||
+         (d.ingredient_kr || '').toLowerCase().includes(s))).slice(0, 20)
+      setFound(hit); setSearched(true)
+    }, 250)
+  }
+  async function addItem(d) {
+    const n = Number(aQty)
+    if (aQty === '' || !Number.isFinite(n) || n < 0) { flash('실사수량을 입력해 주세요(0 이상)', 'err'); return }
+    setBusy(true)
+    const { error } = await supabase.from('inventory_count_items').insert([{
+      count_id: sel, drug_code: d.drug_code, counted_qty: n,
+      lot_no: aLot.trim() || null, expiry_date: aExp || null,
+      book_qty: bookOf(d.drug_code), source: '수동',
+    }])
+    setBusy(false)
+    if (error) { flash('추가 실패: ' + error.message, 'err'); return }
+    setQ(''); setFound([]); setSearched(false); setAQty(''); setALot(''); setAExp('')
+    flash('「' + d.drug_name + '」 ' + n + ' 담았습니다'); loadAll()
+  }
+  async function delItem(it) {
+    const bad = cntDelOutcome(await supabase.from('inventory_count_items').delete().eq('id', it.id).select('id'), '항목')
+    if (bad) { flash(bad, 'err'); return }
+    flash('삭제했습니다'); loadAll()
+  }
+
+  /* ── 엑셀 업로드 — 약품코드·LOT·유효기한·수량. ★ 기존 패턴·SheetJS 재사용(신규 의존성 0) ── */
+  function xlUpload(e) {
+    const file = e.target.files[0]; if (!file) return
+    const reader = new FileReader()
+    reader.onload = async ev => {
+      try {
+        const XL = await import('xlsx')
+        const wb = XL.read(ev.target.result, { type: 'array' })
+        const rows = XL.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false })
+        const ok = []; const bad = []
+        rows.forEach((r, i) => {
+          const ln = i + 2
+          const code = String(r['약품코드'] ?? r['drug_code'] ?? '').trim()
+          if (!code) return
+          const d = drugMap[code]
+          if (!d) { bad.push(ln + '행: 없는 약품코드 ' + code); return }
+          if (d.status !== '사용') { bad.push(ln + '행: 사용 상태가 아님 ' + code); return }
+          const qv = String(r['수량'] ?? r['실사수량'] ?? r['counted_qty'] ?? '').trim()
+          const n = Number(qv.replace(/,/g, ''))
+          if (qv === '' || !Number.isFinite(n) || n < 0) { bad.push(ln + '행: 수량 오류 「' + qv + '」'); return }
+          const exp = String(r['유효기한'] ?? r['expiry_date'] ?? '').trim()
+          ok.push({
+            count_id: sel, drug_code: code, counted_qty: n,
+            lot_no: String(r['LOT'] ?? r['lot_no'] ?? '').trim() || null,
+            expiry_date: /^\d{4}-\d{2}-\d{2}$/.test(exp) ? exp : null,
+            book_qty: bookOf(code), source: '엑셀',
+          })
+        })
+        if (!ok.length) { flash('담을 행이 없습니다' + (bad.length ? ' · ' + bad[0] : ''), 'err'); return }
+        const { error } = await supabase.from('inventory_count_items').insert(ok)
+        if (error) { flash('업로드 실패: ' + error.message, 'err'); return }
+        flash(ok.length + '행을 담았습니다' + (bad.length ? ' · 건너뜀 ' + bad.length + '행' : ''))
+        loadAll()
+      } catch (err) { flash('엑셀 읽기 실패: ' + err.message, 'err') }
+      finally { if (fileRef.current) fileRef.current.value = '' }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  /* ── 재고반영 ────────────────────────────────────────────────
+     ★ 반영 직전에 장부값을 **다시 읽어** 차이를 재계산한다(실사 중 다른 거래가 발생했을 수 있다).
+     ★ 같은 약품이 LOT별로 여러 행일 수 있으므로 **약품코드로 합산**해 조정 거래를 1건만 만든다.
+       행마다 만들면 같은 장부값에 대해 중복 차감·가산이 된다.
+     ★ 조정 거래의 quantity 는 부호를 그대로 더한다(트리거 apply_tx_to_inventory 실측). */
+  async function applyCount() {
+    const r = applyT; if (!r || r.status !== '작성중') return
+    setBusy(true)
+    const list = itemsOf(r.id)
+    if (!list.length) { setBusy(false); setApplyT(null); flash('담긴 항목이 없습니다', 'err'); return }
+    const codes = [...new Set(list.map(x => x.drug_code))]
+    /* 1) 장부값 재조회 */
+    const { data: fresh, error: fe } = await supabase.from('drugs').select('drug_code,current_qty').in('drug_code', codes)
+    if (fe) { setBusy(false); setApplyT(null); flash('장부 재조회 실패: ' + fe.message, 'err'); return }
+    const book = {}; (fresh || []).forEach(d => { book[d.drug_code] = Number(d.current_qty ?? 0) })
+    /* 2) 약품별 합산 → 차이 */
+    const sum = {}; list.forEach(x => { sum[x.drug_code] = (sum[x.drug_code] || 0) + Number(x.counted_qty ?? 0) })
+    const today = new Date().toISOString().slice(0, 10)
+    const txRows = codes.map(c => ({ code: c, diff: sum[c] - (book[c] ?? 0) })).filter(x => x.diff !== 0)
+    if (!txRows.length) {
+      const { error } = await supabase.from('inventory_counts')
+        .update({ status: '반영완료', applied_at: new Date().toISOString(), applied_by: profile?.id || null }).eq('id', r.id)
+      setBusy(false); setApplyT(null)
+      if (error) { flash('상태 저장 실패: ' + error.message, 'err'); return }
+      flash('차이가 없어 조정 거래 없이 반영했습니다'); loadAll(); onReload?.(); return
+    }
+    /* 3) 조정 거래 생성 — current_qty 직접 UPDATE 없음 */
+    const { data: txs, error: te } = await supabase.from('transactions').insert(
+      txRows.map(x => ({ drug_code: x.code, type: '조정', quantity: x.diff, transaction_date: today,
+        reason: '실사 반영 · ' + r.title }))
+    ).select('id,drug_code')
+    if (te) { setBusy(false); setApplyT(null); flash('조정 거래 생성 실패: ' + te.message, 'err'); return }
+    /* 4) applied_tx_id 기록 — 같은 약품의 모든 행에 같은 거래 id */
+    const txByCode = {}; (txs || []).forEach(x => { txByCode[x.drug_code] = x.id })
+    for (const it of list) {
+      const txid = txByCode[it.drug_code] || null
+      await supabase.from('inventory_count_items')
+        .update({ applied_tx_id: txid, book_qty: book[it.drug_code] ?? null }).eq('id', it.id)
+    }
+    const { error } = await supabase.from('inventory_counts')
+      .update({ status: '반영완료', applied_at: new Date().toISOString(), applied_by: profile?.id || null }).eq('id', r.id)
+    setBusy(false); setApplyT(null)
+    if (error) { flash('상태 저장 실패: ' + error.message, 'err'); return }
+    flash('반영했습니다 · 조정 거래 ' + txRows.length + '건 생성'); loadAll(); onReload?.()
+  }
+
+  /* ── 되돌리기 — ★ A안 역거래 ─────────────────────────────────
+     applied_tx_id 를 근거로 **반대 부호 조정 거래를 신규 생성**한다. 원 거래는 그대로 둔다.
+     ★ 앱에서 선제 차단하고, DB guard_closed_month_tx 는 최후 방어선으로 둔다. */
+  function revertBlock(r) {
+    if (r.status === '반영취소') return '이미 되돌린 실사입니다'
+    if (r.status !== '반영완료') return '반영완료 상태에서만 되돌릴 수 있습니다'
+    if (r.applied_at && isClosedYm(r.applied_at)) return '월마감이 지난 실사는 되돌릴 수 없습니다 · 보정으로 처리해 주세요'
+    return null
+  }
+  /* 반영 후 해당 품목에 다른 거래가 있으면 경고(차단하지 않는다) */
+  const [warnTx, setWarnTx] = useState(null)
+  async function openRevert(r) {
+    const bad = revertBlock(r); if (bad) { flash(bad, 'err'); return }
+    setRReason(''); setWarnTx(null); setRevertT(r)
+    const list = itemsOf(r.id); const codes = [...new Set(list.map(x => x.drug_code))]
+    const txIds = [...new Set(list.map(x => x.applied_tx_id).filter(Boolean))]
+    const { data } = await supabase.from('transactions').select('id,drug_code,created_at')
+      .in('drug_code', codes).gt('created_at', r.applied_at)
+    const other = (data || []).filter(x => !txIds.includes(x.id))
+    if (other.length) setWarnTx(other.length)
+  }
+  async function revertCount() {
+    const r = revertT; if (!r) return
+    const bad = revertBlock(r); if (bad) { setRevertT(null); flash(bad, 'err'); return }
+    setBusy(true)
+    const list = itemsOf(r.id)
+    const txIds = [...new Set(list.map(x => x.applied_tx_id).filter(Boolean))]
+    if (!txIds.length) {
+      const { error } = await supabase.from('inventory_counts').update({
+        status: '반영취소', reverted_at: new Date().toISOString(),
+        reverted_by: profile?.id || null, revert_reason: rReason.trim() || null }).eq('id', r.id)
+      setBusy(false); setRevertT(null)
+      if (error) { flash('상태 저장 실패: ' + error.message, 'err'); return }
+      flash('조정 거래가 없어 상태만 되돌렸습니다'); loadAll(); return
+    }
+    const { data: orig, error: oe } = await supabase.from('transactions').select('id,drug_code,quantity').in('id', txIds)
+    if (oe) { setBusy(false); setRevertT(null); flash('원 거래 조회 실패: ' + oe.message, 'err'); return }
+    const today = new Date().toISOString().slice(0, 10)
+    /* ★ 반대 부호로 신규 생성 — 원 거래는 삭제하지 않는다 */
+    const { error: re } = await supabase.from('transactions').insert(
+      (orig || []).map(x => ({ drug_code: x.drug_code, type: '조정', quantity: -Number(x.quantity),
+        transaction_date: today, reason: '실사 되돌리기 · ' + r.title }))
+    )
+    if (re) { setBusy(false); setRevertT(null); flash('역거래 생성 실패: ' + re.message, 'err'); return }
+    const { error } = await supabase.from('inventory_counts').update({
+      status: '반영취소', reverted_at: new Date().toISOString(),
+      reverted_by: profile?.id || null, revert_reason: rReason.trim() || null }).eq('id', r.id)
+    setBusy(false); setRevertT(null)
+    if (error) { flash('상태 저장 실패: ' + error.message, 'err'); return }
+    flash('되돌렸습니다 · 역거래 ' + (orig || []).length + '건 생성(원 거래 보존)'); loadAll(); onReload?.()
+  }
+
+  /* ── 목록 ── */
+  const rows = so(sess.filter(r => fStatus === '전체' || r.status === fStatus)
+    .map(r => ({ ...r, item_count: itemsOf(r.id).length, applied_day: (r.applied_at || '').slice(0, 10) })))
+  const tp = Math.ceil(rows.length / CNT_PP); const pg = Math.min(page, tp || 1)
+  const paged = rows.slice((pg - 1) * CNT_PP, pg * CNT_PP)
+  const cols = [
+    { k: 'count_date', h: '실사일' }, { k: 'title', h: '제목' }, { k: 'status', h: '상태' },
+    { k: 'item_count', h: '항목수', th: { textAlign: 'right' } }, { k: 'applied_day', h: '반영일시' },
+    { h: '', plain: true, th: { textAlign: 'center' } },
+  ]
+  const td = { padding: '10px 12px', fontSize: 12, textAlign: 'left', color: t.text }
+  const ip2 = { padding: '4px 6px', border: '1px solid ' + t.border, borderRadius: 4, fontSize: 11, outline: 'none', background: t.bg, color: t.text }
+  const stC = s => s === '반영완료' ? [t.greenL, t.green] : s === '반영취소' ? [t.redL, t.red] : [t.accentL, t.accent]
+  const open = sel ? sess.find(x => x.id === sel) : null
+
+  return <div style={{ padding: '20px 24px' }}>
+    {/* ★ textAlign:'left' 명시 — #root{text-align:center} 상속으로 제목이 가운데 렌더되는 회귀(함정 #20) */}
+    <div style={{ marginBottom: 10, textAlign: 'left' }}><div style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>실사 <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>· 재고 실사 세션 · 승인 시에만 총재고 반영</span></div></div>
+    {msg && <div style={{ background: msg.kind === 'err' ? t.redL : t.greenL, color: msg.kind === 'err' ? t.red : t.green, borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>{msg.text}</div>}
+
+    {/* ── 세션 목록 ── */}
+    <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, marginBottom: 12 }}>
+      <div style={{ padding: '10px 18px', borderBottom: '1px solid ' + t.border, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: t.textM, fontWeight: 600 }}>전체 {sess.length}건</span>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{['전체', ...CNT_STATUSES].map(s =>
+          <button key={s} onClick={() => { setFStatus(s); setPage(1) }} style={{ padding: '5px 11px', borderRadius: 8, border: '1px solid ' + (fStatus === s ? t.accent : t.border), background: fStatus === s ? t.accentL : t.card, color: fStatus === s ? t.accent : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: fStatus === s ? 700 : 500 }}>{s}</button>)}</div>
+        <div style={{ flex: 1 }} />
+        <button onClick={createSession} disabled={busy} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: t.accent, color: t.card, cursor: busy ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700 }}>+ 실사 시작</button>
+      </div>
+      {ld ? <div style={{ fontSize: 12, color: t.textL, padding: 20 }}>불러오는 중...</div>
+        : !rows.length ? <div style={{ fontSize: 12, color: t.textL, padding: 24, textAlign: 'center' }}>실사 기록이 없습니다. <b>[+ 실사 시작]</b>으로 시작하세요.</div>
+        : <>
+        <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={setSort} hf={{}} cols={cols}>
+          <tbody>{paged.map(r => {
+            const [bg, fg] = stC(r.status)
+            return <tr key={r.id} style={{ borderBottom: '1px solid ' + t.border, background: sel === r.id ? t.accentL : '' }}>
+              <td style={td}>{r.count_date}</td>
+              <td style={{ ...td, fontWeight: 600 }}>
+                {titleEdit === r.id
+                  ? <input autoFocus defaultValue={r.title} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setTitleEdit(null) }} onBlur={e => saveTitle(r, e.target.value)} style={{ ...ip2, width: '100%' }} />
+                  : <span onClick={() => setTitleEdit(r.id)} title="클릭하여 제목 수정" style={{ cursor: 'pointer' }}>{r.title}</span>}
+              </td>
+              <td style={td}><span style={{ background: bg, color: fg, padding: '3px 9px', borderRadius: 8, fontSize: 10, fontWeight: 700 }}>{r.status}</span></td>
+              <td style={{ ...td, textAlign: 'right' }}>{r.item_count}</td>
+              <td style={{ ...td, color: t.textM, fontSize: 11 }}>{r.applied_day || '-'}</td>
+              <td style={{ ...td, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                <button onClick={() => setSel(sel === r.id ? null : r.id)} style={{ padding: '4px 11px', borderRadius: 8, border: '1px solid ' + t.accent, background: 'transparent', color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{sel === r.id ? '닫기' : '열기'}</button>
+                {isAdmin && <button onClick={() => setDelT(r)} style={{ marginLeft: 6, padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>삭제</button>}
+              </td>
+            </tr>
+          })}</tbody>
+        </StandardTable>
+        <Pg page={pg} setPage={setPage} tp={tp} fl={rows} pp={CNT_PP} ends />
+      </>}
+    </div>
+
+    {/* ── 상세 ── */}
+    {open && <InventoryCountDetail
+      t={t} r={open} items={itemsOf(open.id)} drugMap={drugMap} bookOf={bookOf}
+      q={q} onQ={onQ} found={found} searched={searched}
+      aQty={aQty} setAQty={setAQty} aLot={aLot} setALot={setALot} aExp={aExp} setAExp={setAExp}
+      onAdd={addItem} onDelItem={delItem} fileRef={fileRef} onFile={xlUpload}
+      busy={busy} onApply={() => setApplyT(open)} onRevert={() => openRevert(open)} revertBlock={revertBlock} />}
+
+    {/* ── 확인 모달 2단계 (기존 골격 재사용) ── */}
+    {applyT && <CountConfirmModal t={t} title="재고반영" tone={t.accent} busy={busy}
+      head={applyT.title} meta={applyT.count_date + ' · 항목 ' + itemsOf(applyT.id).length + '건'}
+      strong="반영 직전에 장부값을 다시 읽어 차이를 재계산합니다"
+      body="차이가 있는 약품마다 조정 거래를 1건씩 만듭니다. 현재고를 직접 고치지 않습니다."
+      confirm="재고반영" onClose={() => setApplyT(null)} onConfirm={applyCount} />}
+
+    {revertT && <CountConfirmModal t={t} title="되돌리기" tone={t.red} busy={busy}
+      head={revertT.title} meta={'반영 ' + (revertT.applied_at || '').slice(0, 10)}
+      strong="원 거래를 지우지 않고 반대 부호 조정 거래를 새로 만듭니다"
+      body={'월마감 스냅샷 정합성을 지키기 위해 삭제 대신 역거래로 처리합니다.' + (warnTx ? ' ⚠ 반영 후 이 약품들에 다른 거래가 ' + warnTx + '건 있습니다 — 되돌리면 그 거래는 그대로 남습니다.' : '')}
+      confirm="되돌리기" onClose={() => setRevertT(null)} onConfirm={revertCount}
+      reason={rReason} setReason={setRReason} />}
+
+    {delT && <CountConfirmModal t={t} title="실사 삭제" tone={t.red} busy={busy}
+      head={delT.title} meta={delT.count_date + ' · ' + delT.status}
+      strong={'항목 ' + itemsOf(delT.id).length + '건도 함께 삭제됩니다'}
+      body="되돌릴 수 없습니다. 이미 만들어진 조정 거래는 삭제되지 않습니다."
+      confirm="영구 삭제" onClose={() => setDelT(null)} onConfirm={delSession} />}
+    <Ft />
+  </div>
+}
+
+/* 실사 상세 — 입력 영역 + 항목 표. 표시 전용 계산만 하고 저장은 부모가 맡는다. */
+function InventoryCountDetail({ t, r, items, drugMap, bookOf, q, onQ, found, searched,
+  aQty, setAQty, aLot, setALot, aExp, setAExp, onAdd, onDelItem, fileRef, onFile,
+  busy, onApply, onRevert, revertBlock }) {
+  const editable = r.status === '작성중'
+  const rBad = revertBlock(r)
+  const ip = { padding: '8px 10px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, outline: 'none', background: t.bg, color: t.text, boxSizing: 'border-box' }
+  const td = { padding: '8px 10px', fontSize: 11, textAlign: 'left', color: t.text, borderBottom: '1px solid ' + t.border }
+  const th = { padding: '9px 10px', fontSize: 11, textAlign: 'left', color: t.textM, fontWeight: 700, borderBottom: '1px solid ' + t.border, whiteSpace: 'nowrap' }
+  return <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, padding: '14px 18px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{r.title}</div>
+      <div style={{ fontSize: 11, color: t.textM }}>{r.count_date} · 항목 {items.length}건</div>
+      <div style={{ flex: 1 }} />
+      {editable && <button onClick={onApply} disabled={busy || !items.length} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: (busy || !items.length) ? t.textL : t.green, color: t.card, cursor: (busy || !items.length) ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700 }}>재고반영</button>}
+      {r.status === '반영완료' && <button onClick={onRevert} disabled={busy || !!rBad} title={rBad || ''} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: rBad ? t.textL : t.red, cursor: (busy || rBad) ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700 }}>되돌리기</button>}
+    </div>
+    {r.status === '반영취소' && <div style={{ background: t.redL, color: t.red, borderRadius: 8, padding: '8px 12px', fontSize: 11, fontWeight: 600, marginBottom: 10 }}>되돌린 실사입니다 — 다시 반영할 수 없습니다. 새 실사를 시작해 주세요.{r.revert_reason ? ' · 사유: ' + r.revert_reason : ''}</div>}
+    {rBad && r.status === '반영완료' && <div style={{ background: t.redL, color: t.red, borderRadius: 8, padding: '8px 12px', fontSize: 11, fontWeight: 600, marginBottom: 10 }}>{rBad}</div>}
+
+    {editable && <div style={{ background: t.bg, borderRadius: 10, border: '1px solid ' + t.border, padding: '12px 14px', marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+        <input value={q} onChange={e => onQ(e.target.value)} placeholder="약품명 · 코드 · 성분 검색(2자 이상)" style={{ ...ip, flex: '2 1 220px', minWidth: 0 }} />
+        <input value={aQty} onChange={e => setAQty(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" placeholder="실사수량" style={{ ...ip, width: 92 }} />
+        <input value={aLot} onChange={e => setALot(e.target.value)} placeholder="LOT(선택)" style={{ ...ip, width: 110 }} />
+        <input value={aExp} onChange={e => setAExp(e.target.value)} type="date" title="유효기한(선택)" style={{ ...ip, width: 140 }} />
+        <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFile} style={{ display: 'none' }} />
+        <button onClick={() => fileRef.current && fileRef.current.click()} style={{ padding: '8px 13px', borderRadius: 8, border: '1px solid ' + t.green, background: 'transparent', color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>엑셀 업로드</button>
+      </div>
+      <div style={{ fontSize: 10, color: t.textL }}>엑셀 열: 약품코드 · LOT · 유효기한(YYYY-MM-DD) · 수량 · 사용 상태 약품만 담깁니다</div>
+      {searched && <div style={{ marginTop: 8, border: '1px solid ' + t.border, borderRadius: 8, maxHeight: 220, overflowY: 'auto', background: t.card }}>
+        {!found.length ? <div style={{ padding: 14, fontSize: 11, color: t.textL, textAlign: 'center' }}>검색 결과가 없습니다 (사용 상태 약품만)</div>
+          : found.map(d => <div key={d.drug_code} onClick={() => onAdd(d)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderBottom: '1px solid ' + t.border, cursor: 'pointer', fontSize: 11 }}>
+            <span style={{ fontWeight: 600, color: t.text, flex: 1 }}>{d.drug_name}</span>
+            {d.unit_mgmt ? <span title="낱알 관리 대상(참고)" style={{ fontSize: 9, color: t.purple, background: t.purpleL, padding: '2px 6px', borderRadius: 6 }}>낱알 {d.unit_mgmt}</span> : null}
+            <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span>
+            <span style={{ color: t.textM, fontSize: 10 }}>장부 {bookOf(d.drug_code)}</span>
+          </div>)}
+      </div>}
+    </div>}
+
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+        <thead><tr>
+          <th style={th}>약품</th><th style={th}>LOT</th><th style={th}>유효기한</th>
+          <th style={{ ...th, textAlign: 'right' }}>실사수량</th><th style={{ ...th, textAlign: 'right' }}>장부수량</th>
+          <th style={{ ...th, textAlign: 'right' }}>차이</th><th style={th}>입력원</th>
+          {editable && <th style={{ ...th, textAlign: 'center' }}></th>}
+        </tr></thead>
+        <tbody>{!items.length ? <tr><td colSpan={editable ? 8 : 7} style={{ ...td, textAlign: 'center', color: t.textL, padding: 28 }}>담긴 항목이 없습니다</td></tr>
+          : items.map(it => {
+            const d = drugMap[it.drug_code]
+            const bq = it.applied_tx_id ? Number(it.book_qty ?? 0) : bookOf(it.drug_code)
+            const diff = Number(it.counted_qty ?? 0) - bq
+            /* 차이 강조 — ★ 기존 색 토큰만 사용(신색 없음) */
+            const dc = diff === 0 ? {} : diff > 0 ? { background: t.greenL, color: t.green } : { background: t.redL, color: t.red }
+            return <tr key={it.id}>
+              <td style={td}>
+                <span style={{ fontWeight: 600 }}>{d ? d.drug_name : it.drug_code}</span>
+                {d?.unit_mgmt ? <span title="낱알 관리 대상(참고 표시)" style={{ marginLeft: 5, fontSize: 9, color: t.purple, background: t.purpleL, padding: '2px 5px', borderRadius: 5 }}>낱알</span> : null}
+                <span style={{ marginLeft: 5, color: t.textL, fontSize: 10 }}>{it.drug_code}</span>
+              </td>
+              <td style={{ ...td, color: t.textM }}>{it.lot_no || '-'}</td>
+              <td style={{ ...td, color: t.textM }}>{it.expiry_date || '-'}</td>
+              <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{it.counted_qty}</td>
+              <td style={{ ...td, textAlign: 'right', color: t.textM }}>{bq}</td>
+              <td style={{ ...td, textAlign: 'right', fontWeight: 700, ...dc }}>{diff > 0 ? '+' + diff : diff}</td>
+              <td style={{ ...td, color: t.textM, fontSize: 10 }}>{it.source}</td>
+              {editable && <td style={{ ...td, textAlign: 'center' }}>
+                <button onClick={() => onDelItem(it)} style={{ border: 'none', background: 'transparent', color: t.textL, cursor: 'pointer', fontSize: 11 }}>삭제</button>
+              </td>}
+            </tr>
+          })}</tbody>
+      </table>
+    </div>
+  </div>
+}
+
+/* 실사 확인 모달 — 반영·되돌리기·삭제가 함께 쓴다. 훅A(useDraggableModal · 함정 #13).
+   reason 이 넘어오면 사유 입력칸을 보여준다 — ★ 선택 입력이라 비워도 저장된다. */
+function CountConfirmModal({ t, title, tone, head, meta, strong, body, confirm, busy, onClose, onConfirm, reason, setReason }) {
+  const _b = useRef(null); const [_p, _sp] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _h } = useDraggableModal(_b, _p, _sp)
+  const ta = { width: '100%', minHeight: 64, padding: '8px 10px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text, resize: 'vertical', fontFamily: 'inherit' }
+  return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => !busy && onClose()}>
+    <div ref={_b} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 400, border: '1px solid ' + t.border, boxShadow: t.shadowH, maxHeight: '92vh', overflowY: 'auto', transform: 'translate(' + _p.x + 'px, ' + _p.y + 'px)' }} onClick={e => e.stopPropagation()}>
+      <div onMouseDown={_h} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: '1px solid ' + t.border }}><div style={{ fontSize: 15, fontWeight: 700, color: tone, textAlign: 'left' }}>{title}</div></div>
+      <div style={{ padding: '16px 20px', textAlign: 'left' }}>
+        <div style={{ background: t.bg, border: '1px solid ' + t.border, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{head}</div>
+          <div style={{ fontSize: 11, color: t.textM, marginTop: 5 }}>{meta}</div>
+          <div style={{ fontSize: 12, color: t.text, fontWeight: 700, marginTop: 7 }}>{strong}</div>
+        </div>
+        <div style={{ fontSize: 11, color: t.textM, marginBottom: 14, lineHeight: 1.6 }}>{body}</div>
+        {setReason && <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 10, color: t.textM, display: 'block', marginBottom: 4 }}>사유 <span style={{ color: t.textL }}>· 선택 (비워도 저장됩니다)</span></label>
+          <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="되돌리는 이유 등" style={ta} />
+        </div>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClose} disabled={busy} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button>
+          <button onClick={onConfirm} disabled={busy} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer', background: busy ? t.textL : tone, color: t.card, fontSize: 13, fontWeight: 700 }}>{busy ? '처리 중...' : confirm}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
 /* ═══ 사용 점검 — 장기 미사용 약품 보유 판단 이력(drug_idle_reviews 누적·조회 시 재계산) ═══ */
 const IDLE_BANDS_DEFAULT = [90, 180, 365]
 const IDLE_STATUSES = ['관찰', '중지', '보유유지', '해제']
@@ -5271,7 +5739,7 @@ function Schedule({ drugs, onNav }) {
   </div>;
 }
 
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'narcotic', 'nonins', 'ordering', 'ward', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive'];
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'count', 'narcotic', 'nonins', 'ordering', 'ward', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); const m = h.split('/')[0]; return ROUTES.includes(m) ? m : 'dashboard'; }
 function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
 /* 입출고 월 선택: 해시 3번째 세그먼트(#transaction/out/2026-08). 없으면 현재 월(하위호환). 「전체」는 URL에 월 세그먼트 없음(→새로고침 시 현재 월로 복원). */
@@ -5854,6 +6322,7 @@ export default function App() {
         {menu === 'idle' && <IdleCheck drugs={drugs} onReload={load} />}
         {menu === 'ward' && <WardAdmin />}
         {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
+        {menu === 'count' && <InventoryCount drugs={drugs} onReload={load} />}
         {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
         {menu === 'report' && <Report drugs={drugs} onNav={handleNav} />}
