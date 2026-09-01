@@ -2803,6 +2803,20 @@ function DrugRegister({onRefresh, drugs}) {
   )
 }
 /* ═══ 입출고 관리 — 4탭 구조 (입고/출고/반품/폐기) ═══ */
+/* ── 폐기 수량 — 0.25 배수 허용 (2026-08-31) ─────────────────────────────
+   transactions.quantity 는 numeric 이라 DB 는 소수를 받는다(마이그레이션 불요).
+   막고 있던 것은 _doSave 의 parseInt 뿐이었다 — '1.75' → 1 로 잘렸다.
+   ★ 판정식은 병동신청 wardValidQty 와 **같은 기준**(0.25 배수 · 부동소수 오차를 피하려고 정수 연산).
+     다만 wardValidQty 의 999 상한은 가져오지 않는다 — 폐기는 재고 전량이 될 수 있다.
+   ★ 입력 정화는 wardSanitizeQty 를 그대로 재사용한다(상한과 무관하므로 중복 구현하지 않는다).
+   ★ 폐기 탭에만 적용한다 — 입고·출고·반품은 기존 parseInt 동작을 그대로 둔다(마감 중 회귀 방지). */
+const dispValidQty = v => {
+  if (v == null || v === '') return false
+  if (!/^\d+(\.\d{1,2})?$/.test(String(v))) return false      // 숫자·소수점 2자리까지 · 음수 거부
+  const n = Number(v)
+  if (!(n >= 0.25)) return false                              // 상한 없음
+  return Math.round(n * 100) % 25 === 0
+}
 function TransactionForm({drugs,onReload,navFilter}){
   const{t,memberRole,profile}=useTheme();const canDel=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
   const[tab,setTab]=useState(subFromHash()||'입고')
@@ -2839,6 +2853,8 @@ function TransactionForm({drugs,onReload,navFilter}){
     if(_selClosed){setMsg('선택한 월은 마감되어 등록할 수 없습니다.');return}
     if(!selDrug||!form.qty){setMsg('약품과 수량을 입력해주세요');return}
     if((tab==='반품'||tab==='폐기')&&!form.reason){setMsg('사유를 선택해주세요');return}
+    /* ★ 폐기 수량 검증 — 0.25 배수·0.25 이상·상한 없음. 다른 탭은 종전 그대로 */
+    if(tab==='폐기'&&!dispValidQty(String(form.qty).trim())){setMsg(WARD_QTY_MSG);return}
     const _td=form.transaction_date||_today;if(_td>_today){setMsg('미래 날짜는 등록할 수 없습니다');return}if(_isClosed(_td)){setMsg('해당 월은 마감되어 등록할 수 없습니다.');return}
     /* 출고 이상치 게이트(출고 탭 전용): 재고초과·평균3배초과·향정마약 중 하나라도 걸리면 확인. 정상 출고는 즉시 저장 */
     if(tab==='출고'&&!skipOutlier){
@@ -2867,7 +2883,8 @@ function TransactionForm({drugs,onReload,navFilter}){
   }
   async function _doSave(pp,updateMaster){
     setSaving(true);setMsg(null);setPpConfirm(null)
-    const q=parseInt(form.qty);const amt=Math.round(q*(pp||0))
+    /* ★ 폐기만 소수 허용 — 다른 탭은 기존 parseInt 동작 유지(마감 중 회귀 방지) */
+    const q=tab==='폐기'?Number(form.qty):parseInt(form.qty);const amt=Math.round(q*(pp||0))
     const tx={drug_code:selDrug.drug_code,type:tab,quantity:q,unit_price:pp||0,total_amount:amt,memo:form.note||null,transaction_date:form.transaction_date||new Date().toISOString().split('T')[0],reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
     let res=await supabase.from('transactions').insert([tx])
     for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
@@ -2979,7 +2996,7 @@ function TransactionForm({drugs,onReload,navFilter}){
         {selDrug&&<div style={{background:tc[tab]?.bg,borderRadius:6,padding:'6px 10px',marginBottom:6,fontSize:11,color:tc[tab]?.c}}><strong>{selDrug.drug_name}</strong>{selDrug.status!=='사용'?<span style={{marginLeft:4,fontSize:10}}>({selDrug.status})</span>:null} · 재고:{selDrug.current_qty} · ₩{selDrug.purchase_price?.toLocaleString()}</div>}
         
         <div style={{marginBottom:6}}><div style={{fontSize:10,color:t.textM,marginBottom:2}}>일자</div><input type="date" max={_today} disabled={_selClosed} value={form.transaction_date} onChange={e=>sf('transaction_date',e.target.value)} style={{...ip,opacity:_selClosed?0.5:1}}/></div>
-        <input type="number" value={form.qty} disabled={_selClosed} onChange={e=>sf('qty',e.target.value)} placeholder="수량" style={{...ip,marginBottom:6,opacity:_selClosed?0.5:1}}/>
+        <input type="number" step={tab==='폐기'?'0.25':undefined} inputMode={tab==='폐기'?'decimal':undefined} value={form.qty} disabled={_selClosed} onChange={e=>{if(tab!=='폐기'){sf('qty',e.target.value);return}const _s=wardSanitizeQty(e.target.value);if(_s!==null)sf('qty',_s)}} placeholder={tab==='폐기'?'수량 (0.25 단위)':'수량'} style={{...ip,marginBottom:6,opacity:_selClosed?0.5:1}}/>
         {(tab==='출고')&&<input type="number" value={form.edi_price} onChange={e=>sf('edi_price',e.target.value)} placeholder="보험약가 (비우면 기존 약가)" style={{...ip,marginBottom:6}}/>}
         {(tab==='입고')&&<input type="number" value={form.purchase_price} onChange={e=>sf('purchase_price',e.target.value)} placeholder="구입단가 (비우면 기존 단가)" style={{...ip,marginBottom:6}}/>}
         {(tab==='반품'||tab==='폐기')&&<input type="number" value={form.purchase_price} onChange={e=>sf('purchase_price',e.target.value)} placeholder="구입단가 (비우면 기존 단가)" style={{...ip,marginBottom:6}}/>}
