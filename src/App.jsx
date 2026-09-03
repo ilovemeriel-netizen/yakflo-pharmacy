@@ -4799,7 +4799,28 @@ function Report({drugs,onNav}){
       // 마감 집계 소스: 공통 _fetchMonthTx로 해당 월 거래 청크 전량 조회(App txns prop .limit(500) 미사용 — 500건 한도 과소집계 방지)
       const mTx=await _fetchMonthTx(year,month);
       if(expectN!=null&&mTx.length!==expectN){setCloseMsg(`⚠ 거래 건수 불일치 — 확인 시 ${expectN.toLocaleString()}건 → 집계 시 ${mTx.length.toLocaleString()}건. 동시 입력 가능성이 있어 마감을 중단합니다. 다시 시도해 주세요`);setClosing(false);return;}
-      const{data:prevData}=await supabase.from('monthly_snapshots').select('*').eq('snap_year',month===1?year-1:year).eq('snap_month',month===1?12:month-1);
+      /* ★ 전월 스냅샷 조회 — 청크 페이지네이션(_fetchMonthTx 와 같은 range 패턴).
+         종전에는 .range() 없이 한 번에 select 해 PostgREST 반환 상한(기본 1000행)에 걸렸고,
+         누락된 품목은 prevMap 에 없어 opening_qty 가 d.current_qty 로 **조용히 폴백**됐다.
+         실측: 2026-07 53종 · 2026-08 47종이 opening==closing==현재고 로 굳어졌다(전월 기말과 0종 일치). */
+      const _pySnap=month===1?year-1:year, _pmSnap=month===1?12:month-1;
+      let prevData=[], _pf=0; const _PAGE=1000;
+      for(;;){
+        const{data:_pd,error:_pe}=await supabase.from('monthly_snapshots').select('*')
+          .eq('snap_year',_pySnap).eq('snap_month',_pmSnap).range(_pf,_pf+_PAGE-1);
+        if(_pe)throw new Error('전월 스냅샷 조회 실패: '+_pe.message);
+        prevData=prevData.concat(_pd||[]);
+        if(!_pd||_pd.length<_PAGE)break;
+        _pf+=_PAGE;
+      }
+      /* ★ 조용한 폴백 방지 가드 — 이번 수정의 핵심.
+         기대 행수를 count 로 따로 확인해 조회가 불완전하면 **마감을 중단**한다.
+         페이지네이션이 미래에 다시 깨져도 틀린 값으로 마감이 완료되지 않는다. */
+      const{count:_prevCount}=await supabase.from('monthly_snapshots').select('*',{count:'exact',head:true})
+        .eq('snap_year',_pySnap).eq('snap_month',_pmSnap);
+      if((_prevCount||0)>0&&prevData.length!==_prevCount){
+        throw new Error(`전월 스냅샷 조회가 불완전합니다 (${prevData.length}/${_prevCount}). 마감을 중단합니다. 관리자에게 문의하세요.`);
+      }
       const{data:_prevSide}=await supabase.from('monthly_report_totals').select('actual_closing').eq('snap_year',month===1?year-1:year).eq('snap_month',month===1?12:month-1).limit(1).maybeSingle();
       const prevMap={};(prevData||[]).forEach(s=>{prevMap[s.drug_code]=s});
       const rows=drugs.map(d=>{
@@ -4812,7 +4833,10 @@ function Report({drugs,onNav}){
         const dispQ=dTx.filter(x=>x.type==='폐기').reduce((a,x)=>a+(x.quantity||0),0);
         const retQ=dTx.filter(x=>x.type==='반품').reduce((a,x)=>a+(x.quantity||0),0);
         return{drug_code:d.drug_code,snap_year:year,snap_month:month,
-          opening_qty:prev.closing_qty||d.current_qty||0,opening_amount:prev.closing_amount||(d.current_qty||0)*(d.purchase_price||0),
+          /* ★ ?? 로 교체 — 페이지네이션이 고쳐져 전월 스냅샷이 완전하므로 current_qty 폴백이 불필요하다.
+             || 는 전월 기말이 **정상적으로 0** 인 품목까지 현재고로 폴백시켜 왔다.
+             전월에 없던 신규 약품은 기초 0 이 맞다. */
+          opening_qty:prev.closing_qty??0,opening_amount:prev.closing_amount||(d.current_qty||0)*(d.purchase_price||0),
           total_in_qty:inQ,total_in_amount:inA,total_out_qty:outQ,total_out_amount:outA,
           total_disp_qty:dispQ,total_ret_qty:retQ,
           closing_qty:d.current_qty||0,closing_amount:(d.current_qty||0)*(d.purchase_price||0)}
