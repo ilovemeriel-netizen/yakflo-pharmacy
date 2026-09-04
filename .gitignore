@@ -60,3 +60,6 @@ safety_stock_backup_*.csv
 # ── ATC 카세트 배치 적재/검토 자료 (약품 데이터 포함, 커밋 금지) ──
 ATC_배치목록_*.csv
 ATC_배치목록_*.xlsx
+
+# 마감 모니터링 시크릿 (0086) — 값은 절대 커밋하지 않는다
+.env.monitor
