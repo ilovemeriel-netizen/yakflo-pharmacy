@@ -44,7 +44,7 @@
 | check_code | 판정 | 8월 실측 |
 |---|---|---|
 | `SNAPSHOT_CHAIN_BREAK` | 당월 `opening_qty` ≠ 전월 `closing_qty` | **47종** (7월은 53종) |
-| `STOCK_FLOW_DIFF` | 전월 `closing` + 당월 거래 순증 ≠ 당월 `closing` | **12건** |
+| `STOCK_FLOW_DIFF` | 전월 `closing` + 당월 거래 순증 ≠ 당월 `closing` | **8건** (7월은 333건 — 시스템 마감 첫 달 전환기 잡음) |
 
 `SNAPSHOT_CHAIN_BREAK` 는 `runClose()` 의 전월 스냅샷 조회 불완전 → `current_qty` 폴백을
 정확히 잡습니다. **PR-A(`e4476bb`) 로 원인을 고쳤으므로 9월부터 0종이어야 하며, 그때 효과가 입증됩니다.**
@@ -75,7 +75,8 @@
 | `QTY_CHANGE_DIRECT` | 0 · **INFO** | 실사 조정 정상 경로. 추이 관측용, 통지 제외 |
 | `LEDGER_DIVERGENCE` | 0 · **INFO** | 2계통 격차 추적. 통지 제외 |
 | `TX_GROWTH` | 1.5 | 8월 거래 661건 기준. 병동 신청·실사 도입 영향 관찰 |
-| `TABLE_BLOAT` | 20 | dead tuple 비율(%) |
+| `TABLE_BLOAT` | **50** | dead 비율(%). 소행수 테이블(`inventory_counts` 등)의 과민 검출을 줄이려 20 → 50 상향 (Stage 4) |
+| `QTY_DIRECT_UNLINKED` | 0 · **INFO** | 구 재고조정 화면 경로가 실사 세션과 연결되지 않음(8월 139건). 신규 실사 화면 전환 후 HIGH 복귀 검토 (Stage 4) |
 
 ## 적용 절차
 
@@ -83,11 +84,11 @@
 # 1. 스키마 대조 (읽기 전용)
 supabase db execute --file docs/close-monitor/probe.sql
 
-# 2. dryrun
-supabase db push --dry-run
+# 2. dryrun (★ supabase db push 를 쓰지 말 것 — 아래 「CLI 사용 시 주의」 참조)
+node scripts/dryrun_0086.mjs
 
-# 3. apply
-supabase db push
+# 3. apply → verify
+node scripts/apply_0086.mjs && node scripts/verify_0086.mjs
 
 # 4. 함수 dryrun (적재 없이 검증만)
 supabase db execute --command \
@@ -160,3 +161,29 @@ await supabase
 ```
 
 ★ 알림 조회 화면(Stage 6)은 **이번 배포 범위 밖**입니다. 설계안은 승인됐으나 착수는 별도 지시 후입니다.
+
+## 배포 상태 (2026-09-04)
+- 마이그레이션 0086: **운영 적용 완료** (직접 pg 스크립트 방식)
+- Edge Function `close-monitor`: **미배포**
+  선결 조건 — `.env` 의 SUPABASE_SERVICE_ROLE_KEY 갱신 + BOM 제거
+
+### 수동 실행 방법 (Edge Function 배포 전까지)
+```sql
+-- 검증만 (적재 없음)
+select * from run_close_monitor('<TENANT_UUID>', '2026-09', false);
+
+-- 적재까지
+select * from run_close_monitor('<TENANT_UUID>', '2026-09', true);
+
+-- 적재된 알림 조회
+select period, check_code, severity, title, detail
+  from close_monitor_alerts
+ where severity in ('CRITICAL','HIGH')
+   and acknowledged_at is null
+ order by detected_at desc;
+```
+
+### CLI 사용 시 주의
+`supabase db push` 를 사용하지 마십시오. `supabase_migrations.schema_migrations`
+기록이 0건이라 0000~0085 를 전량 재적용하려 듭니다.
+0083~0085 와 동일하게 `scripts/dryrun_*.mjs` → `apply_*.mjs` → `verify_*.mjs` 패턴을 쓰십시오.
