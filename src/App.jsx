@@ -4836,7 +4836,7 @@ function Report({drugs,onNav}){
           /* ★ ?? 로 교체 — 페이지네이션이 고쳐져 전월 스냅샷이 완전하므로 current_qty 폴백이 불필요하다.
              || 는 전월 기말이 **정상적으로 0** 인 품목까지 현재고로 폴백시켜 왔다.
              전월에 없던 신규 약품은 기초 0 이 맞다. */
-          opening_qty:prev.closing_qty??0,opening_amount:prev.closing_amount||(d.current_qty||0)*(d.purchase_price||0),
+          opening_qty:prev.closing_qty??0,opening_amount:prev.closing_amount??0,
           total_in_qty:inQ,total_in_amount:inA,total_out_qty:outQ,total_out_amount:outA,
           total_disp_qty:dispQ,total_ret_qty:retQ,
           closing_qty:d.current_qty||0,closing_amount:(d.current_qty||0)*(d.purchase_price||0)}
