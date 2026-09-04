@@ -1,6 +1,6 @@
 -- =============================================================================
 -- 0086_close_monitor.sql
--- 약플로 월마감 무결성 모니터링 (검증 16종)
+-- 약플로 월마감 무결성 모니터링 (검증 17종)
 --
 -- 목적
 --   1) 마감 데이터 무결성 검증 (스냅샷 · 재고 이중화 · 마약향정)
@@ -133,14 +133,15 @@ insert into public.close_monitor_thresholds (check_code, severity, threshold, en
   ('SNAPSHOT_CHAIN_BREAK',  'HIGH',     0,     true, '당월 기초 ≠ 전월 기말. runClose 폴백 흔적 탐지(2026-07 53종·08 47종). PR-A 적용 후 9월부터 0 기대'),
   ('STOCK_FLOW_DIFF',       'HIGH',     1.0,   true, '전월 기말 + 당월 거래 순증 ≠ 당월 기말. 1.0 은 인슐린 펜 분할 반올림 흡수'),
   ('QTY_CHANGE_DIRECT',     'INFO',     0,     true, '실사 조정 정상 경로. 추이 관측용, 통지 제외'),
-  ('QTY_DIRECT_UNLINKED',   'HIGH',     0,     true, '직접 변경 중 실사 세션과 연결되지 않은 건'),
+  -- ★ Stage 4: 구 재고조정 화면 경로가 살아 있는 동안 통지 제외(INFO). 8월 139건 전량이 정당한 실사 조정이다.
+  ('QTY_DIRECT_UNLINKED',   'INFO',     0,     true, '구 재고조정 화면 경로(path=직접)가 실사 세션과 연결되지 않음. 신규 실사 화면 전환 완료 후 HIGH 로 복귀 검토 (8월 139건)'),
   ('AMOUNT_FORMULA_DIFF',   'HIGH',     1,     true, '수량×단가 ≠ 금액 허용 오차(원)'),
   ('NARCOTIC_UNRECONCILED', 'HIGH',     0.001, true, '마약·향정 흐름 편차 — NIMS 대조 필요'),
   ('COUNT_SESSION_OPEN',    'HIGH',     0,     true, '마감 시점 미반영 실사 세션'),
   ('PRICE_ZERO_ACTIVE',     'MEDIUM',   0,     true, '사용 상태인데 구입단가 0'),
   ('REASON_PREFIX_COLLIDE', 'MEDIUM',   0,     true, 'reason 접두사 혼재'),
   ('TX_GROWTH',             'MEDIUM',   1.5,   true, '전월 대비 거래량 증가 배수'),
-  ('TABLE_BLOAT',           'MEDIUM',   20,    true, 'dead tuple 비율(%)'),
+  ('TABLE_BLOAT',           'MEDIUM',   50,    true, 'dead 비율 50% 초과. 소행수 테이블(inventory_counts 등)의 과민 검출을 줄이기 위해 20 → 50 상향'),
   -- ★ 운영 방침(2026-09): 약플로 = 실재고 정본, 결재 파일 = 공식 장부.
   --   실사 조정은 결재 파일에 반영하지 않아 두 계통 금액이 구조적으로 다르다.
   --   이 격차는 오류가 아니라 설계된 상태이므로 소급 해소하지 않는다.
@@ -351,6 +352,10 @@ begin
   v_pm    := case when v_month = 1 then 12 else v_month - 1 end;
   v_prev  := to_char(make_date(v_py, v_pm, 1), 'YYYY-MM');
 
+  /* ★ 같은 트랜잭션에서 두 번 호출될 수 있다(dryrun 으로 여러 기간을 연속 검증하는 경우).
+     on commit drop 은 커밋 시점에야 지우므로 선행 drop 이 없으면 두 번째 호출이
+     relation "_alert" already exists 로 죽는다. */
+  drop table if exists _alert;
   create temp table _alert (
     check_code   text,
     severity     text,
