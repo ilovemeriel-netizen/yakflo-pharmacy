@@ -1643,18 +1643,40 @@ function DrugList({ drugs, navFilter: nf, onEdit, onReload, nonins }) {
     clearTimeout(imeTimer.current); imeTimer.current = null
     setImeLockH(h => (h ? 0 : h))
   }
-  /* 해제 누락 방어 — compositionend 가 오지 않는 경로(바깥 클릭·탭 전환·IME 강제 종료)에서도 반드시 풀린다.
-     타임아웃은 조합 중 입력마다 되감아, 사용자가 2초 이상 멈춘 뒤에만 발화한다.
-     「2초 대기하면 정상」이 계측으로 확인된 조건이라 이 시점의 해제는 안전하다. */
-  const imeArmTimer = () => {
+  /* 무상호작용 안전망 — 마우스·키보드·스크롤이 있으면 되감긴다.
+     ★ 고정 상한을 쓰지 않는 이유: 상한이 만료되는 순간 레이아웃이 한 번 더 움직여
+       사용자가 결과를 읽다가 클릭하면 같은 증상이 재현된다(계측 v2 로 확인된 기전).
+       되감기 방식이면 사용자가 화면을 떠난 뒤에만 풀리므로 그 창이 생기지 않는다. */
+  const imeIdle = () => {
     clearTimeout(imeTimer.current)
-    imeTimer.current = setTimeout(imeRelease, 2000)
+    imeTimer.current = setTimeout(imeRelease, 10000)
   }
   const imeLock = () => {
     const el = tblWrapRef.current; if (!el) return
     setImeLockH(Math.round(el.getBoundingClientRect().height))   // px 고정값 — vh 계열 아님
-    imeArmTimer()
+    imeIdle()
   }
+  /* ★ 해제는 「다음 click 이 끝난 뒤」다(계측 v2).
+     조합 종료 시점에 풀면 사용자가 조준을 마치기 전에 표가 줄어든다 —
+     실측에서 mousedown 시점에 이미 표적이 바뀌어 있었다.
+     document 의 버블 단계에 붙여 행 자신의 onClick(편집 모달)이 먼저 처리되게 한다.
+     ★ mousedown 에서 풀지 않는다 — mousedown~mouseup 사이 레이아웃이 흔들리면
+       click 이 엉뚱한 공통 조상에서 발화한다. */
+  useEffect(() => {
+    if (!imeLockH) return
+    const onDocClick = () => imeRelease()
+    const onAct = () => imeIdle()
+    document.addEventListener('click', onDocClick)
+    document.addEventListener('mousemove', onAct, { passive: true })
+    document.addEventListener('keydown', onAct)
+    window.addEventListener('scroll', onAct, { passive: true })
+    return () => {
+      document.removeEventListener('click', onDocClick)
+      document.removeEventListener('mousemove', onAct)
+      document.removeEventListener('keydown', onAct)
+      window.removeEventListener('scroll', onAct)
+    }
+  }, [imeLockH])
   useEffect(() => () => clearTimeout(imeTimer.current), [])          // 언마운트 정리
   /* 툴바 sticky top 오프셋: GNB(sticky 헤더 래퍼) 실측. 반응형 높이 변화 대응(Header 미편집). */
   useEffect(() => {
@@ -1709,7 +1731,7 @@ function DrugList({ drugs, navFilter: nf, onEdit, onReload, nonins }) {
   const _df=(search.trim()?1:0)+(cats.length!==CATS.length?1:0)+(_sameColSet(stats,DEF_STATS)?0:1)+(narcOnly?1:0)+(hanoeOnly?1:0)+(insF!==DEF_INS?1:0)+(rxF?1:0)+(donutF?1:0)+(cmpHF?1:0)+(stoHF?1:0)+(locHF?1:0)+(hiAlertOnly?1:0)+(atcF?1:0)+((sk!=='drug_name'||sd!=='asc')?1:0)+(_colsDirty?1:0);const _showReset=_df>0;
   return <div style={{ padding: '20px 24px' }}>
     <div className="no-print" style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, padding: '16px 18px', marginBottom: 12, boxShadow: t.shadow }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}><input value={search} onChange={e => { setSearch(e.target.value); setPage(1); if (imeLockH) imeArmTimer() }} onCompositionStart={imeLock} onCompositionUpdate={imeArmTimer} onCompositionEnd={imeRelease} onBlur={imeRelease} placeholder="약품명, 코드, 성분명, 제조사 검색..." style={{ flex: 1, minWidth: 0, padding: '10px 14px', border: `1px solid ${t.border}`, borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />{_showReset && <button onClick={_resetF} title="필터·정렬 전체 초기화" style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent + '12', color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>필터 초기화{_df > 0 ? ' (' + _df + ')' : ''}</button>}<ColumnSelector t={t} groups={selGroups} value={selCols} onChange={applyCols} presets={selPresets} /><button onClick={exportXlsx} title="현재 화면 컬럼·필터로 엑셀 다운로드" style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.green, background: 'transparent', color: t.green, cursor: 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>엑셀 다운로드</button><button onClick={() => setBulkOpen(true)} title="엑셀·CSV 대량 업로드" style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.accent, background: 'transparent', color: t.accent, cursor: 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>엑셀 업로드</button><button onClick={() => onEdit({ __register: true })} title="새 약품 등록" style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>+ 약품 등록</button></div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}><input value={search} onChange={e => { setSearch(e.target.value); setPage(1); if (imeLockH) imeIdle() }} onCompositionStart={imeLock} onCompositionUpdate={imeIdle} placeholder="약품명, 코드, 성분명, 제조사 검색..." style={{ flex: 1, minWidth: 0, padding: '10px 14px', border: `1px solid ${t.border}`, borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />{_showReset && <button onClick={_resetF} title="필터·정렬 전체 초기화" style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent + '12', color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>필터 초기화{_df > 0 ? ' (' + _df + ')' : ''}</button>}<ColumnSelector t={t} groups={selGroups} value={selCols} onChange={applyCols} presets={selPresets} /><button onClick={exportXlsx} title="현재 화면 컬럼·필터로 엑셀 다운로드" style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.green, background: 'transparent', color: t.green, cursor: 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>엑셀 다운로드</button><button onClick={() => setBulkOpen(true)} title="엑셀·CSV 대량 업로드" style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.accent, background: 'transparent', color: t.accent, cursor: 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>엑셀 업로드</button><button onClick={() => onEdit({ __register: true })} title="새 약품 등록" style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>+ 약품 등록</button></div>
       {bulkOpen && <BulkUploadModal t={t} isOwner={memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'} drugs={drugs} onClose={() => setBulkOpen(false)} onReload={onReload} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <MP items={CATS} selected={cats} onChange={v => { setCats(v); setPage(1) }} color={t.accent} label="구분" />
