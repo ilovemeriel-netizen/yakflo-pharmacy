@@ -4072,6 +4072,14 @@ function countAdjustRows(list, bookFn) {
 /* 부동소수 잔차 제거 — 0.25 배수 폐기 수량 등에서 1030.0000000001 이 보이지 않게 한다(표시 전용) */
 const _cq = v => Number(Number(v).toFixed(4))
 
+/* 실사 항목 중복 판정 키 — (drug_code, lot_no) 조합.
+   ★ LOT 이 다르면 중복이 아니다. LOT별 분할 실사는 정당한 사용례이고
+     countAdjustRows 가 약품코드로 합산하므로 분할 자체는 정상 동작한다.
+   ★ 막아야 하는 것은 LOT 이 둘 다 비어 있는 같은 약품의 재추가다 —
+     합산이 실사수량을 2배로 만들어 조정 부호까지 뒤집는다(결함 20·21). */
+const countItemKey = (code, lot) => String(code || '') + '|' + String(lot ?? '').trim()
+const COUNT_DUP_MSG = '이미 담긴 약품입니다. 수량을 수정하려면 목록에서 해당 행을 지우고 다시 담아 주세요.'
+
 function InventoryCount({ drugs, onReload }) {
   const { t, profile, memberRole } = useTheme()
   const { so, sk, sd, setSort, TS } = useSort('count_date', 'desc')
@@ -4156,6 +4164,11 @@ function InventoryCount({ drugs, onReload }) {
   async function addItem(d) {
     const n = Number(aQty)
     if (aQty === '' || !Number.isFinite(n) || n < 0) { flash('실사수량을 입력해 주세요(0 이상)', 'err'); return }
+    /* ★ 중복 차단(결함 20) — 같은 (약품, LOT) 이 이미 담겼으면 거부한다.
+       DB 에 UNIQUE 가 없으므로 여기가 유일한 방어선이다. LOT 이 다르면 통과시킨다. */
+    if (itemsOf(sel).some(x => countItemKey(x.drug_code, x.lot_no) === countItemKey(d.drug_code, aLot))) {
+      flash(COUNT_DUP_MSG, 'err'); return
+    }
     setBusy(true)
     const { error } = await supabase.from('inventory_count_items').insert([{
       count_id: sel, drug_code: d.drug_code, counted_qty: n,
@@ -4425,6 +4438,8 @@ function InventoryCountDetail({ t, r, items, drugMap, bookOf, q, onQ, found, sea
   busy, onApply, onRevert, revertBlock }) {
   const editable = r.status === '작성중'
   const rBad = revertBlock(r)
+  /* 이미 담긴 (약품, LOT) 조합 — 검색 목록 비활성 판정용(결함 20) */
+  const takenKeys = new Set(items.map(x => countItemKey(x.drug_code, x.lot_no)))
   const ip = { padding: '8px 10px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, outline: 'none', background: t.bg, color: t.text, boxSizing: 'border-box' }
   const td = { padding: '8px 10px', fontSize: 11, textAlign: 'left', color: t.text, borderBottom: '1px solid ' + t.border }
   const th = { padding: '9px 10px', fontSize: 11, textAlign: 'left', color: t.textM, fontWeight: 700, borderBottom: '1px solid ' + t.border, whiteSpace: 'nowrap' }
@@ -4451,12 +4466,20 @@ function InventoryCountDetail({ t, r, items, drugMap, bookOf, q, onQ, found, sea
       <div style={{ fontSize: 10, color: t.textL }}>엑셀 열: 약품코드 · LOT · 유효기한(YYYY-MM-DD) · 수량 · 사용 상태 약품만 담깁니다</div>
       {searched && <div style={{ marginTop: 8, border: '1px solid ' + t.border, borderRadius: 8, maxHeight: 220, overflowY: 'auto', background: t.card }}>
         {!found.length ? <div style={{ padding: 14, fontSize: 11, color: t.textL, textAlign: 'center' }}>검색 결과가 없습니다 (사용 상태 약품만)</div>
-          : found.map(d => <div key={d.drug_code} onClick={() => onAdd(d)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderBottom: '1px solid ' + t.border, cursor: 'pointer', fontSize: 11 }}>
-            <span style={{ fontWeight: 600, color: t.text, flex: 1 }}>{d.drug_name}</span>
-            {d.unit_mgmt ? <span title="낱알 관리 대상(참고)" style={{ fontSize: 9, color: t.purple, background: t.purpleL, padding: '2px 6px', borderRadius: 6 }}>낱알 {d.unit_mgmt}</span> : null}
-            <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span>
-            <span style={{ color: t.textM, fontSize: 10 }}>장부 {bookOf(d.drug_code)}</span>
-          </div>)}
+          : found.map(d => {
+            /* ★ 담김 표시(결함 20) — 현재 입력 중인 LOT 조합이 이미 담겼는지.
+               LOT 을 바꾸면 같은 약품이라도 다시 선택할 수 있어야 한다(분할 실사). */
+            const taken = takenKeys.has(countItemKey(d.drug_code, aLot))
+            return <div key={d.drug_code} onClick={() => !taken && onAdd(d)}
+              title={taken ? COUNT_DUP_MSG : undefined}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderBottom: '1px solid ' + t.border, cursor: taken ? 'not-allowed' : 'pointer', fontSize: 11, opacity: taken ? 0.55 : 1 }}>
+              <span style={{ fontWeight: 600, color: taken ? t.textM : t.text, flex: 1 }}>{d.drug_name}</span>
+              {taken ? <span style={{ fontSize: 9, color: t.purple, border: '1px solid ' + t.purple, padding: '1px 6px', borderRadius: 6, fontWeight: 700, whiteSpace: 'nowrap' }}>담김</span> : null}
+              {d.unit_mgmt ? <span title="낱알 관리 대상(참고)" style={{ fontSize: 9, color: t.purple, background: t.purpleL, padding: '2px 6px', borderRadius: 6 }}>낱알 {d.unit_mgmt}</span> : null}
+              <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span>
+              <span style={{ color: t.textM, fontSize: 10 }}>장부 {bookOf(d.drug_code)}</span>
+            </div>
+          })}
       </div>}
     </div>}
 
