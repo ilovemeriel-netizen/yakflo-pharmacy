@@ -4056,6 +4056,22 @@ function decodeGs1(_raw) { return null }
    묶어 두는 이유: 1단계에는 호출부가 없어 각 함수가 미사용으로 잡힌다. */
 const SCAN_API = { handleScan, decodeGs1 }
 
+/* 실사 반영 — 약품별 조정 수량 산출.
+   ★ 확인 모달의 표시값과 실제 생성되는 거래의 quantity 가 반드시 같아야 하므로
+     계산을 이 한 곳에만 둔다(모달용 별도 계산 금지).
+   ★ 같은 약품이 LOT별로 여러 행이면 약품코드로 합산한다 — 반영 로직 원본 규칙 그대로.
+   bookFn: 약품코드 → 장부수량. 모달은 화면의 drugs, 반영은 재조회한 값을 넘긴다. */
+function countAdjustRows(list, bookFn) {
+  const codes = [...new Set(list.map(x => x.drug_code))]
+  const sum = {}; list.forEach(x => { sum[x.drug_code] = (sum[x.drug_code] || 0) + Number(x.counted_qty ?? 0) })
+  return codes.map(c => {
+    const book = Number(bookFn(c) ?? 0)
+    return { code: c, counted: sum[c], book, diff: sum[c] - book }
+  })
+}
+/* 부동소수 잔차 제거 — 0.25 배수 폐기 수량 등에서 1030.0000000001 이 보이지 않게 한다(표시 전용) */
+const _cq = v => Number(Number(v).toFixed(4))
+
 function InventoryCount({ drugs, onReload }) {
   const { t, profile, memberRole } = useTheme()
   const { so, sk, sd, setSort, TS } = useSort('count_date', 'desc')
@@ -4211,10 +4227,9 @@ function InventoryCount({ drugs, onReload }) {
     const { data: fresh, error: fe } = await supabase.from('drugs').select('drug_code,current_qty').in('drug_code', codes)
     if (fe) { setBusy(false); setApplyT(null); flash('장부 재조회 실패: ' + fe.message, 'err'); return }
     const book = {}; (fresh || []).forEach(d => { book[d.drug_code] = Number(d.current_qty ?? 0) })
-    /* 2) 약품별 합산 → 차이 */
-    const sum = {}; list.forEach(x => { sum[x.drug_code] = (sum[x.drug_code] || 0) + Number(x.counted_qty ?? 0) })
+    /* 2) 약품별 합산 → 차이 — ★ 확인 모달과 같은 함수를 쓴다(표시값 = 실제 반영값) */
     const today = new Date().toISOString().slice(0, 10)
-    const txRows = codes.map(c => ({ code: c, diff: sum[c] - (book[c] ?? 0) })).filter(x => x.diff !== 0)
+    const txRows = countAdjustRows(list, c => book[c] ?? 0).filter(x => x.diff !== 0)
     if (!txRows.length) {
       const { error } = await supabase.from('inventory_counts')
         .update({ status: '반영완료', applied_at: new Date().toISOString(), applied_by: profile?.id || null }).eq('id', r.id)
@@ -4359,11 +4374,34 @@ function InventoryCount({ drugs, onReload }) {
       busy={busy} onApply={() => setApplyT(open)} onRevert={() => openRevert(open)} revertBlock={revertBlock} />}
 
     {/* ── 확인 모달 2단계 (기존 골격 재사용) ── */}
-    {applyT && <CountConfirmModal t={t} title="재고반영" tone={t.accent} busy={busy}
-      head={applyT.title} meta={applyT.count_date + ' · 항목 ' + itemsOf(applyT.id).length + '건'}
-      strong="반영 직전에 장부값을 다시 읽어 차이를 재계산합니다"
-      body="차이가 있는 약품마다 조정 거래를 1건씩 만듭니다. 현재고를 직접 고치지 않습니다."
-      confirm="재고반영" onClose={() => setApplyT(null)} onConfirm={applyCount} />}
+    {applyT && (() => {
+      /* ★ 실제 반영될 조정 수량을 그대로 보여준다 — applyCount 와 같은 countAdjustRows 를 쓴다.
+         화면 표의 「차이」는 행별 실시간 계산이라 LOT 분할·중복 행이 있으면 합산 결과와 달라진다. */
+      const adj = countAdjustRows(itemsOf(applyT.id), bookOf).filter(x => x.diff !== 0)
+      const SHOW = 10, shown = adj.slice(0, SHOW), rest = adj.length - shown.length
+      const line = { padding: '7px 10px', display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }
+      return <CountConfirmModal t={t} title="재고반영" tone={t.accent} busy={busy}
+        head={applyT.title} meta={applyT.count_date + ' · 항목 ' + itemsOf(applyT.id).length + '건'}
+        strong="반영 직전에 장부값을 다시 읽어 차이를 재계산합니다"
+        body={<>
+          <div>차이가 있는 약품마다 조정 거래를 1건씩 만듭니다. 현재고를 직접 고치지 않습니다.</div>
+          {adj.length > 0 && <div style={{ marginTop: 10, border: '1px solid ' + t.border, borderRadius: 8, overflow: 'hidden', background: t.bg }}>
+            {shown.map((x, i) => {
+              /* 강조 — 조정 절대값이 장부의 50% 초과. 중복 입력·오타를 알아채는 마지막 지점 */
+              const big = x.book > 0 && Math.abs(x.diff) > x.book * 0.5
+              return <div key={x.code} style={{ ...line, borderLeft: '3px solid ' + (big ? t.purple : 'transparent'), borderBottom: (i < shown.length - 1 || rest > 0) ? '1px solid ' + t.border : 'none' }}>
+                <span style={{ flex: '1 1 130px', minWidth: 0, fontSize: 11, fontWeight: big ? 700 : 600, color: big ? t.purple : t.text }}>{drugMap[x.code]?.drug_name || x.code}</span>
+                <span style={{ fontSize: 10, color: t.textM, whiteSpace: 'nowrap' }}>실사 {_cq(x.counted)} · 장부 {_cq(x.book)}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', color: big ? t.purple : t.text }}>조정 {x.diff > 0 ? '+' : ''}{_cq(x.diff)}</span>
+              </div>
+            })}
+            {rest > 0 && <div style={{ ...line, fontSize: 10, color: t.textM }}>외 {rest}건</div>}
+          </div>}
+          <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: t.text }}>조정 대상 {adj.length}개 약품 · 거래 {adj.length}건 생성</div>
+          {adj.length === 0 && <div style={{ marginTop: 4 }}>차이가 없어 조정 거래 없이 반영합니다.</div>}
+        </>}
+        confirm="재고반영" onClose={() => setApplyT(null)} onConfirm={applyCount} />
+    })()}
 
     {revertT && <CountConfirmModal t={t} title="되돌리기" tone={t.red} busy={busy}
       head={revertT.title} meta={'반영 ' + (revertT.applied_at || '').slice(0, 10)}
