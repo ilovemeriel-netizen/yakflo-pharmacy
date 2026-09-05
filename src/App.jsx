@@ -2780,7 +2780,7 @@ function DrugRegister({onRefresh, drugs}) {
               <div style={{overflowX:'auto',marginBottom:14,maxHeight:380,overflowY:'auto',border:`0.5px solid ${C.grayB}`,borderRadius:8}}>
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                   <thead style={{position:'sticky',top:0}}><tr style={{background:'#fafafa'}}>
-                    {['#','상태','약품코드','약품명','구분','제조사','보험약가','현재고','유효기한','상태','향정'].map(h=><th key={h} style={{padding:'8px 10px',textAlign:'left',color:'#666',fontWeight:500,borderBottom:`0.5px solid ${C.grayB}`,whiteSpace:'nowrap'}}>{h}</th>)}
+                    {['엑셀 행','상태','약품코드','약품명','구분','제조사','보험약가','현재고','유효기한','상태','향정'].map(h=><th key={h} style={{padding:'8px 10px',textAlign:'left',color:'#666',fontWeight:500,borderBottom:`0.5px solid ${C.grayB}`,whiteSpace:'nowrap'}}>{h}</th>)}
                   </tr></thead>
                   <tbody>{bulk.map((r,i)=>(
                     <tr key={i} title={r.errors&&r.errors.length?r.errors.join(' / '):''} style={{borderBottom:`0.5px solid #f5f5f5`,background:r.status==='error'?C.coralL+'50':''}}>
