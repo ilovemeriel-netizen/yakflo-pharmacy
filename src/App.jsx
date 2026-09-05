@@ -4206,6 +4206,12 @@ function InventoryCount({ drugs, onReload }) {
         const wb = XL.read(ev.target.result, { type: 'array' })
         const rows = XL.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false })
         const ok = []; const bad = []
+        /* ★ 중복 건너뛰기(결함 20 엑셀 경로) — 두 축을 본다.
+           ① 이미 담긴 항목과의 중복  ② 같은 파일 안에서의 중복
+           판정 키는 수동 입력과 같은 countItemKey — LOT 이 다르면 중복이 아니다(분할 실사).
+           막지 않으면 반영 시 약품코드로 합산돼 실사수량이 배로 부풀고 조정 부호까지 뒤집힌다. */
+        const taken = new Set(itemsOf(sel).map(x => countItemKey(x.drug_code, x.lot_no)))
+        const inFile = new Set()
         rows.forEach((r, i) => {
           const ln = i + 2
           const code = String(r['약품코드'] ?? r['drug_code'] ?? '').trim()
@@ -4216,10 +4222,16 @@ function InventoryCount({ drugs, onReload }) {
           const qv = String(r['수량'] ?? r['실사수량'] ?? r['counted_qty'] ?? '').trim()
           const n = Number(qv.replace(/,/g, ''))
           if (qv === '' || !Number.isFinite(n) || n < 0) { bad.push(ln + '행: 수량 오류 「' + qv + '」'); return }
+          const lot = String(r['LOT'] ?? r['lot_no'] ?? '').trim()
+          const key = countItemKey(code, lot)
+          const lotTag = lot ? ' · LOT ' + lot : ''
+          if (taken.has(key)) { bad.push(ln + '행: 이미 담긴 약품 ' + code + lotTag); return }
+          if (inFile.has(key)) { bad.push(ln + '행: 파일 내 중복 ' + code + lotTag); return }
+          inFile.add(key)
           const exp = String(r['유효기한'] ?? r['expiry_date'] ?? '').trim()
           ok.push({
             count_id: sel, drug_code: code, counted_qty: n,
-            lot_no: String(r['LOT'] ?? r['lot_no'] ?? '').trim() || null,
+            lot_no: lot || null,
             expiry_date: /^\d{4}-\d{2}-\d{2}$/.test(exp) ? exp : null,
             book_qty: bookOf(code), source: '엑셀',
           })
