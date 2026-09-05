@@ -79,6 +79,13 @@ const C = {
 /* ── Helpers ── */
 function exS(d, t) { if (!d) return {}; const x = Math.floor((new Date(d) - new Date()) / 864e5); if (x <= 0) return { color: t.red, fontWeight: 700 }; if (x <= 30) return { color: t.red, fontWeight: 600 }; if (x <= 90) return { color: t.amber, fontWeight: 600 }; return { color: t.textM } }
 function exD(d) { if (!d) return null; return Math.floor((new Date(d) - new Date()) / 864e5) }
+/* 엑셀 약품코드 정규화 — 업로드 경로 공통.
+   ★ 쉼표를 지운다. 순수 숫자 코드(2002·20006·641905891)에 표시형식 #,##0 이 걸리면
+     sheet_to_json 이 「2,002」로 돌려줘 미매칭이 났다(실측). 수량에는 이미 같은 처리가 있었다.
+   ★ toUpperCase 는 경로마다 있고 없어 갈렸다 — 여기로 모은다.
+     현재 소문자 코드는 0건이라 동작 변화는 없고 방어 수준만 맞춘다.
+   ★ 하이픈·별표는 지우지 않는다 — URO-Q · 7GCTTO* 처럼 실재하는 코드다. */
+const normDrugCode = v => String(v ?? '').trim().replace(/,/g, '').toUpperCase()
 /* 로컬(KST) 기준 YYYY-MM-DD — Schedule 안에 있던 것을 모듈 스코프로 올렸다(식·동작 동일).
    ★ toISOString() 은 UTC 라 KST 00:00~09:00 에 전날이 나온다. DB 에 날짜를 넣거나
      「오늘」을 판정하는 곳은 반드시 이 함수를 쓸 것. 날짜 문자열 반복 계산은 예외(5761 주석 참조). */
@@ -834,7 +841,7 @@ function AdjustModal({ drug: dr, onClose, onSaved }) {
   const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const { t } = useTheme(); const [qty, setQty] = useState(dr.current_qty || 0); const [reason, setReason] = useState('실사 결과 반영'); const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null); const diff = qty - (dr.current_qty || 0)
   async function save() { if (!reason.trim()) { setMsg('사유 필수'); return }; setSaving(true)
-    const d = Number(qty) - (dr.current_qty || 0)
+    const d = Math.round((Number(qty) - (dr.current_qty || 0)) * 100) / 100
     if (d === 0) { setSaving(false); setMsg('변동 없음'); setTimeout(() => { onSaved?.(); onClose() }, 500); return }
     /* 실사 조정도 거래로 일원화: transactions type='조정'(quantity=목표−현재) → 0009 트리거가 drugs+inventory 동기. 직접 update 제거. */
     const tx = { drug_code: dr.drug_code, type: TX_ADJUST, quantity: d, total_amount: Math.round(d * (Number(dr.purchase_price) || 0)), reason: `${reason} (${d > 0 ? '+' : ''}${d})`, transaction_date: todayYmd() }
@@ -1972,13 +1979,13 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
     const file=e.target.files[0];if(!file)return;setURep(null)
     const reader=new FileReader();reader.onload=ev=>{
       try{
-        const wb=XLSX.read(ev.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:false})
+        const wb=XLSX.read(ev.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:false,blankrows:true})
         const codes=new Set(drugs.map(d=>d.drug_code))
         const num=v=>{const x=String(v).trim();if(x==='')return undefined;const n=Number(x.replace(/,/g,''));return (Number.isFinite(n)&&n>=0)?n:NaN}
         const updates=[],unmatched=[],invalid=[]
         rows.forEach((r,i)=>{
           const ln=i+2
-          const code=String(r['약품코드']??r['drug_code']??'').trim();if(!code)return
+          const code=normDrugCode(r['약품코드']??r['drug_code']);if(!code)return
           const name=String(r['약품명(참고용)']??r['약품명']??r['drug_name']??'').trim()
           const pyRaw=r['전년사용량']??r['전년도사용량']??r['prev_year_usage']??''
           const r3Raw=r['최근3개월사용량']??r['최근3개월']??r['recent_3m_usage']??''
@@ -2937,10 +2944,13 @@ function TransactionForm({drugs,onReload,navFilter}){
   function xlUpload(e){
     const file=e.target.files[0];if(!file)return;setBulkMsg(null);setBulkRepl(null)
     const reader=new FileReader();reader.onload=ev=>{
+      /* ★ 이 경로에는 blankrows:true 를 넣지 않는다 — rows.map 에 빈 행 가드가 없어
+         빈 행이 그대로 「미매칭」 항목이 된다. 입출고는 행 번호를 화면에 표시하지도 않는다
+         (idx 는 재매핑·취소용 식별자일 뿐). 결함 28 의 실질 영향이 없는 경로다. */
       try{const wb=XLSX.read(ev.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:false})
       if(!rows.length){setBulkMsg('데이터 없음');return}
       const parsed=rows.map((r,i)=>{
-        const code=String(r['약품코드']||r['drug_code']||'').trim().toUpperCase()
+        const code=normDrugCode(r['약품코드']||r['drug_code'])
         const drug=drugs.find(d=>d.drug_code===code)
         const qtyVal=Number(r[tab==='입고'?'입고수량':tab==='출고'?'출고수량':tab==='반품'?'반품수량':'폐기수량']||r['수량']||r['quantity']||0)
         const price=Number(r['단가']||r['unit_price']||drug?.purchase_price||0)
@@ -4225,7 +4235,7 @@ function InventoryCount({ drugs, onReload }) {
       try {
         const XL = await import('xlsx')
         const wb = XL.read(ev.target.result, { type: 'array' })
-        const rows = XL.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false })
+        const rows = XL.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false, blankrows: true })
         const ok = []; const bad = []
         /* ★ 중복 건너뛰기(결함 20 엑셀 경로) — 두 축을 본다.
            ① 이미 담긴 항목과의 중복  ② 같은 파일 안에서의 중복
@@ -4235,7 +4245,7 @@ function InventoryCount({ drugs, onReload }) {
         const inFile = new Set()
         rows.forEach((r, i) => {
           const ln = i + 2
-          const code = String(r['약품코드'] ?? r['drug_code'] ?? '').trim()
+          const code = normDrugCode(r['약품코드'] ?? r['drug_code'])
           if (!code) return
           const d = drugMap[code]
           if (!d) { bad.push(ln + '행: 없는 약품코드 ' + code); return }
@@ -6046,11 +6056,11 @@ function AtcView({ drugs, onReload }) {
     reader.onload = ev => {
       try {
         const wb = X.read(ev.target.result, { type: 'array' });
-        const rows = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false });
+        const rows = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false, blankrows: true });
         const codes = new Set((drugs || []).map(d => d.drug_code));
         const num = v => { const x = String(v).trim(); if (x === '') return null; const n = Number(x.replace(/,/g, '')); return (Number.isFinite(n) && n >= 0) ? n : null; };
         const m3 = {}, m1 = {}; const umset = new Set(), mset = new Set();
-        rows.forEach(r => { const code = String(r['약품코드'] ?? r['drug_code'] ?? '').trim(); if (!code) return; const v3 = num(r['최근3개월사용량'] ?? r['최근3개월'] ?? r['recent_3m_usage'] ?? ''); const v1 = num(r['직전1개월사용량'] ?? r['직전1개월'] ?? r['recent_1m_usage'] ?? ''); if (v3 == null && v1 == null) return; if (!codes.has(code)) { umset.add(code); return; } if (v3 != null) m3[code] = v3; if (v1 != null) m1[code] = v1; mset.add(code); });
+        rows.forEach(r => { const code = normDrugCode(r['약품코드'] ?? r['drug_code']); if (!code) return; const v3 = num(r['최근3개월사용량'] ?? r['최근3개월'] ?? r['recent_3m_usage'] ?? ''); const v1 = num(r['직전1개월사용량'] ?? r['직전1개월'] ?? r['recent_1m_usage'] ?? ''); if (v3 == null && v1 == null) return; if (!codes.has(code)) { umset.add(code); return; } if (v3 != null) m3[code] = v3; if (v1 != null) m1[code] = v1; mset.add(code); });
         setTemp({ file: file.name, m3, m1, matched: mset.size, unmatched: umset.size });
         setMsg('임시 사용량 적용 — 매칭 ' + mset.size + '건 · 미매칭 ' + umset.size + '건'); setTimeout(() => setMsg(null), 3500);
       } catch (err) { setMsg('임시 사용량 파싱 실패: ' + err.message); setTimeout(() => setMsg(null), 4000); }
