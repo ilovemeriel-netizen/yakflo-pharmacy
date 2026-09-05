@@ -2952,7 +2952,7 @@ function TransactionForm({drugs,onReload,navFilter}){
       const parsed=rows.map((r,i)=>{
         const code=normDrugCode(r['약품코드']||r['drug_code'])
         const drug=drugs.find(d=>d.drug_code===code)
-        const qtyVal=Number(r[tab==='입고'?'입고수량':tab==='출고'?'출고수량':tab==='반품'?'반품수량':'폐기수량']||r['수량']||r['quantity']||0)
+        const qtyVal=Math.round(Number(r[tab==='입고'?'입고수량':tab==='출고'?'출고수량':tab==='반품'?'반품수량':'폐기수량']||r['수량']||r['quantity']||0)*100)/100
         const price=Number(r['단가']||r['unit_price']||drug?.purchase_price||0)
         return{idx:i+1,drug_code:code,drug_name:drug?.drug_name||r['약품명']||r['약품명(참고용)']||r['약품명(참고)']||r['품명']||r['drug_name']||'',found:!!drug,quantity:qtyVal,unit_price:price,total_amount:qtyVal*price,
           note:String(r['비고']||'').trim(),supplier:String(r['공급업체']||'').trim(),
@@ -2968,7 +2968,7 @@ function TransactionForm({drugs,onReload,navFilter}){
   }
   function setBulkCode(ix,v){setBulkData(bd=>bd.map(r=>r.idx===ix?{...r,drug_code:String(v).toUpperCase(),_err:null}:r))}
   function remapBulk(ix){setBulkData(bd=>bd.map(r=>{if(r.idx!==ix)return r;const drug=drugs.find(d=>d.drug_code===r.drug_code);if(!drug)return{...r,_err:'여전히 미매칭'};const price=r.unit_price||drug.purchase_price||0;return{...r,found:true,drug_name:drug.drug_name||r.drug_name,unit_price:price,total_amount:(r.quantity||0)*price,_err:null}}))}
-  function setBulkQty(ix,v){const q=Number(String(v).replace(/,/g,''));setBulkData(bd=>bd.map(r=>r.idx===ix?{...r,quantity:Number.isFinite(q)?q:0,total_amount:(Number.isFinite(q)?q:0)*r.unit_price,_qerr:null}:r))}
+  function setBulkQty(ix,v){const q=Math.round(Number(String(v).replace(/,/g,''))*100)/100;setBulkData(bd=>bd.map(r=>r.idx===ix?{...r,quantity:Number.isFinite(q)?q:0,total_amount:(Number.isFinite(q)?q:0)*r.unit_price,_qerr:null}:r))}
   function revalidateBulkQty(ix){setBulkData(bd=>bd.map(r=>r.idx===ix?{...r,_qerr:r.quantity>0?null:'수량은 1 이상'}:r))}
   function cancelBulk(ix){setBulkData(bd=>bd.filter(r=>r.idx!==ix))}
   async function bulkSubmit(){
@@ -4107,7 +4107,14 @@ function countAdjustRows(list, bookFn) {
   const sum = {}; list.forEach(x => { sum[x.drug_code] = (sum[x.drug_code] || 0) + Number(x.counted_qty ?? 0) })
   return codes.map(c => {
     const book = Number(bookFn(c) ?? 0)
-    return { code: c, counted: sum[c], book, diff: sum[c] - book }
+    /* ★ 소수점 2자리 반올림을 **이 함수 안에서** 한다(2026-09-05 확정 정책).
+       호출부(applyCount 4288 · 확인 모달 4436)에 각각 넣으면 두 값이 갈려
+       결함 21(모달 표시 ≠ 실제 거래)이 되살아난다. 여기서 한 번만 잡는다.
+       ① 합산 잔차 — LOT 분할 40 + 12.25 + 0.1 같은 누적에서 생긴다.
+       ② 뺄셈 잔차 — 2.0163 − 2.26 = -0.24369999999999958 (float64 구조).
+       DB 는 numeric 이라 정확하므로 저장 전 앱 계층에서 막는 것이 맞다. */
+    const counted = Math.round(sum[c] * 100) / 100
+    return { code: c, counted, book, diff: Math.round((counted - book) * 100) / 100 }
   })
 }
 /* 부동소수 잔차 제거 — 0.25 배수 폐기 수량 등에서 1030.0000000001 이 보이지 않게 한다(표시 전용) */
@@ -4203,7 +4210,7 @@ function InventoryCount({ drugs, onReload }) {
     }, 250)
   }
   async function addItem(d) {
-    const n = Number(aQty)
+    const n = Math.round(Number(aQty) * 100) / 100
     if (aQty === '' || !Number.isFinite(n) || n < 0) { flash('실사수량을 입력해 주세요(0 이상)', 'err'); return }
     /* ★ 중복 차단(결함 20) — 같은 (약품, LOT) 이 이미 담겼으면 거부한다.
        DB 에 UNIQUE 가 없으므로 여기가 유일한 방어선이다. LOT 이 다르면 통과시킨다. */
@@ -4251,7 +4258,7 @@ function InventoryCount({ drugs, onReload }) {
           if (!d) { bad.push(ln + '행: 없는 약품코드 ' + code); return }
           if (d.status !== '사용') { bad.push(ln + '행: 사용 상태가 아님 ' + code); return }
           const qv = String(r['수량'] ?? r['실사수량'] ?? r['counted_qty'] ?? '').trim()
-          const n = Number(qv.replace(/,/g, ''))
+          const n = Math.round(Number(qv.replace(/,/g, '')) * 100) / 100
           if (qv === '' || !Number.isFinite(n) || n < 0) { bad.push(ln + '행: 수량 오류 「' + qv + '」'); return }
           const lot = String(r['LOT'] ?? r['lot_no'] ?? '').trim()
           const key = countItemKey(code, lot)
