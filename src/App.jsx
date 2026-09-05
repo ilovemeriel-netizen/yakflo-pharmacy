@@ -79,6 +79,11 @@ const C = {
 /* ── Helpers ── */
 function exS(d, t) { if (!d) return {}; const x = Math.floor((new Date(d) - new Date()) / 864e5); if (x <= 0) return { color: t.red, fontWeight: 700 }; if (x <= 30) return { color: t.red, fontWeight: 600 }; if (x <= 90) return { color: t.amber, fontWeight: 600 }; return { color: t.textM } }
 function exD(d) { if (!d) return null; return Math.floor((new Date(d) - new Date()) / 864e5) }
+/* 로컬(KST) 기준 YYYY-MM-DD — Schedule 안에 있던 것을 모듈 스코프로 올렸다(식·동작 동일).
+   ★ toISOString() 은 UTC 라 KST 00:00~09:00 에 전날이 나온다. DB 에 날짜를 넣거나
+     「오늘」을 판정하는 곳은 반드시 이 함수를 쓸 것. 날짜 문자열 반복 계산은 예외(5761 주석 참조). */
+const pad = n => String(n).padStart(2, '0');
+const ymd = (yy, mm, dd) => yy + '-' + pad(mm) + '-' + pad(dd);
 function getNT(d) { if (d.narcotic_type === '한외마약') return '일반'; if (d.narcotic_type === '향정' || d.narcotic_type === '마약') return d.narcotic_type; if (d.is_narcotic === true || d.is_narcotic === 'true') return '향정'; return '일반' }
 function isN(d) { return getNT(d) !== '일반' }
 /* 보험구분 정규화: 입력폼은 '급여'/'비급여', 일부 데이터는 '보험'/'비보험', 또는 NULL.
@@ -2847,7 +2852,9 @@ function TransactionForm({drugs,onReload,navFilter}){
   const reasons=tab==='반품'?RET_REASONS:tab==='폐기'?DSP_REASONS:[]
   const tc={'입고':{bg:t.greenL,c:t.green},'출고':{bg:t.blueL,c:t.blue},'반품':{bg:t.amberL,c:t.amber},'폐기':{bg:t.redL,c:t.red}}
   const ip={width:'100%',padding:'8px 10px',border:`1px solid ${t.border}`,borderRadius:6,fontSize:12,outline:'none',background:t.bg,color:t.text,boxSizing:'border-box'}
-  const _today=new Date().toISOString().split('T')[0]
+  /* ★ 로컬(KST) 기준 — UTC 면 KST 00:00~09:00 에 오늘이 「미래 날짜」로 거부되고
+     날짜 선택기 max 도 어제로 잡힌다. 판정 로직(2858·2998)은 그대로 두고 기준값만 바꾼다. */
+  const _tn=new Date(),_today=ymd(_tn.getFullYear(),_tn.getMonth()+1,_tn.getDate())
 
   async function submit(skipOutlier){
     if(_selClosed){setMsg('선택한 월은 마감되어 등록할 수 없습니다.');return}
@@ -4126,7 +4133,7 @@ function InventoryCount({ drugs, onReload }) {
     const now = new Date(); const ym = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0')
     setBusy(true)
     const { data, error } = await supabase.from('inventory_counts')
-      .insert([{ count_date: now.toISOString().slice(0, 10), title: ym + ' 정기실사' }]).select('id').single()
+      .insert([{ count_date: ymd(now.getFullYear(), now.getMonth() + 1, now.getDate()), title: ym + ' 정기실사' }]).select('id').single()
     setBusy(false)
     if (error) { flash('실사 생성 실패: ' + error.message, 'err'); return }
     flash('실사를 시작했습니다'); await loadAll(); setSel(data.id)
@@ -4241,7 +4248,7 @@ function InventoryCount({ drugs, onReload }) {
     if (fe) { setBusy(false); setApplyT(null); flash('장부 재조회 실패: ' + fe.message, 'err'); return }
     const book = {}; (fresh || []).forEach(d => { book[d.drug_code] = Number(d.current_qty ?? 0) })
     /* 2) 약품별 합산 → 차이 — ★ 확인 모달과 같은 함수를 쓴다(표시값 = 실제 반영값) */
-    const today = new Date().toISOString().slice(0, 10)
+    const _dn = new Date(); const today = ymd(_dn.getFullYear(), _dn.getMonth() + 1, _dn.getDate())
     const txRows = countAdjustRows(list, c => book[c] ?? 0).filter(x => x.diff !== 0)
     if (!txRows.length) {
       const { error } = await supabase.from('inventory_counts')
@@ -4307,7 +4314,7 @@ function InventoryCount({ drugs, onReload }) {
     }
     const { data: orig, error: oe } = await supabase.from('transactions').select('id,drug_code,quantity').in('id', txIds)
     if (oe) { setBusy(false); setRevertT(null); flash('원 거래 조회 실패: ' + oe.message, 'err'); return }
-    const today = new Date().toISOString().slice(0, 10)
+    const _dn = new Date(); const today = ymd(_dn.getFullYear(), _dn.getMonth() + 1, _dn.getDate())
     /* ★ 반대 부호로 신규 생성 — 원 거래는 삭제하지 않는다 */
     const { error: re } = await supabase.from('transactions').insert(
       (orig || []).map(x => ({ drug_code: x.drug_code, type: '조정', quantity: -Number(x.quantity),
@@ -5720,8 +5727,7 @@ function Schedule({ drugs, onNav }) {
   const { t, memberRole, profile } = useTheme();
   const canEdit = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin';
   const _now = new Date();
-  const pad = n => String(n).padStart(2, '0');
-  const ymd = (yy, mm, dd) => yy + '-' + pad(mm) + '-' + pad(dd);
+  /* pad · ymd 는 모듈 스코프로 이동(파일 상단) — 식·동작 동일 */
   const todayStr = ymd(_now.getFullYear(), _now.getMonth() + 1, _now.getDate());
   const [y, setY] = useState(_now.getFullYear());
   const [m, setM] = useState(_now.getMonth() + 1);
