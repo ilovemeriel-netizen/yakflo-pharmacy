@@ -84,6 +84,9 @@ function exD(d) { if (!d) return null; return Math.floor((new Date(d) - new Date
      「오늘」을 판정하는 곳은 반드시 이 함수를 쓸 것. 날짜 문자열 반복 계산은 예외(5761 주석 참조). */
 const pad = n => String(n).padStart(2, '0');
 const ymd = (yy, mm, dd) => yy + '-' + pad(mm) + '-' + pad(dd);
+/* 「오늘」을 로컬(KST) YYYY-MM-DD 로. DB 에 날짜를 넣는 곳은 전부 이걸 쓴다.
+   ★ 엑셀 파일명·화면 표시용 toISOString() 은 대상이 아니다(저장되지 않으므로 무해). */
+const todayYmd = () => { const n = new Date(); return ymd(n.getFullYear(), n.getMonth() + 1, n.getDate()) };
 function getNT(d) { if (d.narcotic_type === '한외마약') return '일반'; if (d.narcotic_type === '향정' || d.narcotic_type === '마약') return d.narcotic_type; if (d.is_narcotic === true || d.is_narcotic === 'true') return '향정'; return '일반' }
 function isN(d) { return getNT(d) !== '일반' }
 /* 보험구분 정규화: 입력폼은 '급여'/'비급여', 일부 데이터는 '보험'/'비보험', 또는 NULL.
@@ -585,7 +588,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
       res = await supabase.from('drugs').insert([row])
     }
     setSaving(false)
-    if (res.error) { setMsg(res.error.message.includes('duplicate') || res.error.message.includes('unique') ? '이미 존재하는 약품코드입니다.' : res.error.message); return } if (_initQty > 0) { const { data: _a, error: _ae } = await supabase.rpc('bulk_stock_adjust', { p_items: [{ drug_code: code, target_qty: _initQty }], p_date: new Date().toISOString().split('T')[0], p_reason: '초기재고 등록' }); if (_ae) { setMsg('등록됨 · 초기재고 반영 실패: ' + _ae.message); return } if (_a && _a.ok === false) { setMsg('등록됨 · 초기재고 실패: ' + (((_a.failed||[])[0]||{}).reason || '')); return } }
+    if (res.error) { setMsg(res.error.message.includes('duplicate') || res.error.message.includes('unique') ? '이미 존재하는 약품코드입니다.' : res.error.message); return } if (_initQty > 0) { const { data: _a, error: _ae } = await supabase.rpc('bulk_stock_adjust', { p_items: [{ drug_code: code, target_qty: _initQty }], p_date: todayYmd(), p_reason: '초기재고 등록' }); if (_ae) { setMsg('등록됨 · 초기재고 반영 실패: ' + _ae.message); return } if (_a && _a.ok === false) { setMsg('등록됨 · 초기재고 실패: ' + (((_a.failed||[])[0]||{}).reason || '')); return } }
     setMsg('OK'); setTimeout(() => { onSaved?.(); onClose() }, 500)
   }
   async function save() {
@@ -834,7 +837,7 @@ function AdjustModal({ drug: dr, onClose, onSaved }) {
     const d = Number(qty) - (dr.current_qty || 0)
     if (d === 0) { setSaving(false); setMsg('변동 없음'); setTimeout(() => { onSaved?.(); onClose() }, 500); return }
     /* 실사 조정도 거래로 일원화: transactions type='조정'(quantity=목표−현재) → 0009 트리거가 drugs+inventory 동기. 직접 update 제거. */
-    const tx = { drug_code: dr.drug_code, type: TX_ADJUST, quantity: d, total_amount: Math.round(d * (Number(dr.purchase_price) || 0)), reason: `${reason} (${d > 0 ? '+' : ''}${d})`, transaction_date: new Date().toISOString().split('T')[0] }
+    const tx = { drug_code: dr.drug_code, type: TX_ADJUST, quantity: d, total_amount: Math.round(d * (Number(dr.purchase_price) || 0)), reason: `${reason} (${d > 0 ? '+' : ''}${d})`, transaction_date: todayYmd() }
     let res = await supabase.from('transactions').insert([tx])
     for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
     setSaving(false)
@@ -865,7 +868,7 @@ function DisposalModal({ drug: dr, onClose, onSaved }) {
   const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const { t } = useTheme()
   const pp = dr.purchase_price || 0, cur = dr.current_qty || 0
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayYmd()
   const [txType, setTxType] = useState(TX_DISPOSE)
   const [qty, setQty] = useState(''); const [lot, setLot] = useState(''); const [reason, setReason] = useState(''); const [supplier, setSupplier] = useState('')
   const [expDate, setExpDate] = useState(dr.expiry_date || ''); const [handler, setHandler] = useState('이정화'); const [approver, setApprover] = useState(''); const [memo, setMemo] = useState(''); const [procStatus, setProcStatus] = useState('처리완료')
@@ -940,7 +943,7 @@ function LotModal({ drug: dr, onClose, onSaved }) {
   const [nf, setNf] = useState({ lot_no: '', expiry_date: '', quantity: '', supplier: '', memo: '' })
   useEffect(() => { loadLots() }, [])
   async function loadLots() { setLd(true); const { data } = await supabase.from('drug_lots').select('*').eq('drug_code', dr.drug_code).order('expiry_date'); setLots(data || []); setLd(false) }
-  async function addLot() { if (!nf.lot_no.trim() || !nf.expiry_date) { setMsg('LOT번호와 유효기한 필수'); return }; const { error } = await supabase.from('drug_lots').insert([{ drug_code: dr.drug_code, lot_no: nf.lot_no.trim(), expiry_date: nf.expiry_date, quantity: Number(nf.quantity) || 0, supplier: nf.supplier, memo: nf.memo, received_date: new Date().toISOString().split('T')[0] }]); if (error) { setMsg(error.message); return }; setMsg('추가 완료'); setNf({ lot_no: '', expiry_date: '', quantity: '', supplier: '', memo: '' }); loadLots(); onSaved?.(); setTimeout(() => setMsg(null), 2000) }
+  async function addLot() { if (!nf.lot_no.trim() || !nf.expiry_date) { setMsg('LOT번호와 유효기한 필수'); return }; const { error } = await supabase.from('drug_lots').insert([{ drug_code: dr.drug_code, lot_no: nf.lot_no.trim(), expiry_date: nf.expiry_date, quantity: Number(nf.quantity) || 0, supplier: nf.supplier, memo: nf.memo, received_date: todayYmd() }]); if (error) { setMsg(error.message); return }; setMsg('추가 완료'); setNf({ lot_no: '', expiry_date: '', quantity: '', supplier: '', memo: '' }); loadLots(); onSaved?.(); setTimeout(() => setMsg(null), 2000) }
   async function delLot(id) { await supabase.from('drug_lots').delete().eq('id', id); loadLots(); onSaved?.() }
   async function toggleActive(lot) { await supabase.from('drug_lots').update({ is_active: !lot.is_active }).eq('id', lot.id); loadLots(); onSaved?.() }
   const totalQty = lots.filter(l => l.is_active).reduce((a, l) => a + (l.quantity || 0), 0)
@@ -2550,7 +2553,7 @@ function DrugRegister({onRefresh, drugs}) {
       setMsg({type:'error',text:msg2});return
     }
     setMsg({type:'success',text:`${form.drug_name} 등록 완료!`})
-    { const _iq = Number(form.current_qty)||0; if (_iq>0) { const { data:_a, error:_ae } = await supabase.rpc('bulk_stock_adjust',{p_items:[{drug_code:row.drug_code,target_qty:_iq}],p_date:new Date().toISOString().split('T')[0],p_reason:'초기재고 등록'}); if(_ae||(_a&&_a.ok===false)){setMsg({type:'error',text:'약품 등록됨 · 초기재고 반영 실패: '+(_ae?_ae.message:(((_a.failed||[])[0]||{}).reason||''))});return} } }
+    { const _iq = Number(form.current_qty)||0; if (_iq>0) { const { data:_a, error:_ae } = await supabase.rpc('bulk_stock_adjust',{p_items:[{drug_code:row.drug_code,target_qty:_iq}],p_date:todayYmd(),p_reason:'초기재고 등록'}); if(_ae||(_a&&_a.ok===false)){setMsg({type:'error',text:'약품 등록됨 · 초기재고 반영 실패: '+(_ae?_ae.message:(((_a.failed||[])[0]||{}).reason||''))});return} } }
     setForm(initForm);onRefresh()
     setTimeout(()=>setMsg(null),3000)
   }
@@ -2826,7 +2829,7 @@ function TransactionForm({drugs,onReload,navFilter}){
   const{t,memberRole,profile}=useTheme();const canDel=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
   const[tab,setTab]=useState(subFromHash()||'입고')
   const[search,setSearch]=useState('');const[selDrug,setSelDrug]=useState(null)
-  const[form,setForm]=useState({qty:'',purchase_price:'',edi_price:'',sub_type:'',note:'',supplier:'',lot_no:'',expiry_date:'',reason:'',handler:'이정화',approver:'',process_status:'처리완료',transaction_date:new Date().toISOString().split('T')[0]})
+  const[form,setForm]=useState({qty:'',purchase_price:'',edi_price:'',sub_type:'',note:'',supplier:'',lot_no:'',expiry_date:'',reason:'',handler:'이정화',approver:'',process_status:'처리완료',transaction_date:todayYmd()})
   const[saving,setSaving]=useState(false);const[msg,setMsg]=useState(null);const[ppConfirm,setPpConfirm]=useState(null);const[outlierConfirm,setOutlierConfirm]=useState(null)
   const[txns,setTxns]=useState([]);const[txPage,setTxPage]=useState(1);const[selIds,setSelIds]=useState([]);const[closedM,setClosedM]=useState(null);const[selDelStage,setSelDelStage]=useState(0);const[selDelBusy,setSelDelBusy]=useState(false);const[selDelMsg,setSelDelMsg]=useState(null);const[txSearch,setTxSearch]=useState('')
   const[bulkData,setBulkData]=useState([]);const[bulkMsg,setBulkMsg]=useState(null);const[bulkLd,setBulkLd]=useState(false)
@@ -2892,7 +2895,7 @@ function TransactionForm({drugs,onReload,navFilter}){
     setSaving(true);setMsg(null);setPpConfirm(null)
     /* ★ 폐기만 소수 허용 — 다른 탭은 기존 parseInt 동작 유지(마감 중 회귀 방지) */
     const q=tab==='폐기'?Number(form.qty):parseInt(form.qty);const amt=Math.round(q*(pp||0))
-    const tx={drug_code:selDrug.drug_code,type:tab,quantity:q,unit_price:pp||0,total_amount:amt,memo:form.note||null,transaction_date:form.transaction_date||new Date().toISOString().split('T')[0],reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
+    const tx={drug_code:selDrug.drug_code,type:tab,quantity:q,unit_price:pp||0,total_amount:amt,memo:form.note||null,transaction_date:form.transaction_date||todayYmd(),reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
     let res=await supabase.from('transactions').insert([tx])
     for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
     if(res.error){setMsg(dbErrorMsg(res.error));setSaving(false);return}
@@ -2935,7 +2938,7 @@ function TransactionForm({drugs,onReload,navFilter}){
           note:String(r['비고']||'').trim(),supplier:String(r['공급업체']||'').trim(),
           lot_no:String(r['로트번호']||r['LOT번호']||'').trim(),expiry_date:String(r['유효기한']||'').trim(),
           reason:String(r[tab==='반품'?'반품사유':'폐기사유']||r['사유']||'').trim(),handler:String(r['처리자']||'이정화').trim(),approver:String(r['승인자']||'').trim(),
-          process_status:String(r['처리상태']||'처리완료').trim(),transaction_date:String(r[tab+'일자']||r['일자']||new Date().toISOString().split('T')[0]).trim()}
+          process_status:String(r['처리상태']||'처리완료').trim(),transaction_date:String(r[tab+'일자']||r['일자']||todayYmd()).trim()}
       })
       const _fileMonths=[...new Set(parsed.map(r=>String(r.transaction_date||'').slice(0,7)).filter(m=>/^[0-9]{4}-[0-9]{2}$/.test(m)))]
       const _mism=(selYm&&_fileMonths.length&&!_fileMonths.includes(selYm))?` · ⚠ 선택한 월(${selYm})과 파일의 월(${_fileMonths.join('·')})이 다릅니다`:''
@@ -2982,7 +2985,7 @@ function TransactionForm({drugs,onReload,navFilter}){
 
   return<div style={{padding:'20px 24px'}}>
     {/* 탭 */}
-    <div style={{display:'flex',gap:6,marginBottom:16}}>{TYPES.map(tp=><button key={tp} onClick={()=>{if(tp!==tab){window.history.pushState({ykMenu:'transaction',ykSub:tp},'','#transaction/'+(TX_URL_KEY[tp]||encodeURIComponent(tp))+(selYm?'/'+selYm:''))}setTab(tp);setSelDrug(null);setSearch('');setBulkData([]);setBulkMsg(null);setMsg(null);setForm(p=>({...p,purchase_price:'',edi_price:'',transaction_date:new Date().toISOString().split('T')[0]}));setPpConfirm(null);setSelIds([]);setSelDelStage(0);setTxSearch('')}} style={{flex:1,padding:'10px',borderRadius:10,border:`1.5px solid ${tab===tp?(tc[tp]?.c||t.accent):t.border}`,background:tab===tp?(tc[tp]?.bg||t.accentL):t.card,color:tab===tp?(tc[tp]?.c||t.accent):t.textM,cursor:'pointer',fontSize:13,fontWeight:tab===tp?700:400,transition:'all .15s'}}>{tp}관리</button>)}</div>
+    <div style={{display:'flex',gap:6,marginBottom:16}}>{TYPES.map(tp=><button key={tp} onClick={()=>{if(tp!==tab){window.history.pushState({ykMenu:'transaction',ykSub:tp},'','#transaction/'+(TX_URL_KEY[tp]||encodeURIComponent(tp))+(selYm?'/'+selYm:''))}setTab(tp);setSelDrug(null);setSearch('');setBulkData([]);setBulkMsg(null);setMsg(null);setForm(p=>({...p,purchase_price:'',edi_price:'',transaction_date:todayYmd()}));setPpConfirm(null);setSelIds([]);setSelDelStage(0);setTxSearch('')}} style={{flex:1,padding:'10px',borderRadius:10,border:`1.5px solid ${tab===tp?(tc[tp]?.c||t.accent):t.border}`,background:tab===tp?(tc[tp]?.bg||t.accentL):t.card,color:tab===tp?(tc[tp]?.c||t.accent):t.textM,cursor:'pointer',fontSize:13,fontWeight:tab===tp?700:400,transition:'all .15s'}}>{tp}관리</button>)}</div>
     {/* 월 선택(연·월 + 전체) — 4탭 아래. 조회 범위·라우팅·엑셀 파일명·마감 표시 공통 기준 */}
     <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
       <select value={myYear} onChange={e=>applyYm(Number(e.target.value),myMonth)} style={{padding:'6px 10px',borderRadius:6,border:`1px solid ${t.border}`,fontSize:12,background:t.bg,color:t.text}}>
@@ -3118,7 +3121,7 @@ function ChangePlanModal({ plan, drugs, onClose, onSaved }) {
   const { t } = useTheme()
   const isNew = !plan.id
   const [search, setSearch] = useState(''); const [selCode, setSelCode] = useState(plan.from_drug_code || '')
-  const [f, setF] = useState({ to_drug_name: plan.to_drug_name || '', to_drug_code: plan.to_drug_code || '', to_manufacturer: plan.to_manufacturer || '', purchased: plan.purchased || '○', plan_status: plan.plan_status || '예정', monthly_avg_manual: plan.monthly_avg_manual ?? '', usage_dept1: plan.usage_dept1 ?? '', usage_dept2: plan.usage_dept2 ?? '', usage_dept3: plan.usage_dept3 ?? '', weekly_usage: plan.weekly_usage ?? '', base_date: plan.base_date || new Date().toISOString().split('T')[0], memo: plan.memo || '' })
+  const [f, setF] = useState({ to_drug_name: plan.to_drug_name || '', to_drug_code: plan.to_drug_code || '', to_manufacturer: plan.to_manufacturer || '', purchased: plan.purchased || '○', plan_status: plan.plan_status || '예정', monthly_avg_manual: plan.monthly_avg_manual ?? '', usage_dept1: plan.usage_dept1 ?? '', usage_dept2: plan.usage_dept2 ?? '', usage_dept3: plan.usage_dept3 ?? '', weekly_usage: plan.weekly_usage ?? '', base_date: plan.base_date || todayYmd(), memo: plan.memo || '' })
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null)
   const sel = drugs.find(d => d.drug_code === selCode)
   const [wuTouched, setWuTouched] = useState(false)
