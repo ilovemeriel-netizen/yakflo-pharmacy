@@ -115,4 +115,7 @@ code {
 @media print {
   #root { min-height: 0; }
   .cnc-app-root { min-height: 0 !important; }
+  /* 약품목록 표 컨테이너 — 한글 조합 중에만 인라인 min-height 가 걸린다(첫 클릭 무반응 수정).
+     인쇄 시점에 조합이 끝나 있어 값이 0이지만, 남아 있을 경우의 백지 페이지를 원천 차단한다. */
+  .cnc-ime-lock { min-height: 0 !important; }
 }
