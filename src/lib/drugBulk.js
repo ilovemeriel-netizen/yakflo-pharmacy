@@ -9,14 +9,22 @@ import { normalizeDrugRow } from './drugRules'
 const CHUNK = 500, CONC = 10
 
 /* rawRows(헤더명→셀문자열 객체 배열) + mapping(autoMap 결과) + 기존drug Map + isOwner
-   → 분류행 [{ idx, code, name, status:'new'|'update'|'error', errors, fields, ex }] */
-export function classifyDrugRows(rawRows, mapping, existingMap, isOwner) {
+   → 분류행 [{ idx, code, name, status:'new'|'update'|'error', errors, fields, ex }]
+
+   rowNums: rawRows 와 같은 길이의 **실제 엑셀 행 번호** 배열(선택).
+   ★ idx 는 화면에 그대로 표시된다(App.jsx 의 대량등록 표). 넘기지 않으면 i+1 이 되는데,
+     그 값은 두 번 어긋난다 — 헤더 1행이 보정되지 않고, 호출부가 빈 행을 걸러낸 뒤라
+     그만큼 더 밀린다(실측: 실제 2·4·6행이 1·2·3행으로 표시). 결함 39.
+   ★ rawRows 에 행 번호를 심지 않고 별도 배열로 받는다 — raw 는 normalizeDrugRow 가
+     헤더명으로 읽는 자료라 헤더가 아닌 키를 섞지 않는다. */
+export function classifyDrugRows(rawRows, mapping, existingMap, isOwner, rowNums) {
   return rawRows.map((raw, i) => {
     const codeCell = String((mapping.drug_code ? raw[mapping.drug_code] : '') || '').trim()
     const ex = (existingMap && existingMap.get(codeCell)) || null
     const { code, errors, fields } = normalizeDrugRow(raw, mapping, ex, isOwner)
     const status = errors.length ? 'error' : (ex ? 'update' : 'new')
-    return { idx: i + 1, code, name: fields.drug_name || (ex && ex.drug_name) || '', status, errors, fields, ex }
+    const idx = (rowNums && rowNums[i] != null) ? rowNums[i] : i + 1
+    return { idx, code, name: fields.drug_name || (ex && ex.drug_name) || '', status, errors, fields, ex }
   })
 }
 

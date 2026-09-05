@@ -2578,12 +2578,16 @@ function DrugRegister({onRefresh, drugs}) {
         if(!aoa.length){setBulkMsg({type:'error',text:'데이터가 없습니다.'});return}
         const hdrs=(aoa[0]||[]).map(h=>String(h).trim()).filter(Boolean)
         if(!hdrs.length){setBulkMsg({type:'error',text:'헤더 행을 찾을 수 없습니다.'});return}
-        const rawRows=aoa.slice(1).filter(r=>r.some(x=>String(x).trim()!=='')).map(r=>{const o={};hdrs.forEach((h,i)=>{o[h]=String(r[i]==null?'':r[i])});return o})
+        /* ★ 실제 엑셀 행 번호를 **빈 행을 걸러내기 전에** 붙인다(결함 39).
+           i+2 는 헤더 1행 보정. 이 번호가 화면 대량등록 표에 그대로 표시된다. */
+        const _kept=aoa.slice(1).map((r,i)=>({r,ln:i+2})).filter(({r})=>r.some(x=>String(x).trim()!==''))
+        const rawRows=_kept.map(({r})=>{const o={};hdrs.forEach((h,i)=>{o[h]=String(r[i]==null?'':r[i])});return o})
+        const rowNums=_kept.map(({ln})=>ln)
         if(!rawRows.length){setBulkMsg({type:'error',text:'데이터 행이 없습니다.'});return}
         const mapping=autoMap(hdrs)
         if(!mapping.drug_code||!mapping.drug_name){setBulkMsg({type:'error',text:'약품코드·약품명 컬럼을 인식하지 못했습니다. 양식을 확인하세요.'});return}
         const existingMap=new Map((drugs||[]).map(d=>[String(d.drug_code),d]))
-        const parsed=classifyDrugRows(rawRows,mapping,existingMap,isOwner)
+        const parsed=classifyDrugRows(rawRows,mapping,existingMap,isOwner,rowNums)
         setBulk(parsed)
         const nc=parsed.filter(r=>r.status==='new').length,uc=parsed.filter(r=>r.status==='update').length,ec=parsed.filter(r=>r.status==='error').length
         setBulkMsg({type:'info',text:`${parsed.length}행 · 신규 ${nc} · 갱신 ${uc} · 오류 ${ec}`})
