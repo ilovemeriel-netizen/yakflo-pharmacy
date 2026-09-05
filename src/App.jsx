@@ -2818,12 +2818,22 @@ function DrugRegister({onRefresh, drugs}) {
      다만 wardValidQty 의 999 상한은 가져오지 않는다 — 폐기는 재고 전량이 될 수 있다.
    ★ 입력 정화는 wardSanitizeQty 를 그대로 재사용한다(상한과 무관하므로 중복 구현하지 않는다).
    ★ 폐기 탭에만 적용한다 — 입고·출고·반품은 기존 parseInt 동작을 그대로 둔다(마감 중 회귀 방지). */
-const dispValidQty = v => {
+/* 입출고 4탭(입고·출고·반품·폐기) 공통 수량 검증 — 소수점 2자리까지, 배수는 강제하지 않는다.
+   ★ 0.25 배수를 강제하지 않는 이유(2026-09-05 확정):
+     인슐린 펜처럼 단위/mL 로 쓰는 주사제는 실사용량이 0.25 배수로 떨어지지 않는다
+     (출고 실적 10.7563 · 5.4206 · 2.2201 — 트레시바·피아스프·애피드라).
+     배수를 강제하면 이 제품군의 등록이 막힌다.
+   ★ 폐기에만 0.25 배수를 걸던 규칙(구 dispValidQty, f9f8c68)을 여기로 흡수했다.
+     그 규칙은 폐기 고유의 업무 규칙이 아니라 「1.75 등 반알 단위 대응」을 위해
+     병동신청 wardValidQty 의 기준을 빌려온 것이었고(커밋 본문에 명시),
+     폐기 대상에는 주사제가 5건 실재해 오히려 잔량 폐기를 막을 수 있었다.
+   ★ 상한은 두지 않는다 — 폐기·반품은 재고 전량이 될 수 있다.
+   ★ wardValidQty(병동 신청)는 건드리지 않는다. 병동은 0.25 배수가 정당한 규칙이다. */
+const TX_QTY_MSG = '수량은 0보다 큰 숫자로, 소수점 2자리까지 입력해 주세요'
+const txValidQty = v => {
   if (v == null || v === '') return false
   if (!/^\d+(\.\d{1,2})?$/.test(String(v))) return false      // 숫자·소수점 2자리까지 · 음수 거부
-  const n = Number(v)
-  if (!(n >= 0.25)) return false                              // 상한 없음
-  return Math.round(n * 100) % 25 === 0
+  return Number(v) > 0                                        // 상한 없음
 }
 function TransactionForm({drugs,onReload,navFilter}){
   const{t,memberRole,profile}=useTheme();const canDel=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
@@ -2864,11 +2874,11 @@ function TransactionForm({drugs,onReload,navFilter}){
     if(!selDrug||!form.qty){setMsg('약품과 수량을 입력해주세요');return}
     if((tab==='반품'||tab==='폐기')&&!form.reason){setMsg('사유를 선택해주세요');return}
     /* ★ 폐기 수량 검증 — 0.25 배수·0.25 이상·상한 없음. 다른 탭은 종전 그대로 */
-    if(tab==='폐기'&&!dispValidQty(String(form.qty).trim())){setMsg(WARD_QTY_MSG);return}
+    if(!txValidQty(String(form.qty).trim())){setMsg(TX_QTY_MSG);return}
     const _td=form.transaction_date||_today;if(_td>_today){setMsg('미래 날짜는 등록할 수 없습니다');return}if(_isClosed(_td)){setMsg('해당 월은 마감되어 등록할 수 없습니다.');return}
     /* 출고 이상치 게이트(출고 탭 전용): 재고초과·평균3배초과·향정마약 중 하나라도 걸리면 확인. 정상 출고는 즉시 저장 */
     if(tab==='출고'&&!skipOutlier){
-      const _q=parseInt(form.qty);const _rs=[]
+      const _q=Number(form.qty);const _rs=[]
       if(_q>(selDrug.current_qty||0))_rs.push('현재고 '+(selDrug.current_qty||0).toLocaleString()+'보다 많습니다')
       const _r3=Number(selDrug.recent_3m_usage)||0;if(_r3>0){const _avg=_r3/3;if(_q>_avg*3)_rs.push('최근 3개월 평균 사용량('+Math.round(_avg).toLocaleString()+')보다 많습니다')}
       const _nt=String(selDrug.narcotic_type||'').trim();if(_nt!=='일반')_rs.push((_nt||'마약구분 미지정')+' 약품입니다')
@@ -2894,7 +2904,7 @@ function TransactionForm({drugs,onReload,navFilter}){
   async function _doSave(pp,updateMaster){
     setSaving(true);setMsg(null);setPpConfirm(null)
     /* ★ 폐기만 소수 허용 — 다른 탭은 기존 parseInt 동작 유지(마감 중 회귀 방지) */
-    const q=tab==='폐기'?Number(form.qty):parseInt(form.qty);const amt=Math.round(q*(pp||0))
+    const q=Math.round(Number(form.qty)*100)/100;const amt=Math.round(q*(pp||0))
     const tx={drug_code:selDrug.drug_code,type:tab,quantity:q,unit_price:pp||0,total_amount:amt,memo:form.note||null,transaction_date:form.transaction_date||todayYmd(),reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
     let res=await supabase.from('transactions').insert([tx])
     for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
@@ -3015,7 +3025,7 @@ function TransactionForm({drugs,onReload,navFilter}){
         {selDrug&&<div style={{background:tc[tab]?.bg,borderRadius:6,padding:'6px 10px',marginBottom:6,fontSize:11,color:tc[tab]?.c}}><strong>{selDrug.drug_name}</strong>{selDrug.status!=='사용'?<span style={{marginLeft:4,fontSize:10}}>({selDrug.status})</span>:null} · 재고:{selDrug.current_qty} · ₩{selDrug.purchase_price?.toLocaleString()}</div>}
         
         <div style={{marginBottom:6}}><div style={{fontSize:10,color:t.textM,marginBottom:2}}>일자</div><input type="date" max={_today} disabled={_selClosed} value={form.transaction_date} onChange={e=>sf('transaction_date',e.target.value)} style={{...ip,opacity:_selClosed?0.5:1}}/></div>
-        <input type="number" step={tab==='폐기'?'0.25':undefined} inputMode={tab==='폐기'?'decimal':undefined} value={form.qty} disabled={_selClosed} onChange={e=>{if(tab!=='폐기'){sf('qty',e.target.value);return}const _s=wardSanitizeQty(e.target.value);if(_s!==null)sf('qty',_s)}} placeholder={tab==='폐기'?'수량 (0.25 단위)':'수량'} style={{...ip,marginBottom:6,opacity:_selClosed?0.5:1}}/>
+        <input type="number" step="0.01" inputMode="decimal" value={form.qty} disabled={_selClosed} onChange={e=>{const _s=wardSanitizeQty(e.target.value);if(_s!==null)sf('qty',_s)}} placeholder="수량 (소수점 2자리)" style={{...ip,marginBottom:6,opacity:_selClosed?0.5:1}}/>
         {(tab==='출고')&&<input type="number" value={form.edi_price} onChange={e=>sf('edi_price',e.target.value)} placeholder="보험약가 (비우면 기존 약가)" style={{...ip,marginBottom:6}}/>}
         {(tab==='입고')&&<input type="number" value={form.purchase_price} onChange={e=>sf('purchase_price',e.target.value)} placeholder="구입단가 (비우면 기존 단가)" style={{...ip,marginBottom:6}}/>}
         {(tab==='반품'||tab==='폐기')&&<input type="number" value={form.purchase_price} onChange={e=>sf('purchase_price',e.target.value)} placeholder="구입단가 (비우면 기존 단가)" style={{...ip,marginBottom:6}}/>}
