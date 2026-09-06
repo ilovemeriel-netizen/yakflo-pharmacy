@@ -1191,8 +1191,24 @@ function AlertCenter({ drugs, onNav }) {
 }
 
 /* ═══ 발주 관리 (현재고+safety 기반·사용량 비의존) ═══ */
-function Ordering({ drugs, onAdjust }) {
+function Ordering({ drugs, onAdjust, onNav }) {
   const { t, open360, memberRole, profile } = useTheme(); const canDel = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin';
+  /* ── 발주 실물재고 ─────────────────────────────────────────────────────────
+     ★ 참고값이다. current_qty 를 건드리지 않는다 — 재고 반영은 실사 화면이 한다.
+       applyCount·revertCount 는 InventoryCount 내부 클로저라 여기서 부를 수 없다(실측).
+       그래서 여기서는 세션에 값만 쌓고, 반영은 [실사 화면에서 반영 →] 으로 넘긴다.
+     ★ 세션을 '작성중' 으로 열면 COUNT_SESSION_OPEN 이 그 달 마감을 막는다.
+       이는 「반영을 잊은 채 마감」을 막는 의도된 안전장치다 — 우회하지 않고 화면에 알린다.
+     ★ inventory_count_items 에는 (count_id, drug_code) UNIQUE 가 없다(0085 실측).
+       upsert 를 쓸 수 없어 **조회 후 UPDATE/INSERT** 로 분기한다. */
+  const physPeriod = todayYmd().slice(0, 7);           // 'YYYY-MM'
+  const physTitle = '발주 실물 ' + physPeriod;
+  const [phys, setPhys] = useState({});                // drug_code → counted_qty
+  const [physAt, setPhysAt] = useState({});            // drug_code → 입력 시각
+  const [physRowId, setPhysRowId] = useState({});      // drug_code → item id (UNIQUE 부재 대응)
+  const [physSes, setPhysSes] = useState(null);        // 이번 달 세션
+  const [physIn, setPhysIn] = useState({});            // 입력 중 문자열
+  const [physBusy, setPhysBusy] = useState(null);      // 저장 중인 drug_code
   const [suppliers, setSuppliers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [tid, setTid] = useState(null);
@@ -1213,7 +1229,74 @@ function Ordering({ drugs, onAdjust }) {
     const { data: po } = await supabase.from('purchase_orders').select('*, suppliers(name)').order('created_at', { ascending: false }).limit(20); setOrders(po || []);
   }
   useEffect(() => { let on = true; (async () => { const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle(); if (!on) return; setTid(tm?.tenant_id || null); const { data: sup } = await supabase.from('suppliers').select('*').order('name'); if (on) setSuppliers(sup || []); const { data: po } = await supabase.from('purchase_orders').select('*, suppliers(name)').order('created_at', { ascending: false }).limit(20); if (on) setOrders(po || []); const { data: fcd } = await supabase.rpc('drug_change_forecast', { p_weeks: 12 }); if (on) setFc(fcd || []); const { data: utd } = await supabase.rpc('usage_monthly_trend', { p_months: 6 }); if (on) setUt(utd || []); const { data: msRows } = await supabase.from('monthly_snapshots').select('snap_year,snap_month,total_out_amount'); if (on) { const _amt = {}; (msRows || []).forEach(r => { const _ym = r.snap_year + '-' + String(r.snap_month).padStart(2, '0'); _amt[_ym] = (_amt[_ym] || 0) + Number(r.total_out_amount || 0); }); setUtAmt(_amt); } })(); return () => { on = false } }, []);
-  const cand = drugs.filter(d => MAIN_STATS.includes(d.status) && (stockStat(d) === '긴급' || stockStat(d) === '주문필요')).sort((a, b) => (stockStat(a) === '긴급' ? 0 : 1) - (stockStat(b) === '긴급' ? 0 : 1));
+  /* 이번 달 실물 입력분 로드 — 세션이 없으면 만들지 않는다(저장할 때 만든다). */
+  async function loadPhys() {
+    const { data: ses } = await supabase.from('inventory_counts').select('id,title,status,created_at')
+      .eq('title', physTitle).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    setPhysSes(ses || null);
+    if (!ses) { setPhys({}); setPhysAt({}); setPhysRowId({}); return }
+    const { data: its } = await supabase.from('inventory_count_items')
+      .select('id,drug_code,counted_qty,created_at').eq('count_id', ses.id);
+    const v = {}, a = {}, m = {};
+    (its || []).forEach(x => { v[x.drug_code] = Number(x.counted_qty); a[x.drug_code] = x.created_at; m[x.drug_code] = x.id });
+    setPhys(v); setPhysAt(a); setPhysRowId(m);
+  }
+  /* ★ set-state-in-effect 오탐 — loadPhys 의 첫 문장이 await 라 setState 가 동기로 실행되지 않는다.
+     이 파일의 기존 화면들이 모두 같은 패턴이다. 사유를 남기고 이 줄만 억제한다. */
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  useEffect(() => { loadPhys() }, []);
+
+  /* 실물 수량 저장 — ★ current_qty 를 건드리지 않는다. transactions 도 만들지 않는다. */
+  async function savePhys(d) {
+    const raw = physIn[d.drug_code];
+    if (raw == null || String(raw).trim() === '') { setMsg('실물 수량을 입력하세요'); setTimeout(() => setMsg(null), 2500); return }
+    const n = Math.round(Number(raw) * 100) / 100;   // 수량 정밀도 = 소수 2자리 반올림(전 경로 공통)
+    if (!Number.isFinite(n) || n < 0) { setMsg('실물 수량은 0 이상의 숫자여야 합니다'); setTimeout(() => setMsg(null), 2500); return }
+    setPhysBusy(d.drug_code);
+    /* 1) 이번 달 세션 확보 — 없을 때만 만든다(작성중 세션을 미리 열어두지 않는다) */
+    let ses = physSes;
+    if (!ses) {
+      const { data, error } = await supabase.from('inventory_counts')
+        .insert([{ tenant_id: tid, title: physTitle, count_date: todayYmd(), status: '작성중' }])
+        .select('id,title,status,created_at').maybeSingle();
+      if (error) { setPhysBusy(null); setMsg('세션 생성 실패: ' + error.message); setTimeout(() => setMsg(null), 3500); return }
+      ses = data; setPhysSes(data);
+    }
+    /* 2) ★ (count_id, drug_code) UNIQUE 가 없다 — 조회 후 UPDATE/INSERT 로 중복을 막는다 */
+    let rowId = physRowId[d.drug_code] || null;
+    if (!rowId) {
+      const { data: ex } = await supabase.from('inventory_count_items').select('id')
+        .eq('count_id', ses.id).eq('drug_code', d.drug_code).limit(1).maybeSingle();
+      rowId = ex?.id || null;
+    }
+    let error;
+    if (rowId) ({ error } = await supabase.from('inventory_count_items')
+      .update({ counted_qty: n, source: '발주' }).eq('id', rowId));
+    else {
+      /* ★ tenant_id 컬럼이 없다 — RLS 는 count_id 조인으로 격리한다(0085 정책 실측) */
+      const { data, error: ie } = await supabase.from('inventory_count_items')
+        .insert([{ count_id: ses.id, drug_code: d.drug_code, counted_qty: n, source: '발주' }])
+        .select('id').maybeSingle();
+      error = ie; rowId = data?.id || null;
+    }
+    setPhysBusy(null);
+    if (error) { setMsg('실물 수량 저장 실패: ' + error.message); setTimeout(() => setMsg(null), 3500); return }
+    setPhys(p => ({ ...p, [d.drug_code]: n }));
+    setPhysAt(p => ({ ...p, [d.drug_code]: new Date().toISOString() }));
+    setPhysRowId(p => ({ ...p, [d.drug_code]: rowId }));
+    setPhysIn(p => { const q = { ...p }; delete q[d.drug_code]; return q });
+    setMsg('실물 ' + n + ' 저장 · 재고는 바뀌지 않습니다'); setTimeout(() => setMsg(null), 2500);
+  }
+
+  /* ★ 발주 판정에만 실물값을 우선한다 — stockStat 원본은 건드리지 않고 값만 갈아끼워 부른다.
+     AlertCenter·Drug360Modal·Dashboard·StockStatus 는 원본 stockStat 을 그대로 쓴다. */
+  const effQty = d => (phys[d.drug_code] != null ? Number(phys[d.drug_code]) : Number(d.current_qty) || 0);
+  const stockStatEff = d => stockStat({ ...d, current_qty: effQty(d) });
+  const physCount = Object.keys(phys).length;
+  const physLast = Object.values(physAt).sort().slice(-1)[0] || null;
+  const physApplied = physSes && physSes.status === '반영완료';
+
+  const cand = drugs.filter(d => MAIN_STATS.includes(d.status) && (stockStatEff(d) === '긴급' || stockStatEff(d) === '주문필요')).sort((a, b) => (stockStatEff(a) === '긴급' ? 0 : 1) - (stockStatEff(b) === '긴급' ? 0 : 1));
   const supName = id => (suppliers.find(s => s.id === id) || {}).name || '미지정 도매사';
   const effSup = d => (d.drug_code in supAssign ? supAssign[d.drug_code] : d.supplier_id) || '__none';
   const groups = {}; cand.forEach(d => { const k = effSup(d); (groups[k] = groups[k] || []).push(d) });
@@ -1272,7 +1355,7 @@ function Ordering({ drugs, onAdjust }) {
     setBusy(true);
     const { data: po, error } = await supabase.from('purchase_orders').insert({ tenant_id: tid, supplier_id, status: '작성중' }).select().single();
     if (error || !po) { setMsg('발주서 생성 실패: ' + (error ? error.message : '')); setBusy(false); return }
-    const rows = items.map(d => ({ tenant_id: tid, order_id: po.id, drug_code: d.drug_code, drug_name: d.drug_name, order_qty: (() => { const ov = d.drug_code in qtyOverride ? Number(qtyOverride[d.drug_code]) : NaN; return (Number.isFinite(ov) && ov > 0) ? ov : Math.max(0, (d.safety_stock || 0) - (d.current_qty || 0)); })(), current_qty: d.current_qty || 0, safety_stock: d.safety_stock || 0 }));
+    const rows = items.map(d => ({ tenant_id: tid, order_id: po.id, drug_code: d.drug_code, drug_name: d.drug_name, order_qty: (() => { const ov = d.drug_code in qtyOverride ? Number(qtyOverride[d.drug_code]) : NaN; return (Number.isFinite(ov) && ov > 0) ? ov : Math.max(0, (d.safety_stock || 0) - effQty(d)); })(), current_qty: d.current_qty || 0, safety_stock: d.safety_stock || 0 }));
     const { error: e2 } = await supabase.from('order_items').insert(rows);
     setBusy(false);
     if (e2) { setMsg('발주항목 저장 실패: ' + e2.message); return }
@@ -1306,17 +1389,35 @@ function Ordering({ drugs, onAdjust }) {
       <button disabled={busy} onClick={createPOFromSelection} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.purple, background: t.purple, color: '#fff', cursor: busy ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, opacity: busy ? 0.6 : 1 }}>선택 발주서 생성</button>
       <button onClick={() => setSelDrugs([])} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>선택 해제</button>
     </div> : null}
+    {/* ═══ 실물재고 상태 · 마감 안내 ═══
+        ★ 세션이 없으면 아무것도 그리지 않는다 — 아직 아무 것도 하지 않은 화면에 경고를 띄우지 않는다. */}
+    {physSes && <div style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: '12px 16px', marginBottom: 12, borderLeft: '3px solid ' + (physApplied ? t.green : t.lavender) }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 700, fontSize: 13, color: t.text }}>{physTitle}</span>
+        {/* 미반영 = 라벤더 · 반영됨 = 녹색. 둘 다 기존 토큰이며 신색이 아니다 */}
+        <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: 7, fontSize: 10, fontWeight: 700, border: '1px solid ' + (physApplied ? t.green : t.lavender), color: physApplied ? t.green : t.purple }}>{physApplied ? '반영됨' : '미반영'}</span>
+        <span style={{ fontSize: 11, color: t.textM }}>실물 입력 {physCount}건</span>
+        {physLast && <span style={{ fontSize: 11, color: t.textL }}>· 최근 입력 {String(physLast).slice(0, 16).replace('T', ' ')}</span>}
+        <div style={{ flex: 1 }} />
+        <button onClick={() => onNav && onNav('count')} style={{ padding: '6px 13px', borderRadius: 8, border: '1px solid ' + t.purple, background: 'transparent', color: t.purple, cursor: 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>실사 화면에서 반영 →</button>
+      </div>
+      {/* ★ 마감 차단은 결함이 아니라 「반영을 잊은 채 마감」을 막는 안전장치다. 우회하지 않고 알린다. */}
+      {!physApplied && <div style={{ marginTop: 8, fontSize: 11, color: t.text, lineHeight: 1.7 }}>
+        작성중 세션이 있으면 이번 달 마감이 차단됩니다.<br />
+        월말 출고 입력을 마친 뒤 실사 화면에서 [재고반영] 하시면 마감할 수 있습니다.
+      </div>}
+    </div>}
     {!cand.length ? <div style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 24, textAlign: 'center', color: t.textL }}>발주점 미달 약품 없음 (0건)</div> :
-      Object.keys(groups).filter(key => !supFilter || (key === '__none' ? '미지정' : supName(key)) === supFilter).sort((ka, kb) => { const _soOf = k => { if (k === '__none') return 1e9; const su = suppliers.find(s => s.id === k); return su && su.sort_order != null ? su.sort_order : 1e8; }; return _soOf(ka) - _soOf(kb); }).map(key => { const _raw = groups[key]; const _enr = _raw.map(d => { const da = (d.monthly_avg || 0) / 30; const _sid = effSup(d); const _su = _sid === '__none' ? null : suppliers.find(s => s.id === _sid); const _lt = _su && _su.lead_time_days != null ? _su.lead_time_days : 3; const _prop = Math.max(0, (d.safety_stock || 0) - (d.current_qty || 0)); const _dep = da > 0 ? Math.round((d.current_qty || 0) / da) : null; const _risk = da > 0 ? ((d.current_qty || 0) < _lt * da ? 1 : 0) : -1; return { ...d, _lt, _prop, _dep, _risk, _riskLabel: _risk === 1 ? '위험' : _risk === 0 ? '안전' : '-' }; }); const _filt = riskFilter ? _enr.filter(d => d._riskLabel === riskFilter) : _enr; const items = so(_filt); if (!items.length) return null; return <div key={key} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, marginBottom: 12, overflow: 'hidden', boxShadow: t.shadow }}>
+      Object.keys(groups).filter(key => !supFilter || (key === '__none' ? '미지정' : supName(key)) === supFilter).sort((ka, kb) => { const _soOf = k => { if (k === '__none') return 1e9; const su = suppliers.find(s => s.id === k); return su && su.sort_order != null ? su.sort_order : 1e8; }; return _soOf(ka) - _soOf(kb); }).map(key => { const _raw = groups[key]; const _enr = _raw.map(d => { const da = (d.monthly_avg || 0) / 30; const _sid = effSup(d); const _su = _sid === '__none' ? null : suppliers.find(s => s.id === _sid); const _lt = _su && _su.lead_time_days != null ? _su.lead_time_days : 3; const _prop = Math.max(0, (d.safety_stock || 0) - effQty(d)); const _dep = da > 0 ? Math.round((d.current_qty || 0) / da) : null; const _risk = da > 0 ? ((d.current_qty || 0) < _lt * da ? 1 : 0) : -1; return { ...d, _lt, _prop, _dep, _risk, _riskLabel: _risk === 1 ? '위험' : _risk === 0 ? '안전' : '-' }; }); const _filt = riskFilter ? _enr.filter(d => d._riskLabel === riskFilter) : _enr; const items = so(_filt); if (!items.length) return null; return <div key={key} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, marginBottom: 12, overflow: 'hidden', boxShadow: t.shadow }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid ' + t.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: t.accentL }}>
           <span style={{ fontWeight: 700, color: t.accent, display: 'flex', alignItems: 'center', gap: 8 }}><span>{key === '__none' ? '미지정 도매사' : supName(key)} <span style={{ fontWeight: 500, color: t.textM, fontSize: 12 }}>· {items.length}품목</span></span>{createdKeys[key] ? <Bd bg={t.greenL} color={t.green}>발주서 생성됨{createdKeys[key] > 1 ? ' ×' + createdKeys[key] : ''}</Bd> : null}</span>
           <button disabled={busy} onClick={() => createPO(key, items)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: busy ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, opacity: busy ? 0.6 : 1 }}>{createdKeys[key] ? '발주서 재생성' : '발주서 생성'}</button>
         </div>
-        <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr><th style={{ padding: '8px 10px', borderBottom: '1px solid ' + t.border, width: 30, textAlign: 'center' }}><input type="checkbox" checked={items.length > 0 && items.every(d => selDrugs.includes(d.drug_code))} onChange={() => toggleGroupSel(items)} style={{ accentColor: t.purple, cursor: 'pointer' }} /></th>{[['약품', 'drug_name', 'left'], ['현재고', 'current_qty', 'right'], ['안전재고', 'safety_stock', 'right'], ['발주제안', '_prop', 'right'], ['소진예상', '_dep', 'right'], ['리드타임위험', '_risk', 'center'], ['도매사', null, 'left']].map(([h, skk, al]) => <th key={h} style={{ textAlign: al, padding: '8px 14px', color: (skk && sk === skk) ? t.accent : t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, cursor: skk ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap', background: (skk && sk === skk) ? t.accentL : 'transparent' }} onClick={skk ? () => hs(skk) : undefined}>{h}{skk ? <SI col={skk} /> : null}{h === '리드타임위험' ? <HeaderFilter items={['위험', '안전']} value={riskFilter} onChange={setRiskFilter} color={t.red} /> : null}{h === '도매사' ? <HeaderFilter items={supOptions} value={supFilter} onChange={setSupFilter} color={t.accent} /> : null}</th>)}</tr></thead>
-        <tbody>{items.map((d, i) => <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '7px 10px', textAlign: 'center' }}><input type="checkbox" checked={selDrugs.includes(d.drug_code)} onChange={() => toggleSel(d.drug_code)} style={{ accentColor: t.purple, cursor: 'pointer' }} /></td><td style={{ padding: '7px 14px', textAlign: 'left' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, fontWeight: 600, cursor: 'pointer' }}>{d.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.red, fontWeight: 600 }}>{(d.current_qty || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.textM }}>{(d.safety_stock || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right' }}><input value={d.drug_code in qtyOverride ? qtyOverride[d.drug_code] : Math.max(0, (d.safety_stock || 0) - (d.current_qty || 0))} onChange={e => setQtyOverride(prev => ({ ...prev, [d.drug_code]: e.target.value.replace(/[^0-9]/g, '') }))} style={{ width: 70, padding: '4px 8px', border: '1px solid ' + t.border, borderRadius: 6, fontSize: 12, textAlign: 'right', background: t.bg, color: t.green, fontWeight: 700 }} /></td><td style={{ padding: '7px 14px', textAlign: 'right' }}>{(() => { const da = (d.monthly_avg || 0) / 30; if (!(da > 0)) return <span style={{ color: t.textM }}>-</span>; const days = Math.round((d.current_qty || 0) / da); const _sid = effSup(d); const _su = _sid === '__none' ? null : suppliers.find(s => s.id === _sid); const _lt = _su && _su.lead_time_days != null ? _su.lead_time_days : 3; return <span style={{ color: days <= _lt ? t.red : t.textM, fontWeight: days <= _lt ? 700 : 400 }}>{days.toLocaleString()}일</span>; })()}</td><td style={{ padding: '7px 14px', textAlign: 'center' }}>{(() => { const da = (d.monthly_avg || 0) / 30; const _sid = effSup(d); const _su = _sid === '__none' ? null : suppliers.find(s => s.id === _sid); const _lt = _su && _su.lead_time_days != null ? _su.lead_time_days : 3; if (!(da > 0)) return <span style={{ color: t.textM }}>-</span>; const risk = (d.current_qty || 0) < _lt * da; return <Bd bg={risk ? t.redL : t.greenL} color={risk ? t.red : t.green}>{risk ? '위험' : '안전'}</Bd>; })()}</td><td style={{ padding: '7px 14px' }}><select value={effSup(d) === '__none' ? '' : effSup(d)} onChange={e => assignSupplier(d.drug_code, e.target.value)} style={{ padding: '4px 8px', border: '1px solid ' + t.border, borderRadius: 6, fontSize: 11, background: t.bg, color: t.text }}><option value=''>미지정</option>{suppliers.map(su => <option key={su.id} value={su.id}>{su.name}</option>)}</select> <button onClick={() => onAdjust && onAdjust(d)} style={{ marginLeft: 6, padding: '3px 10px', borderRadius: 6, border: '1px solid ' + t.amber, background: t.amberL, color: t.amber, cursor: 'pointer', fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap' }}>보정</button></td></tr>)}</tbody></table></div>
+        <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr><th style={{ padding: '8px 10px', borderBottom: '1px solid ' + t.border, width: 30, textAlign: 'center' }}><input type="checkbox" checked={items.length > 0 && items.every(d => selDrugs.includes(d.drug_code))} onChange={() => toggleGroupSel(items)} style={{ accentColor: t.purple, cursor: 'pointer' }} /></th>{[['약품', 'drug_name', 'left'], ['현재고', 'current_qty', 'right'], ['실물', '_phys', 'right'], ['안전재고', 'safety_stock', 'right'], ['발주제안', '_prop', 'right'], ['소진예상', '_dep', 'right'], ['리드타임위험', '_risk', 'center'], ['도매사', null, 'left']].map(([h, skk, al]) => <th key={h} style={{ textAlign: al, padding: '8px 14px', color: (skk && sk === skk) ? t.accent : t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, cursor: skk ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap', background: (skk && sk === skk) ? t.accentL : 'transparent' }} onClick={skk ? () => hs(skk) : undefined}>{h}{skk ? <SI col={skk} /> : null}{h === '리드타임위험' ? <HeaderFilter items={['위험', '안전']} value={riskFilter} onChange={setRiskFilter} color={t.red} /> : null}{h === '도매사' ? <HeaderFilter items={supOptions} value={supFilter} onChange={setSupFilter} color={t.accent} /> : null}</th>)}</tr></thead>
+        <tbody>{items.map((d, i) => <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '7px 10px', textAlign: 'center' }}><input type="checkbox" checked={selDrugs.includes(d.drug_code)} onChange={() => toggleSel(d.drug_code)} style={{ accentColor: t.purple, cursor: 'pointer' }} /></td><td style={{ padding: '7px 14px', textAlign: 'left' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, fontWeight: 600, cursor: 'pointer' }}>{d.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.red, fontWeight: 600 }}>{(d.current_qty || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}><input value={d.drug_code in physIn ? physIn[d.drug_code] : (phys[d.drug_code] != null ? String(phys[d.drug_code]) : '')} onChange={e => setPhysIn(prev => ({ ...prev, [d.drug_code]: e.target.value.replace(/[^0-9.]/g, '') }))} onKeyDown={e => { if (e.key === 'Enter') savePhys(d) }} inputMode="decimal" placeholder="실물" title={physAt[d.drug_code] ? '입력 ' + String(physAt[d.drug_code]).slice(0, 16).replace('T', ' ') : '센 수량을 입력하고 저장하세요'} style={{ width: 62, padding: '4px 7px', border: '1px solid ' + (phys[d.drug_code] != null ? t.lavender : t.border), borderRadius: 6, fontSize: 12, textAlign: 'right', background: t.bg, color: t.text, fontWeight: 600 }} /><button disabled={physBusy === d.drug_code} onClick={() => savePhys(d)} title="실물 수량 저장 — 재고는 바뀌지 않습니다" style={{ marginLeft: 4, padding: '3px 8px', borderRadius: 6, border: '1px solid ' + t.lavender, background: 'transparent', color: t.purple, cursor: physBusy === d.drug_code ? 'default' : 'pointer', fontSize: 10, fontWeight: 700 }}>{physBusy === d.drug_code ? '…' : '저장'}</button></td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.textM }}>{(d.safety_stock || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right' }}><input value={d.drug_code in qtyOverride ? qtyOverride[d.drug_code] : Math.max(0, (d.safety_stock || 0) - effQty(d))} onChange={e => setQtyOverride(prev => ({ ...prev, [d.drug_code]: e.target.value.replace(/[^0-9]/g, '') }))} style={{ width: 70, padding: '4px 8px', border: '1px solid ' + t.border, borderRadius: 6, fontSize: 12, textAlign: 'right', background: t.bg, color: t.green, fontWeight: 700 }} /></td><td style={{ padding: '7px 14px', textAlign: 'right' }}>{(() => { const da = (d.monthly_avg || 0) / 30; if (!(da > 0)) return <span style={{ color: t.textM }}>-</span>; const days = Math.round((d.current_qty || 0) / da); const _sid = effSup(d); const _su = _sid === '__none' ? null : suppliers.find(s => s.id === _sid); const _lt = _su && _su.lead_time_days != null ? _su.lead_time_days : 3; return <span style={{ color: days <= _lt ? t.red : t.textM, fontWeight: days <= _lt ? 700 : 400 }}>{days.toLocaleString()}일</span>; })()}</td><td style={{ padding: '7px 14px', textAlign: 'center' }}>{(() => { const da = (d.monthly_avg || 0) / 30; const _sid = effSup(d); const _su = _sid === '__none' ? null : suppliers.find(s => s.id === _sid); const _lt = _su && _su.lead_time_days != null ? _su.lead_time_days : 3; if (!(da > 0)) return <span style={{ color: t.textM }}>-</span>; const risk = (d.current_qty || 0) < _lt * da; return <Bd bg={risk ? t.redL : t.greenL} color={risk ? t.red : t.green}>{risk ? '위험' : '안전'}</Bd>; })()}</td><td style={{ padding: '7px 14px' }}><select value={effSup(d) === '__none' ? '' : effSup(d)} onChange={e => assignSupplier(d.drug_code, e.target.value)} style={{ padding: '4px 8px', border: '1px solid ' + t.border, borderRadius: 6, fontSize: 11, background: t.bg, color: t.text }}><option value=''>미지정</option>{suppliers.map(su => <option key={su.id} value={su.id}>{su.name}</option>)}</select> <button onClick={() => onAdjust && onAdjust(d)} style={{ marginLeft: 6, padding: '3px 10px', borderRadius: 6, border: '1px solid ' + t.amber, background: t.amberL, color: t.amber, cursor: 'pointer', fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap' }}>보정</button></td></tr>)}</tbody></table></div>
       </div> })}
     {cand.length > 0 && supFilter && !cand.some(d => (effSup(d) === '__none' ? '미지정' : supName(effSup(d))) === supFilter) && <div style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 20, textAlign: 'center', color: t.textL, marginBottom: 12 }}>「{supFilter}」 도매사 발주 후보 없음 (0건)</div>}
-    {supFilter && supFilter !== '미지정' && (() => { const _supId = (suppliers.find(su => su.name === supFilter) || {}).id; if (!_supId) return null; const _list = drugs.filter(d => effSup(d) === _supId); const _rop = d => { const sf = Number(d.safety_stock) || 0; return sf <= 0 ? null : Math.max(Math.ceil(sf + ((Number(d.monthly_avg) || 0) / 30) * LEAD_TIME), 1); }; const _sc = st => (st === '긴급' || st === '재고없음') ? t.red : st === '주문필요' ? t.amber : st === '기준미설정' ? t.textL : t.green; const _SEV = { '재고없음': 0, '긴급': 1, '주문필요': 2, '정상': 3, '기준미설정': 4 }; const _enr = _list.map(d => { const _st = stockStat(d); const _r = _rop(d); const _da = (Number(d.monthly_avg) || 0) / 30; const _dep = _da > 0 ? Math.round((Number(d.current_qty) || 0) / _da) : null; const _sf = Number(d.safety_stock) || 0; const _ordv = _sf > 0 ? targetStock(d) - (Number(d.current_qty) || 0) : null; const _od = (_ordv == null || _ordv <= 0) ? null : _ordv; const _oc = _st === '긴급' ? t.red : _st === '주문필요' ? t.amber : t.textM; return { ...d, _st, _r, _dep, _od, _oc, _ma: Number(d.monthly_avg) || 0, _cq: Number(d.current_qty) || 0, _dp: _dep, _rp: _r, _sv: _SEV[_st] }; }); const _cmp = (a, b) => { if (!msk) return String(a.drug_name || '').localeCompare(String(b.drug_name || ''), 'ko'); const va = a[msk], vb = b[msk], na = va == null, nb = vb == null; if (na && nb) return 0; if (na) return 1; if (nb) return -1; const r = (typeof va === 'number' && typeof vb === 'number') ? va - vb : String(va).localeCompare(String(vb), 'ko'); return msd === 'asc' ? r : -r; }; const _rows = [..._enr].sort(_cmp); return <div style={{ marginTop: 20 }}>
+    {supFilter && supFilter !== '미지정' && (() => { const _supId = (suppliers.find(su => su.name === supFilter) || {}).id; if (!_supId) return null; const _list = drugs.filter(d => effSup(d) === _supId); const _rop = d => { const sf = Number(d.safety_stock) || 0; return sf <= 0 ? null : Math.max(Math.ceil(sf + ((Number(d.monthly_avg) || 0) / 30) * LEAD_TIME), 1); }; const _sc = st => (st === '긴급' || st === '재고없음') ? t.red : st === '주문필요' ? t.amber : st === '기준미설정' ? t.textL : t.green; const _SEV = { '재고없음': 0, '긴급': 1, '주문필요': 2, '정상': 3, '기준미설정': 4 }; const _enr = _list.map(d => { const _st = stockStatEff(d); const _r = _rop(d); const _da = (Number(d.monthly_avg) || 0) / 30; const _dep = _da > 0 ? Math.round((Number(d.current_qty) || 0) / _da) : null; const _sf = Number(d.safety_stock) || 0; const _ordv = _sf > 0 ? targetStock(d) - (Number(d.current_qty) || 0) : null; const _od = (_ordv == null || _ordv <= 0) ? null : _ordv; const _oc = _st === '긴급' ? t.red : _st === '주문필요' ? t.amber : t.textM; return { ...d, _st, _r, _dep, _od, _oc, _ma: Number(d.monthly_avg) || 0, _cq: Number(d.current_qty) || 0, _dp: _dep, _rp: _r, _sv: _SEV[_st] }; }); const _cmp = (a, b) => { if (!msk) return String(a.drug_name || '').localeCompare(String(b.drug_name || ''), 'ko'); const va = a[msk], vb = b[msk], na = va == null, nb = vb == null; if (na && nb) return 0; if (na) return 1; if (nb) return -1; const r = (typeof va === 'number' && typeof vb === 'number') ? va - vb : String(va).localeCompare(String(vb), 'ko'); return msd === 'asc' ? r : -r; }; const _rows = [..._enr].sort(_cmp); return <div style={{ marginTop: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}><div style={{ fontWeight: 700, fontSize: 14, color: t.text }}>{supFilter} 관리 약품 {_list.length}품목</div><button onClick={() => { setAddSearch(''); setAddOpen(true) }} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>+ 약품 추가</button></div>
       {!_list.length ? <div style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 24, textAlign: 'center', color: t.textL }}>등록된 약품이 없습니다. 약품 추가로 등록하세요.</div> : <div style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, overflow: 'hidden', boxShadow: t.shadow }}><div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr>{[['약품명', 'drug_name', 'left'], ['월평균', '_ma', 'right'], ['발주점', '_rp', 'right'], ['현재고', '_cq', 'right'], ['보유일수', '_dp', 'right'], ['주문수량', '_od', 'right'], ['상태', '_sv', 'right']].map(([h, skk, al]) => <th key={h} style={{ textAlign: al, padding: '8px 14px', color: msk === skk ? t.accent : t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none', background: msk === skk ? t.accentL : 'transparent' }} onClick={() => mhs(skk)}>{h}<MSI col={skk} /></th>)}<th style={{ textAlign: 'center', padding: '8px 14px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' }}>제거</th></tr></thead><tbody>{_rows.map((d, i) => <tr key={i} style={{ borderBottom: '1px solid ' + t.border }}><td style={{ padding: '7px 14px', textAlign: 'left' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, fontWeight: 600, cursor: 'pointer' }}>{d.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.textM }}>{(d._ma || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.textM }}>{d._r == null ? '-' : d._r.toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', fontWeight: 600 }}>{(d._cq || 0).toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right', color: t.textM }}>{d._dep == null ? '—' : d._dep.toLocaleString() + '일'}</td><td style={{ padding: '7px 14px', textAlign: 'right', color: d._oc, fontWeight: (d._od != null) ? 700 : 400 }}>{d._od == null ? '—' : d._od.toLocaleString()}</td><td style={{ padding: '7px 14px', textAlign: 'right' }}><Bd bg={_sc(d._st) + '18'} color={_sc(d._st)}>{d._st}</Bd></td><td style={{ padding: '7px 14px', textAlign: 'center' }}><button onClick={() => assignSupplier(d.drug_code, '')} title="목록에서 제거(약품 유지)" style={{ padding: '2px 9px', borderRadius: 6, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>×</button></td></tr>)}</tbody></table></div></div>}
     </div>; })()}
@@ -6758,7 +6859,7 @@ export default function App() {
         <Header menu={menu} setMenu={setMenu} onRegister={() => setMenu('register')} />
         {menu === 'dashboard' && <Dashboard drugs={drugs} inv={inv} txns={txns} onNav={handleNav} onEdit={setEditDrug} />}
         {menu === 'alerts' && <AlertCenter drugs={drugs} onNav={handleNav} />}
-        {menu === 'ordering' && <Ordering drugs={drugs} onAdjust={setAdjustDrug} />}
+        {menu === 'ordering' && <Ordering drugs={drugs} onAdjust={setAdjustDrug} onNav={setMenu} />}
         {menu === 'druglist' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} />}
         {menu === 'nonins' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} nonins />}
         {menu === 'change' && <DrugChangePlans drugs={drugs} onAdjust={setAdjustDrug} onReload={load} navFilter={nf} />}
