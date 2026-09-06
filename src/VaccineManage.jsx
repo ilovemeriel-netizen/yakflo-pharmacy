@@ -68,6 +68,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
   const [bal, setBal] = useState([])        // v_vaccine_balance
   const [cats, setCats] = useState([])      // vaccine_categories
   const [evts, setEvts] = useState([])      // vaccine_events
+  const [dnames, setDnames] = useState({})  // ★ drug_code → drug_name (drugs SELECT 전용)
   const [ld, setLd] = useState(true)
   const [msg, setMsg] = useState(null)
   const [season, setSeason] = useState(DEF.season)
@@ -90,6 +91,23 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
     const err = a.error || b.error || c.error || e.error
     if (err) flash('불러오기 실패: ' + dbErrorMsg(err), 'err')
     setAccs(a.data || []); setBal(b.data || []); setCats(c.data || []); setEvts(e.data || [])
+
+    /* ── 약품명 조회 ────────────────────────────────────────────────────────
+       ★ drugs 에 FK 가 없다(0089 설계). drug_code 문자열로 조인한다.
+       ★ SELECT 만 한다. 쓰기 경로가 아니다.
+       ★ 전량(1,118건)을 받지 않는다 — 계정에 실제로 쓰인 코드만 in() 으로 좁힌다.
+         계정은 많아야 수십 건이라 왕복 1회로 끝난다.
+       ★ 조회 키는 **trim 한 계정 코드**다. 그 값으로 물었으니 돌아온 행과 정확히 맞는다.
+         못 찾은 코드는 그냥 빠지고 화면에서 '—' 가 된다 — 오류가 아니다
+         (중지·삭제된 약품이거나 코드가 바뀐 경우다). */
+    const codes = [...new Set((a.data || []).map(x => (x.drug_code || '').trim()).filter(Boolean))]
+    let nm = {}
+    if (codes.length) {
+      const { data: dd, error: de } = await supabase.from('drugs').select('drug_code,drug_name').in('drug_code', codes)
+      if (de) flash('약품명 조회 실패: ' + dbErrorMsg(de), 'err')
+      else (dd || []).forEach(d => { nm[d.drug_code] = d.drug_name || '' })
+    }
+    setDnames(nm)
     /* ★ 「기준 시각」 — 화면을 캡쳐해 타 부서에 넘기므로 언제 값인지 남아야 한다 */
     const n = new Date()
     setAsOf(ymd(n.getFullYear(), n.getMonth() + 1, n.getDate()) + ' ' +
@@ -167,16 +185,22 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
          이미 들어와 있는 데이터를 위해 표시에서 한 번 더 받는다.
          ★ r.drug_code 자체는 건드리지 않는다 — 정렬·필터가 이 값을 쓴다. */
       noDrug: !(a.drug_code || '').trim(),
+      /* ★ 약품명 — 감염관리과·원무과와 화면 캡쳐로 공유하므로 코드만으로는 식별이 안 된다.
+         매칭 실패는 '' 로 두고 표시 계층에서 '—' 를 낸다(오류가 아니다).
+         '' 로 두는 이유: 필터 목록 uniq() 가 빈 값을 걸러내는 기존 동작과 맞춘다. */
+      drug_name: dnames[(a.drug_code || '').trim()] || '',
       /* 경고 — 표시 전용. 저장을 막지 않는다 */
       warnNeg: balq < 0,
       warnOver: !paid && N(b.received_qty) > N(b.allocated_qty),
     }
-  }), [accs, balOf, catsOf, evtsOf, sel, todayYmd, ymd])
+  }), [accs, balOf, catsOf, evtsOf, dnames, sel, todayYmd, ymd])
 
   /* ── 표 — 필터 → 정렬 순서 ─────────────────────────────────────────────── */
   const uniq = k => [...new Set(rows.map(r => String(r[k] ?? '')).filter(Boolean))].sort()
   const hf = {
     drug_code: { items: uniq('drug_code'), value: hfV.drug_code || null, on: v => setHfV(p => ({ ...p, drug_code: v })) },
+    /* ★ 약품명도 ColMenu 를 그대로 쓴다 — 필터·정렬 구현을 자체로 만들지 않는다 */
+    drug_name: { items: uniq('drug_name'), value: hfV.drug_name || null, on: v => setHfV(p => ({ ...p, drug_name: v })) },
     funding_source: { items: uniq('funding_source'), value: hfV.funding_source || null, on: v => setHfV(p => ({ ...p, funding_source: v })) },
   }
   const dfCount = Object.values(hfV).filter(Boolean).length
@@ -330,9 +354,12 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
   const num = { ...td, textAlign: 'right', paddingRight: NUM_PR, fontVariantNumeric: 'tabular-nums' }
 
   /* ★ n:1 은 숫자 열 표시 — 순서·너비·헤더 구성은 그대로 두고 우측 패딩만 묶는 데 쓴다 */
+  /* ★ 좌측 sticky 는 약품코드·약품명 2열(표준 표 사양). 재원은 sticky 에서 내린다 —
+       고정 폭이 128+200 이라 재원까지 고정하면 좁은 화면에서 스크롤 영역이 남지 않는다. */
   const COLS = [
     { k: 'drug_code', h: '약품코드', w: 128, sticky: 0 },
-    { k: 'funding_source', h: '재원', w: 96, sticky: 128 },
+    { k: 'drug_name', h: '약품명', w: 200, sticky: 128 },
+    { k: 'funding_source', h: '재원', w: 96 },
     { k: 'allocated_qty', h: '배정', w: 92, n: 1 },
     { k: 'received_qty', h: '입고', w: 92, n: 1 },
     { k: 'administered_qty', h: '접종', w: 92, n: 1 },
@@ -381,20 +408,28 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
           {rows.map(r => {
             const hc = r.paid ? t.purple : t.green
             return <div key={r.id} style={{ flex: '1 1 320px', minWidth: 300, maxWidth: 420, background: t.card, border: '1px solid ' + t.border, borderRadius: 12, overflow: 'hidden', boxShadow: t.shadow, opacity: r.is_active === false ? 0.6 : 1 }}>
-              <div style={{ background: hc, color: '#fff', padding: '9px 13px', display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+              {/* ★ flexWrap 을 nowrap 으로 둔다 — 약품명이 길면 줄이 접혀 카드 높이가 들쭉날쭉해진다.
+                  줄을 늘리는 대신 **약품명만** 줄어들고 ellipsis 가 되도록 한다(아래 flex '0 1 auto'). */}
+              <div style={{ background: hc, color: '#fff', padding: '9px 13px', display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'nowrap' }}>
                 {/* ★ 카드 헤더는 색 배경(보라/녹색) 위다. 여기서만 라벤더를 쓰지 않는다 —
                     다크모드에서 t.purple 과 t.lavender 가 둘 다 #BFA6D9 라 배지가 배경에 묻힌다.
                     바로 옆 「비활성」 배지와 같은 흰 테두리를 써서 두 모드 모두 읽히게 한다.
                     표 안(밝은 배경)에서는 지시대로 라벤더 배지를 쓴다. */}
+                {/* ★ 코드는 빼지 않는다 — 코드 + 약품명 병기. 코드는 줄어들지 않는다(flexShrink 0). */}
                 {r.noDrug
-                  ? <span style={{ fontWeight: 700, fontSize: 12, padding: '1px 7px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.75)' }}>{NO_DRUG}</span>
-                  : <span style={{ fontWeight: 700, fontSize: 13 }}>{r.drug_code}</span>}
-                <span style={{ fontSize: 11, opacity: 0.9 }}>{r.funding_source}</span>
-                <span style={{ fontSize: 10, opacity: 0.8 }}>{r.paid ? '유료' : '무상'}</span>
+                  ? <span style={{ fontWeight: 700, fontSize: 12, padding: '1px 7px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.75)', flexShrink: 0 }}>{NO_DRUG}</span>
+                  : <span style={{ fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{r.drug_code}</span>}
+                {/* ★ 약품명 — 타 부서가 캡쳐만 보고 식별할 수 있게 코드 옆에 붙인다.
+                    긴 이름은 **이 칸만** 줄어들며 ellipsis. 전체 이름은 title 로 확인한다.
+                    minWidth 0 이 없으면 flex 아이템이 콘텐츠보다 작아지지 않아 ellipsis 가 안 걸린다. */}
+                {r.drug_name && <span title={r.drug_name}
+                  style={{ fontSize: 11, opacity: 0.95, flex: '0 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.drug_name}</span>}
+                <span style={{ fontSize: 11, opacity: 0.9, flexShrink: 0 }}>{r.funding_source}</span>
+                <span style={{ fontSize: 10, opacity: 0.8, flexShrink: 0 }}>{r.paid ? '유료' : '무상'}</span>
                 {/* ★ 비활성 계정도 목록에서 지우지 않는다 — 사라지면 「어디 갔지」가 된다 */}
-                {r.is_active === false && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.7)' }}>비활성</span>}
-                <div style={{ flex: 1 }} />
-                {r.storage_location && <span style={{ fontSize: 10, opacity: 0.85 }}>{r.storage_location}</span>}
+                {r.is_active === false && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.7)', flexShrink: 0 }}>비활성</span>}
+                <div style={{ flex: 1, minWidth: 0 }} />
+                {r.storage_location && <span style={{ fontSize: 10, opacity: 0.85, flexShrink: 0 }}>{r.storage_location}</span>}
               </div>
               <div style={{ padding: '11px 13px' }}>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -466,7 +501,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
               style={btn(t.accent + '12', t.accent, t.accent)}>필터 초기화 ({dfCount})</button>}
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 760, fontSize: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 900, fontSize: 12 }}>
               <colgroup>{COLS.map(c => <col key={c.k} style={{ width: c.w }} />)}</colgroup>
               <thead><tr>{COLS.map(c => {
                 /* ★ 숫자 열은 헤더도 같은 우측 패딩을 쓴다 — 본문 숫자와 한 세로선에 선다.
@@ -488,7 +523,12 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
                     {/* ★ 표는 밝은 배경이라 라벤더 배지가 그대로 읽힌다 — 기존 badge() 토큰 재사용 */}
                     <td style={{ ...td, position: 'sticky', left: 0, zIndex: 2, background: bgc, fontWeight: 600 }}>
                       {r.noDrug ? badge(NO_DRUG, t.lavender) : r.drug_code}</td>
-                    <td style={{ ...td, position: 'sticky', left: 128, zIndex: 2, background: bgc }}>
+                    {/* ★ 약품명 — 매칭 실패는 '—'(오류가 아니다). 긴 이름은 ellipsis + title */}
+                    <td title={r.drug_name || undefined}
+                      style={{ ...td, position: 'sticky', left: 128, zIndex: 2, background: bgc, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r.drug_name || <span style={{ color: t.textL }}>—</span>}
+                    </td>
+                    <td style={td}>
                       {badge(r.funding_source, r.paid ? t.purple : t.green)}
                     </td>
                     <td style={num}>{r.paid ? '—' : fmt(r.allocated_qty)}</td>
