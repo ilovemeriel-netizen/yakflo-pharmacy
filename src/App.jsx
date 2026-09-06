@@ -4348,6 +4348,61 @@ function InventoryCount({ drugs, onReload }) {
     flash('삭제했습니다'); loadAll()
   }
 
+  /* ── 엑셀 양식 다운로드 ────────────────────────────────────────────────
+     ★ 입출고 dlTemplate(3068) 과 같은 방식 — aoa_to_sheet → writeFile. 새 방식을 만들지 않는다.
+     ★ 시트 순서가 중요하다. xlUpload 는 wb.SheetNames[0] 만 읽으므로
+       「실사」가 반드시 첫 시트여야 하고, 주의사항은 **별도 시트**로 뺀다.
+       데이터 시트 첫 행에 안내를 넣으면 그 행이 헤더로 잡히고 ln=i+2 행번호도 어긋난다.
+     ★ 약품코드 열은 텍스트 서식(z:'@')으로 둔다 — 2026-08 마감에서 APR2 가 46114 로
+       자동변환된 사고가 실재한다. 사용자가 채워 넣을 여유 행까지 미리 서식을 건다.
+     ★ 예시 행은 하드코딩하지 않고 화면이 이미 들고 있는 drugs 에서 뽑는다(추가 조회 0). */
+  async function dlCountTemplate() {
+    try {
+      const XL = await import('xlsx')
+      const HDR = ['약품코드', '약품명(참고용)', 'LOT', '유효기한', '수량']
+      const s = (drugs || []).filter(d => d.status === '사용')
+        .slice().sort((a, b) => String(a.drug_code).localeCompare(String(b.drug_code))).slice(0, 2)
+      /* 예시 2행 — ① LOT·유효기한을 채운 정수 수량 ② 둘 다 비운 소수 수량 */
+      const rows = [
+        s[0] ? [s[0].drug_code, s[0].drug_name || '', 'A2401', '2027-12-31', 100] : ['(약품코드)', '(약품명)', 'A2401', '2027-12-31', 100],
+        s[1] ? [s[1].drug_code, s[1].drug_name || '', '', '', 12.5] : ['(약품코드)', '(약품명)', '', '', 12.5],
+      ]
+      const ws = XL.utils.aoa_to_sheet([HDR, ...rows])
+      /* A열(약품코드) 텍스트 서식 — 예시 행 + 채워 넣을 여유 60행 */
+      const LASTR = 1 + rows.length + 60
+      for (let r = 0; r < LASTR; r++) {
+        const ref = XL.utils.encode_cell({ c: 0, r })
+        if (!ws[ref]) ws[ref] = { t: 's', v: '' }
+        ws[ref].t = 's'; ws[ref].z = '@'
+      }
+      ws['!ref'] = XL.utils.encode_range({ s: { c: 0, r: 0 }, e: { c: HDR.length - 1, r: LASTR - 1 } })
+      ws['!cols'] = [{ wch: 14 }, { wch: 26 }, { wch: 12 }, { wch: 13 }, { wch: 9 }]
+
+      const guide = [
+        ['실사 엑셀 등록 안내'],
+        [''],
+        ['· 약품코드 열은 반드시 텍스트 서식으로 두세요 (APR2 등이 날짜로 바뀝니다)'],
+        ['· 유효기한은 YYYY-MM-DD 형식'],
+        ['· 수량은 소수점 2자리까지'],
+        ['· 사용 상태 약품만 등록됩니다'],
+        [''],
+        ['※ 「실사」 시트만 읽습니다 — 이 안내 시트는 지우지 않아도 됩니다.'],
+        ['※ 약품명(참고용) 열은 읽지 않습니다. 확인용이니 비워도 됩니다.'],
+        ['※ 같은 약품+LOT 조합이 이미 담겨 있으면 그 행은 건너뜁니다.'],
+        ['※ 빈 행은 건너뜁니다. 행 번호는 엑셀 화면의 행 번호와 같습니다.'],
+      ]
+      const wsG = XL.utils.aoa_to_sheet(guide); wsG['!cols'] = [{ wch: 62 }]
+
+      const wb = XL.utils.book_new()
+      XL.utils.book_append_sheet(wb, ws, '실사')      // ★ 반드시 첫 시트
+      XL.utils.book_append_sheet(wb, wsG, '안내')
+      XL.writeFile(wb, '실사양식_' + todayYmd().replace(/-/g, '') + '.xlsx')
+      flash('양식을 내려받았습니다')
+    } catch (err) {
+      flash('양식 생성 실패: ' + err.message, 'err')
+    }
+  }
+
   /* ── 엑셀 업로드 — 약품코드·LOT·유효기한·수량. ★ 기존 패턴·SheetJS 재사용(신규 의존성 0) ── */
   function xlUpload(e) {
     const file = e.target.files[0]; if (!file) return
@@ -4558,7 +4613,7 @@ function InventoryCount({ drugs, onReload }) {
       q={q} onQ={onQ} found={found} searched={searched}
       aQty={aQty} setAQty={setAQty} aLot={aLot} setALot={setALot} aExp={aExp} setAExp={setAExp}
       scanRef={scanRef} scan={{ onScan, res: scanRes, clear: () => { setScanRes(null); setSealed(''); setLoose('') }, sealed, setSealed, loose, setLoose, take: scanTake, link: scanLink, busy: scanBusy }}
-      onAdd={addItem} onDelItem={delItem} fileRef={fileRef} onFile={xlUpload}
+      onAdd={addItem} onDelItem={delItem} fileRef={fileRef} onFile={xlUpload} onTemplate={dlCountTemplate}
       busy={busy} onApply={() => setApplyT(open)} onRevert={() => openRevert(open)} revertBlock={revertBlock} />}
 
     {/* ── 확인 모달 2단계 (기존 골격 재사용) ── */}
@@ -4703,7 +4758,7 @@ function ScanPanel({ t, res, scan }) {
 
 function InventoryCountDetail({ t, r, items, drugMap, bookOf, q, onQ, found, searched,
   aQty, setAQty, aLot, setALot, aExp, setAExp, onAdd, onDelItem, fileRef, onFile,
-  busy, onApply, onRevert, revertBlock, scan, scanRef }) {
+  busy, onApply, onRevert, revertBlock, scan, scanRef, onTemplate }) {
   const editable = r.status === '작성중'
   const rBad = revertBlock(r)
   /* 이미 담긴 (약품, LOT) 조합 — 검색 목록 비활성 판정용(결함 20) */
@@ -4743,9 +4798,11 @@ function InventoryCountDetail({ t, r, items, drugMap, bookOf, q, onQ, found, sea
         <input value={aLot} onChange={e => setALot(e.target.value)} placeholder="LOT(선택)" style={{ ...ip, width: 110 }} />
         <input value={aExp} onChange={e => setAExp(e.target.value)} type="date" title="유효기한(선택)" style={{ ...ip, width: 140 }} />
         <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFile} style={{ display: 'none' }} />
+        {/* ★ 색은 입출고 dlTemplate(3123) 「양식」 버튼과 동일 — t.blue 는 라이트에서 #2E4A62(네이비) */}
+        <button onClick={onTemplate} title="예시가 들어간 실사 엑셀 양식을 내려받습니다" style={{ padding: '8px 13px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>양식</button>
         <button onClick={() => fileRef.current && fileRef.current.click()} style={{ padding: '8px 13px', borderRadius: 8, border: '1px solid ' + t.green, background: 'transparent', color: t.green, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>엑셀 업로드</button>
       </div>
-      <div style={{ fontSize: 10, color: t.textL }}>엑셀 열: 약품코드 · LOT · 유효기한(YYYY-MM-DD) · 수량 · 사용 상태 약품만 담깁니다</div>
+      <div style={{ fontSize: 10, color: t.textL }}>엑셀 열: 약품코드 · LOT · 유효기한(YYYY-MM-DD) · 수량 · 사용 상태 약품만 담깁니다 — 「양식」을 내려받으면 예시가 들어 있습니다</div>
       {searched && <div style={{ marginTop: 8, border: '1px solid ' + t.border, borderRadius: 8, maxHeight: 220, overflowY: 'auto', background: t.card }}>
         {!found.length ? <div style={{ padding: 14, fontSize: 11, color: t.textL, textAlign: 'center' }}>검색 결과가 없습니다 (사용 상태 약품만)</div>
           : found.map(d => {
