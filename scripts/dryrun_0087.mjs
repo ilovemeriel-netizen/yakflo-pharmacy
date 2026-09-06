@@ -92,21 +92,29 @@ try{
   P('E 정규화 함수', eRes.every(x=>x.ok),
     eRes.map(x=>`${x.ok?'O':'X'} ${JSON.stringify(x.v)}/${x.t}→${x.got===null?'null':x.got}`).join(' · '))
 
-  /* ── F. 트리거 동작 — 13자리 입력이 14자리로 저장되는가 / 오타 거부 ── */
-  await q(`insert into public.drug_barcodes (tenant_id,code,code_type,source) values ($1,'8806717068539','GS1','학습')`,[T])
-  const f1=(await one(`select code from public.drug_barcodes where insurance_code is null limit 1`)).code
+  /* ── F. 트리거 동작 — 13자리 입력이 14자리로 저장되는가 / 오타 거부 ──
+        ★ 실재 코드를 쓰면 이미 적재된 행과 unique 가 부딪친다. 시험용 코드를 쓴다. */
+  const PROBE='9999999999996', PROBE14='09999999999996'
+  await q(`insert into public.drug_barcodes (tenant_id,code,code_type,source,memo) values ($1,$2,'GS1','학습','dryrun probe')`,[T,PROBE])
+  const f1=(await one(`select code from public.drug_barcodes where memo='dryrun probe'`)).code
   let f2='(예외 안 남)'
-  try{ await q(`savepoint s1`); await q(`insert into public.drug_barcodes (tenant_id,code,code_type,source) values ($1,'88067170685','GS1','학습')`,[T]); await q(`release savepoint s1`) }
+  try{ await q(`savepoint s1`); await q(`insert into public.drug_barcodes (tenant_id,code,code_type,source,memo) values ($1,'88067170685','GS1','학습','dryrun probe')`,[T]); await q(`release savepoint s1`) }
   catch(e){ f2=e.code; await q(`rollback to savepoint s1`) }
-  await q(`delete from public.drug_barcodes where insurance_code is null`)
-  P('F 트리거', f1==='08806717068539' && f2==='23514',
+  await q(`delete from public.drug_barcodes where memo='dryrun probe'`)
+  P('F 트리거', f1===PROBE14 && f2==='23514',
     `13자리 입력 → 저장 ${f1} · 11자리 오타 → errcode ${f2}(23514 기대)`)
 
-  /* ── G. 적재 시뮬레이션 ────────────────────────────────────── */
+  /* ── G. 적재 시뮬레이션 — ★ 증분. 이미 있는 code 는 넣지 않는다.
+        최초 적용에서는 기존 0행이라 전량 적재와 같고, 재적용·월 갱신에서는
+        새 코드만 들어간다. 전량 재적재는 unique 위반이 된다. ───────── */
+  const have=new Set((await q(`select code from public.drug_barcodes`)).rows.map(r=>r.code))
+  const fresh=rows.filter(r=>!have.has(r.code))
+  console.log(`증분 — 기존 ${have.size.toLocaleString()}행 · 산출 ${rows.length.toLocaleString()}행 · 신규 ${fresh.length.toLocaleString()}행`)
+
   const COLS=['tenant_id','code','code_type','drug_code','insurance_code','product_name','pack_type','pack_qty','is_rep','source','std_version','memo']
   const CH=500
-  for(let s=0;s<rows.length;s+=CH){
-    const part=rows.slice(s,s+CH)
+  for(let s=0;s<fresh.length;s+=CH){
+    const part=fresh.slice(s,s+CH)
     const vals=[]; const ph=part.map((r,i)=>{
       const base=i*COLS.length
       COLS.forEach(cn=>vals.push(r[cn]))
@@ -124,7 +132,7 @@ try{
     count(distinct drug_code)::int drugs
     from public.drug_barcodes`)
   P('G 적재', g.n===rows.length && g.fmt===g.n && g.zero===g.n && g.src===g.n && g.gs1===g.n,
-    `${g.n.toLocaleString()}행 · 14자리 ${g.fmt} · 0 시작 ${g.zero} · 심평원 ${g.src} · GS1 ${g.gs1} · 대표행 ${g.rep} · drug_code 보류 ${g.nodrug} · 연결약품 ${g.drugs}`)
+    `${g.n.toLocaleString()}행(기존 ${have.size}+신규 ${fresh.length}) · 14자리 ${g.fmt} · 0 시작 ${g.zero} · 심평원 ${g.src} · GS1 ${g.gs1} · 대표행 ${g.rep} · drug_code 보류 ${g.nodrug} · 연결약품 ${g.drugs}`)
 
   /* ── H. 실물 2건 ───────────────────────────────────────────── */
   const real=(await q(`select b.code, b.drug_code, d.drug_name, b.pack_type, b.pack_qty, b.is_rep, b.product_name
@@ -151,15 +159,17 @@ try{
 
   await q('rollback')
 
-  /* ── K. ROLLBACK 무잔류 ────────────────────────────────────── */
+  /* ── K. ROLLBACK 무잔류 ──────────────────────────────────────
+        ★ 「테이블이 0개로 돌아왔는가」가 아니라 「사전 상태 그대로인가」를 본다.
+          최초 적용 전에는 테이블이 없으니 0 이지만, 이미 적용된 뒤 재실행하면
+          테이블·함수가 남아 있는 것이 정상이다. 판정 기준은 사전 상태 대조다.
+          핵심은 drug_barcodes 행수가 늘지 않았는가이다. */
   const left=await one(`select
-    (select count(*)::int from information_schema.tables where table_schema='public' and table_name='drug_barcodes') tb,
-    (select count(*)::int from pg_proc p join pg_namespace ns on ns.oid=p.pronamespace
-      where ns.nspname='public' and p.proname in ('norm_barcode','gtin_check_ok','trg_drug_barcodes_norm')) fn,
     (select count(*)::int from information_schema.tables where table_schema='public') tables,
-    (select count(*)::int from pg_policies where schemaname='public') policies`)
-  P('K ROLLBACK 무잔류', left.tb===0&&left.fn===0&&left.tables===pre.tables&&left.policies===pre.policies,
-    `잔류 테이블 ${left.tb} · 함수 ${left.fn} · 전체 테이블 ${left.tables}(사전 ${pre.tables}) · 정책 ${left.policies}(사전 ${pre.policies})`)
+    (select count(*)::int from pg_policies where schemaname='public') policies,
+    (select count(*)::int from public.drug_barcodes) bc`)
+  P('K ROLLBACK 무잔류', left.tables===pre.tables&&left.policies===pre.policies&&left.bc===have.size,
+    `전체 테이블 ${left.tables}(사전 ${pre.tables}) · 정책 ${left.policies}(사전 ${pre.policies}) · drug_barcodes ${left.bc}행(사전 ${have.size}행)`)
 
   /* ── 결과 ──────────────────────────────────────────────────── */
   console.log('\n건너뜀 — ' + Object.entries(skip).map(([k,v])=>`${k} ${v.toLocaleString()}`).join(' · '))
@@ -168,7 +178,7 @@ try{
   let pass=0
   for(const [k,v] of Object.entries(R)){ console.log(`${v.ok?'  PASS':'★ FAIL'}  ${k.padEnd(16)} ${v.d}`); if(v.ok)pass++ }
   console.log('─'.repeat(72))
-  console.log(`${pass}/${Object.keys(R).length} 통과 · 적재 예정 ${rows.length.toLocaleString()}행 · 커밋 없음(ROLLBACK 완료)`)
+  console.log(`${pass}/${Object.keys(R).length} 통과 · 신규 적재 ${fresh.length.toLocaleString()}행(총 ${rows.length.toLocaleString()}행) · 커밋 없음(ROLLBACK 완료)`)
   process.exitCode = pass===Object.keys(R).length ? 0 : 1
 }catch(e){
   try{ await q('rollback') }catch{}

@@ -23,14 +23,14 @@ const T='5e0aa267-cf21-4227-af97-a27b32b04c07'
 
 await c.connect()
 try{
-  /* ── 재실행 방지 ───────────────────────────────────────────── */
+  /* ── 증분 적재 ─────────────────────────────────────────────────
+     ★ 재실행을 막지 않는다. 이미 있는 code 는 건너뛰고 새 코드만 넣는다.
+       월 갱신(자료가 매월 바뀐다)이 같은 경로를 쓰므로 처음부터 증분이어야 한다.
+     ★ source='학습' 행은 사람이 확정한 매핑이라 배치가 덮으면 안 된다.
+       code 로 이미 존재하면 건너뛰므로 자연히 보호된다. */
   const ex=(await one(`select count(*)::int n from information_schema.tables
     where table_schema='public' and table_name='drug_barcodes'`)).n
-  if(ex){
-    const n=(await one(`select count(*)::int n from public.drug_barcodes`)).n
-    if(n>0){ console.error(`★ 중단 — drug_barcodes 가 이미 있고 ${n.toLocaleString()}행이 있습니다. 재적재하려면 먼저 정리하십시오.`); process.exitCode=1; await c.end(); process.exit() }
-    console.log('· drug_barcodes 가 이미 있으나 0행 — DDL 재적용 후 적재를 진행합니다.')
-  }
+  if(ex) console.log('· drug_barcodes 존재 — 증분 적재로 진행합니다.')
 
   const pre=await one(`select
     (select count(*)::int from public.transactions) txs,
@@ -47,10 +47,14 @@ try{
   await q('begin')
   await q(ddl)
 
+  const have=new Set((await q(`select code from public.drug_barcodes`)).rows.map(r=>r.code))
+  const fresh=rows.filter(r=>!have.has(r.code))
+  console.log(`증분 — 기존 ${have.size.toLocaleString()}행 · 신규 ${fresh.length.toLocaleString()}행`)
+
   const COLS=['tenant_id','code','code_type','drug_code','insurance_code','product_name','pack_type','pack_qty','is_rep','source','std_version','memo']
   const CH=500
-  for(let s=0;s<rows.length;s+=CH){
-    const part=rows.slice(s,s+CH); const vals=[]
+  for(let s=0;s<fresh.length;s+=CH){
+    const part=fresh.slice(s,s+CH); const vals=[]
     const ph=part.map((r,i)=>{ const base=i*COLS.length; COLS.forEach(cn=>vals.push(r[cn]))
       return '('+COLS.map((_,j)=>'$'+(base+j+1)).join(',')+')' }).join(',')
     await q(`insert into public.drug_barcodes (${COLS.join(',')}) values ${ph}`, vals)
@@ -71,7 +75,7 @@ try{
     (select coalesce(sum(closing_amount),0)::text from public.monthly_snapshots where snap_year=2026 and snap_month=8) snap8`)
 
   const gate=[
-    ['적재 행수',   g.n===rows.length,                       `${g.n}/${rows.length}`],
+    ['적재 행수',   g.n===rows.length,                       `${g.n}/${rows.length} (기존 ${have.size}+신규 ${fresh.length})`],
     ['14자리 형식', g.fmt===g.n,                             `${g.fmt}/${g.n}`],
     ['source',      g.src===g.n,                             `${g.src}/${g.n}`],
     ['대표행 규칙', g.repbad===0,                            `위반 ${g.repbad}`],

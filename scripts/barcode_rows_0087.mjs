@@ -63,6 +63,17 @@ export function toGtin14(std13) {
   return d.padStart(14, '0')
 }
 
+/* 제품코드 정규화 — ★ 보험코드는 9자리 체계인데 CSV 는 앞자리 0 을 떨군 8자리를 섞어 낸다.
+   실측(2025-10-31 자료): 8자리 3,307건 · 9자리 61,976건.
+   완전일치만 하면 8자리가 전부 빠진다 — 사용중 6건(레바미론정·프롤리아·나조넥스·
+   둘코락스좌약·아제타정·이지트롤정)이 이 때문에 누락됐다(결함 63).
+   ★ 보정 안전성 실측: 8자리 보정값 1,198종 ↔ 기존 9자리 21,108종 충돌 0종.
+   ※ 8·9자리 숫자만 손댄다. 그 외 형태는 그대로 두어 오탐을 막는다. */
+export function normProdCode(v) {
+  const s = T(v)
+  return /^[0-9]{8,9}$/.test(s) ? s.padStart(9, '0') : s
+}
+
 /* 적재행 산출.
    drugs: [{ drug_code, drug_name, insurance_code, status }]
    반환 { rows, skip, stat } */
@@ -83,7 +94,7 @@ export function buildRows(drugs, csv, tenantId) {
   const stat = { 취소예정: 0, 중복보류: 0, 대표행: 0, 포장행: 0 }
 
   for (const r of data) {
-    const prod = T(r[C.prod])
+    const prod = normProdCode(r[C.prod])          // ★ 8자리 → 좌측 0 보정(결함 63)
     if (!prod) { skip.제품코드없음++; continue }
 
     const hits = byIc.get(prod)
@@ -139,7 +150,7 @@ export function scopeStats(drugs, csv) {
   const ics = new Set(drugs.map(d => T(d.insurance_code)).filter(v => /^[0-9]{9}$/.test(v)))
   let prodRows = 0, matched = 0
   for (const r of data) {
-    const p = T(r[C.prod]); if (!p) continue
+    const p = normProdCode(r[C.prod]); if (!p) continue   // ★ buildRows 와 같은 규칙(결함 63)
     prodRows++
     if (ics.has(p)) matched++
   }
