@@ -3300,7 +3300,12 @@ const CHANGE_COL_PRESETS = [
 ]
 const CHANGE_RIGHT_COLS = new Set(['recent3', 'monthlyAvg', 'rec', 'usage_dept1', 'usage_dept2', 'usage_dept3', 'weekly_usage', 'cur', 'weeksLeft'])
 const CHANGE_STICKY_ORDER = ['category', 'from_drug_name']
-function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
+/* ★ 약품변경 전용 재고보정 — 체크박스 열 폭. sticky offset 보정의 기준값이다. */
+const CHANGE_SEL_W = 34
+/* ★ 관리 열 폭. [수정][실사][보정][삭제] 4개가 되면서 96 으로는 [삭제]가 밀려 나갔다.
+   버튼 1개당 대략 30px(패딩 7×2 + 글자 2자) + 간격 3px → 4개에 130 이면 잘리지 않는다. */
+const CHANGE_MGMT_W = 165
+function DrugChangePlans({ drugs, onReload, navFilter }) {
   const { t, memberRole, profile, user, setProfile } = useTheme()
   const canDel = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
   const canEdit = canDel
@@ -3310,6 +3315,40 @@ function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
   const [drafts, setDrafts] = useState({}); const [uMsg, setUMsg] = useState(null)
   const [selCols, setSelCols] = useState(() => { const s = profile?.settings?.changeCols; return Array.isArray(s) && s.length ? s : CHANGE_DEFAULT_COLS })
   const dmap = {}; (drugs || []).forEach(d => { dmap[d.drug_code] = d })
+  /* ── 재고보정(약품변경 전용) ────────────────────────────────────────────────
+     ★ AdjustModal 을 쓰지 않는다 — 그 모달은 4화면 공용이라 손대면 전부 바뀐다.
+       여기서는 onAdjust 를 아예 부르지 않아 **호출하지 않는 것만으로 분리**된다.
+       발주·재고현황·향정마약은 종전대로 setAdjustDrug 를 부른다(무변경).
+     ★ AdjustModal 과 결정적으로 다른 점: 차액을 **반영 직전에** 계산한다.
+       그 모달은 「모달을 열 때」 값으로 계산해 그 사이 재고가 바뀌면 어긋난다.
+     ★ inventory_count_items 에 (count_id, drug_code) UNIQUE 가 없다(0085 실측)
+       → upsert 불가. 조회 후 UPDATE/INSERT 로 분기해 행 중복을 막는다.
+     ★ 되돌리기는 실사 화면에서만 된다 — revertCount 가 InventoryCount 내부
+       클로저라 여기서 부를 수 없다. applied_tx_id 만 남겨 자격을 갖춰 둔다. */
+  const cntPeriod = todayYmd().slice(0, 7)
+  const cntTitle = '보정 대기 ' + cntPeriod
+  const [cntSes, setCntSes] = useState(null)      // 이번 달 세션
+  const [cntItems, setCntItems] = useState({})    // drug_code → { id, counted_qty, created_at, applied_tx_id }
+  const [cntT, setCntT] = useState(null)          // [실사] 모달 대상 약품
+  const [cntSel, setCntSel] = useState([])        // 체크된 drug_code
+  const [cntBusy, setCntBusy] = useState(false)
+  const [applyAsk, setApplyAsk] = useState(null)  // 일괄 반영 확인 { rows:[{code,name,counted,book,diff}] }
+  const [cntMsg, setCntMsg] = useState(null)
+  const cntFlash = (text, kind) => { setCntMsg({ text, kind }); setTimeout(() => setCntMsg(null), kind === 'err' ? 3600 : 2400) }
+
+  async function loadCnt() {
+    const { data: ses } = await supabase.from('inventory_counts').select('id,title,status,created_at')
+      .eq('title', cntTitle).order('created_at', { ascending: false }).limit(1).maybeSingle()
+    setCntSes(ses || null)
+    if (!ses) { setCntItems({}); return }
+    const { data: its } = await supabase.from('inventory_count_items')
+      .select('id,drug_code,counted_qty,created_at,applied_tx_id').eq('count_id', ses.id)
+    const m = {}; (its || []).forEach(x => { m[x.drug_code] = x })
+    setCntItems(m)
+  }
+  /* loadCnt 는 첫 문장이 await 라 동기 setState 가 아니다 — 규칙이 걸리지 않는다.
+     불필요한 eslint-disable 을 달지 않는다(달면 「사용되지 않은 지시」 경고가 난다). */
+  useEffect(() => { loadCnt() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   function applyCols(keys) { setSelCols(keys); if (!user) return; const next = { ...(profile?.settings || {}), changeCols: keys }; supabase.from('profiles').update({ settings: next }).eq('id', user.id).then(({ error }) => { if (!error && setProfile) setProfile(pp => pp ? { ...pp, settings: next } : pp) }) }
   const origStr = v => v == null ? '' : String(v)
   const depNum = v => { if (v == null) return null; const s = String(v).trim(); if (s === '') return null; const n = Number(s.replace(/,/g, '')); return Number.isFinite(n) ? n : null }
@@ -3363,6 +3402,105 @@ function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
     const etaStr = eta ? eta.toISOString().split('T')[0] : ''
     return { cur, curRaw, recent3, monthlyAvg, autoAvg, isManual, rec, weeksLeft, etaStr, monthsLabel }
   }
+  /* 실사 수량 저장 — ★ current_qty 를 건드리지 않는다. 거래도 만들지 않는다. */
+  async function saveCnt(code, raw) {
+    const n = Math.round(Number(raw) * 100) / 100          // 수량 정밀도 = 소수 2자리(전 경로 공통)
+    if (!Number.isFinite(n) || n < 0) { cntFlash('실사 수량은 0 이상의 숫자여야 합니다', 'err'); return false }
+    setCntBusy(true)
+    let ses = cntSes
+    if (!ses) {
+      const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle()
+      const { data, error } = await supabase.from('inventory_counts')
+        .insert([{ tenant_id: tm?.tenant_id, title: cntTitle, count_date: todayYmd(), status: '작성중' }])
+        .select('id,title,status,created_at').maybeSingle()
+      if (error) { setCntBusy(false); cntFlash('세션 생성 실패: ' + dbErrorMsg(error), 'err'); return false }
+      ses = data; setCntSes(data)
+    }
+    /* ★ UNIQUE 가 없으므로 조회 후 분기한다 */
+    let row = cntItems[code] || null
+    if (!row) {
+      const { data: ex } = await supabase.from('inventory_count_items')
+        .select('id,applied_tx_id').eq('count_id', ses.id).eq('drug_code', code).limit(1).maybeSingle()
+      row = ex || null
+    }
+    let saved, error
+    if (row) ({ data: saved, error } = await supabase.from('inventory_count_items')
+      .update({ counted_qty: n, source: '약품변경' }).eq('id', row.id)
+      .select('id,drug_code,counted_qty,created_at,applied_tx_id').maybeSingle())
+    else {
+      /* ★ items 에 tenant_id 컬럼이 없다 — RLS 는 count_id 조인으로 격리한다(0085 정책) */
+      ;({ data: saved, error } = await supabase.from('inventory_count_items')
+        .insert([{ count_id: ses.id, drug_code: code, counted_qty: n, source: '약품변경' }])
+        .select('id,drug_code,counted_qty,created_at,applied_tx_id').maybeSingle())
+    }
+    setCntBusy(false)
+    if (error) { cntFlash('실사 저장 실패: ' + dbErrorMsg(error), 'err'); return false }
+    setCntItems(m => ({ ...m, [code]: saved }))
+    cntFlash('실사 ' + n + ' 저장 · 재고는 바뀌지 않습니다')
+    return true
+  }
+
+  /* 반영 대상 산출 — ★ 반영 직전 drugs 를 다시 읽어 그 시점 차액을 낸다.
+     AdjustModal 이 「모달 열 때」 값을 쓰는 것과 다른 지점이다. */
+  async function buildApply(codes) {
+    const list = codes.filter(c => cntItems[c] && !cntItems[c].applied_tx_id)
+    if (!list.length) return { rows: [], skipped: codes.length }
+    const { data: fresh, error } = await supabase.from('drugs').select('drug_code,current_qty,purchase_price').in('drug_code', list)
+    if (error) { cntFlash('장부 재조회 실패: ' + dbErrorMsg(error), 'err'); return null }
+    const book = {}, pp = {}; (fresh || []).forEach(d => { book[d.drug_code] = Number(d.current_qty ?? 0); pp[d.drug_code] = Number(d.purchase_price ?? 0) })
+    return {
+      rows: list.map(c => {
+        const counted = Number(cntItems[c].counted_qty)
+        const b = book[c] ?? 0
+        return { code: c, name: (dmap[c] || {}).drug_name || c, counted, book: b, diff: Math.round((counted - b) * 100) / 100, pp: pp[c] ?? 0 }
+      }),
+      skipped: codes.length - list.length,
+    }
+  }
+
+  /* 반영 실행 — 조정 거래 생성 → applied_tx_id 기록 → 전부 반영이면 세션 반영완료 */
+  async function runApply(rows) {
+    const eff = rows.filter(r => r.diff !== 0)
+    setCntBusy(true)
+    let txByCode = {}
+    if (eff.length) {
+      const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle()
+      /* ★ current_qty 를 직접 쓰지 않는다 — apply_tx_to_inventory 트리거가 동기한다.
+         마감월이면 guard_closed_month_tx 가 23514 로 막는다(우회하지 않는다). */
+      const { data: txs, error } = await supabase.from('transactions').insert(
+        eff.map(r => ({ tenant_id: tm?.tenant_id, drug_code: r.code, type: '조정', quantity: r.diff,
+          total_amount: Math.round(r.diff * r.pp), transaction_date: todayYmd(),
+          reason: '실사 반영 · 약품변경 ' + cntPeriod }))
+      ).select('id,drug_code')
+      if (error) { setCntBusy(false); cntFlash('조정 거래 생성 실패: ' + dbErrorMsg(error), 'err'); return false }
+      ;(txs || []).forEach(x => { txByCode[x.drug_code] = x.id })
+    }
+    /* 차이 0 인 항목도 「반영됨」으로 닫는다 — 거래는 만들지 않고 표시만 확정한다 */
+    for (const r of rows) {
+      const it = cntItems[r.code]; if (!it) continue
+      await supabase.from('inventory_count_items')
+        .update({ applied_tx_id: txByCode[r.code] || null, book_qty: r.book }).eq('id', it.id)
+    }
+    /* ★ status 전이 — 항목이 **전부** 반영됐을 때만 반영완료. 하나라도 남으면 작성중 유지.
+       덜 반영된 채 마감이 열리면 「반영을 잊은 채 마감」이 그대로 일어난다. */
+    const doneCodes = new Set(rows.map(r => r.code))
+    const remain = Object.values(cntItems).filter(x => !x.applied_tx_id && !doneCodes.has(x.drug_code)).length
+    if (cntSes && remain === 0) {
+      await supabase.from('inventory_counts')
+        .update({ status: '반영완료', applied_at: new Date().toISOString(), applied_by: profile?.id || null }).eq('id', cntSes.id)
+    }
+    setCntBusy(false); setCntSel([]); setApplyAsk(null)
+    cntFlash('반영했습니다 · 조정 거래 ' + eff.length + '건' + (remain ? ' · 미반영 ' + remain + '건 남음' : ' · 세션 반영완료'))
+    await loadCnt(); onReload?.()
+    return true
+  }
+
+  /* 세션 진행 상황 — 부분 반영 표시용 */
+  const cntAll = Object.values(cntItems)
+  const cntDone = cntAll.filter(x => !!x.applied_tx_id).length
+  const cntLeft = cntAll.length - cntDone
+  const cntApplied = cntSes && cntSes.status === '반영완료'
+
   const enriched = plans.map(p => { const d = dmap[p.from_drug_code] || {}; return { ...p, category: d.category || '', from_drug_name: d.drug_name || p.from_drug_code, ...calc(p) } })
   const shown = enriched.filter(p => filter === '전체' || p.plan_status === filter)
   const sorted = so(shown)
@@ -3370,10 +3508,18 @@ function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
   const selPresets = CHANGE_COL_PRESETS.map(p => ({ name: p.name, keys: p.keys }))
   const visKeys = CHANGE_COL_ORDER.filter(k => selCols.includes(k))
   const visSticky = CHANGE_STICKY_ORDER.filter(k => visKeys.includes(k))
-  const stickyLeftOf = k => { const idx = visSticky.indexOf(k); if (idx === -1) return null; let l = 0; for (let j = 0; j < idx; j++) l += CHANGE_COL_WIDTH[visSticky[j]]; return l }
+  /* ★ 체크박스 열이 맨 앞 sticky(left 0) 로 들어가므로, 나머지 고정 열의 left 를
+     체크박스 폭만큼 밀어야 한다. 보정하지 않으면 구분·약품명이 체크박스 아래로 겹친다.
+     컬럼 선택(changeCols)으로 고정 열이 0~2개로 바뀌어도 이 식이 그대로 성립한다. */
+  const stickyLeftOf = k => { const idx = visSticky.indexOf(k); if (idx === -1) return null; let l = CHANGE_SEL_W; for (let j = 0; j < idx; j++) l += CHANGE_COL_WIDTH[visSticky[j]]; return l }
   const _hdrAbbr = { usage_dept1: 'FM(화)', usage_dept2: 'RM(수)', usage_dept3: 'NR(목)' }; const _hdrFull = { usage_dept1: '가정의학과', usage_dept2: '재활의학과', usage_dept3: '신경과' }
   const stCols = visKeys.map(k => { const left = stickyLeftOf(k); return { k, h: _hdrAbbr[k] || CHANGE_COL_LABEL[k], thTitle: _hdrFull[k], th: { whiteSpace: 'nowrap', textAlign: CHANGE_RIGHT_COLS.has(k) ? 'right' : 'left' }, ...(left != null ? { sticky: { left, w: CHANGE_COL_WIDTH[k] } } : {}) } }).concat([{ k: '', h: '관리', plain: true }])
-  const stWidths = visKeys.map(k => CHANGE_COL_WIDTH[k]).concat([96])
+  /* ★ 체크박스 열을 맨 앞에 붙인다.
+     StandardTable 의 plain 분기는 c.sticky 를 보지 않으므로 th 로 직접 넘긴다
+     (공용 컴포넌트를 고치지 않기 위한 우회). h 는 React key 로도 쓰이므로 문자열이어야 한다
+     — 전체 선택은 헤더가 아니라 상단 도구줄에 둔다. */
+  const stColsAll = [{ k: '', h: '선택', plain: true, th: { position: 'sticky', left: 0, zIndex: 6, minWidth: CHANGE_SEL_W, maxWidth: CHANGE_SEL_W, width: CHANGE_SEL_W, padding: '8px 4px' } }].concat(stCols)
+  const stWidths = [CHANGE_SEL_W].concat(visKeys.map(k => CHANGE_COL_WIDTH[k])).concat([CHANGE_MGMT_W])
   const stMin = stWidths.reduce((a, b) => a + b, 0)
   const weeklyVisible = visKeys.includes('weekly_usage')
   function dl() {
@@ -3398,8 +3544,30 @@ function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
     <div style={{ fontSize: 10, color: t.textM, marginBottom: 10 }}>FM 가정의학과 · RM 재활의학과 · NR 신경과</div>
     {uMsg && <div style={{ background: uMsg.includes('오류') ? t.redL : t.blueL, border: `1px solid ${uMsg.includes('오류') ? t.red : t.blue}`, borderRadius: 8, padding: '10px 14px', marginBottom: 10, color: uMsg.includes('오류') ? t.red : t.blue, fontSize: 12, fontWeight: 600 }}>{uMsg}</div>}
     <div style={{ background: t.card, borderRadius: 12, border: `1px solid ${t.border}`, overflow: 'hidden' }}>
-      <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={setSort} hf={{}} grid layout="fixed" minWidth={stMin} colWidths={stWidths} hscroll={{ noLabel: true, ends: true }} cols={stCols}>
-        <tbody>{ld ? <tr><td colSpan={stCols.length} style={{ padding: 30, textAlign: 'center', color: t.textL }}>불러오는 중...</td></tr> : !sorted.length ? <tr><td colSpan={stCols.length} style={{ padding: 30, textAlign: 'center', color: t.textL }}>등록된 약품변경이 없습니다</td></tr> : sorted.map((p, i) => {
+      {/* ═══ 재고보정 상태 · 도구줄 ═══
+          ★ 세션이 없으면 아무것도 그리지 않는다 — 아직 아무 것도 안 한 화면에 경고를 띄우지 않는다. */}
+      {cntMsg && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: cntMsg.kind === 'err' ? t.bg : t.greenL, color: cntMsg.kind === 'err' ? t.text : t.green, borderLeft: '3px solid ' + (cntMsg.kind === 'err' ? t.text : t.green) }}>{cntMsg.text}</div>}
+      {cntSes && <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderLeft: '3px solid ' + (cntApplied ? t.green : t.lavender), borderRadius: 12, padding: '12px 16px', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 700, fontSize: 13, color: t.text }}>{cntTitle}</span>
+          <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: 7, fontSize: 10, fontWeight: 700, border: '1px solid ' + (cntApplied ? t.green : t.lavender), color: cntApplied ? t.green : t.purple }}>{cntApplied ? '반영됨' : '미반영'}</span>
+          {/* ★ 부분 반영 상태 — 몇 건 중 몇 건이 남았는지 그대로 보인다 */}
+          <span style={{ fontSize: 11, color: t.textM }}>{cntAll.length}건 중 {cntDone}건 반영{cntLeft ? ' · ' + cntLeft + '건 미반영' : ''}</span>
+          <div style={{ flex: 1 }} />
+          <button onClick={() => setCntSel(cntSel.length ? [] : cntAll.filter(x => !x.applied_tx_id).map(x => x.drug_code))} style={{ padding: '5px 11px', borderRadius: 8, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{cntSel.length ? '선택 해제' : '미반영 전체 선택'}</button>
+          <button disabled={!cntSel.length || cntBusy} onClick={async () => { const r = await buildApply(cntSel); if (r && r.rows.length) setApplyAsk(r); else if (r) cntFlash('반영할 항목이 없습니다', 'err') }}
+            style={{ padding: '6px 13px', borderRadius: 8, border: '1px solid ' + t.purple, background: (!cntSel.length || cntBusy) ? 'transparent' : t.purple, color: (!cntSel.length || cntBusy) ? t.textL : '#fff', cursor: (!cntSel.length || cntBusy) ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', opacity: (!cntSel.length || cntBusy) ? 0.55 : 1 }}>재고보정 {cntSel.length ? '(' + cntSel.length + ')' : ''}</button>
+        </div>
+        {/* ★ 마감 차단은 「반영을 잊은 채 마감」을 막는 안전장치다. 우회하지 않고 알린다. */}
+        {!cntApplied && <div style={{ marginTop: 8, fontSize: 11, color: t.text, lineHeight: 1.7 }}>
+          작성중 세션이 있으면 이번 달 마감이 차단됩니다.<br />
+          월말 출고 입력을 마친 뒤 반영하시면 마감할 수 있습니다.<br />
+          반영을 되돌리려면 실사 화면에서 해당 세션을 여십시오.
+        </div>}
+        {cntApplied && <div style={{ marginTop: 8, fontSize: 11, color: t.textM, lineHeight: 1.7 }}>반영을 되돌리려면 실사 화면에서 해당 세션을 여십시오.</div>}
+      </div>}
+      <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={setSort} hf={{}} grid layout="fixed" minWidth={stMin} colWidths={stWidths} hscroll={{ noLabel: true, ends: true }} cols={stColsAll}>
+        <tbody>{ld ? <tr><td colSpan={stColsAll.length} style={{ padding: 30, textAlign: 'center', color: t.textL }}>불러오는 중...</td></tr> : !sorted.length ? <tr><td colSpan={stColsAll.length} style={{ padding: 30, textAlign: 'center', color: t.textL }}>등록된 약품변경이 없습니다</td></tr> : sorted.map((p, i) => {
           const dr = drafts[p.id]; const dirty = !!dr
           const d1s = dirty ? dr.d1 : origStr(p.usage_dept1), d2s = dirty ? dr.d2 : origStr(p.usage_dept2), d3s = dirty ? dr.d3 : origStr(p.usage_dept3), wks = dirty ? dr.wk : origStr(p.weekly_usage)
           const d1v = depNum(d1s), d2v = depNum(d2s), d3v = depNum(d3s), wkv = depNum(wks)
@@ -3413,6 +3581,14 @@ function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
           const depInput = (field, val, bgY) => <input value={val} inputMode="numeric" onChange={e => editField(p, field, e.target.value)} onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); cancelEdit(p.id) } }} style={{ width: '100%', padding: '4px 6px', textAlign: 'right', border: '1px solid ' + (dirty ? t.accent : t.border), borderRadius: 4, fontSize: 11, background: bgY ? yell : (dirty ? t.accent + '0D' : t.bg), color: '#111', fontWeight: dirty ? 700 : 400, outline: 'none', boxSizing: 'border-box' }} />
           const saveBtns = <span style={{ display: 'flex', gap: 3 }}><button onClick={() => saveRow(p)} title="저장" style={{ padding: '2px 6px', borderRadius: 4, border: '1px solid ' + t.green, background: t.greenL, color: t.green, cursor: 'pointer', fontSize: 9, fontWeight: 700, whiteSpace: 'nowrap' }}>저장</button><button onClick={() => cancelEdit(p.id)} title="취소(Ctrl+Z)" style={{ padding: '2px 6px', borderRadius: 4, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 9, fontWeight: 600, whiteSpace: 'nowrap' }}>취소</button></span>
           return <tr key={p.id || i} style={{ borderBottom: `1px solid ${t.border}` }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
+            {/* ★ 체크박스 열 — 실사값이 저장돼 있고 아직 반영 전인 행만 고를 수 있다 */}
+            <td style={{ position: 'sticky', left: 0, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border, minWidth: CHANGE_SEL_W, maxWidth: CHANGE_SEL_W, width: CHANGE_SEL_W, padding: '6px 4px', textAlign: 'center' }}>
+              {(() => { const it = cntItems[p.from_drug_code]; const ok = !!it && !it.applied_tx_id
+                return <input type="checkbox" disabled={!ok} checked={cntSel.includes(p.from_drug_code)}
+                  onChange={() => setCntSel(s => s.includes(p.from_drug_code) ? s.filter(x => x !== p.from_drug_code) : [...s, p.from_drug_code])}
+                  title={ok ? '선택' : (it ? '이미 반영된 항목입니다' : '먼저 [실사]로 수량을 저장하세요')}
+                  style={{ accentColor: t.purple, cursor: ok ? 'pointer' : 'not-allowed', opacity: ok ? 1 : 0.35 }} /> })()}
+            </td>
             {visKeys.map(k => {
               const left = stickyLeftOf(k)
               const sticky = left != null ? { position: 'sticky', left, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border, minWidth: CHANGE_COL_WIDTH[k], maxWidth: CHANGE_COL_WIDTH[k], width: CHANGE_COL_WIDTH[k] } : {}
@@ -3429,7 +3605,11 @@ function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
               else if (k === 'usage_dept2') { if (canEdit) { base = { padding: '5px 6px' }; inner = depInput('d2', d2s, y2) } else { base = { padding: '6px 8px', fontSize: 11, textAlign: 'right', color: '#111', background: y2 ? yell : undefined }; inner = d2v == null ? '—' : d2v.toLocaleString() } }
               else if (k === 'usage_dept3') { if (canEdit) { base = { padding: '5px 6px' }; inner = depInput('d3', d3s, y3) } else { base = { padding: '6px 8px', fontSize: 11, textAlign: 'right', color: '#111', background: y3 ? yell : undefined }; inner = d3v == null ? '—' : d3v.toLocaleString() } }
               else if (k === 'weekly_usage') { if (canEdit) { base = { padding: '5px 6px' }; inner = <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}><UsageCell value={wks} dirty={dirty} onChange={v => editField(p, 'wk', v)} onUndo={() => cancelEdit(p.id)} />{dirty && saveBtns}</div> } else { base = { padding: '6px 8px', fontSize: 11, textAlign: 'right' }; inner = p.weekly_usage == null ? '—' : Number(p.weekly_usage).toLocaleString() } }
-              else if (k === 'cur') { base = { padding: '6px 8px', fontSize: 11, textAlign: 'right', fontWeight: 600 }; inner = p.cur.toLocaleString() }
+              /* ★ 현재고 옆에 실사 상태를 붙인다 — 항목 단위 표시(applied_tx_id 유무).
+                 세션 단위 「반영완료」와 다르다: 일부만 반영된 세션에서도 행마다 정확히 보인다. */
+              else if (k === 'cur') { base = { padding: '6px 8px', fontSize: 11, textAlign: 'right', fontWeight: 600 }
+                const _it = cntItems[p.from_drug_code]
+                inner = <>{p.cur.toLocaleString()}{_it ? <span title={'실사 ' + Number(_it.counted_qty).toLocaleString() + (_it.created_at ? ' · 입력 ' + String(_it.created_at).slice(0, 16).replace('T', ' ') : '')} style={{ display: 'block', marginTop: 2, fontSize: 8, fontWeight: 700, whiteSpace: 'nowrap', color: _it.applied_tx_id ? t.green : t.purple }}>{'실사 ' + Number(_it.counted_qty).toLocaleString() + ' · ' + (_it.applied_tx_id ? '반영됨' : '미반영')}</span> : null}</> }
               else if (k === 'weeksLeft') { base = { padding: '6px 8px', fontSize: 11, textAlign: 'right', background: remBg(p.curRaw, wl), color: remFg(p.curRaw, wl) ?? ((wl != null && wl < 1) ? '#C00000' : undefined) }; inner = wl == null ? '—' : (Math.round(wl * 10) / 10).toLocaleString() }
               else if (k === 'etaStr') { base = { padding: '6px 8px', fontSize: 10, fontWeight: 600, background: remBg(p.curRaw, wl), color: remFg(p.curRaw, wl) ?? ((wl != null && wl < 1) ? '#C00000' : (eta ? t.text : t.textL)) }; inner = eta || '—' }
               else if (k === 'base_date') { base = { padding: '6px 8px', fontSize: 10, color: t.textM, textAlign: 'center' }; inner = p.base_date || '—' }
@@ -3439,14 +3619,29 @@ function DrugChangePlans({ drugs, onAdjust, onReload, navFilter }) {
             })}
           <td style={{ padding: '6px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
             {canEdit && dirty && !weeklyVisible && <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}>{saveBtns}</div>}
-            <button onClick={() => setEditP(p)} style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.accent}`, background: 'transparent', color: t.accent, cursor: 'pointer', fontSize: 9, fontWeight: 600, marginRight: 3 }}>수정</button>
-            {dmap[p.from_drug_code] && <button onClick={() => onAdjust(dmap[p.from_drug_code])} title="재고 실사(보정)" style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.amber}`, background: 'transparent', color: t.amber, cursor: 'pointer', fontSize: 9, fontWeight: 600, marginRight: 3 }}>실사</button>}
+            {/* ★ 버튼 간격을 gap 으로 통일한다 — marginRight 를 쓰면 [보정]이 없는 행에서 끝 간격이 남는다 */}
+            <span style={{ display: 'inline-flex', gap: 3, justifyContent: 'center', flexWrap: 'nowrap' }}>
+            <button onClick={() => setEditP(p)} style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.accent}`, background: 'transparent', color: t.accent, cursor: 'pointer', fontSize: 9, fontWeight: 600 }}>수정</button>
+            {/* ★ 전용 모달을 연다 — 공용 AdjustModal(setAdjustDrug)을 부르지 않는다.
+                발주·재고현황·향정마약은 종전대로 AdjustModal 을 쓴다(무변경). */}
+            {dmap[p.from_drug_code] && <button onClick={() => setCntT(dmap[p.from_drug_code])} title="실물 수량 입력 — 재고는 바뀌지 않습니다" style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.amber}`, background: 'transparent', color: t.amber, cursor: 'pointer', fontSize: 9, fontWeight: 600 }}>실사</button>}
+            {/* 행별 반영 — 실사값이 있고 아직 반영 전일 때만 낸다 */}
+            {(() => { const it = cntItems[p.from_drug_code]; if (!it || it.applied_tx_id) return null
+              return <button disabled={cntBusy} onClick={async () => { const r = await buildApply([p.from_drug_code]); if (r && r.rows.length) setApplyAsk(r) }}
+                title="반영 시점 재고를 다시 읽어 차액만큼 조정합니다" style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.purple}`, background: 'transparent', color: t.purple, cursor: cntBusy ? 'default' : 'pointer', fontSize: 9, fontWeight: 700 }}>보정</button> })()}
             {canDel && <button onClick={() => setDelP(p)} style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.red}`, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 9, fontWeight: 600 }}>삭제</button>}
+            </span>
           </td>
           </tr>
         })}</tbody>
       </StandardTable>
     </div>
+    {/* ★ 약품변경 전용 실사 모달 — AdjustModal 과 별개 컴포넌트다(공용 모달 무수정) */}
+    {cntT && <ChangeCountModal t={t} drug={cntT} saved={cntItems[cntT.drug_code] || null} busy={cntBusy}
+      onClose={() => setCntT(null)} onSave={async v => { const ok = await saveCnt(cntT.drug_code, v); if (ok) setCntT(null) }} />}
+    {/* 반영 확인 — 행별·일괄 공용. 조정 수량 미리보기를 반드시 보여 준다 */}
+    {applyAsk && <ChangeApplyModal t={t} data={applyAsk} busy={cntBusy} period={cntPeriod}
+      onClose={() => setApplyAsk(null)} onConfirm={() => runApply(applyAsk.rows)} />}
     {editP && <ChangePlanModal plan={editP} drugs={drugs} onClose={() => setEditP(null)} onSaved={() => { setEditP(null); loadPlans(); onReload?.() }} />}
     {delP && <div onClick={() => setDelP(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 14, padding: '22px 26px', maxWidth: 420, width: '100%', border: `1px solid ${t.border}`, boxShadow: t.shadowH }}>
@@ -3531,6 +3726,99 @@ const isAdminAdded = it => Number(it.sort_order) >= WARD_ADMIN_SORT_BASE
    ★ 「(추가)」만 한 단계 작게(인쇄 CSS의 .wp-add). 인라인 span이라 부모 행보다 커지지 않으므로
      행 높이(8.6mm)에 영향이 없다. 화면에서는 .wp-add에 스타일이 없어 동일 크기. */
 const WardItemName = ({ it }) => <>{it.drug_name}{isAdminAdded(it) ? <span className="wp-add"> (추가)</span> : null}</>
+/* ═══ 약품변경 전용 실사 입력 모달 ═══════════════════════════════════════════
+   ★ AdjustModal 과 별개다. 공용 모달은 4화면이 쓰므로 손대지 않는다.
+   ★ 여기서는 **저장만** 한다 — current_qty 를 바꾸지 않고 거래도 만들지 않는다.
+     재고 반영은 [보정]/[재고보정] 이 반영 시점에 따로 한다. */
+function ChangeCountModal({ t, drug: dr, saved, busy, onClose, onSave }) {
+  /* ★ 훅A(useDraggableModal) 를 호출만 한다 — 훅은 고치지 않는다.
+     입력·버튼 위에서는 훅이 자체적으로 드래그를 시작하지 않고(INPUT/SELECT/TEXTAREA/OPTION·button),
+     헤더가 화면 안에 최소 40px 남도록 좌표를 클램프한다. */
+  const _box = useRef(null); const [_pos, _setPos] = useState({ x: 0, y: 0 })
+  const { onHeaderMouseDown: _onHead } = useDraggableModal(_box, _pos, _setPos)
+  const [qty, setQty] = useState(saved ? String(saved.counted_qty) : '')
+  const cur = Number(dr.current_qty || 0)
+  const n = qty.trim() === '' ? null : Math.round(Number(qty) * 100) / 100
+  const bad = qty.trim() !== '' && (!Number.isFinite(n) || n < 0)
+  const diff = (n == null || bad) ? null : Math.round((n - cur) * 100) / 100
+  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+    <div ref={_box} onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${_pos.x}px, ${_pos.y}px)` }}>
+      <div onMouseDown={_onHead} style={{ padding: '16px 20px', borderBottom: `1px solid ${t.border}`, cursor: 'move', userSelect: 'none' }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: t.purple }}>실사 수량 입력</div>
+        <div style={{ fontSize: 12, color: t.textM, marginTop: 2 }}>{dr.drug_name} · {dr.drug_code}</div>
+      </div>
+      <div style={{ padding: '16px 20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+          <div style={{ background: t.bg, borderRadius: 10, padding: 12, textAlign: 'center', border: `1px solid ${t.border}` }}>
+            <div style={{ fontSize: 10, color: t.textM }}>서류재고</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: t.text, marginTop: 4 }}>{cur.toLocaleString()}</div>
+          </div>
+          <div style={{ background: t.bg, borderRadius: 10, padding: 12, textAlign: 'center', border: `1px solid ${(diff != null && diff !== 0) ? t.lavender : t.border}` }}>
+            <div style={{ fontSize: 10, color: t.textM }}>실사(실물)</div>
+            <input autoFocus value={qty} onChange={e => setQty(e.target.value.replace(/[^0-9.]/g, ''))} onKeyDown={e => { if (e.key === 'Enter' && !bad && n != null) onSave(qty) }} inputMode="decimal" placeholder="0"
+              style={{ width: '100%', textAlign: 'center', fontSize: 22, fontWeight: 700, border: 'none', background: 'transparent', color: t.text, outline: 'none', marginTop: 4 }} />
+          </div>
+        </div>
+        {bad && <div style={{ marginBottom: 10, fontSize: 11, color: t.text, borderLeft: '3px solid ' + t.purple, paddingLeft: 8, lineHeight: 1.6 }}>실사 수량은 0 이상의 숫자여야 합니다</div>}
+        {diff != null && diff !== 0 && <div style={{ background: t.bg, borderRadius: 8, padding: 10, marginBottom: 12, borderLeft: '3px solid ' + t.lavender, fontSize: 12, color: t.text, lineHeight: 1.6 }}>
+          지금 기준 차이 <b style={{ color: t.purple }}>{diff > 0 ? '+' : ''}{diff}</b>
+          <div style={{ fontSize: 10, color: t.textM, marginTop: 3 }}>★ 실제 조정 수량은 <b>[보정] 하는 시점</b>의 재고로 다시 계산합니다.</div>
+        </div>}
+        <div style={{ background: t.bg, borderRadius: 8, padding: '10px 12px', marginBottom: 14, borderLeft: '3px solid ' + t.lavender, fontSize: 11, color: t.text, lineHeight: 1.7 }}>
+          저장해도 재고는 바뀌지 않습니다. 값만 보관했다가 [보정] 에서 반영합니다.
+        </div>
+        {saved && <div style={{ fontSize: 10, color: t.textL, marginBottom: 10 }}>이전 저장 {Number(saved.counted_qty).toLocaleString()}{saved.created_at ? ' · ' + String(saved.created_at).slice(0, 16).replace('T', ' ') : ''}{saved.applied_tx_id ? ' · 이미 반영됨' : ''}</div>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, border: `1px solid ${t.border}`, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button>
+          <button disabled={busy || bad || n == null} onClick={() => onSave(qty)} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: (busy || bad || n == null) ? 'not-allowed' : 'pointer', background: (busy || bad || n == null) ? t.textL : t.purple, color: '#fff', fontSize: 13, fontWeight: 700 }}>{busy ? '...' : '저장'}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+/* ═══ 반영 확인 모달 — 행별·일괄 공용 ═════════════════════════════════════════
+   ★ 표시하는 수량이 곧 저장될 수량이다. 미리보기와 실제가 갈리면 안 되므로
+     buildApply 가 이미 재조회한 값을 그대로 받아 그린다. */
+function ChangeApplyModal({ t, data, busy, period, onClose, onConfirm }) {
+  /* ★ 훅A 호출만 — 훅 무수정. 미리보기 표를 보면서 원장 화면을 함께 보려는 용도다. */
+  const _box = useRef(null); const [_pos, _setPos] = useState({ x: 0, y: 0 })
+  const { onHeaderMouseDown: _onHead } = useDraggableModal(_box, _pos, _setPos)
+  const rows = data.rows, eff = rows.filter(r => r.diff !== 0)
+  const td = { padding: '6px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border, color: t.text }
+  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '48px 16px', overflowY: 'auto' }}>
+    <div ref={_box} onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 560, border: `1px solid ${t.border}`, boxShadow: t.shadowH, overflow: 'hidden', transform: `translate(${_pos.x}px, ${_pos.y}px)` }}>
+      <div onMouseDown={_onHead} style={{ padding: '16px 20px', borderBottom: `1px solid ${t.border}`, cursor: 'move', userSelect: 'none' }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: t.purple }}>재고보정 확인</div>
+        <div style={{ fontSize: 12, color: t.textM, marginTop: 2 }}>{rows.length}건 · 조정 거래 {eff.length}건 생성</div>
+      </div>
+      <div style={{ padding: '14px 20px', maxHeight: '52vh', overflowY: 'auto' }}>
+        <div style={{ fontSize: 11, color: t.text, marginBottom: 10, borderLeft: '3px solid ' + t.lavender, paddingLeft: 8, lineHeight: 1.7 }}>
+          아래 수량은 <b>지금 재고를 다시 읽어</b> 계산한 값입니다. 그대로 조정 거래가 만들어집니다.
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr>{['약품', '장부', '실사', '조정'].map((h, i) => <th key={h} style={{ ...td, color: t.textM, fontWeight: 700, textAlign: i === 0 ? 'left' : 'right' }}>{h}</th>)}</tr></thead>
+          <tbody>{rows.map(r => <tr key={r.code}>
+            <td style={{ ...td, fontWeight: 600 }}>{r.name}</td>
+            <td style={{ ...td, textAlign: 'right', color: t.textM, fontVariantNumeric: 'tabular-nums' }}>{r.book.toLocaleString()}</td>
+            <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.counted.toLocaleString()}</td>
+            <td style={{ ...td, textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: r.diff === 0 ? t.textL : t.purple }}>{r.diff === 0 ? '변동 없음' : (r.diff > 0 ? '+' : '') + r.diff.toLocaleString()}</td>
+          </tr>)}</tbody>
+        </table>
+        {data.skipped > 0 && <div style={{ marginTop: 10, fontSize: 11, color: t.textM }}>※ 이미 반영됐거나 실사값이 없는 {data.skipped}건은 제외했습니다.</div>}
+        <div style={{ marginTop: 12, fontSize: 11, color: t.textM, lineHeight: 1.7 }}>
+          사유는 「실사 반영 · 약품변경 {period}」 로 기록됩니다.<br />
+          되돌리려면 실사 화면에서 해당 세션을 여십시오.
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, padding: '12px 20px', borderTop: `1px solid ${t.border}` }}>
+        <button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, border: `1px solid ${t.border}`, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button>
+        <button disabled={busy} onClick={onConfirm} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer', background: busy ? t.textL : t.purple, color: '#fff', fontSize: 13, fontWeight: 700 }}>{busy ? '반영 중...' : '반영'}</button>
+      </div>
+    </div>
+  </div>
+}
+
 function WardAdmin() {
   const { t, memberRole, profile } = useTheme()
   const { so, TS, sk, sd, setSort } = useSort('submitted_at', 'desc')
@@ -6761,7 +7049,7 @@ export default function App() {
         {menu === 'ordering' && <Ordering drugs={drugs} onAdjust={setAdjustDrug} />}
         {menu === 'druglist' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} />}
         {menu === 'nonins' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} nonins />}
-        {menu === 'change' && <DrugChangePlans drugs={drugs} onAdjust={setAdjustDrug} onReload={load} navFilter={nf} />}
+        {menu === 'change' && <DrugChangePlans drugs={drugs} onReload={load} navFilter={nf} />}
         {menu === 'archive' && <DrugList drugs={drugs} navFilter={{ status: ['중지'], archive: true }} onEdit={setEditDrug} onReload={load} />}
         {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} onDispose={setDisposeDrug} />}
         {menu === 'idle' && <IdleCheck drugs={drugs} onReload={load} />}
