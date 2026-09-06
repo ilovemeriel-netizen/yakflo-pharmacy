@@ -31,6 +31,16 @@ const EVT = ['접종', '입고', '배정', '반납', '폐기']
    저장되면 pending_qty 를 null 로 고정한 표시 규칙 때문에 **화면 어디에도 안 나온다**.
    저장은 되는데 보이지 않는 「조용한 누락」이 되므로 UI 와 저장 양쪽에서 막는다. */
 const PAID_ALLOC_MSG = '유료 계정은 배정이 없습니다 — 입고로 등록하세요'
+/* ★ drug_code 는 NOT NULL 이지만 **빈 문자열은 막지 못한다**(운영에 len=0 계정 1건 생겼다).
+   NOT NULL 을 검증으로 믿으면 안 된다 — 공백만 넣은 값도 통과한다. trim 후 판정한다. */
+const DRUG_REQ_MSG = '약품을 선택해 주세요'
+/* ★ 계정 FK 는 전부 ON DELETE RESTRICT(0089) — 이벤트가 하나라도 있으면 23503 이다. */
+const ACC_DEL_RESTRICT = '이 계정에는 기록이 있어 삭제할 수 없습니다. 비활성화하시겠습니까?'
+/* ★ UNIQUE(tenant_id, season, drug_code, funding_source) 구성 요소는 수정에서 뺀다.
+   바뀌면 이미 쌓인 이벤트가 어느 계정 소속이었는지 흔들린다. */
+const ACC_LOCKED_MSG = '변경하려면 새 계정을 만드세요'
+/* 이력 모달 상단 안내 — append-only 규약을 조작 직전에 알린다. */
+const LEDGER_FIX_MSG = '기록은 수정·삭제할 수 없습니다. 잘못 입력한 경우 [정정]으로 반대 수량을 추가해 상계하세요.'
 /* 카테고리 프리셋 — ★ funding_source 로 자동 결정하지 않는다.
    같은 '보건소'에 독감 어르신과 코로나가 함께 들어가는데 카테고리가 서로 다르다. */
 const PRESETS = [
@@ -143,6 +153,9 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
       pending_qty: paid ? null : N(b.pending_qty),
       balance_qty: balq,
       useRate, days, perDay, outDate, outWarn, catRows,
+      /* ★ 기록 유무를 **미리** 알아 버튼을 갈라 놓는다 — 눌러 보고 23503 을 받게 하지 않는다.
+         이미 받아 둔 evts 로 세므로 추가 조회가 없다(삭제 직전에 다시 한 번 실측한다). */
+      evCount: ev.length, catCount: (catsOf[a.id] || []).length,
       /* 경고 — 표시 전용. 저장을 막지 않는다 */
       warnNeg: balq < 0,
       warnOver: !paid && N(b.received_qty) > N(b.allocated_qty),
@@ -161,11 +174,15 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
 
   /* ── 저장 ─────────────────────────────────────────────────────────────── */
   async function addAccount(f, presetId) {
+    /* ★ 약품 필수 — 버튼 disabled 만으로는 새지 않는다는 보장이 없다. 저장 직전이 마지막 방어선이다.
+       drug_code 가 '' 이면 화면에 이름 없는 계정이 생기고, UNIQUE 키의 일부라 지우기도 번거롭다. */
+    const dc = (f.drug_code || '').trim()
+    if (!dc) { flash(DRUG_REQ_MSG, 'err'); return false }
     const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle()
     if (!tm?.tenant_id) { flash('소속 정보를 찾을 수 없습니다 — 관리자에게 문의해 주세요', 'err'); return false }
     const { data, error } = await supabase.from('vaccine_accounts').insert([{
       tenant_id: tm.tenant_id, season: f.season, season_start: f.season_start, season_end: f.season_end,
-      drug_code: f.drug_code, funding_source: f.funding_source,
+      drug_code: dc, funding_source: f.funding_source,
       settlement_body: f.settlement_body || null, storage_location: f.storage_location || null,
       admin_end: f.admin_end || null, return_due: f.return_due || null,
     }]).select('id').maybeSingle()
@@ -181,6 +198,57 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
       if (ce) flash('계정은 만들었으나 카테고리 생성 실패: ' + dbErrorMsg(ce), 'err')
     }
     flash('계정을 만들었습니다'); loadAll(); return true
+  }
+
+  /* ── 계정 수정 ──────────────────────────────────────────────────────────
+     ★ season · drug_code · funding_source 를 **여기서 받지 않는다**.
+       UNIQUE(tenant_id, season, drug_code, funding_source) 구성 요소이고,
+       바꾸면 이미 쌓인 이벤트의 소속이 흔들린다. 모달에서도 읽기 전용이지만
+       payload 자체에 넣지 않는 것이 마지막 방어선이다. */
+  async function updAccount(id, f) {
+    if (f.season_end && f.season_start && f.season_end < f.season_start) {
+      /* DB CHECK(season_end >= season_start)가 23514 를 내기 전에 여기서 막는다 */
+      flash('시즌 종료일이 시작일보다 빠릅니다', 'err'); return false
+    }
+    const { error } = await supabase.from('vaccine_accounts').update({
+      season_start: f.season_start, season_end: f.season_end,
+      settlement_body: (f.settlement_body || '').trim() || null,
+      storage_location: (f.storage_location || '').trim() || null,
+      admin_end: f.admin_end || null, return_due: f.return_due || null,
+    }).eq('id', id)
+    if (error) { flash('수정 실패: ' + dbErrorMsg(error), 'err'); return false }
+    flash('계정을 수정했습니다'); loadAll(); return true
+  }
+
+  /* ── 계정 삭제 ──────────────────────────────────────────────────────────
+     ★ 카테고리도 account_id FK RESTRICT 다. 프리셋으로 3개가 자동 생성되므로
+       계정만 지우려 하면 이벤트가 0건이어도 23503 이 난다.
+       그래서 **이벤트 0건을 먼저 실측**한 뒤에야 카테고리를 지운다.
+       순서를 바꾸면 계정 삭제가 실패했을 때 카테고리만 사라진다. */
+  async function delAccount(id) {
+    const { count, error: qe } = await supabase.from('vaccine_events')
+      .select('id', { count: 'exact', head: true }).eq('account_id', id)
+    if (qe) { flash('확인 실패: ' + dbErrorMsg(qe), 'err'); return { ok: false } }
+    if (count) return { ok: false, restrict: true }   // ★ 기록 있음 — 아무것도 지우지 않는다
+
+    const { error: ce } = await supabase.from('vaccine_categories').delete().eq('account_id', id)
+    if (ce) {
+      if (ce.code === '23503') return { ok: false, restrict: true }
+      flash('삭제 실패: ' + dbErrorMsg(ce), 'err'); return { ok: false }
+    }
+    const { error } = await supabase.from('vaccine_accounts').delete().eq('id', id)
+    if (error) {
+      if (error.code === '23503') return { ok: false, restrict: true }
+      flash('삭제 실패: ' + dbErrorMsg(error), 'err'); return { ok: false }
+    }
+    flash('계정을 삭제했습니다'); loadAll(); return { ok: true }
+  }
+
+  /* 비활성화 — 기록이 있는 계정을 정리하는 유일한 길(0089 규약: 삭제 대신 비활성화) */
+  async function setAccActive(id, v) {
+    const { error } = await supabase.from('vaccine_accounts').update({ is_active: v }).eq('id', id)
+    if (error) { flash('변경 실패: ' + dbErrorMsg(error), 'err'); return false }
+    flash(v ? '계정을 다시 사용합니다' : '계정을 비활성화했습니다'); loadAll(); return true
   }
 
   async function addEvent(f) {
@@ -294,11 +362,13 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
           {rows.map(r => {
             const hc = r.paid ? t.purple : t.green
-            return <div key={r.id} style={{ flex: '1 1 320px', minWidth: 300, maxWidth: 420, background: t.card, border: '1px solid ' + t.border, borderRadius: 12, overflow: 'hidden', boxShadow: t.shadow }}>
+            return <div key={r.id} style={{ flex: '1 1 320px', minWidth: 300, maxWidth: 420, background: t.card, border: '1px solid ' + t.border, borderRadius: 12, overflow: 'hidden', boxShadow: t.shadow, opacity: r.is_active === false ? 0.6 : 1 }}>
               <div style={{ background: hc, color: '#fff', padding: '9px 13px', display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
                 <span style={{ fontWeight: 700, fontSize: 13 }}>{r.drug_code}</span>
                 <span style={{ fontSize: 11, opacity: 0.9 }}>{r.funding_source}</span>
                 <span style={{ fontSize: 10, opacity: 0.8 }}>{r.paid ? '유료' : '무상'}</span>
+                {/* ★ 비활성 계정도 목록에서 지우지 않는다 — 사라지면 「어디 갔지」가 된다 */}
+                {r.is_active === false && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.7)' }}>비활성</span>}
                 <div style={{ flex: 1 }} />
                 {r.storage_location && <span style={{ fontSize: 10, opacity: 0.85 }}>{r.storage_location}</span>}
               </div>
@@ -345,6 +415,17 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
                   <button onClick={() => setModal({ kind: 'evt', event_type: '접종', account_id: r.id })} style={{ ...btn(t.green, '#fff'), flex: 1, padding: '6px 10px', fontSize: 11 }}>접종 +</button>
                   <button onClick={() => setModal({ kind: 'cats', account_id: r.id })} style={{ ...btn(t.bg, t.textM, t.border), padding: '6px 10px', fontSize: 11 }}>대상 구분</button>
                   <button onClick={() => setModal({ kind: 'fix', account_id: r.id })} style={{ ...btn(t.bg, t.textM, t.border), padding: '6px 10px', fontSize: 11 }}>이력</button>
+                </div>
+                {/* ★ 관리 줄 — 기록이 있으면 [삭제] 자체를 내지 않는다.
+                    눌러 보고 23503 을 받는 대신, 가능한 동작만 보인다. */}
+                <div className="no-print" style={{ display: 'flex', gap: 5, marginTop: 5 }}>
+                  <button onClick={() => setModal({ kind: 'edit', account_id: r.id })} style={{ ...btn(t.bg, t.textM, t.border), flex: 1, padding: '6px 10px', fontSize: 11 }}>수정</button>
+                  {r.evCount === 0
+                    ? <button onClick={() => setModal({ kind: 'del', account_id: r.id })} style={{ ...btn(t.bg, t.purple, t.purple), flex: 1, padding: '6px 10px', fontSize: 11 }}>삭제</button>
+                    : r.is_active === false
+                      ? <button onClick={() => setAccActive(r.id, true)} style={{ ...btn(t.bg, t.green, t.green), flex: 1, padding: '6px 10px', fontSize: 11 }}>다시 사용</button>
+                      : <button onClick={() => setModal({ kind: 'del', account_id: r.id })} title={'기록 ' + r.evCount + '건 — 삭제할 수 없습니다'}
+                        style={{ ...btn(t.bg, t.purple, t.purple), flex: 1, padding: '6px 10px', fontSize: 11 }}>비활성화</button>}
                 </div>
               </div>
             </div>
@@ -395,16 +476,27 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
 
     {modal && <VaccineModal t={t} ip={ip} btn={btn} modal={modal} rows={rows} cats={cats} evts={evts}
       onClose={() => setModal(null)} onAccount={addAccount} onEvent={addEvent} onFix={fixEvent} onCat={saveCat}
+      onUpdAccount={updAccount} onDelAccount={delAccount} onAccActive={setAccActive}
       todayYmd={todayYmd} />}
   </div>
 }
 
 /* ═══ 모달 — 계정 + / 이벤트 + / 대상 구분 / 이력·정정 ═══════════════════════ */
-function VaccineModal({ t, ip, btn, modal, rows, cats, evts, onClose, onAccount, onEvent, onFix, onCat, todayYmd }) {
+function VaccineModal({ t, ip, btn, modal, rows, cats, evts, onClose, onAccount, onEvent, onFix, onCat, onUpdAccount, onDelAccount, onAccActive, todayYmd }) {
   const [busy, setBusy] = useState(false)
+  /* ★ 수정·삭제 모달은 대상 계정을 먼저 집는다. 초기화 함수 안에서만 쓰므로 상태가 아니다. */
+  const tgt = (modal.kind === 'edit' || modal.kind === 'del') ? rows.find(r => r.id === modal.account_id) || null : null
   const [f, setF] = useState(() => modal.kind === 'acct'
     ? { season: DEF.season, season_start: DEF.start, season_end: DEF.end, drug_code: '', funding_source: '일반', settlement_body: '', storage_location: '', admin_end: DEF.end, return_due: DEF.end }
-    : { account_id: modal.account_id || (rows[0] && rows[0].id) || '', event_type: modal.event_type || '접종', qty: '', event_date: todayYmd(), category_id: '', lot_no: '', expiry_date: '', container: '', memo: '' })
+    : modal.kind === 'edit'
+      ? {
+        /* ★ date 입력은 'YYYY-MM-DD' 만 받는다. DB 가 timestamptz 로 돌려주는 경우가 있어 앞 10자만 쓴다. */
+        season_start: d10(tgt && tgt.season_start), season_end: d10(tgt && tgt.season_end),
+        settlement_body: (tgt && tgt.settlement_body) || '', storage_location: (tgt && tgt.storage_location) || '',
+        admin_end: d10(tgt && tgt.admin_end), return_due: d10(tgt && tgt.return_due),
+      }
+      : { account_id: modal.account_id || (rows[0] && rows[0].id) || '', event_type: modal.event_type || '접종', qty: '', event_date: todayYmd(), category_id: '', lot_no: '', expiry_date: '', container: '', memo: '' })
+  const [delRestrict, setDelRestrict] = useState(false)
   const [preset, setPreset] = useState('staff')
   const [drugs, setDrugs] = useState(null)
   const [dq, setDq] = useState('')
@@ -423,12 +515,17 @@ function VaccineModal({ t, ip, btn, modal, rows, cats, evts, onClose, onAccount,
 
   const acc = rows.find(r => r.id === f.account_id) || null
   const accCats = cats.filter(c => c.account_id === f.account_id)
+  /* ★ 공백만 넣은 값도 미선택으로 본다 — addAccount 의 trim 판정과 같은 식이다 */
+  const noDrug = modal.kind === 'acct' && !(f.drug_code || '').trim()
   const wrap = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 1200, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '48px 16px', overflowY: 'auto' }
   const box = { background: t.cardSolid, borderRadius: 14, width: '100%', maxWidth: modal.kind === 'fix' ? 640 : 520, border: '1px solid ' + t.border, boxShadow: t.shadowH, overflow: 'hidden' }
   const lb = { fontSize: 11, color: t.textM, marginBottom: 3, fontWeight: 600 }
   const row2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9, marginBottom: 10 }
   const title = modal.kind === 'acct' ? '계정 만들기' : modal.kind === 'cats' ? '대상 구분 관리'
-    : modal.kind === 'fix' ? '이벤트 이력 · 정정' : (f.event_type + ' 등록')
+    : modal.kind === 'fix' ? '이벤트 이력 · 정정' : modal.kind === 'edit' ? '계정 수정'
+      : modal.kind === 'del' ? '계정 삭제' : (f.event_type + ' 등록')
+  /* 읽기 전용 칸 — 입력처럼 보이되 고칠 수 없음이 드러나야 한다 */
+  const ro = { ...ip, width: '100%', background: t.bg, color: t.textM, cursor: 'not-allowed' }
 
   return <div style={wrap} onClick={onClose}>
     <div style={box} onClick={e => e.stopPropagation()}>
@@ -450,13 +547,16 @@ function VaccineModal({ t, ip, btn, modal, rows, cats, evts, onClose, onAccount,
             <div><div style={lb}>시즌 종료</div><input type="date" value={f.season_end} onChange={e => set('season_end', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
           </div>
           <div style={{ marginBottom: 10 }}>
-            <div style={lb}>약품</div>
+            <div style={lb}>약품 <span style={{ color: t.purple }}>*</span></div>
             <input value={dq} onChange={e => setDq(e.target.value)} placeholder="약품명·코드 검색" style={{ ...ip, width: '100%', marginBottom: 5 }} />
-            <select value={f.drug_code} onChange={e => set('drug_code', e.target.value)} size={5} style={{ ...ip, width: '100%', height: 118 }}>
+            <select value={f.drug_code} onChange={e => set('drug_code', e.target.value)} size={5}
+              style={{ ...ip, width: '100%', height: 118, ...(noDrug ? { borderColor: t.purple } : {}) }}>
               {drugs === null ? <option>불러오는 중...</option>
                 : drugs.filter(d => !dq.trim() || (d.drug_name + d.drug_code).toLowerCase().includes(dq.trim().toLowerCase())).slice(0, 300)
                   .map(d => <option key={d.drug_code} value={d.drug_code}>{d.drug_name} · {d.drug_code}</option>)}
             </select>
+            {/* ★ 약품이 없으면 이름 없는 계정이 생긴다 — 저장 버튼도 함께 막힌다 */}
+            {noDrug && <div style={{ marginTop: 5, fontSize: 11, color: t.text, borderLeft: '3px solid ' + t.purple, paddingLeft: 8, lineHeight: 1.6 }}>{DRUG_REQ_MSG}</div>}
           </div>
           <div style={row2}>
             <div><div style={lb}>정산 주체</div><input value={f.settlement_body} onChange={e => set('settlement_body', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
@@ -475,6 +575,66 @@ function VaccineModal({ t, ip, btn, modal, rows, cats, evts, onClose, onAccount,
             </label>)}
           </div>
         </>}
+
+        {/* ── 계정 수정 ──
+            ★ 시즌·약품·재원은 UNIQUE 키다. 읽기 전용으로 보여 주되 payload 에 넣지 않는다. */}
+        {modal.kind === 'edit' && (!tgt ? <div style={{ padding: 20, fontSize: 12, color: t.textL, textAlign: 'center' }}>계정을 찾을 수 없습니다</div> : <>
+          <div style={{ marginBottom: 12, padding: '8px 11px', borderLeft: '3px solid ' + t.lavender, background: t.bg, borderRadius: 6, fontSize: 11, color: t.text, lineHeight: 1.6 }}>
+            시즌 · 약품 · 재원은 계정을 가르는 키라 바꿀 수 없습니다 — {ACC_LOCKED_MSG}.
+          </div>
+          <div style={row2}>
+            <div><div style={lb}>시즌 <span style={{ color: t.textL }}>(고정)</span></div><input value={tgt.season} readOnly disabled style={ro} /></div>
+            <div><div style={lb}>재원 <span style={{ color: t.textL }}>(고정)</span></div><input value={tgt.funding_source} readOnly disabled style={ro} /></div>
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={lb}>약품 <span style={{ color: t.textL }}>(고정)</span></div>
+            <input value={tgt.drug_code} readOnly disabled style={ro} />
+          </div>
+          <div style={row2}>
+            <div><div style={lb}>시즌 시작</div><input type="date" value={f.season_start} onChange={e => set('season_start', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+            <div><div style={lb}>시즌 종료</div><input type="date" value={f.season_end} onChange={e => set('season_end', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+          </div>
+          <div style={row2}>
+            <div><div style={lb}>정산 주체</div><input value={f.settlement_body} onChange={e => set('settlement_body', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+            <div><div style={lb}>보관 위치</div><input value={f.storage_location} onChange={e => set('storage_location', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+          </div>
+          <div style={row2}>
+            <div><div style={lb}>접종 종료</div><input type="date" value={f.admin_end} onChange={e => set('admin_end', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+            <div><div style={lb}>반납 기한</div><input type="date" value={f.return_due} onChange={e => set('return_due', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+          </div>
+        </>)}
+
+        {/* ── 계정 삭제 · 비활성화 ── */}
+        {modal.kind === 'del' && (!tgt ? <div style={{ padding: 20, fontSize: 12, color: t.textL, textAlign: 'center' }}>계정을 찾을 수 없습니다</div> : <>
+          <div style={{ fontSize: 12, color: t.text, lineHeight: 1.7, marginBottom: 10 }}>
+            <b>{tgt.drug_code}</b> · {tgt.funding_source} · {tgt.season}
+          </div>
+          {(tgt.evCount > 0 || delRestrict)
+            /* 기록이 있는 계정 — 삭제 자체가 막힌다(FK RESTRICT). 비활성화만 제안한다. */
+            ? <div style={{ padding: '10px 12px', borderLeft: '3px solid ' + t.lavender, background: t.bg, borderRadius: 8, fontSize: 12, color: t.text, lineHeight: 1.7 }}>
+              {ACC_DEL_RESTRICT}
+              <div style={{ fontSize: 11, color: t.textM, marginTop: 5 }}>
+                기록 {tgt.evCount}건이 남아 있습니다. 비활성화하면 목록에 「비활성」으로 표시되고 기록은 그대로 보존됩니다.
+              </div>
+            </div>
+            : <div style={{ padding: '10px 12px', borderLeft: '3px solid ' + t.purple, background: t.bg, borderRadius: 8, fontSize: 12, color: t.text, lineHeight: 1.7 }}>
+              계정을 삭제합니다. 되돌릴 수 없습니다.
+              {tgt.catCount > 0 && <div style={{ fontSize: 11, color: t.textM, marginTop: 5 }}>
+                이 계정의 대상 구분 {tgt.catCount}개도 함께 삭제됩니다.
+              </div>}
+            </div>}
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 14 }}>
+            <button onClick={onClose} style={btn(t.bg, t.textM, t.border)}>취소</button>
+            {(tgt.evCount > 0 || delRestrict)
+              ? <button disabled={busy} onClick={async () => { setBusy(true); const ok = await onAccActive(tgt.id, false); setBusy(false); if (ok) onClose() }}
+                style={btn(busy ? t.textL : t.accent, '#fff')}>{busy ? '처리 중...' : '비활성화'}</button>
+              : <button disabled={busy} onClick={async () => {
+                setBusy(true); const r = await onDelAccount(tgt.id); setBusy(false)
+                /* ★ 다른 창에서 방금 기록이 생겼을 수 있다 — 23503 이면 화면을 비활성화 안내로 바꾼다 */
+                if (r && r.ok) onClose(); else if (r && r.restrict) setDelRestrict(true)
+              }} style={btn(busy ? t.textL : t.purple, '#fff')}>{busy ? '삭제 중...' : '삭제'}</button>}
+          </div>
+        </>)}
 
         {/* ── 이벤트 등록 ── */}
         {modal.kind === 'evt' && <>
@@ -555,17 +715,26 @@ function VaccineModal({ t, ip, btn, modal, rows, cats, evts, onClose, onAccount,
         {modal.kind === 'fix' && <FixList t={t} btn={btn} ip={ip} evts={evts.filter(e => e.account_id === modal.account_id)} cats={cats} onFix={onFix} />}
       </div>
 
-      {(modal.kind === 'acct' || modal.kind === 'evt') && <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end', padding: '12px 18px', borderTop: '1px solid ' + t.border }}>
+      {(modal.kind === 'acct' || modal.kind === 'evt' || (modal.kind === 'edit' && tgt)) && <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end', padding: '12px 18px', borderTop: '1px solid ' + t.border }}>
         <button onClick={onClose} style={btn(t.bg, t.textM, t.border)}>취소</button>
-        <button disabled={busy} onClick={async () => {
+        {/* ★ 약품 미선택이면 저장 버튼부터 막는다(저장 직전 방어는 addAccount 안에 따로 있다) */}
+        <button disabled={busy || noDrug} onClick={async () => {
           setBusy(true)
-          const ok = modal.kind === 'acct' ? await onAccount(f, preset) : await onEvent(f)
+          const ok = modal.kind === 'acct' ? await onAccount(f, preset)
+            : modal.kind === 'edit' ? await onUpdAccount(modal.account_id, f)
+              : await onEvent(f)
           setBusy(false); if (ok) onClose()
-        }} style={btn(busy ? t.textL : t.accent, '#fff')}>{busy ? '저장 중...' : '저장'}</button>
+        }} title={noDrug ? DRUG_REQ_MSG : ''}
+          style={{ ...btn(busy || noDrug ? t.textL : t.accent, '#fff'), ...(noDrug ? { cursor: 'not-allowed', opacity: 0.6 } : {}) }}>{busy ? '저장 중...' : '저장'}</button>
       </div>}
     </div>
   </div>
 }
+
+/* ★ <input type="date"> 는 'YYYY-MM-DD' 만 받는다.
+   DB 가 date 를 '2027-06-29T15:00:00.000Z' 형태로 돌려주는 경우가 있어 앞 10자만 쓴다.
+   그대로 넣으면 값이 빈 칸으로 보이고, 저장 시 기존 날짜가 지워진다. */
+function d10(v) { return v ? String(v).slice(0, 10) : '' }
 
 function accCatsOf(cats, accId) {
   return cats.filter(c => c.account_id === accId).slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || String(a.label).localeCompare(String(b.label), 'ko'))
@@ -579,8 +748,10 @@ function FixList({ t, btn, ip, evts, cats, onFix }) {
   const catName = id => (cats.find(c => c.id === id) || {}).label || ''
   const td = { padding: '7px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border, color: t.text }
   return <>
-    <div style={{ fontSize: 11, color: t.textM, marginBottom: 8, lineHeight: 1.6 }}>
-      원장은 고치거나 지울 수 없습니다. 잘못 넣은 건은 <b style={{ color: t.text }}>[정정]</b> 으로 반대 부호 이벤트를 추가해 상쇄합니다.
+    {/* ★ 상단 안내 — 「고칠 수 없다」를 먼저 알리고 [정정] 이 그 대안임을 붙인다.
+        이전에는 회색 잔글씨라 못 보고 수정 버튼을 찾는 일이 있었다. */}
+    <div style={{ marginBottom: 10, padding: '9px 11px', borderLeft: '3px solid ' + t.purple, background: t.bg, borderRadius: 8, fontSize: 12, color: t.text, lineHeight: 1.7 }}>
+      {LEDGER_FIX_MSG}
     </div>
     {!evts.length ? <div style={{ padding: 24, textAlign: 'center', color: t.textL, fontSize: 12 }}>이벤트가 없습니다</div>
       : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -591,7 +762,10 @@ function FixList({ t, btn, ip, evts, cats, onFix }) {
           <td style={{ ...td, color: t.textM }}>{catName(e.category_id) || '—'}</td>
           <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: Number(e.qty) < 0 ? t.textM : t.text, fontVariantNumeric: 'tabular-nums' }}>{Number(e.qty).toLocaleString()}</td>
           <td style={{ ...td, textAlign: 'right' }}>
-            {Number(e.qty) > 0 && <button onClick={() => { setTarget(e); setReason('') }} style={{ ...btn(t.bg, t.textM, t.border), padding: '3px 9px', fontSize: 10 }}>정정</button>}
+            {/* ★ 회색 잔글씨였던 것을 보라 테두리 + 굵기로 올린다(신색 없이 대비만 높인다).
+                음수 행은 이미 정정분이므로 버튼을 내지 않는다 — 정정의 정정이 쌓인다. */}
+            {Number(e.qty) > 0 && <button onClick={() => { setTarget(e); setReason('') }}
+              style={{ ...btn(t.bg, t.purple, t.purple), padding: '4px 12px', fontSize: 11, fontWeight: 700 }}>정정</button>}
           </td>
         </tr>)}</tbody>
       </table>}
