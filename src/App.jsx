@@ -6,7 +6,7 @@ import { RX_TOGGLE, RX_MORE, autoMap } from './lib/drugRules'
 import { classifyDrugRows, applyDrugRows } from './lib/drugBulk'
 import { decomposeAtc } from './lib/atcMap'
 import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT } from './lib/txTypes'
-import { handleScan as scanHandle, decodeGs1 as scanDecode, scanCountQty, scanAddItem, saveScanMapping, deactivateBarcode } from './lib/scan'
+import { handleScan as scanHandle, decodeGs1 as scanDecode, scanCountQty, scanAddItem, saveScanMapping, deactivateBarcode, listBarcodes, gtinCheckOk, ownCodeLooksLikeGs1, OWN_CODE_WARN } from './lib/scan'
 import { dbErrorMsg, noRowMsg, bulkFailKind } from './lib/dbError'
 import { ThemeCtx, useTheme } from './lib/theme'
 import EmergencyDispense from './EmergencyDispense'
@@ -337,17 +337,34 @@ function Drug360Modal({ drug: dr, onClose, pos, setPos, onSaved }) {
   }, [onClose]);
   const [txs, setTxs] = useState(null);
   const [lots, setLots] = useState(null);
+  /* 바코드 탭 — 목록·등록폼. ★ 등록은 이 화면에서만 하고 실사 화면은 스캔으로 학습한다. */
+  const [bcs, setBcs] = useState(null); const [bcBusy, setBcBusy] = useState(false); const [bcMsg, setBcMsg] = useState(null);
+  const [bcF, setBcF] = useState({ code: '', code_type: 'GS1', pack_type: '', pack_qty: '' });
+  const [bcChk, setBcChk] = useState(null);   // 체크디짓 결과(null=미판정)
+  async function bcLoad() { const r = await listBarcodes(dr.drug_code); setBcs(r.rows); if (!r.ok) setBcMsg({ text: r.msg, kind: 'err' }) }
+  const bcFlash = (text, kind) => { setBcMsg({ text, kind }); setTimeout(() => setBcMsg(null), kind === 'err' ? 3200 : 1800) }
+  async function bcAdd() {
+    const code = bcF.code.trim(); if (!code) { bcFlash('바코드 번호를 입력해 주세요', 'err'); return }
+    setBcBusy(true)
+    const r = await saveScanMapping({ code, codeType: bcF.code_type, drugCode: dr.drug_code, memo: null })
+    setBcBusy(false)
+    if (!r.ok) { bcFlash(r.msg, 'err'); return }
+    setBcF({ code: '', code_type: 'GS1', pack_type: '', pack_qty: '' }); setBcChk(null)
+    bcFlash('등록했습니다'); bcLoad()
+  }
+  async function bcOff(b) { setBcBusy(true); const r = await deactivateBarcode(b.id); setBcBusy(false); if (!r.ok) { bcFlash(r.msg, 'err'); return } bcFlash('사용 안 함으로 바꿨습니다'); bcLoad() }
   const [exEdit, setExEdit] = useState(false); const [exVal, setExVal] = useState({ additive: dr.additive || '', compound_type: dr.compound_type || '단일제' }); const [exSaving, setExSaving] = useState(false);
   async function saveEx() { setExSaving(true); const { error } = await supabase.from('drugs').update({ additive: exVal.additive || null, compound_type: exVal.compound_type }).eq('drug_code', dr.drug_code); setExSaving(false); if (!error) { setExEdit(false); onSaved?.({ drug_code: dr.drug_code, additive: exVal.additive || null, compound_type: exVal.compound_type }); } }
   useEffect(() => { let on = true;
     supabase.from('transactions').select('*').eq('drug_code', dr.drug_code).order('transaction_date', { ascending: false }).limit(100).then(({ data }) => { if (on) setTxs(data || []) });
     supabase.from('drug_lots').select('*').eq('drug_code', dr.drug_code).order('expiry_date').then(({ data }) => { if (on) setLots(data || []) });
+    listBarcodes(dr.drug_code).then(r => { if (on) setBcs(r.rows) });
     return () => { on = false }; }, [dr.drug_code]);
   const q = dr.current_qty || 0, sf = dr.safety_stock || 0, mx = dr.max_stock || 0;
   let st = stockStat(dr); if (st === '정상' && mx > 0 && q > mx) st = '과잉';
   const stc = st === '재고없음' ? t.red : st === '긴급' ? t.red : st === '주문필요' ? t.amber : st === '과잉' ? t.blue : st === '기준미설정' ? t.textL : t.green;
   const dday = exD(dr.expiry_date); const acc = atcColor(dr.atc_l1);
-  const TABS = ['개요', '입출고', '재고', '유효기한', '향정'];
+  const TABS = ['개요', '입출고', '재고', '유효기한', '향정', '바코드'];
   const chip = (v) => (v && String(v).trim()) ? <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: acc + '1A', color: acc, border: '1px solid ' + acc + '33', marginRight: 6, marginBottom: 4 }}>{v}</span> : null;
   const row = (label, val) => <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid ' + t.border, fontSize: 13 }}><span style={{ color: t.textM }}>{label}</span><span style={{ fontWeight: 600, color: t.text, textAlign: 'right' }}>{val}</span></div>;
   const dstr = (x) => x !== null ? 'D' + (x <= 0 ? x : '-' + x) : '-';
@@ -361,6 +378,45 @@ function Drug360Modal({ drug: dr, onClose, pos, setPos, onSaved }) {
         {tab === '재고' && <div>{row('현재고', <span style={{ color: stc, fontWeight: 700 }}>{q.toLocaleString()}</span>)}{row('재고상태', <Bd bg={stc + '18'} color={stc}>{st}</Bd>)}{row('안전재고', sf || '-')}{row('최대재고', mx || '-')}{row('월평균 사용', dr.monthly_avg || '-')}{row('재고금액', dr.purchase_price ? '₩' + (q * Number(dr.purchase_price)).toLocaleString() : '-')}</div>}
         {tab === '유효기한' && <div>{row('대표 유효기한', <span style={exS(dr.expiry_date, t)}>{(dr.expiry_date || '-') + (dday !== null ? '  (' + dstr(dday) + ')' : '')}</span>)}<div style={{ marginTop: 12, marginBottom: 6, fontSize: 11, color: t.textM, fontWeight: 700 }}>LOT 목록</div>{lots === null ? <div style={{ color: t.textL, padding: 12 }}>불러오는 중...</div> : !lots.length ? <div style={{ color: t.textL, padding: 12, fontSize: 12 }}>등록된 LOT 없음</div> : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}><thead><tr>{['LOT', '유효기한', '수량', 'D-day'].map(h => <th key={h} style={{ textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border }}>{h}</th>)}</tr></thead><tbody>{lots.map((l, i) => { const dd = exD(l.expiry_date); return <tr key={i} style={{ borderBottom: '1px solid ' + t.border, opacity: l.is_active ? 1 : 0.5 }}><td style={{ padding: '6px 8px', fontWeight: 600 }}>{l.lot_no}</td><td style={{ padding: '6px 8px', ...exS(l.expiry_date, t) }}>{l.expiry_date}</td><td style={{ padding: '6px 8px' }}>{l.quantity?.toLocaleString()}</td><td style={{ padding: '6px 8px' }}>{dstr(dd)}</td></tr> })}</tbody></table>}</div>}
         {tab === '향정' && <div>{row('규제 구분', getNT(dr) === '일반' ? <span style={{ color: t.textL }}>일반 (비규제)</span> : <Bd bg={getNT(dr) === '마약' ? t.redL : t.purpleL} color={getNT(dr) === '마약' ? t.red : t.purple}>{getNT(dr)}</Bd>)}{row('마약류 여부', isN(dr) ? '해당' : '비해당')}{row('유효기한 D-day', dstr(dday))}{row('보관 방법', dr.storage_method || '-')}{getNT(dr) === '일반' && <div style={{ marginTop: 12, fontSize: 12, color: t.textL }}>향정·마약류가 아닌 일반 약품입니다.</div>}</div>}
+        {/* ═══ 바코드 탭 — 스캔 매핑 목록·등록·회수. ★ 색은 팔레트 4색만 쓴다(빨강·주황 없음) ═══ */}
+        {tab === '바코드' && (() => {
+          const bcIp = { padding: '6px 9px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, outline: 'none', background: t.bg, color: t.text, boxSizing: 'border-box' }
+          const bd = (txt, col, fill) => <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 6, fontSize: 9, fontWeight: 700, whiteSpace: 'nowrap', border: '1px solid ' + col, background: fill ? col : 'transparent', color: fill ? t.card : col }}>{txt}</span>
+          const ownWarn = bcF.code_type === '자체' && ownCodeLooksLikeGs1(bcF.code)
+          return <div>
+            {bcMsg && <div style={{ marginBottom: 10, padding: '7px 11px', borderRadius: 8, fontSize: 11, fontWeight: 600, background: bcMsg.kind === 'err' ? t.bg : t.greenL, color: bcMsg.kind === 'err' ? t.text : t.green, borderLeft: '3px solid ' + (bcMsg.kind === 'err' ? t.text : t.green) }}>{bcMsg.text}</div>}
+            {/* 등록 폼 */}
+            <div style={{ background: t.bg, border: '1px solid ' + t.border, borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select value={bcF.code_type} onChange={e => { setBcF(v => ({ ...v, code_type: e.target.value })); setBcChk(null) }} style={{ ...bcIp, width: 78 }}>{['GS1', '자체'].map(s => <option key={s}>{s}</option>)}</select>
+                <input value={bcF.code} onChange={e => { setBcF(v => ({ ...v, code: e.target.value })); setBcChk(null) }}
+                  onBlur={async e => { const v = e.target.value.trim(); if (bcF.code_type === 'GS1' && /^[0-9]{8,14}$/.test(v)) setBcChk(await gtinCheckOk(v)); else setBcChk(null) }}
+                  placeholder="바코드 번호" style={{ ...bcIp, flex: '1 1 180px', minWidth: 140 }} />
+                <button onClick={bcAdd} disabled={bcBusy} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: bcBusy ? t.textL : t.accent, color: '#fff', cursor: bcBusy ? 'default' : 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>등록</button>
+              </div>
+              {/* ★ 결함 66 — 자체번호가 13·14자리 숫자면 표준 바코드와 겹친다. 차단이 아니라 경고 */}
+              {ownWarn && <div style={{ marginTop: 7, padding: '6px 9px', fontSize: 10, lineHeight: 1.5, color: t.text, background: t.card, borderLeft: '3px solid ' + t.text, borderRadius: 6 }}>{OWN_CODE_WARN}</div>}
+              {/* ★ 체크디짓은 제약이 아니라 경고 — 심평원 자료에도 불일치가 1건 실재한다 */}
+              {bcChk === false && <div style={{ marginTop: 7, padding: '6px 9px', fontSize: 10, color: t.text, background: t.card, borderLeft: '3px solid ' + t.text, borderRadius: 6 }}>검사숫자가 맞지 않습니다 — 번호를 다시 확인해 주세요. 그대로 등록할 수도 있습니다.</div>}
+              {bcChk === true && <div style={{ marginTop: 7, fontSize: 10, color: t.green, fontWeight: 600 }}>✓ 표준 바코드 형식이 맞습니다</div>}
+              <div style={{ marginTop: 7, fontSize: 10, color: t.textL }}>GS1 은 상자에 인쇄된 숫자 그대로(13·14자리) · 자체는 원내에서 매긴 번호</div>
+            </div>
+            {/* 목록 */}
+            {bcs === null ? <div style={{ color: t.textL, textAlign: 'center', padding: 20, fontSize: 12 }}>불러오는 중...</div>
+              : !bcs.length ? <div style={{ color: t.textL, textAlign: 'center', padding: 20, fontSize: 12 }}>등록된 바코드가 없습니다 — 실사 화면에서 스캔하면 자동으로 연결됩니다</div>
+                : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead><tr>{['바코드', '종류', '포장', '수량', '출처', ''].map((h, i) => <th key={i} style={{ textAlign: i === 3 ? 'right' : 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border, whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+                  <tbody>{bcs.map(b => <tr key={b.id} style={{ borderBottom: '1px solid ' + t.border, opacity: b.is_active ? 1 : 0.55 }}>
+                    <td style={{ padding: '6px 8px', fontWeight: 600, whiteSpace: 'nowrap', borderLeft: '3px solid ' + (b.is_active ? (b.source === '학습' ? t.purple : t.lavender) : t.textL), paddingLeft: 8 }}>{b.code}</td>
+                    <td style={{ padding: '6px 8px' }}>{bd(b.code_type, b.code_type === 'GS1' ? t.purple : t.textM, false)}</td>
+                    <td style={{ padding: '6px 8px', color: t.textM }}>{b.is_rep ? bd('포장 미상', t.textL, false) : (b.pack_type || '-')}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: t.textM }}>{b.pack_qty == null ? '-' : Number(b.pack_qty).toLocaleString()}</td>
+                    <td style={{ padding: '6px 8px' }}>{bd(b.source, b.source === '학습' ? t.purple : t.lavender, false)}{!b.is_active && <span style={{ marginLeft: 4 }}>{bd('사용 안 함', t.textL, false)}</span>}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>{b.is_active && <button onClick={() => bcOff(b)} disabled={bcBusy} style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: bcBusy ? 'default' : 'pointer', fontSize: 10, fontWeight: 600 }}>사용 안 함</button>}</td>
+                  </tr>)}</tbody></table></div>}
+            <div style={{ marginTop: 10, fontSize: 10, color: t.textL, lineHeight: 1.6 }}>「사용 안 함」은 지우지 않고 잠급니다 — 과거 실사가 그 바코드로 담겼을 수 있어 이력을 남깁니다.</div>
+          </div>
+        })()}
       </div>
     </div>
   </div>;
@@ -4148,6 +4204,16 @@ function InventoryCount({ drugs, onReload }) {
   const [applyT, setApplyT] = useState(null); const [revertT, setRevertT] = useState(null)
   const [delT, setDelT] = useState(null); const [rReason, setRReason] = useState('')
   const fileRef = useRef(null); const qTimer = useRef(null)
+  /* ── 스캔 ──────────────────────────────────────────────────────────────
+     ★ 입력창은 비제어(ref)다. onChange 로 state 를 거치면 스캐너가 40자를 쏟을 때
+       리렌더가 40회 나고, 그때마다 1,118건 필터가 붙는 화면이 된다.
+       Enter 에서 값을 한 번 읽고 즉시 비운다.
+     ★ addItem(수동) 은 손대지 않는다 — 수량을 먼저 요구하고 중복을 거부하며
+       매 건 loadAll() 을 도는 규약이라 연속 스캔에 맞지 않는다. */
+  const scanRef = useRef(null)
+  const [scanRes, setScanRes] = useState(null)      // 스캔 결과(3분기)
+  const [sealed, setSealed] = useState(''); const [loose, setLoose] = useState('')
+  const [scanBusy, setScanBusy] = useState(false)
   const flash = (text, kind) => { setMsg({ text, kind }); setTimeout(() => setMsg(null), kind === 'err' ? 3200 : 1800) }
   /* ★ RLS 에 막히면 오류 없이 0행이 돌아온다 — 행 수로 성공을 판정한다(WardAdmin 과 같은 규약) */
   const cntDelOutcome = ({ data, error }, what) => error ? '삭제 실패: ' + error.message
@@ -4230,6 +4296,51 @@ function InventoryCount({ drugs, onReload }) {
     if (error) { flash('추가 실패: ' + error.message, 'err'); return }
     setQ(''); setFound([]); setSearched(false); setAQty(''); setALot(''); setAExp('')
     flash('「' + d.drug_name + '」 ' + n + ' 담았습니다'); loadAll()
+  }
+  /* ── 스캔 처리 ─────────────────────────────────────────────────────────
+     1단 연결됨 → 미개봉/낱알 입력 후 「담기」
+     2단 보류   → 후보에서 약품 선택 → 매핑 저장 후 재조회
+     3단 미등록 → 심평원 힌트·후보 표시 → 선택 시 학습 매핑 */
+  async function onScan(raw) {
+    if (!sel) { flash('실사 세션을 먼저 열어 주세요', 'err'); return }
+    setScanBusy(true)
+    const r = await handleScan(raw, 'scanner')      // ★ 예외를 던지지 않는다 — 항상 { ok, ... }
+    setScanBusy(false)
+    setScanRes(r); setSealed(''); setLoose('')
+    if (!r.ok && (r.kind === '형식오류' || r.kind === 'DB오류')) flash(r.msg, 'err')
+  }
+  async function scanTake() {
+    const r = scanRes; if (!r || !r.ok) return
+    const qv = scanCountQty(sealed, loose, r.pack_qty)
+    if (!qv.ok) { flash(qv.msg, 'err'); return }
+    setScanBusy(true)
+    /* ★ scanAddItem 은 중복을 막지 않는다 — 같은 약품을 포장이 다른 두 바코드로
+       스캔하는 것은 정상 조작이고, countAdjustRows 가 약품코드로 합산한다. */
+    const res = await scanAddItem({
+      countId: sel, drugCode: r.drug_code, countedQty: qv.qty,
+      lotNo: r.lot, expiryDate: r.expiry, bookQty: bookOf(r.drug_code),
+    })
+    setScanBusy(false)
+    if (!res.ok) { flash(res.msg, 'err'); return }
+    flash('「' + r.drug.drug_name + '」 ' + qv.qty + ' 담았습니다')
+    setScanRes(null); setSealed(''); setLoose(''); loadAll()
+    if (scanRef.current) scanRef.current.focus()
+  }
+  async function scanLink(d) {
+    const r = scanRes; if (!r) return
+    setScanBusy(true)
+    /* ★ source 를 '학습' 으로 둔다 — 월 배치(apply_0087)가 기존 code 를 건너뛰므로
+       사람이 확정한 매핑을 덮지 않는다. */
+    const res = await saveScanMapping({
+      barcodeId: r.barcodeId, code: r.code,
+      codeType: /^[0-9]{14}$/.test(String(r.code)) ? 'GS1' : '자체',
+      drugCode: d.drug_code, memo: null,
+    })
+    setScanBusy(false)
+    if (!res.ok) { flash(res.msg, 'err'); return }
+    flash('「' + d.drug_name + '」 에 연결했습니다 — 다음부터 자동 인식됩니다')
+    setScanBusy(true); const again = await handleScan(r.raw, 'scanner'); setScanBusy(false)
+    setScanRes(again); setSealed(''); setLoose('')
   }
   async function delItem(it) {
     const bad = cntDelOutcome(await supabase.from('inventory_count_items').delete().eq('id', it.id).select('id'), '항목')
@@ -4446,6 +4557,7 @@ function InventoryCount({ drugs, onReload }) {
       t={t} r={open} items={itemsOf(open.id)} drugMap={drugMap} bookOf={bookOf}
       q={q} onQ={onQ} found={found} searched={searched}
       aQty={aQty} setAQty={setAQty} aLot={aLot} setALot={setALot} aExp={aExp} setAExp={setAExp}
+      scanRef={scanRef} scan={{ onScan, res: scanRes, clear: () => { setScanRes(null); setSealed(''); setLoose('') }, sealed, setSealed, loose, setLoose, take: scanTake, link: scanLink, busy: scanBusy }}
       onAdd={addItem} onDelItem={delItem} fileRef={fileRef} onFile={xlUpload}
       busy={busy} onApply={() => setApplyT(open)} onRevert={() => openRevert(open)} revertBlock={revertBlock} />}
 
@@ -4496,9 +4608,102 @@ function InventoryCount({ drugs, onReload }) {
 }
 
 /* 실사 상세 — 입력 영역 + 항목 표. 표시 전용 계산만 하고 저장은 부모가 맡는다. */
+/* ═══ 스캔 결과 패널 — 3분기 ═══════════════════════════════════════════════
+   1단 연결됨   : 미개봉 × pack_qty + 낱알 → 담기
+   2단 보류     : drug_code 가 비어 있는 심평원 행. 후보를 골라 연결
+   3단 미등록   : drug_master 힌트 + 이름으로 찾은 후보. 골라서 학습 매핑
+   ★ 색은 팔레트 4색만 쓴다 — 보라 #804A87 · 녹색 #019748 · 라벤더 #BFA6D9 · 네이비 #2E4A62.
+     경고에 빨강·주황을 쓰지 않고 좌측 3px 인디케이터와 테두리 굵기로 구분한다.
+   ★ pack_qty 는 **스캔한 코드의 값**이다. 약품 기준 대표값이 아니다
+     (베타그론 PTP 90 / 병 30 / 병 100 — 실측). 화면에도 그 값을 그대로 보인다. */
+function ScanPanel({ t, res, scan }) {
+  const ip2 = { padding: '7px 9px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, outline: 'none', background: t.card, color: t.text, boxSizing: 'border-box' }
+  const accent = res.ok ? t.green : (res.kind === '형식오류' || res.kind === 'DB오류') ? t.text : t.purple
+  const box = { background: t.card, border: '1px solid ' + t.border, borderLeft: '3px solid ' + accent, borderRadius: 8, padding: '10px 12px', marginBottom: 8 }
+  const badge = (txt, col) => <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 6, fontSize: 9, fontWeight: 700, border: '1px solid ' + col, color: col, whiteSpace: 'nowrap' }}>{txt}</span>
+  const stCol = s => s === '사용' ? t.green : s === '휴면' ? t.lavender : t.textL
+
+  /* 심평원 힌트 — 「병 · 100 · 1000밀리리터」처럼 규격까지 보여야 사용자가 대조할 수 있다 */
+  const hiraLine = h => !h ? null : <div style={{ fontSize: 11, color: t.textM, marginTop: 3 }}>
+    <span style={{ fontWeight: 700, color: t.text }}>{h.product_name || '(이름 없음)'}</span>
+    {h.pack_type ? ' · ' + h.pack_type : ''}{h.pack_qty != null ? ' · ' + Number(h.pack_qty).toLocaleString() : ''}
+    {h.specification ? ' · ' + h.specification : ''}{h.is_rep ? ' · 포장 미상' : ''}
+  </div>
+
+  const candList = () => <div style={{ marginTop: 8 }}>
+    {!res.candidates || !res.candidates.length
+      ? <div style={{ fontSize: 11, color: t.textL }}>후보를 찾지 못했습니다 — 아래 검색창에서 약품을 찾아 수동으로 담아 주세요</div>
+      : <>
+        <div style={{ fontSize: 10, color: t.textM, marginBottom: 4, fontWeight: 600 }}>
+          약품을 고르면 이 바코드에 연결됩니다{res.candidateTotal > res.candidates.length ? ` (${res.candidates.length}건 표시 · 총 ${res.candidateTotal}건)` : ''}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 168, overflowY: 'auto' }}>
+          {res.candidates.map(c => <button key={c.drug_code} onClick={() => scan.link(c)} disabled={scan.busy}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 9px', border: '1px solid ' + t.border, borderRadius: 7, background: t.bg, cursor: scan.busy ? 'default' : 'pointer', textAlign: 'left', fontSize: 11 }}>
+            <span style={{ fontWeight: 600, color: t.text, flex: 1 }}>{c.drug_name}</span>
+            {badge(c.status, stCol(c.status))}
+            <span style={{ color: t.textL, fontSize: 10 }}>{c.specification || ''}{c.unit ? ' / ' + c.unit : ''}</span>
+            <span style={{ color: t.textM, fontSize: 10, whiteSpace: 'nowrap' }}>{c.drug_code}</span>
+          </button>)}
+        </div>
+      </>}
+  </div>
+
+  /* ── 1단 연결됨 ── */
+  if (res.ok) {
+    const pq = res.pack_qty
+    const preview = scanCountQty(scan.sealed, scan.loose, pq)
+    return <div style={box}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+        {badge('인식됨', t.green)}
+        <span style={{ fontWeight: 700, fontSize: 13, color: t.text }}>{res.drug.drug_name}</span>
+        <span style={{ fontSize: 10, color: t.textM }}>{res.drug.drug_code}</span>
+        {res.pack_type && badge(res.pack_type, t.purple)}
+        {pq != null && <span style={{ fontSize: 11, color: t.textM }}>1{res.pack_type || '통'} = <b style={{ color: t.text }}>{Number(pq).toLocaleString()}</b></span>}
+        {res.is_rep && badge('포장 미상', t.textL)}
+        {res.serial && <span style={{ fontSize: 10, color: t.textL }}>일련번호 {res.serial}</span>}
+        {res.collision && badge('표준 바코드와 겹침', t.text)}
+      </div>
+      <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap', marginTop: 9 }}>
+        <span style={{ fontSize: 11, color: t.textM }}>미개봉</span>
+        <input value={scan.sealed} onChange={e => scan.setSealed(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal"
+          disabled={pq == null} title={pq == null ? '이 바코드에는 포장수량 정보가 없습니다' : ''}
+          placeholder={pq == null ? '—' : '0'} style={{ ...ip2, width: 66, opacity: pq == null ? 0.5 : 1 }} />
+        <span style={{ fontSize: 11, color: t.textL }}>× {pq == null ? '?' : Number(pq).toLocaleString()}  +</span>
+        <span style={{ fontSize: 11, color: t.textM }}>낱알</span>
+        <input value={scan.loose} onChange={e => scan.setLoose(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" placeholder="0" style={{ ...ip2, width: 66 }} />
+        <span style={{ fontSize: 12, color: t.textM }}>=</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: preview.ok ? t.green : t.textL, minWidth: 54 }}>{preview.ok ? preview.qty.toLocaleString() : '—'}</span>
+        <button onClick={scan.take} disabled={scan.busy || !preview.ok}
+          style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: (scan.busy || !preview.ok) ? t.textL : t.green, color: '#fff', cursor: (scan.busy || !preview.ok) ? 'default' : 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>담기</button>
+      </div>
+      {!preview.ok && (scan.sealed !== '' || scan.loose !== '') && <div style={{ fontSize: 10, color: t.text, marginTop: 6, borderLeft: '3px solid ' + t.text, paddingLeft: 7 }}>{preview.msg}</div>}
+      {pq == null && <div style={{ fontSize: 10, color: t.textM, marginTop: 6 }}>포장수량이 없는 바코드입니다 — 낱알 칸에 실제 개수를 직접 입력해 주세요.</div>}
+    </div>
+  }
+
+  /* ── 형식오류·DB오류 ── ★ 원문을 삼키지 않는다 */
+  if (res.kind === '형식오류' || res.kind === 'DB오류') return <div style={box}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>{badge(res.kind, t.text)}<span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{res.msg}</span></div>
+  </div>
+
+  /* ── 2단 보류 / 3단 미등록 ── */
+  return <div style={box}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+      {badge(res.kind === '보류' ? '약품 확인 필요' : '미등록 바코드', t.purple)}
+      <span style={{ fontSize: 11, color: t.textM }}>{res.code}</span>
+      {res.serial && <span style={{ fontSize: 10, color: t.textL }}>일련번호 {res.serial}</span>}
+    </div>
+    <div style={{ fontSize: 11, color: t.text, marginTop: 5 }}>{res.msg}</div>
+    {hiraLine(res.hira)}
+    {res.memo && <div style={{ fontSize: 10, color: t.textM, marginTop: 3 }}>{res.memo}</div>}
+    {candList()}
+  </div>
+}
+
 function InventoryCountDetail({ t, r, items, drugMap, bookOf, q, onQ, found, searched,
   aQty, setAQty, aLot, setALot, aExp, setAExp, onAdd, onDelItem, fileRef, onFile,
-  busy, onApply, onRevert, revertBlock }) {
+  busy, onApply, onRevert, revertBlock, scan, scanRef }) {
   const editable = r.status === '작성중'
   const rBad = revertBlock(r)
   /* 이미 담긴 (약품, LOT) 조합 — 검색 목록 비활성 판정용(결함 20) */
@@ -4518,6 +4723,20 @@ function InventoryCountDetail({ t, r, items, drugMap, bookOf, q, onQ, found, sea
     {rBad && r.status === '반영완료' && <div style={{ background: t.redL, color: t.red, borderRadius: 8, padding: '8px 12px', fontSize: 11, fontWeight: 600, marginBottom: 10 }}>{rBad}</div>}
 
     {editable && <div style={{ background: t.bg, borderRadius: 10, border: '1px solid ' + t.border, padding: '12px 14px', marginBottom: 12 }}>
+      {/* ═══ 스캔 줄 — ★ 기존 입력줄과 **별도 행**이다.
+             노트북 734px 에서 아래 줄이 접혀도 스캔 칸은 첫 줄에 그대로 남는다.
+          ★ 비제어(ref) 입력이다. onChange 로 state 를 거치면 스캐너가 40자를 쏟을 때
+             리렌더가 40회 나고 그때마다 1,118건 필터가 붙는다. Enter 에서 한 번만 읽는다. ═══ */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+        <input ref={scanRef} defaultValue="" disabled={scan.busy}
+          onKeyDown={e => { if (e.key !== 'Enter') return; e.preventDefault(); const v = e.currentTarget.value; e.currentTarget.value = ''; if (v.trim()) scan.onScan(v) }}
+          placeholder="바코드 스캔 — 여기를 클릭하고 상자를 읽히세요 (직접 입력 후 Enter 도 됩니다)"
+          title="스캐너가 읽은 값이 여기로 들어옵니다"
+          style={{ ...ip, flex: 1, minWidth: 0, borderLeft: '3px solid ' + t.green, fontWeight: 600 }} />
+        {scan.res && <button onClick={scan.clear} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: t.card, color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>닫기</button>}
+      </div>
+      {/* ═══ 스캔 결과 3분기 ═══ */}
+      {scan.res && <ScanPanel t={t} res={scan.res} scan={scan} />}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
         <input value={q} onChange={e => onQ(e.target.value)} placeholder="약품명 · 코드 · 성분 검색(2자 이상)" style={{ ...ip, flex: '2 1 220px', minWidth: 0 }} />
         <input value={aQty} onChange={e => setAQty(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" placeholder="실사수량" style={{ ...ip, width: 92 }} />
