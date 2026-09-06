@@ -6,6 +6,7 @@ import { RX_TOGGLE, RX_MORE, autoMap } from './lib/drugRules'
 import { classifyDrugRows, applyDrugRows } from './lib/drugBulk'
 import { decomposeAtc } from './lib/atcMap'
 import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT } from './lib/txTypes'
+import { handleScan as scanHandle, decodeGs1 as scanDecode, scanCountQty, scanAddItem, saveScanMapping, deactivateBarcode } from './lib/scan'
 import { dbErrorMsg, noRowMsg, bulkFailKind } from './lib/dbError'
 import { ThemeCtx, useTheme } from './lib/theme'
 import EmergencyDispense from './EmergencyDispense'
@@ -4089,17 +4090,15 @@ const CNT_SOURCES = ['수동', '엑셀', '스캔']
    origin : 'scanner' | 'camera' — 입력 장치. ★ source 컬럼은 둘 다 '스캔' 으로 기록한다
             (장치 구분은 실사 결과에 의미가 없다).
    반환   : { ok:true, item:{ drug_code, lot_no, expiry_date, counted_qty } } | { ok:false, msg } */
-// eslint-disable-next-line no-unused-vars -- 2단계에서 채운다. 인자를 지우면 연결 규약이 사라진다
-async function handleScan(_raw, _origin) {
-  return { ok: false, msg: '스캔 인식은 2단계입니다 — 지금은 수동·엑셀로 입력해 주세요' }
-}
-/* GS1-128 / DataMatrix AI 파싱 자리. (01)GTIN (17)유효기한 (10)LOT (30)수량.
-   drugs.gtin ↔ (01) 매칭도 2단계에서 붙인다. */
-// eslint-disable-next-line no-unused-vars -- 위와 같은 이유
-function decodeGs1(_raw) { return null }
-/* ★ 2단계 연결 지점은 여기 한 곳 — 스캐너·카메라를 붙일 때 이 두 함수만 채우면 된다.
-   묶어 두는 이유: 1단계에는 호출부가 없어 각 함수가 미사용으로 잡힌다. */
-const SCAN_API = { handleScan, decodeGs1 }
+async function handleScan(raw, origin) { return scanHandle(raw, origin, ymd) }
+/* GS1-128 / DataMatrix AI 파싱. (01)GTIN (17)유효기한 (10)LOT (21)일련번호.
+   ★ ymd 를 넘기는 이유 — (17) 의 날짜 조립을 lib 이 스스로 하면 날짜 정본이 둘로 갈린다.
+     lib 은 연·월·일 숫자까지만 계산하고 문자열은 보호 계통 ymd(y,m,d) 가 만든다. */
+function decodeGs1(raw) { return scanDecode(raw, ymd) }
+/* ★ 스캐너·카메라 연결 지점은 여기 한 곳. 로직은 전부 src/lib/scan.js 에 있고
+     이 파일은 위임만 한다(App.jsx 를 얇게 유지). 호출부는 PR-C(UI)에서 붙는다.
+   ★ 묶어 두는 이유: 아직 호출부가 없어 각 함수가 미사용으로 잡힌다. */
+const SCAN_API = { handleScan, decodeGs1, scanCountQty, scanAddItem, saveScanMapping, deactivateBarcode }
 
 /* 실사 반영 — 약품별 조정 수량 산출.
    ★ 확인 모달의 표시값과 실제 생성되는 거래의 quantity 가 반드시 같아야 하므로
