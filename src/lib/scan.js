@@ -203,6 +203,9 @@ function hiraOf(row) {
     product_name: row.product_name || null,
     pack_type: row.pack_type || null,
     pack_qty: row.pack_qty == null ? null : Number(row.pack_qty),
+    /* ★ drug_barcodes 에는 규격 컬럼이 없다 — 2단에서는 null 이고 화면이 알아서 건너뛴다.
+       3단(hiraFromMaster)은 drug_master.specification 을 채워 「500(1)」까지 보인다. */
+    specification: null,
     insurance_code: row.insurance_code || null,
     is_rep: !!row.is_rep,
   }
@@ -349,6 +352,34 @@ export async function saveScanMapping({ barcodeId, code, codeType, drugCode, mem
   }
   return { ok: true, id: data ? data.id : null, code: data ? data.code : norm, mode: 'insert' }
 }
+
+/* ── 약품별 바코드 목록 (약품 상세 「바코드」 탭) ─────────────────────────
+   ★ 비활성 행도 함께 낸다 — 회수 이력이 보여야 다시 등록할지 판단할 수 있다. */
+export async function listBarcodes(drugCode) {
+  if (!drugCode) return { ok: false, msg: '약품이 지정되지 않았습니다', rows: [] }
+  const { data, error } = await supabase.from('drug_barcodes')
+    .select('id, code, code_type, pack_type, pack_qty, is_rep, source, std_version, memo, is_active, created_at')
+    .eq('drug_code', drugCode).order('is_active', { ascending: false }).order('code')
+  if (error) return { ok: false, msg: '바코드 조회 실패: ' + error.message, rows: [] }
+  return { ok: true, rows: data || [] }
+}
+
+/* GS1 체크디짓 검증 — DB 함수 public.gtin_check_ok() 를 호출한다.
+   ★ JS 에 같은 계산을 또 만들지 않는다. 규칙이 갈리면 화면 경고와 실제가 어긋난다.
+   ★ 제약이 아니라 경고용이다 — 심평원 자료에도 불일치가 1건 실재한다(0087 헤더).
+   호출 실패는 '알 수 없음'(null)으로 돌려 화면이 경고를 띄우지 않게 한다. */
+export async function gtinCheckOk(code) {
+  const g = String(code || '').replace(/[^0-9]/g, '')
+  if (!/^[0-9]{8,14}$/.test(g)) return null
+  const { data, error } = await supabase.rpc('gtin_check_ok', { g })
+  if (error) return null
+  return data === true
+}
+
+/* 자체번호 13·14자리 숫자 경고 판정(결함 66).
+   ★ 차단이 아니라 경고다 — 저장은 된다. 스캔 시 표준 바코드가 우선 인식된다. */
+export const OWN_CODE_WARN = '숫자만 13·14자리는 표준 바코드와 혼동됩니다. 스캔 시 표준 바코드가 우선 인식될 수 있어 앞에 문자를 붙이기를 권합니다 — 예: L-1234567890123'
+export function ownCodeLooksLikeGs1(code) { return /^[0-9]{13,14}$/.test(String(code || '').trim()) }
 
 /* ── 오매핑 회수 ──────────────────────────────────────────────────────────
    ★ 삭제하지 않는다. 과거 실사 항목이 그 코드로 담겼을 수 있어 물리 삭제는
