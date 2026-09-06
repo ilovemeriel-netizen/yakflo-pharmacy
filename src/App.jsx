@@ -3302,6 +3302,9 @@ const CHANGE_RIGHT_COLS = new Set(['recent3', 'monthlyAvg', 'rec', 'usage_dept1'
 const CHANGE_STICKY_ORDER = ['category', 'from_drug_name']
 /* ★ 약품변경 전용 재고보정 — 체크박스 열 폭. sticky offset 보정의 기준값이다. */
 const CHANGE_SEL_W = 34
+/* ★ 관리 열 폭. [수정][실사][보정][삭제] 4개가 되면서 96 으로는 [삭제]가 밀려 나갔다.
+   버튼 1개당 대략 30px(패딩 7×2 + 글자 2자) + 간격 3px → 4개에 130 이면 잘리지 않는다. */
+const CHANGE_MGMT_W = 130
 function DrugChangePlans({ drugs, onReload, navFilter }) {
   const { t, memberRole, profile, user, setProfile } = useTheme()
   const canDel = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
@@ -3516,7 +3519,7 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
      (공용 컴포넌트를 고치지 않기 위한 우회). h 는 React key 로도 쓰이므로 문자열이어야 한다
      — 전체 선택은 헤더가 아니라 상단 도구줄에 둔다. */
   const stColsAll = [{ k: '', h: '선택', plain: true, th: { position: 'sticky', left: 0, zIndex: 6, minWidth: CHANGE_SEL_W, maxWidth: CHANGE_SEL_W, width: CHANGE_SEL_W, padding: '8px 4px' } }].concat(stCols)
-  const stWidths = [CHANGE_SEL_W].concat(visKeys.map(k => CHANGE_COL_WIDTH[k])).concat([96])
+  const stWidths = [CHANGE_SEL_W].concat(visKeys.map(k => CHANGE_COL_WIDTH[k])).concat([CHANGE_MGMT_W])
   const stMin = stWidths.reduce((a, b) => a + b, 0)
   const weeklyVisible = visKeys.includes('weekly_usage')
   function dl() {
@@ -3616,15 +3619,18 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
             })}
           <td style={{ padding: '6px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
             {canEdit && dirty && !weeklyVisible && <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}>{saveBtns}</div>}
-            <button onClick={() => setEditP(p)} style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.accent}`, background: 'transparent', color: t.accent, cursor: 'pointer', fontSize: 9, fontWeight: 600, marginRight: 3 }}>수정</button>
+            {/* ★ 버튼 간격을 gap 으로 통일한다 — marginRight 를 쓰면 [보정]이 없는 행에서 끝 간격이 남는다 */}
+            <span style={{ display: 'inline-flex', gap: 3, justifyContent: 'center', flexWrap: 'nowrap' }}>
+            <button onClick={() => setEditP(p)} style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.accent}`, background: 'transparent', color: t.accent, cursor: 'pointer', fontSize: 9, fontWeight: 600 }}>수정</button>
             {/* ★ 전용 모달을 연다 — 공용 AdjustModal(setAdjustDrug)을 부르지 않는다.
                 발주·재고현황·향정마약은 종전대로 AdjustModal 을 쓴다(무변경). */}
-            {dmap[p.from_drug_code] && <button onClick={() => setCntT(dmap[p.from_drug_code])} title="실물 수량 입력 — 재고는 바뀌지 않습니다" style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.amber}`, background: 'transparent', color: t.amber, cursor: 'pointer', fontSize: 9, fontWeight: 600, marginRight: 3 }}>실사</button>}
+            {dmap[p.from_drug_code] && <button onClick={() => setCntT(dmap[p.from_drug_code])} title="실물 수량 입력 — 재고는 바뀌지 않습니다" style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.amber}`, background: 'transparent', color: t.amber, cursor: 'pointer', fontSize: 9, fontWeight: 600 }}>실사</button>}
             {/* 행별 반영 — 실사값이 있고 아직 반영 전일 때만 낸다 */}
             {(() => { const it = cntItems[p.from_drug_code]; if (!it || it.applied_tx_id) return null
               return <button disabled={cntBusy} onClick={async () => { const r = await buildApply([p.from_drug_code]); if (r && r.rows.length) setApplyAsk(r) }}
-                title="반영 시점 재고를 다시 읽어 차액만큼 조정합니다" style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.purple}`, background: 'transparent', color: t.purple, cursor: cntBusy ? 'default' : 'pointer', fontSize: 9, fontWeight: 700, marginRight: 3 }}>보정</button> })()}
+                title="반영 시점 재고를 다시 읽어 차액만큼 조정합니다" style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.purple}`, background: 'transparent', color: t.purple, cursor: cntBusy ? 'default' : 'pointer', fontSize: 9, fontWeight: 700 }}>보정</button> })()}
             {canDel && <button onClick={() => setDelP(p)} style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.red}`, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 9, fontWeight: 600 }}>삭제</button>}
+            </span>
           </td>
           </tr>
         })}</tbody>
@@ -3725,14 +3731,19 @@ const WardItemName = ({ it }) => <>{it.drug_name}{isAdminAdded(it) ? <span class
    ★ 여기서는 **저장만** 한다 — current_qty 를 바꾸지 않고 거래도 만들지 않는다.
      재고 반영은 [보정]/[재고보정] 이 반영 시점에 따로 한다. */
 function ChangeCountModal({ t, drug: dr, saved, busy, onClose, onSave }) {
+  /* ★ 훅A(useDraggableModal) 를 호출만 한다 — 훅은 고치지 않는다.
+     입력·버튼 위에서는 훅이 자체적으로 드래그를 시작하지 않고(INPUT/SELECT/TEXTAREA/OPTION·button),
+     헤더가 화면 안에 최소 40px 남도록 좌표를 클램프한다. */
+  const _box = useRef(null); const [_pos, _setPos] = useState({ x: 0, y: 0 })
+  const { onHeaderMouseDown: _onHead } = useDraggableModal(_box, _pos, _setPos)
   const [qty, setQty] = useState(saved ? String(saved.counted_qty) : '')
   const cur = Number(dr.current_qty || 0)
   const n = qty.trim() === '' ? null : Math.round(Number(qty) * 100) / 100
   const bad = qty.trim() !== '' && (!Number.isFinite(n) || n < 0)
   const diff = (n == null || bad) ? null : Math.round((n - cur) * 100) / 100
   return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-    <div onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: `1px solid ${t.border}`, boxShadow: t.shadowH }}>
-      <div style={{ padding: '16px 20px', borderBottom: `1px solid ${t.border}` }}>
+    <div ref={_box} onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${_pos.x}px, ${_pos.y}px)` }}>
+      <div onMouseDown={_onHead} style={{ padding: '16px 20px', borderBottom: `1px solid ${t.border}`, cursor: 'move', userSelect: 'none' }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: t.purple }}>실사 수량 입력</div>
         <div style={{ fontSize: 12, color: t.textM, marginTop: 2 }}>{dr.drug_name} · {dr.drug_code}</div>
       </div>
@@ -3770,11 +3781,14 @@ function ChangeCountModal({ t, drug: dr, saved, busy, onClose, onSave }) {
    ★ 표시하는 수량이 곧 저장될 수량이다. 미리보기와 실제가 갈리면 안 되므로
      buildApply 가 이미 재조회한 값을 그대로 받아 그린다. */
 function ChangeApplyModal({ t, data, busy, period, onClose, onConfirm }) {
+  /* ★ 훅A 호출만 — 훅 무수정. 미리보기 표를 보면서 원장 화면을 함께 보려는 용도다. */
+  const _box = useRef(null); const [_pos, _setPos] = useState({ x: 0, y: 0 })
+  const { onHeaderMouseDown: _onHead } = useDraggableModal(_box, _pos, _setPos)
   const rows = data.rows, eff = rows.filter(r => r.diff !== 0)
   const td = { padding: '6px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border, color: t.text }
   return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '48px 16px', overflowY: 'auto' }}>
-    <div onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 560, border: `1px solid ${t.border}`, boxShadow: t.shadowH, overflow: 'hidden' }}>
-      <div style={{ padding: '16px 20px', borderBottom: `1px solid ${t.border}` }}>
+    <div ref={_box} onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 560, border: `1px solid ${t.border}`, boxShadow: t.shadowH, overflow: 'hidden', transform: `translate(${_pos.x}px, ${_pos.y}px)` }}>
+      <div onMouseDown={_onHead} style={{ padding: '16px 20px', borderBottom: `1px solid ${t.border}`, cursor: 'move', userSelect: 'none' }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: t.purple }}>재고보정 확인</div>
         <div style={{ fontSize: 12, color: t.textM, marginTop: 2 }}>{rows.length}건 · 조정 거래 {eff.length}건 생성</div>
       </div>
