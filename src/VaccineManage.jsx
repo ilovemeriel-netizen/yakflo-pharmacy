@@ -27,6 +27,10 @@ const FUNDINGS = ['일반', '보건소', '지자체']
 const isPaid = fs => fs === '일반'
 
 const EVT = ['접종', '입고', '배정', '반납', '폐기']
+/* ★ 유료 계정에는 배정이 없다 — 지자체·보건소가 할당해 주는 개념이라 성립하지 않는다.
+   저장되면 pending_qty 를 null 로 고정한 표시 규칙 때문에 **화면 어디에도 안 나온다**.
+   저장은 되는데 보이지 않는 「조용한 누락」이 되므로 UI 와 저장 양쪽에서 막는다. */
+const PAID_ALLOC_MSG = '유료 계정은 배정이 없습니다 — 입고로 등록하세요'
 /* 카테고리 프리셋 — ★ funding_source 로 자동 결정하지 않는다.
    같은 '보건소'에 독감 어르신과 코로나가 함께 들어가는데 카테고리가 서로 다르다. */
 const PRESETS = [
@@ -184,6 +188,12 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
     if (!Number.isFinite(n) || n === 0) { flash('수량은 0이 아닌 숫자여야 합니다', 'err'); return false }
     /* ★ 접종은 카테고리 필수 — DB CHECK 가 거부하기 전에 여기서 막는다 */
     if (f.event_type === '접종' && !f.category_id) { flash('접종은 대상 구분을 선택해 주세요', 'err'); return false }
+    /* ★ 유료 계정 배정 차단 — 버튼·드롭다운만 막으면 다른 경로가 남는다. 저장 직전에 한 번 더 본다.
+       DB 에는 이 제약이 없다(스키마상 유효한 조합) — 화면 규칙이므로 여기가 마지막 방어선이다. */
+    if (f.event_type === '배정') {
+      const acc0 = rows.find(r => r.id === f.account_id)
+      if (acc0 && acc0.paid) { flash(PAID_ALLOC_MSG, 'err'); return false }
+    }
     const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle()
     const { error } = await supabase.from('vaccine_events').insert([{
       tenant_id: tm?.tenant_id, account_id: f.account_id, event_type: f.event_type, qty: n,
@@ -263,9 +273,16 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
     <div className="no-print" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
       <button onClick={() => setModal({ kind: 'acct' })} style={btn(t.accent, '#fff')}>계정 +</button>
       <div style={{ width: 8 }} />
-      {EVT.map(k => <button key={k} onClick={() => setModal({ kind: 'evt', event_type: k })}
-        disabled={!rows.length} title={rows.length ? '' : '계정을 먼저 만들어 주세요'}
-        style={btn(k === '접종' ? t.green : t.bg, k === '접종' ? '#fff' : t.text, k === '접종' ? t.green : t.border)}>{k} +</button>)}
+      {EVT.map(k => {
+        /* ★ 배정은 무상 계정에만 있다. 이 시즌에 무상 계정이 하나도 없으면 눌러도 갈 곳이 없다.
+           (계정별 차단은 모달 안에서 다시 한다 — 여기서는 계정이 아직 안 골라졌다.) */
+        const noFree = k === '배정' && !rows.some(r => !r.paid)
+        const dis = !rows.length || noFree
+        return <button key={k} onClick={() => setModal({ kind: 'evt', event_type: k })}
+          disabled={dis} title={!rows.length ? '계정을 먼저 만들어 주세요' : noFree ? PAID_ALLOC_MSG : ''}
+          style={{ ...btn(k === '접종' ? t.green : t.bg, k === '접종' ? '#fff' : t.text, k === '접종' ? t.green : t.border),
+            ...(dis ? { cursor: 'not-allowed', opacity: 0.55 } : {}) }}>{k} +</button>
+      })}
     </div>
 
     {ld ? <div style={{ padding: 40, textAlign: 'center', color: t.textL, fontSize: 12 }}>불러오는 중...</div>
@@ -468,9 +485,17 @@ function VaccineModal({ t, ip, btn, modal, rows, cats, evts, onClose, onAccount,
             </select>
           </div>
           <div style={row2}>
-            <div><div style={lb}>유형</div><select value={f.event_type} onChange={e => set('event_type', e.target.value)} style={{ ...ip, width: '100%' }}>{EVT.map(v => <option key={v}>{v}</option>)}</select></div>
+            {/* ★ 유료 계정은 '배정' 을 고를 수 없다. 계정을 바꾸면 즉시 반영된다. */}
+            <div><div style={lb}>유형</div><select value={f.event_type} onChange={e => set('event_type', e.target.value)} style={{ ...ip, width: '100%' }}>
+              {EVT.map(v => <option key={v} value={v} disabled={v === '배정' && !!(acc && acc.paid)}>{v}</option>)}
+            </select></div>
             <div><div style={lb}>일자</div><input type="date" value={f.event_date} onChange={e => set('event_date', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
           </div>
+          {/* ★ 유료 계정을 고른 상태로 '배정' 이 남아 있으면 알린다.
+                (상단 [배정 +] 로 들어와 계정을 유료로 바꾼 경우) 저장은 addEvent 가 막는다. */}
+          {f.event_type === '배정' && acc && acc.paid && <div style={{ marginBottom: 10, padding: '7px 10px', fontSize: 11, color: t.text, borderLeft: '3px solid ' + t.lavender, background: t.bg, borderRadius: 6, lineHeight: 1.6 }}>
+            {PAID_ALLOC_MSG}
+          </div>}
           {/* ★ 접종은 대상 구분 필수 — DB CHECK 전에 여기서 막는다 */}
           {f.event_type === '접종' && <div style={{ marginBottom: 10 }}>
             <div style={lb}>대상 구분 <span style={{ color: t.purple }}>*</span></div>
