@@ -4368,8 +4368,11 @@ function InventoryCount({ drugs, onReload }) {
         s[1] ? [s[1].drug_code, s[1].drug_name || '', '', '', 12.5] : ['(약품코드)', '(약품명)', '', '', 12.5],
       ]
       const ws = XL.utils.aoa_to_sheet([HDR, ...rows])
-      /* A열(약품코드) 텍스트 서식 — 예시 행 + 채워 넣을 여유 60행 */
-      const LASTR = 1 + rows.length + 60
+      /* A열(약품코드) 텍스트 서식 — 예시 행 + 채워 넣을 여유 600행.
+         ★ 사용중 약품이 520건이라 60행으로는 부족하다. 서식이 없는 행부터
+           APR2 → 46114 자동변환이 되살아나므로 전량을 덮을 여유를 둔다.
+           파일 크기 영향은 미미하다(빈 문자열 셀 600개). */
+      const LASTR = 1 + rows.length + 600
       for (let r = 0; r < LASTR; r++) {
         const ref = XL.utils.encode_cell({ c: 0, r })
         if (!ws[ref]) ws[ref] = { t: 's', v: '' }
