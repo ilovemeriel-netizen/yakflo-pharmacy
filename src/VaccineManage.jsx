@@ -16,7 +16,7 @@
  * ★ 정정은 append-only — 수정·삭제 UI 를 두지 않는다. 음수 이벤트를 새로 만든다.
  *   DB 가드(trg_vaccine_events_append_only)가 UPDATE·DELETE 를 막는다.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { useTheme } from './lib/theme'
 import { dbErrorMsg } from './lib/dbError'
@@ -310,16 +310,23 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
   const btn = (bg, fg, bd) => ({ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + (bd || bg), background: bg, color: fg, cursor: 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' })
   const badge = (txt, col) => <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 6, fontSize: 9, fontWeight: 700, border: '1px solid ' + col, color: col, whiteSpace: 'nowrap' }}>{txt}</span>
   const td = { padding: '9px 10px', fontSize: 12, color: t.text, borderBottom: '1px solid ' + t.border, borderRight: '1px solid ' + t.border }
-  const num = { ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }
+  /* ★ 숫자 열 우측 정렬선 — 헤더와 본문이 서로 다른 토큰을 쓰고 있었다.
+       헤더 TS() = '10px 12px' (우측 12) · 본문 td = '9px 10px' (우측 10) → 2px 어긋남.
+     숫자는 오른쪽 끝을 눈으로 훑는 열이라 이 차이가 열마다 기준선을 흔든다.
+     잔여는 마지막 열이라 우측 경계가 카드 테두리와 겹쳐 특히 붙어 보인다.
+     한 값으로 묶어 헤더·본문이 같은 세로선에 서게 한다. */
+  const NUM_PR = 12
+  const num = { ...td, textAlign: 'right', paddingRight: NUM_PR, fontVariantNumeric: 'tabular-nums' }
 
+  /* ★ n:1 은 숫자 열 표시 — 순서·너비·헤더 구성은 그대로 두고 우측 패딩만 묶는 데 쓴다 */
   const COLS = [
     { k: 'drug_code', h: '약품코드', w: 128, sticky: 0 },
     { k: 'funding_source', h: '재원', w: 96, sticky: 128 },
-    { k: 'allocated_qty', h: '배정', w: 92 },
-    { k: 'received_qty', h: '입고', w: 92 },
-    { k: 'administered_qty', h: '접종', w: 92 },
-    { k: 'returned_qty', h: '반납', w: 92 },
-    { k: 'balance_qty', h: '잔여', w: 96 },
+    { k: 'allocated_qty', h: '배정', w: 92, n: 1 },
+    { k: 'received_qty', h: '입고', w: 92, n: 1 },
+    { k: 'administered_qty', h: '접종', w: 92, n: 1 },
+    { k: 'returned_qty', h: '반납', w: 92, n: 1 },
+    { k: 'balance_qty', h: '잔여', w: 96, n: 1 },
   ]
 
   return <div style={{ padding: '20px 24px' }}>
@@ -445,7 +452,10 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 760, fontSize: 12 }}>
               <colgroup>{COLS.map(c => <col key={c.k} style={{ width: c.w }} />)}</colgroup>
               <thead><tr>{COLS.map(c => {
+                /* ★ 숫자 열은 헤더도 같은 우측 패딩을 쓴다 — 본문 숫자와 한 세로선에 선다.
+                   헤더 정렬(좌측)은 기존 표들과 같게 유지한다(월마감 표도 좌측이다). */
                 const st = { ...TS(c.k), background: t.bg, borderRight: '1px solid ' + t.border,
+                  ...(c.n ? { paddingRight: NUM_PR } : {}),
                   ...(c.sticky != null ? { position: 'sticky', left: c.sticky, zIndex: 6, minWidth: c.w, maxWidth: c.w, width: c.w } : {}),
                   ...(hf[c.k] && hf[c.k].value ? { background: t.lavender + '33' } : {}) }
                 /* ★ 표 헤더는 ColMenu 를 그대로 재사용한다(자체 구현 금지) */
@@ -474,7 +484,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
         </div>
       </>}
 
-    {modal && <VaccineModal t={t} ip={ip} btn={btn} modal={modal} rows={rows} cats={cats} evts={evts}
+    {modal && <VaccineModal t={t} ip={ip} btn={btn} badge={badge} modal={modal} rows={rows} cats={cats} evts={evts}
       onClose={() => setModal(null)} onAccount={addAccount} onEvent={addEvent} onFix={fixEvent} onCat={saveCat}
       onUpdAccount={updAccount} onDelAccount={delAccount} onAccActive={setAccActive}
       todayYmd={todayYmd} />}
@@ -482,7 +492,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
 }
 
 /* ═══ 모달 — 계정 + / 이벤트 + / 대상 구분 / 이력·정정 ═══════════════════════ */
-function VaccineModal({ t, ip, btn, modal, rows, cats, evts, onClose, onAccount, onEvent, onFix, onCat, onUpdAccount, onDelAccount, onAccActive, todayYmd }) {
+function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onAccount, onEvent, onFix, onCat, onUpdAccount, onDelAccount, onAccActive, todayYmd }) {
   const [busy, setBusy] = useState(false)
   /* ★ 수정·삭제 모달은 대상 계정을 먼저 집는다. 초기화 함수 안에서만 쓰므로 상태가 아니다. */
   const tgt = (modal.kind === 'edit' || modal.kind === 'del') ? rows.find(r => r.id === modal.account_id) || null : null
@@ -712,7 +722,7 @@ function VaccineModal({ t, ip, btn, modal, rows, cats, evts, onClose, onAccount,
         </>}
 
         {/* ── 이력 · 정정 ── */}
-        {modal.kind === 'fix' && <FixList t={t} btn={btn} ip={ip} evts={evts.filter(e => e.account_id === modal.account_id)} cats={cats} onFix={onFix} />}
+        {modal.kind === 'fix' && <FixList t={t} btn={btn} ip={ip} badge={badge} evts={evts.filter(e => e.account_id === modal.account_id)} cats={cats} onFix={onFix} />}
       </div>
 
       {(modal.kind === 'acct' || modal.kind === 'evt' || (modal.kind === 'edit' && tgt)) && <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end', padding: '12px 18px', borderTop: '1px solid ' + t.border }}>
@@ -741,7 +751,7 @@ function accCatsOf(cats, accId) {
 }
 
 /* 이벤트 이력 — ★ 수정·삭제 버튼을 두지 않는다. 정정은 반대 부호 이벤트를 새로 만든다. */
-function FixList({ t, btn, ip, evts, cats, onFix }) {
+function FixList({ t, btn, ip, badge, evts, cats, onFix }) {
   const [target, setTarget] = useState(null)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -756,18 +766,37 @@ function FixList({ t, btn, ip, evts, cats, onFix }) {
     {!evts.length ? <div style={{ padding: 24, textAlign: 'center', color: t.textL, fontSize: 12 }}>이벤트가 없습니다</div>
       : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead><tr>{['일자', '유형', '대상', '수량', ''].map(h => <th key={h} style={{ ...td, color: t.textM, fontWeight: 700, textAlign: h === '수량' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
-        <tbody>{evts.map(e => <tr key={e.id}>
-          <td style={td}>{e.event_date}</td>
-          <td style={td}>{e.event_type}</td>
-          <td style={{ ...td, color: t.textM }}>{catName(e.category_id) || '—'}</td>
-          <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: Number(e.qty) < 0 ? t.textM : t.text, fontVariantNumeric: 'tabular-nums' }}>{Number(e.qty).toLocaleString()}</td>
-          <td style={{ ...td, textAlign: 'right' }}>
-            {/* ★ 회색 잔글씨였던 것을 보라 테두리 + 굵기로 올린다(신색 없이 대비만 높인다).
-                음수 행은 이미 정정분이므로 버튼을 내지 않는다 — 정정의 정정이 쌓인다. */}
-            {Number(e.qty) > 0 && <button onClick={() => { setTarget(e); setReason('') }}
-              style={{ ...btn(t.bg, t.purple, t.purple), padding: '4px 12px', fontSize: 11, fontWeight: 700 }}>정정</button>}
-          </td>
-        </tr>)}</tbody>
+        {/* ★ 정정 이벤트를 따로 떼지 않는다 — 시간순 흐름 안에서 배지로만 가른다.
+            탭으로 나누면 「무엇을 언제 되돌렸는지」가 끊긴다. */}
+        <tbody>{evts.map(e => {
+          const neg = Number(e.qty) < 0
+          return <Fragment key={e.id}>
+            <tr>
+              <td style={{ ...td, ...(neg ? { borderBottom: 'none' } : {}) }}>{e.event_date}</td>
+              <td style={{ ...td, ...(neg ? { borderBottom: 'none' } : {}) }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  {e.event_type}
+                  {/* ★ 라벤더 테두리 배지 — 기존 badge() 토큰 그대로. 신색 없음 */}
+                  {neg && badge('정정', t.lavender)}
+                </span>
+              </td>
+              <td style={{ ...td, color: t.textM, ...(neg ? { borderBottom: 'none' } : {}) }}>{catName(e.category_id) || '—'}</td>
+              <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: neg ? t.textM : t.text, fontVariantNumeric: 'tabular-nums', ...(neg ? { borderBottom: 'none' } : {}) }}>{Number(e.qty).toLocaleString()}</td>
+              <td style={{ ...td, textAlign: 'right', ...(neg ? { borderBottom: 'none' } : {}) }}>
+                {/* ★ 회색 잔글씨였던 것을 보라 테두리 + 굵기로 올린다(신색 없이 대비만 높인다).
+                    음수 행은 이미 정정분이므로 버튼을 내지 않는다 — 정정의 정정이 쌓인다. */}
+                {Number(e.qty) > 0 && <button onClick={() => { setTarget(e); setReason('') }}
+                  style={{ ...btn(t.bg, t.purple, t.purple), padding: '4px 12px', fontSize: 11, fontWeight: 700 }}>정정</button>}
+              </td>
+            </tr>
+            {/* 사유 — 무엇을 왜 되돌렸는지가 행에서 바로 읽혀야 한다 */}
+            {neg && e.memo && <tr>
+              <td colSpan={5} style={{ padding: '0 8px 7px 8px', borderBottom: '1px solid ' + t.border }}>
+                <span style={{ display: 'block', borderLeft: '3px solid ' + t.lavender, paddingLeft: 7, fontSize: 10, color: t.textM, lineHeight: 1.6 }}>{e.memo}</span>
+              </td>
+            </tr>}
+          </Fragment>
+        })}</tbody>
       </table>}
     {target && <div style={{ marginTop: 12, padding: '11px 12px', borderLeft: '3px solid ' + t.purple, background: t.bg, borderRadius: 8 }}>
       <div style={{ fontSize: 12, color: t.text, marginBottom: 7 }}>
