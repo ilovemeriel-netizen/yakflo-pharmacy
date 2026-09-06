@@ -34,6 +34,12 @@ const PAID_ALLOC_MSG = '유료 계정은 배정이 없습니다 — 입고로 �
 /* ★ drug_code 는 NOT NULL 이지만 **빈 문자열은 막지 못한다**(운영에 len=0 계정 1건 생겼다).
    NOT NULL 을 검증으로 믿으면 안 된다 — 공백만 넣은 값도 통과한다. trim 후 판정한다. */
 const DRUG_REQ_MSG = '약품을 선택해 주세요'
+/* ★ 빈 약품코드 표시 폴백 — 한 곳에서만 정의한다.
+   카드·표·모달 4곳에 같은 문구가 흩어지면 한 곳만 바뀌어 어긋난다.
+   ※ drug_code 원값은 절대 바꾸지 않는다 — 정렬(useSort)·필터(uniq)가 이 값을 쓴다. */
+const NO_DRUG = '(약품 미지정)'
+/* <option> 과 <input value> 는 요소를 넣을 수 없어 **문자열만** 받는다. 그 자리용. */
+const dcLabel = v => (v || '').trim() || NO_DRUG
 /* ★ 계정 FK 는 전부 ON DELETE RESTRICT(0089) — 이벤트가 하나라도 있으면 23503 이다. */
 const ACC_DEL_RESTRICT = '이 계정에는 기록이 있어 삭제할 수 없습니다. 비활성화하시겠습니까?'
 /* ★ UNIQUE(tenant_id, season, drug_code, funding_source) 구성 요소는 수정에서 뺀다.
@@ -381,7 +387,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
                     바로 옆 「비활성」 배지와 같은 흰 테두리를 써서 두 모드 모두 읽히게 한다.
                     표 안(밝은 배경)에서는 지시대로 라벤더 배지를 쓴다. */}
                 {r.noDrug
-                  ? <span style={{ fontWeight: 700, fontSize: 12, padding: '1px 7px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.75)' }}>(약품 미지정)</span>
+                  ? <span style={{ fontWeight: 700, fontSize: 12, padding: '1px 7px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.75)' }}>{NO_DRUG}</span>
                   : <span style={{ fontWeight: 700, fontSize: 13 }}>{r.drug_code}</span>}
                 <span style={{ fontSize: 11, opacity: 0.9 }}>{r.funding_source}</span>
                 <span style={{ fontSize: 10, opacity: 0.8 }}>{r.paid ? '유료' : '무상'}</span>
@@ -481,7 +487,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
                   return <tr key={r.id}>
                     {/* ★ 표는 밝은 배경이라 라벤더 배지가 그대로 읽힌다 — 기존 badge() 토큰 재사용 */}
                     <td style={{ ...td, position: 'sticky', left: 0, zIndex: 2, background: bgc, fontWeight: 600 }}>
-                      {r.noDrug ? badge('(약품 미지정)', t.lavender) : r.drug_code}</td>
+                      {r.noDrug ? badge(NO_DRUG, t.lavender) : r.drug_code}</td>
                     <td style={{ ...td, position: 'sticky', left: 128, zIndex: 2, background: bgc }}>
                       {badge(r.funding_source, r.paid ? t.purple : t.green)}
                     </td>
@@ -611,7 +617,9 @@ function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onA
           </div>
           <div style={{ marginBottom: 10 }}>
             <div style={lb}>약품 <span style={{ color: t.textL }}>(고정)</span></div>
-            <input value={tgt.drug_code} readOnly disabled style={ro} />
+            {/* ★ <input value> 는 문자열만 받는다 — 배지를 넣을 수 없어 문구만 낸다.
+                읽기 전용 칸이라 색으로 강조하지 않아도 「값이 없다」가 드러난다. */}
+            <input value={dcLabel(tgt.drug_code)} readOnly disabled style={ro} />
           </div>
           <div style={row2}>
             <div><div style={lb}>시즌 시작</div><input type="date" value={f.season_start} onChange={e => set('season_start', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
@@ -630,7 +638,9 @@ function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onA
         {/* ── 계정 삭제 · 비활성화 ── */}
         {modal.kind === 'del' && (!tgt ? <div style={{ padding: 20, fontSize: 12, color: t.textL, textAlign: 'center' }}>계정을 찾을 수 없습니다</div> : <>
           <div style={{ fontSize: 12, color: t.text, lineHeight: 1.7, marginBottom: 10 }}>
-            <b>{tgt.drug_code}</b> · {tgt.funding_source} · {tgt.season}
+            {/* ★ 모달 본문은 밝은 배경(t.cardSolid) — PR #304 규칙대로 라벤더 테두리를 쓴다.
+                색 배경(보라/녹색) 위가 아니므로 흰 테두리가 아니다. */}
+            {tgt.noDrug ? badge(NO_DRUG, t.lavender) : <b>{tgt.drug_code}</b>} · {tgt.funding_source} · {tgt.season}
           </div>
           {(tgt.evCount > 0 || delRestrict)
             /* 기록이 있는 계정 — 삭제 자체가 막힌다(FK RESTRICT). 비활성화만 제안한다. */
@@ -664,7 +674,9 @@ function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onA
           <div style={{ marginBottom: 10 }}>
             <div style={lb}>계정</div>
             <select value={f.account_id} onChange={e => { set('account_id', e.target.value); set('category_id', '') }} style={{ ...ip, width: '100%' }}>
-              {rows.map(r => <option key={r.id} value={r.id}>{r.drug_code} · {r.funding_source} · 잔여 {fmt(r.balance_qty)}</option>)}
+              {/* ★ <option> 은 요소를 담을 수 없다(브라우저가 텍스트만 그린다) — 배지 대신 문구만.
+                  빈 코드면 「 · 일반 · 잔여 0」처럼 앞이 비어 어느 계정인지 못 고른다. */}
+              {rows.map(r => <option key={r.id} value={r.id}>{dcLabel(r.drug_code)} · {r.funding_source} · 잔여 {fmt(r.balance_qty)}</option>)}
             </select>
           </div>
           <div style={row2}>
