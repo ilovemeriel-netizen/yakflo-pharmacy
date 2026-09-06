@@ -3304,7 +3304,7 @@ const CHANGE_STICKY_ORDER = ['category', 'from_drug_name']
 const CHANGE_SEL_W = 34
 /* ★ 관리 열 폭. [수정][실사][보정][삭제] 4개가 되면서 96 으로는 [삭제]가 밀려 나갔다.
    버튼 1개당 대략 30px(패딩 7×2 + 글자 2자) + 간격 3px → 4개에 130 이면 잘리지 않는다. */
-const CHANGE_MGMT_W = 130
+const CHANGE_MGMT_W = 165
 function DrugChangePlans({ drugs, onReload, navFilter }) {
   const { t, memberRole, profile, user, setProfile } = useTheme()
   const canDel = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
