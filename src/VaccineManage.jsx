@@ -20,6 +20,10 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { useTheme } from './lib/theme'
 import { dbErrorMsg } from './lib/dbError'
+/* ★ GS1-128 파서는 scan.js 의 것을 **호출만** 한다(무수정).
+   AI 10 = LOT · AI 17 = 유효기한을 이미 파싱한다. 카메라 라이브러리는 쓰지 않는다 —
+   스캐너가 키보드 웨지로 넣어 주는 문자열을 그대로 받는다. */
+import { decodeGs1 } from './lib/scan'
 
 /* ── 상수 ─────────────────────────────────────────────────────────────────── */
 const FUNDINGS = ['일반', '보건소', '지자체']
@@ -57,6 +61,21 @@ const PRESETS = [
 const DEF = { season: '2026-2027', start: '2026-09-01', end: '2027-06-30' }
 const N = v => Number(v ?? 0)
 const fmt = v => N(v).toLocaleString()
+/* ★ 유효기한 경고 3단계 — 기존 유효기한 화면의 5단계와 **별개**다.
+   백신은 시즌 안에 다 쓰는 물건이라 30·60·90·180일 같은 잘게 나눈 구간이 의미가 없다. */
+const EXP_SOON_DAYS = 90       // 임박
+const RETURN_SOON_DAYS = 30    // 반납기한 임박
+const LOT_NONE = '(LOT 미기록)'
+/* 개시 후 이 시점에서 추가 배정을 판단한다 — 표본이 모이는 최소 구간(소진예상일 산출과 같은 기준) */
+const DECIDE_DAY = 7
+/* 날짜 차이(일). 둘 다 'YYYY-MM-DD' 로 들어온다. */
+const dayDiff = (from, to) => {
+  if (!from || !to) return null
+  const a = new Date(String(from).slice(0, 10) + 'T00:00:00')
+  const b = new Date(String(to).slice(0, 10) + 'T00:00:00')
+  if (isNaN(a) || isNaN(b)) return null
+  return Math.floor((a - b) / 86400000)
+}
 
 /* eslint-disable-next-line no-unused-vars -- ColMenu 는 JSX 안에서만 쓰인다.
    이 저장소에는 eslint-plugin-react 가 없어 JSX 사용을 추적하지 못한다(오탐). */
@@ -75,6 +94,11 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
   const [asOf, setAsOf] = useState('')      // 「기준」 시각 — 화면 캡쳐로 공유하므로 필수
   const [hfV, setHfV] = useState({})        // 표 헤더 필터
   const [modal, setModal] = useState(null)  // { kind:'acct'|'evt'|'cats'|'fix', ... }
+  /* ★ 접힘 상태는 **세션 한정**이다 — profiles 에 쓰지 않는다.
+     화면을 캡쳐해 공유하는 것이 주 용도라 매번 접힌 상태로 시작하는 편이 일관되고,
+     범위 밖 테이블에 신규 쓰기를 만들지 않는다. */
+  const [openChart, setOpenChart] = useState(false)
+  const [openLot, setOpenLot] = useState(false)
 
   const flash = (text, kind) => { setMsg({ text, kind }); setTimeout(() => setMsg(null), kind === 'err' ? 3600 : 2000) }
 
@@ -194,6 +218,108 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
       warnOver: !paid && N(b.received_qty) > N(b.allocated_qty),
     }
   }), [accs, balOf, catsOf, evtsOf, dnames, sel, todayYmd, ymd])
+
+  /* ── LOT·유효기한 집계 ──────────────────────────────────────────────────────
+     ★ LOT 은 **입고 이벤트에만** 기록한다(접종 시 입력 없음) — 확정 사항 ③.
+       그래서 여기서 세는 것은 「입고량」뿐이고, 그것만 정확하다.
+     ★★ 잔량을 LOT 수로 나누지 않는다. LOT별 차감이 없으므로 나눈 값은 **거짓**이다.
+       잔량 열에는 **계정 잔량을 참고값으로** 싣고 그 사실을 헤더 툴팁에 적는다. */
+  const lotRows = useMemo(() => {
+    const today = todayYmd()
+    const m = new Map()
+    rows.forEach(r => {
+      (evtsOf[r.id] || []).filter(e => e.event_type === '입고').forEach(e => {
+        const lot = (e.lot_no || '').trim() || LOT_NONE
+        const exp = e.expiry_date ? String(e.expiry_date).slice(0, 10) : null
+        const key = r.id + '|' + lot + '|' + (exp || '')
+        const cur = m.get(key) || {
+          key, accountId: r.id, drug_code: r.drug_code, drug_name: r.drug_name,
+          noDrug: r.noDrug, lot, expiry: exp, received: 0,
+          accBalance: r.balance_qty, paid: r.paid, funding_source: r.funding_source,
+        }
+        cur.received += N(e.qty)
+        m.set(key, cur)
+      })
+    })
+    return [...m.values()].map(x => {
+      /* 유효기한 3단계 — 경과 / 임박(90일 이내) / 정상. 미기재는 판정하지 않는다. */
+      const d = x.expiry ? dayDiff(x.expiry, today) : null
+      const stage = d == null ? 'none' : d < 0 ? 'past' : d <= EXP_SOON_DAYS ? 'soon' : 'ok'
+      return { ...x, days: d, stage }
+    }).sort((a, b) => {
+      /* 유효기한 오름차순. 미기재는 뒤로 보낸다(정렬 기준이 없어 앞에 오면 오독된다) */
+      if (!a.expiry && !b.expiry) return String(a.drug_code).localeCompare(String(b.drug_code), 'ko')
+      if (!a.expiry) return 1
+      if (!b.expiry) return -1
+      return a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : 0
+    })
+  }, [rows, evtsOf, todayYmd])
+
+  /* ── 요약 스트립 집계 — v_vaccine_balance 기준 ── */
+  const summary = useMemo(() => {
+    const s = rows.reduce((a, r) => ({
+      /* 배정은 무상만 센다 — 유료 계정에는 배정 개념이 없다(pending 을 숨기는 것과 같은 이유) */
+      allocated: a.allocated + (r.paid ? 0 : N(r.allocated_qty)),
+      received: a.received + N(r.received_qty),
+      administered: a.administered + N(r.administered_qty),
+      balance: a.balance + N(r.balance_qty),
+    }), { allocated: 0, received: 0, administered: 0, balance: 0 })
+    /* 임박 건수는 **입고 이벤트의 유효기한** 기준이다(계정 기준이 아니다) */
+    s.expSoon = lotRows.filter(x => x.stage === 'soon' || x.stage === 'past').length
+    s.useRate = s.received > 0 ? s.administered / s.received : null
+    return s
+  }, [rows, lotRows])
+
+  /* ── 경고 배너 — 해당 없으면 그리지 않는다 ── */
+  const alerts = useMemo(() => {
+    const today = todayYmd()
+    const out = []
+    const past = lotRows.filter(x => x.stage === 'past')
+    const soon = lotRows.filter(x => x.stage === 'soon')
+    if (past.length) out.push({ k: 'exp-past', text: '유효기한이 지난 입고 ' + past.length + '건 — ' + past.slice(0, 3).map(x => (x.noDrug ? NO_DRUG : x.drug_code) + ' ' + x.lot).join(', ') + (past.length > 3 ? ' 외' : '') })
+    if (soon.length) out.push({ k: 'exp-soon', text: '유효기한 ' + EXP_SOON_DAYS + '일 이내 입고 ' + soon.length + '건 — 가장 이른 것 ' + soon[0].expiry + ' (D-' + soon[0].days + ')' })
+    const retSoon = rows.filter(r => r.return_due && (() => { const d = dayDiff(String(r.return_due).slice(0, 10), today); return d != null && d >= 0 && d <= RETURN_SOON_DAYS })())
+    if (retSoon.length) out.push({ k: 'ret', text: '반납기한 ' + RETURN_SOON_DAYS + '일 이내 계정 ' + retSoon.length + '건 — ' + retSoon.map(r => (r.noDrug ? NO_DRUG : r.drug_code) + ' ' + String(r.return_due).slice(0, 10)).join(', ') })
+    const neg = rows.filter(r => r.warnNeg)
+    if (neg.length) out.push({ k: 'neg', text: '잔량이 음수인 계정 ' + neg.length + '건 — 입력 누락이 의심됩니다: ' + neg.map(r => r.noDrug ? NO_DRUG : r.drug_code).join(', ') })
+    return out
+  }, [rows, lotRows, todayYmd])
+
+  /* ── 차트 데이터 ────────────────────────────────────────────────────────────
+     ⑴ 주차별 접종량 + 누적 소진율  ⑵ 대상 구분별 접종량  ⑶ 재원별 잔량 */
+  const charts = useMemo(() => {
+    const admin = []
+    rows.forEach(r => { (evtsOf[r.id] || []).forEach(e => { if (e.event_type === '접종' && N(e.qty) > 0) admin.push({ d: String(e.event_date).slice(0, 10), q: N(e.qty) }) }) })
+    admin.sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0)
+    const first = admin.length ? admin[0].d : null
+    /* 주차 = 최초 접종일로부터 7일 단위. 개시일이 1주차 1일이다. */
+    const wk = new Map()
+    admin.forEach(x => {
+      const off = dayDiff(x.d, first)
+      const w = off == null ? 0 : Math.floor(off / 7)
+      wk.set(w, (wk.get(w) || 0) + x.q)
+    })
+    const maxW = wk.size ? Math.max(...wk.keys()) : -1
+    const weeks = []
+    let acc = 0
+    for (let i = 0; i <= maxW; i++) {
+      const q = wk.get(i) || 0
+      acc += q
+      weeks.push({ w: i + 1, qty: q, cum: acc, rate: summary.received > 0 ? acc / summary.received : 0 })
+    }
+    /* ★ 개시 후 7일 지점 = 2주차 시작 경계. 막대 사이의 세로선으로 그린다. */
+    const decideAt = DECIDE_DAY / 7          // 1.0 → 1주차와 2주차 사이
+    /* ⑵ 대상 구분별 — catRows 를 계정 전체에서 라벨 기준으로 합산 */
+    const byCat = new Map()
+    rows.forEach(r => r.catRows.forEach(c => { if (c.qty) byCat.set(c.label, (byCat.get(c.label) || 0) + c.qty) }))
+    const cats = [...byCat.entries()].map(([label, qty]) => ({ label, qty })).sort((a, b) => b.qty - a.qty)
+    /* ⑶ 재원별 잔량 — 일반(유료) 보라 · 보건소·지자체(무상) 녹색 */
+    const byFund = new Map()
+    rows.forEach(r => byFund.set(r.funding_source, (byFund.get(r.funding_source) || 0) + N(r.balance_qty)))
+    const funds = FUNDINGS.filter(f => byFund.has(f)).map(f => ({ label: f, qty: byFund.get(f), paid: isPaid(f) }))
+      .filter(x => x.qty > 0)
+    return { weeks, decideAt, cats, funds, firstAdmin: first }
+  }, [rows, evtsOf, summary.received])
 
   /* ── 표 — 필터 → 정렬 순서 ─────────────────────────────────────────────── */
   const uniq = k => [...new Set(rows.map(r => String(r[k] ?? '')).filter(Boolean))].sort()
@@ -382,6 +508,27 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
 
     {msg && <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: msg.kind === 'err' ? t.bg : t.greenL, color: msg.kind === 'err' ? t.text : t.green, borderLeft: '3px solid ' + (msg.kind === 'err' ? t.text : t.green) }}>{msg.text}</div>}
 
+    {/* ═══ 1-B. 요약 스트립 — 헤더 하단 상시 표시 ═══
+        ★ 캡쳐 한 장으로 타 부서에 넘기는 것이 주 용도라 접지 않는다. */}
+    {!ld && rows.length > 0 && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+      {[
+        ['총 배정', summary.allocated === 0 ? '—' : fmt(summary.allocated), t.text],
+        ['총 입고', fmt(summary.received), t.text],
+        ['총 접종', fmt(summary.administered), t.green],
+        ['총 잔여', fmt(summary.balance), t.text],
+        ['소진율', summary.useRate == null ? '—' : (summary.useRate * 100).toFixed(1) + '%', t.text],
+        ['유효기한 임박', summary.expSoon ? summary.expSoon + '건' : '0건', summary.expSoon ? t.purple : t.textL],
+      ].map(([lab, val, col]) => <div key={lab} style={{ flex: '1 1 120px', minWidth: 108, background: t.card, border: '1px solid ' + t.border, borderRadius: 10, padding: '9px 12px' }}>
+        <div style={{ fontSize: 10, color: t.textM, whiteSpace: 'nowrap' }}>{lab}</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: col, fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>{val}</div>
+      </div>)}
+    </div>}
+
+    {/* ═══ 1-C. 경고 배너 — 해당 없으면 아예 그리지 않는다 ═══ */}
+    {!ld && alerts.length > 0 && <div style={{ marginBottom: 12 }}>
+      {alerts.map(a => <div key={a.k} style={{ borderLeft: '3px solid ' + t.lavender, background: t.card, border: '1px solid ' + t.border, borderRadius: 8, padding: '8px 12px', marginBottom: 6, fontSize: 11, color: t.text, lineHeight: 1.6 }}>{a.text}</div>)}
+    </div>}
+
     {/* ═══ 3. 액션 ═══ */}
     <div className="no-print" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
       <button onClick={() => setModal({ kind: 'acct' })} style={btn(t.accent, '#fff')}>계정 +</button>
@@ -541,17 +688,33 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
             </table>
           </div>
         </div>
+
+        {/* ═══ 5. 차트 — ★ 기본 접힘. 접힌 높이는 제목 줄 하나뿐이다 ═══ */}
+        <Collapsible t={t} open={openChart} onToggle={() => setOpenChart(v => !v)}
+          title="추이 · 구성" hint={charts.weeks.length ? charts.weeks.length + '주차 진행' : '접종 기록 없음'}>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', padding: '12px 14px' }}>
+            <WeeklyChart t={t} data={charts.weeks} decideAt={charts.decideAt} first={charts.firstAdmin} />
+            <CatBars t={t} data={charts.cats} />
+            <FundDonut t={t} data={charts.funds} />
+          </div>
+        </Collapsible>
+
+        {/* ═══ 6. LOT·유효기한 — ★ 기본 접힘 ═══ */}
+        <Collapsible t={t} open={openLot} onToggle={() => setOpenLot(v => !v)}
+          title="LOT · 유효기한" hint={lotRows.length + '건' + (summary.expSoon ? ' · 임박 ' + summary.expSoon : '')}>
+          <LotTable t={t} rows={lotRows} badge={badge} />
+        </Collapsible>
       </>}
 
     {modal && <VaccineModal t={t} ip={ip} btn={btn} badge={badge} modal={modal} rows={rows} cats={cats} evts={evts}
       onClose={() => setModal(null)} onAccount={addAccount} onEvent={addEvent} onFix={fixEvent} onCat={saveCat}
       onUpdAccount={updAccount} onDelAccount={delAccount} onAccActive={setAccActive}
-      todayYmd={todayYmd} />}
+      todayYmd={todayYmd} ymd={ymd} />}
   </div>
 }
 
 /* ═══ 모달 — 계정 + / 이벤트 + / 대상 구분 / 이력·정정 ═══════════════════════ */
-function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onAccount, onEvent, onFix, onCat, onUpdAccount, onDelAccount, onAccActive, todayYmd }) {
+function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onAccount, onEvent, onFix, onCat, onUpdAccount, onDelAccount, onAccActive, todayYmd, ymd }) {
   const [busy, setBusy] = useState(false)
   /* ★ 수정·삭제 모달은 대상 계정을 먼저 집는다. 초기화 함수 안에서만 쓰므로 상태가 아니다. */
   const tgt = (modal.kind === 'edit' || modal.kind === 'del') ? rows.find(r => r.id === modal.account_id) || null : null
@@ -572,6 +735,24 @@ function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onA
   const [newCat, setNewCat] = useState('')
   const [restrictAsk, setRestrictAsk] = useState(null)
   const set = (k, v) => setF(p => ({ ...p, [k]: v }))
+  /* ── GS1-128 스캔 ────────────────────────────────────────────────────────
+     ★ scan.js 의 decodeGs1 을 호출만 한다. 파서를 여기서 다시 만들지 않는다.
+     ★ 실패해도 저장을 막지 않는다 — 안내만 내고 수기 입력을 그대로 둔다. */
+  const [scanRaw, setScanRaw] = useState('')
+  const [scanMsg, setScanMsg] = useState(null)
+  function doScan() {
+    const raw = scanRaw.trim()
+    if (!raw) { setScanMsg({ ok: false, text: '스캔할 값이 없습니다 — 스캐너로 읽거나 붙여넣어 주세요' }); return }
+    const r = decodeGs1(raw, ymd)
+    if (!r.ok) { setScanMsg({ ok: false, text: (r.msg || '바코드를 읽지 못했습니다') + ' · LOT·유효기한은 직접 입력하셔도 됩니다' }); return }
+    const got = []
+    if (r.lot) { set('lot_no', r.lot); got.push('LOT ' + r.lot) }
+    if (r.expiry) { set('expiry_date', r.expiry); got.push('유효기한 ' + r.expiry) }
+    setScanMsg(got.length
+      ? { ok: true, text: got.join(' · ') + ' 을(를) 채웠습니다' }
+      : { ok: false, text: '이 바코드에는 LOT(10)·유효기한(17) 정보가 없습니다 — 직접 입력해 주세요' })
+    setScanRaw('')
+  }
 
   /* 약품 목록 — ★ drugs 는 SELECT 만. 모달을 열 때만 읽는다(초기 로딩 부담 회피) */
   useEffect(() => {
@@ -748,10 +929,27 @@ function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onA
             <div><div style={lb}>용기</div><select value={f.container} onChange={e => set('container', e.target.value)} style={{ ...ip, width: '100%' }}>
               <option value="">(선택 안 함)</option><option>바이알</option><option>PFS</option></select></div>
           </div>
-          <div style={row2}>
-            <div><div style={lb}>LOT</div><input value={f.lot_no} onChange={e => set('lot_no', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
-            <div><div style={lb}>유효기한</div><input type="date" value={f.expiry_date} onChange={e => set('expiry_date', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
-          </div>
+          {/* ★ LOT·유효기한은 **입고에서만** 받는다 — 접종 시에는 입력하지 않는다(확정 사항 ③).
+              이미 저장된 비입고 이벤트의 값은 이력 모달에서 유형과 무관하게 그대로 보인다. */}
+          {f.event_type === '입고' && <>
+            <div style={row2}>
+              <div><div style={lb}>LOT</div><input value={f.lot_no} onChange={e => set('lot_no', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+              <div><div style={lb}>유효기한</div><input type="date" value={f.expiry_date} onChange={e => set('expiry_date', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+            </div>
+            {/* ★ GS1-128 스캔 — scan.js 의 decodeGs1 을 호출만 한다(무수정).
+                스캐너가 키보드 웨지로 넣어 주는 문자열을 그대로 받는다. 카메라 라이브러리 없음.
+                ★ 파싱 실패해도 저장을 막지 않는다 — 수기 입력이 그대로 살아 있다. */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={lb}>바코드 스캔 <span style={{ color: t.textL, fontWeight: 400 }}>(선택 — LOT·유효기한 자동 입력)</span></div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input value={scanRaw} onChange={e => { setScanRaw(e.target.value); setScanMsg(null) }}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); doScan() } }}
+                  placeholder="스캐너로 읽거나 붙여넣고 Enter" style={{ ...ip, flex: 1 }} />
+                <button type="button" onClick={doScan} style={btn(t.bg, t.purple, t.purple)}>스캔</button>
+              </div>
+              {scanMsg && <div style={{ marginTop: 5, fontSize: 11, lineHeight: 1.6, color: t.text, borderLeft: '3px solid ' + (scanMsg.ok ? t.green : t.lavender), paddingLeft: 8 }}>{scanMsg.text}</div>}
+            </div>
+          </>}
           <div><div style={lb}>메모</div><input value={f.memo} onChange={e => set('memo', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
           {acc && <div style={{ marginTop: 9, fontSize: 11, color: t.textM }}>현재 잔여 <b style={{ color: t.text }}>{fmt(acc.balance_qty)}</b></div>}
         </>}
@@ -811,6 +1009,138 @@ function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onA
    그대로 넣으면 값이 빈 칸으로 보이고, 저장 시 기존 날짜가 지워진다. */
 function d10(v) { return v ? String(v).slice(0, 10) : '' }
 
+/* ═══ 접이식 영역 ═════════════════════════════════════════════════════════════
+   ★ 접힌 상태에서 차지하는 높이는 **제목 줄 하나**다. 캡쳐로 공유하는 화면이라
+     기본 높이가 현행과 거의 같아야 한다는 요구를 이것으로 만족한다.
+   ★ 닫혀 있으면 자식을 **아예 렌더하지 않는다** — 차트·표 계산 비용도 함께 사라진다. */
+function Collapsible({ t, open, onToggle, title, hint, children }) {
+  return <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, marginTop: 12, overflow: 'hidden' }}>
+    <button onClick={onToggle} aria-expanded={open}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 14px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+      <span style={{ fontSize: 11, color: t.textM, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .12s', display: 'inline-block' }}>▶</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>{title}</span>
+      <span style={{ fontSize: 11, color: t.textM }}>{hint}</span>
+      <span style={{ flex: 1 }} />
+      <span style={{ fontSize: 10, color: t.textL }}>{open ? '접기' : '펼치기'}</span>
+    </button>
+    {open && <div style={{ borderTop: '1px solid ' + t.border }}>{children}</div>}
+  </div>
+}
+
+/* ⑴ 주차별 접종량 막대 + 누적 소진율 꺾은선 — 인라인 SVG. 라이브러리 없음 */
+function WeeklyChart({ t, data, decideAt, first }) {
+  const W = 320, H = 150, PAD_L = 6, PAD_B = 20, PAD_T = 10
+  if (!data.length) return <div style={{ flex: '1 1 320px', minWidth: 280, fontSize: 11, color: t.textL, padding: 20, textAlign: 'center' }}>접종 기록이 없습니다</div>
+  const maxQ = Math.max(...data.map(d => d.qty), 1)
+  const bw = (W - PAD_L * 2) / data.length
+  const yOf = q => PAD_T + (H - PAD_T - PAD_B) * (1 - q / maxQ)
+  const rOf = r => PAD_T + (H - PAD_T - PAD_B) * (1 - Math.min(1, r))
+  /* ★ 개시 후 7일 = 1주차와 2주차의 경계. 여기서 추가 배정을 판단한다. */
+  const lineX = PAD_L + bw * decideAt
+  const showLine = decideAt <= data.length
+  return <div style={{ flex: '1 1 320px', minWidth: 280 }}>
+    <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginBottom: 2 }}>주차별 접종량 · 누적 소진율</div>
+    <div style={{ fontSize: 10, color: t.textL, marginBottom: 6 }}>개시 {first || '—'}</div>
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 150 }}>
+      {/* 막대 */}
+      {data.map((d, i) => { const y = yOf(d.qty), x = PAD_L + bw * i + bw * 0.18
+        return <rect key={d.w} x={x} y={y} width={bw * 0.64} height={Math.max(0, H - PAD_B - y)} rx="2" fill={t.green}><title>{d.w + '주차 · 접종 ' + d.qty}</title></rect> })}
+      {/* 누적 소진율 꺾은선 */}
+      <polyline fill="none" stroke={t.purple} strokeWidth="2"
+        points={data.map((d, i) => (PAD_L + bw * i + bw / 2) + ',' + rOf(d.rate)).join(' ')} />
+      {data.map((d, i) => <circle key={'p' + d.w} cx={PAD_L + bw * i + bw / 2} cy={rOf(d.rate)} r="2.5" fill={t.purple}><title>{d.w + '주차 누적 소진율 ' + (d.rate * 100).toFixed(1) + '%'}</title></circle>)}
+      {/* ★ 7일 기준선 */}
+      {showLine && <>
+        <line x1={lineX} y1={PAD_T - 4} x2={lineX} y2={H - PAD_B} stroke={t.lavender} strokeWidth="1.5" strokeDasharray="4 3" />
+        <text x={Math.min(lineX + 3, W - 78)} y={PAD_T + 4} style={{ fontSize: 8, fill: t.purple, fontWeight: 700 }}>추가 배정 판단</text>
+      </>}
+      {/* 축 */}
+      <line x1="0" y1={H - PAD_B} x2={W} y2={H - PAD_B} stroke={t.border} strokeWidth="1" />
+      {data.map((d, i) => <text key={'x' + d.w} x={PAD_L + bw * i + bw / 2} y={H - PAD_B + 12} textAnchor="middle" style={{ fontSize: 9, fill: t.textM }}>{d.w}주</text>)}
+    </svg>
+  </div>
+}
+
+/* ⑵ 대상 구분별 가로 막대 — CSS 폭 비율. 연령대 라벨은 카테고리 데이터를 그대로 쓴다 */
+function CatBars({ t, data }) {
+  const tot = data.reduce((a, b) => a + b.qty, 0)
+  return <div style={{ flex: '1 1 240px', minWidth: 220 }}>
+    <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginBottom: 8 }}>대상 구분별 접종</div>
+    {!data.length ? <div style={{ fontSize: 11, color: t.textL, padding: 16, textAlign: 'center' }}>접종 기록이 없습니다</div>
+      : data.map(c => { const pct = tot > 0 ? (c.qty / tot) * 100 : 0
+        return <div key={c.label} style={{ marginBottom: 7 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: t.textM, marginBottom: 2 }}>
+            <span>{c.label}</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(c.qty)} · {pct.toFixed(1)}%</span>
+          </div>
+          <div style={{ height: 8, borderRadius: 4, background: t.lavender + '44', overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: Math.max(1, pct) + '%', background: t.green, borderRadius: 4 }} />
+          </div>
+        </div> })}
+  </div>
+}
+
+/* ⑶ 재원별 도넛 — stroke-dasharray 기법 자체 구현(라이브러리·외부 참조 없음)
+   유료(일반) 보라 · 무상(보건소·지자체) 녹색 */
+function FundDonut({ t, data }) {
+  const R = 46, CIRC = 2 * Math.PI * R
+  const tot = data.reduce((a, b) => a + b.qty, 0)
+  return <div style={{ flex: '1 1 200px', minWidth: 190 }}>
+    <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginBottom: 8 }}>재원별 잔량</div>
+    {!tot ? <div style={{ fontSize: 11, color: t.textL, padding: 16, textAlign: 'center' }}>잔량이 없습니다</div>
+      : <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <svg viewBox="0 0 130 130" style={{ width: 118, height: 118, flexShrink: 0 }}>
+          <g transform="rotate(-90 65 65)">
+            {data.map((d, i) => { const dash = (d.qty / tot) * CIRC
+              const off = data.slice(0, i).reduce((a, x) => a + (x.qty / tot) * CIRC, 0)
+              return <circle key={d.label} cx="65" cy="65" r={R} fill="none" stroke={d.paid ? t.purple : t.green} strokeWidth="17"
+                strokeDasharray={dash + ' ' + (CIRC - dash)} strokeDashoffset={-off}><title>{d.label + ': ' + fmt(d.qty)}</title></circle> })}
+          </g>
+          <text x="65" y="62" textAnchor="middle" style={{ fontSize: 15, fontWeight: 800, fill: t.text }}>{fmt(tot)}</text>
+          <text x="65" y="77" textAnchor="middle" style={{ fontSize: 8, fill: t.textL }}>잔량</text>
+        </svg>
+        <div style={{ fontSize: 10, lineHeight: 1.9 }}>
+          {data.map(d => <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+            <span style={{ width: 9, height: 9, borderRadius: 3, background: d.paid ? t.purple : t.green, display: 'inline-block', flexShrink: 0 }} />
+            <span style={{ color: t.textM }}>{d.label}</span>
+            <span style={{ color: t.text, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{fmt(d.qty)}</span>
+          </div>)}
+        </div>
+      </div>}
+  </div>
+}
+
+/* LOT·유효기한 표 — 유효기한 오름차순. 상태 3단계.
+   ★ 잔량 열은 **계정 잔량 참고값**이다. LOT별 차감이 없어 LOT 잔량은 계산할 수 없다. */
+function LotTable({ t, rows, badge }) {
+  const td = { padding: '7px 9px', fontSize: 11, borderBottom: '1px solid ' + t.border, color: t.text, whiteSpace: 'nowrap' }
+  const BAL_TIP = 'LOT별 차감이 없어 LOT 단위 잔량은 계산할 수 없습니다. 계정 전체 잔량을 참고값으로 표시합니다.'
+  if (!rows.length) return <div style={{ padding: 22, textAlign: 'center', color: t.textL, fontSize: 12 }}>입고 기록이 없습니다 — LOT 은 입고 이벤트에만 기록됩니다</div>
+  return <div style={{ overflowX: 'auto' }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
+      <thead><tr>
+        {[['약품', 'left'], ['LOT', 'left'], ['유효기한', 'left'], ['입고', 'right'], ['잔량(참고)', 'right'], ['상태', 'left']].map(([h, al]) =>
+          <th key={h} title={h === '잔량(참고)' ? BAL_TIP : undefined}
+            style={{ ...td, color: t.textM, fontWeight: 700, textAlign: al, background: t.bg }}>{h}</th>)}
+      </tr></thead>
+      <tbody>{rows.map(x => <tr key={x.key}>
+        <td style={td}>{x.noDrug ? badge(NO_DRUG, t.lavender) : <span title={x.drug_name || undefined}><b>{x.drug_code}</b>{x.drug_name ? <span style={{ color: t.textM }}> · {x.drug_name.length > 18 ? x.drug_name.slice(0, 18) + '…' : x.drug_name}</span> : null}</span>}</td>
+        <td style={{ ...td, color: x.lot === LOT_NONE ? t.textL : t.text, fontWeight: x.lot === LOT_NONE ? 400 : 600 }}>{x.lot}</td>
+        <td style={{ ...td, fontVariantNumeric: 'tabular-nums' }}>{x.expiry || <span style={{ color: t.textL }}>—</span>}</td>
+        <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmt(x.received)}</td>
+        <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: t.textM }} title={BAL_TIP}>{fmt(x.accBalance)}</td>
+        <td style={td}>
+          {/* ★ 3단계 — 정상 녹색 / 임박 라벤더 / 경과 라벤더 굵게. 표는 밝은 배경이라 라벤더가 읽힌다. */}
+          {x.stage === 'ok' ? badge('정상', t.green)
+            : x.stage === 'soon' ? <span title={'D-' + x.days}>{badge('임박 D-' + x.days, t.lavender)}</span>
+              : x.stage === 'past' ? <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 6, fontSize: 9, fontWeight: 800, border: '2px solid ' + t.lavender, color: t.purple, whiteSpace: 'nowrap' }} title={'경과 ' + (-x.days) + '일'}>경과 {-x.days}일</span>
+                : <span style={{ color: t.textL, fontSize: 10 }}>기한 미기재</span>}
+        </td>
+      </tr>)}</tbody>
+    </table>
+  </div>
+}
+
 function accCatsOf(cats, accId) {
   return cats.filter(c => c.account_id === accId).slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || String(a.label).localeCompare(String(b.label), 'ko'))
 }
@@ -835,25 +1165,38 @@ function FixList({ t, btn, ip, badge, evts, cats, onFix }) {
             탭으로 나누면 「무엇을 언제 되돌렸는지」가 끊긴다. */}
         <tbody>{evts.map(e => {
           const neg = Number(e.qty) < 0
+          /* ★ LOT·유효기한은 **유형과 무관하게** 값이 있으면 보인다.
+             입력은 입고에서만 받지만, 이미 저장된 비입고 이벤트의 값이 화면에서 사라지면 안 된다. */
+          const hasLot = !!((e.lot_no || '').trim() || e.expiry_date)
+          const sub = hasLot || (neg && !!e.memo)
           return <Fragment key={e.id}>
             <tr>
-              <td style={{ ...td, ...(neg ? { borderBottom: 'none' } : {}) }}>{e.event_date}</td>
-              <td style={{ ...td, ...(neg ? { borderBottom: 'none' } : {}) }}>
+              <td style={{ ...td, ...(sub ? { borderBottom: 'none' } : {}) }}>{e.event_date}</td>
+              <td style={{ ...td, ...(sub ? { borderBottom: 'none' } : {}) }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                   {e.event_type}
                   {/* ★ 라벤더 테두리 배지 — 기존 badge() 토큰 그대로. 신색 없음 */}
                   {neg && badge('정정', t.lavender)}
                 </span>
               </td>
-              <td style={{ ...td, color: t.textM, ...(neg ? { borderBottom: 'none' } : {}) }}>{catName(e.category_id) || '—'}</td>
-              <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: neg ? t.textM : t.text, fontVariantNumeric: 'tabular-nums', ...(neg ? { borderBottom: 'none' } : {}) }}>{Number(e.qty).toLocaleString()}</td>
-              <td style={{ ...td, textAlign: 'right', ...(neg ? { borderBottom: 'none' } : {}) }}>
+              <td style={{ ...td, color: t.textM, ...(sub ? { borderBottom: 'none' } : {}) }}>{catName(e.category_id) || '—'}</td>
+              <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: neg ? t.textM : t.text, fontVariantNumeric: 'tabular-nums', ...(sub ? { borderBottom: 'none' } : {}) }}>{Number(e.qty).toLocaleString()}</td>
+              <td style={{ ...td, textAlign: 'right', ...(sub ? { borderBottom: 'none' } : {}) }}>
                 {/* ★ 회색 잔글씨였던 것을 보라 테두리 + 굵기로 올린다(신색 없이 대비만 높인다).
                     음수 행은 이미 정정분이므로 버튼을 내지 않는다 — 정정의 정정이 쌓인다. */}
                 {Number(e.qty) > 0 && <button onClick={() => { setTarget(e); setReason('') }}
                   style={{ ...btn(t.bg, t.purple, t.purple), padding: '4px 12px', fontSize: 11, fontWeight: 700 }}>정정</button>}
               </td>
             </tr>
+            {/* ★ LOT·유효기한 — 유형 무관 표시 */}
+            {hasLot && <tr>
+              <td colSpan={5} style={{ padding: '0 8px 5px 8px', borderBottom: (neg && e.memo) ? 'none' : '1px solid ' + t.border }}>
+                <span style={{ display: 'inline-flex', gap: 10, fontSize: 10, color: t.textM, paddingLeft: 7 }}>
+                  {(e.lot_no || '').trim() ? <span>LOT <b style={{ color: t.text }}>{e.lot_no}</b></span> : null}
+                  {e.expiry_date ? <span>유효기한 <b style={{ color: t.text }}>{String(e.expiry_date).slice(0, 10)}</b></span> : null}
+                </span>
+              </td>
+            </tr>}
             {/* 사유 — 무엇을 왜 되돌렸는지가 행에서 바로 읽혀야 한다 */}
             {neg && e.memo && <tr>
               <td colSpan={5} style={{ padding: '0 8px 7px 8px', borderBottom: '1px solid ' + t.border }}>
