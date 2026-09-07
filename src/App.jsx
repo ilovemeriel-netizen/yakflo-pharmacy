@@ -3342,7 +3342,7 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
     setCntSes(ses || null)
     if (!ses) { setCntItems({}); return }
     const { data: its } = await supabase.from('inventory_count_items')
-      .select('id,drug_code,counted_qty,created_at,applied_tx_id').eq('count_id', ses.id)
+      .select('id,drug_code,counted_qty,created_at,applied_tx_id,book_qty').eq('count_id', ses.id)
     const m = {}; (its || []).forEach(x => { m[x.drug_code] = x })
     setCntItems(m)
   }
@@ -3426,12 +3426,12 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
     let saved, error
     if (row) ({ data: saved, error } = await supabase.from('inventory_count_items')
       .update({ counted_qty: n, source: '약품변경' }).eq('id', row.id)
-      .select('id,drug_code,counted_qty,created_at,applied_tx_id').maybeSingle())
+      .select('id,drug_code,counted_qty,created_at,applied_tx_id,book_qty').maybeSingle())
     else {
       /* ★ items 에 tenant_id 컬럼이 없다 — RLS 는 count_id 조인으로 격리한다(0085 정책) */
       ;({ data: saved, error } = await supabase.from('inventory_count_items')
         .insert([{ count_id: ses.id, drug_code: code, counted_qty: n, source: '약품변경' }])
-        .select('id,drug_code,counted_qty,created_at,applied_tx_id').maybeSingle())
+        .select('id,drug_code,counted_qty,created_at,applied_tx_id,book_qty').maybeSingle())
     }
     setCntBusy(false)
     if (error) { cntFlash('실사 저장 실패: ' + dbErrorMsg(error), 'err'); return false }
@@ -3497,9 +3497,18 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
 
   /* 세션 진행 상황 — 부분 반영 표시용 */
   const cntAll = Object.values(cntItems)
-  const cntDone = cntAll.filter(x => !!x.applied_tx_id).length
+  const cntApplied = !!(cntSes && cntSes.status === '반영완료')
+  /* ★★ 반영 여부 판정은 이 헬퍼 하나로만 한다 — 네 곳에 흩어지면 또 갈린다.
+     ★ book_qty 단독으로 판정하면 안 된다: 실사 화면이 **항목을 담을 때도**
+       book_qty 를 기록한다(App.jsx:4583 수동 · 4736 엑셀). 담자마자 「반영됨」이 되어
+       [보정] 버튼과 체크박스가 사라지고 반영할 방법이 없어진다.
+       그래서 세션 status 가 '반영완료' 일 때만 book_qty 를 반영 신호로 인정한다 —
+       그 전이를 일으키는 코드는 runApply 하나뿐이다.
+     ※ 한계(수용됨): 부분 반영 중에는 차이 0 항목이 「미반영」으로 남는다.
+       다시 [보정] 해도 차이가 0 이라 중복 거래가 생기지 않으므로 안전한 방향의 오차다. */
+  const isApplied = it => !!it && (it.applied_tx_id != null || (cntApplied && it.book_qty != null))
+  const cntDone = cntAll.filter(isApplied).length
   const cntLeft = cntAll.length - cntDone
-  const cntApplied = cntSes && cntSes.status === '반영완료'
 
   const enriched = plans.map(p => { const d = dmap[p.from_drug_code] || {}; return { ...p, category: d.category || '', from_drug_name: d.drug_name || p.from_drug_code, ...calc(p) } })
   const shown = enriched.filter(p => filter === '전체' || p.plan_status === filter)
@@ -3554,7 +3563,7 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
           {/* ★ 부분 반영 상태 — 몇 건 중 몇 건이 남았는지 그대로 보인다 */}
           <span style={{ fontSize: 11, color: t.textM }}>{cntAll.length}건 중 {cntDone}건 반영{cntLeft ? ' · ' + cntLeft + '건 미반영' : ''}</span>
           <div style={{ flex: 1 }} />
-          <button onClick={() => setCntSel(cntSel.length ? [] : cntAll.filter(x => !x.applied_tx_id).map(x => x.drug_code))} style={{ padding: '5px 11px', borderRadius: 8, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{cntSel.length ? '선택 해제' : '미반영 전체 선택'}</button>
+          <button onClick={() => setCntSel(cntSel.length ? [] : cntAll.filter(x => !isApplied(x)).map(x => x.drug_code))} style={{ padding: '5px 11px', borderRadius: 8, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{cntSel.length ? '선택 해제' : '미반영 전체 선택'}</button>
           <button disabled={!cntSel.length || cntBusy} onClick={async () => { const r = await buildApply(cntSel); if (r && r.rows.length) setApplyAsk(r); else if (r) cntFlash('반영할 항목이 없습니다', 'err') }}
             style={{ padding: '6px 13px', borderRadius: 8, border: '1px solid ' + t.purple, background: (!cntSel.length || cntBusy) ? 'transparent' : t.purple, color: (!cntSel.length || cntBusy) ? t.textL : '#fff', cursor: (!cntSel.length || cntBusy) ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', opacity: (!cntSel.length || cntBusy) ? 0.55 : 1 }}>재고보정 {cntSel.length ? '(' + cntSel.length + ')' : ''}</button>
         </div>
@@ -3583,7 +3592,7 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
           return <tr key={p.id || i} style={{ borderBottom: `1px solid ${t.border}` }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
             {/* ★ 체크박스 열 — 실사값이 저장돼 있고 아직 반영 전인 행만 고를 수 있다 */}
             <td style={{ position: 'sticky', left: 0, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border, minWidth: CHANGE_SEL_W, maxWidth: CHANGE_SEL_W, width: CHANGE_SEL_W, padding: '6px 4px', textAlign: 'center' }}>
-              {(() => { const it = cntItems[p.from_drug_code]; const ok = !!it && !it.applied_tx_id
+              {(() => { const it = cntItems[p.from_drug_code]; const ok = !!it && !isApplied(it)
                 return <input type="checkbox" disabled={!ok} checked={cntSel.includes(p.from_drug_code)}
                   onChange={() => setCntSel(s => s.includes(p.from_drug_code) ? s.filter(x => x !== p.from_drug_code) : [...s, p.from_drug_code])}
                   title={ok ? '선택' : (it ? '이미 반영된 항목입니다' : '먼저 [실사]로 수량을 저장하세요')}
@@ -3609,7 +3618,7 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
                  세션 단위 「반영완료」와 다르다: 일부만 반영된 세션에서도 행마다 정확히 보인다. */
               else if (k === 'cur') { base = { padding: '6px 8px', fontSize: 11, textAlign: 'right', fontWeight: 600 }
                 const _it = cntItems[p.from_drug_code]
-                inner = <>{p.cur.toLocaleString()}{_it ? <span title={'실사 ' + Number(_it.counted_qty).toLocaleString() + (_it.created_at ? ' · 입력 ' + String(_it.created_at).slice(0, 16).replace('T', ' ') : '')} style={{ display: 'block', marginTop: 2, fontSize: 8, fontWeight: 700, whiteSpace: 'nowrap', color: _it.applied_tx_id ? t.green : t.purple }}>{'실사 ' + Number(_it.counted_qty).toLocaleString() + ' · ' + (_it.applied_tx_id ? '반영됨' : '미반영')}</span> : null}</> }
+                inner = <>{p.cur.toLocaleString()}{_it ? <span title={'실사 ' + Number(_it.counted_qty).toLocaleString() + (_it.created_at ? ' · 입력 ' + String(_it.created_at).slice(0, 16).replace('T', ' ') : '')} style={{ display: 'block', marginTop: 2, fontSize: 8, fontWeight: 700, whiteSpace: 'nowrap', color: isApplied(_it) ? t.green : t.purple }}>{'실사 ' + Number(_it.counted_qty).toLocaleString() + ' · ' + (isApplied(_it) ? '반영됨' : '미반영')}</span> : null}</> }
               else if (k === 'weeksLeft') { base = { padding: '6px 8px', fontSize: 11, textAlign: 'right', background: remBg(p.curRaw, wl), color: remFg(p.curRaw, wl) ?? ((wl != null && wl < 1) ? '#C00000' : undefined) }; inner = wl == null ? '—' : (Math.round(wl * 10) / 10).toLocaleString() }
               else if (k === 'etaStr') { base = { padding: '6px 8px', fontSize: 10, fontWeight: 600, background: remBg(p.curRaw, wl), color: remFg(p.curRaw, wl) ?? ((wl != null && wl < 1) ? '#C00000' : (eta ? t.text : t.textL)) }; inner = eta || '—' }
               else if (k === 'base_date') { base = { padding: '6px 8px', fontSize: 10, color: t.textM, textAlign: 'center' }; inner = p.base_date || '—' }
@@ -3626,7 +3635,7 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
                 발주·재고현황·향정마약은 종전대로 AdjustModal 을 쓴다(무변경). */}
             {dmap[p.from_drug_code] && <button onClick={() => setCntT(dmap[p.from_drug_code])} title="실물 수량 입력 — 재고는 바뀌지 않습니다" style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.amber}`, background: 'transparent', color: t.amber, cursor: 'pointer', fontSize: 9, fontWeight: 600 }}>실사</button>}
             {/* 행별 반영 — 실사값이 있고 아직 반영 전일 때만 낸다 */}
-            {(() => { const it = cntItems[p.from_drug_code]; if (!it || it.applied_tx_id) return null
+            {(() => { const it = cntItems[p.from_drug_code]; if (!it || isApplied(it)) return null
               return <button disabled={cntBusy} onClick={async () => { const r = await buildApply([p.from_drug_code]); if (r && r.rows.length) setApplyAsk(r) }}
                 title="반영 시점 재고를 다시 읽어 차액만큼 조정합니다" style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.purple}`, background: 'transparent', color: t.purple, cursor: cntBusy ? 'default' : 'pointer', fontSize: 9, fontWeight: 700 }}>보정</button> })()}
             {canDel && <button onClick={() => setDelP(p)} style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.red}`, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 9, fontWeight: 600 }}>삭제</button>}
