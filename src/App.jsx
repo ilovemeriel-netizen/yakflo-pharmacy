@@ -97,6 +97,21 @@ const ymd = (yy, mm, dd) => yy + '-' + pad(mm) + '-' + pad(dd);
 /* 「오늘」을 로컬(KST) YYYY-MM-DD 로. DB 에 날짜를 넣는 곳은 전부 이걸 쓴다.
    ★ 엑셀 파일명·화면 표시용 toISOString() 은 대상이 아니다(저장되지 않으므로 무해). */
 const todayYmd = () => { const n = new Date(); return ymd(n.getFullYear(), n.getMonth() + 1, n.getDate()) };
+/* timestamptz 를 KST 'YYYY-MM-DD HH:mm' 로 낸다.
+   ★ 왜 필요한가 — PostgREST 가 주는 ISO 문자열을 slice(0,16) 로 자르면 **UTC 가 그대로 나온다**.
+     병동 접수 기간이 화면엔 「09-09 09:00」인데 실제 마감은 18:00 KST 였다(2026-09-08 실측).
+     저장 경로는 이미 new Date(datetime-local).toISOString() 으로 KST→UTC 변환이 정상이라
+     표시만 되돌리면 된다.
+   ★ 왜 sv-SE 인가 — 로케일은 **형식**만 고른다. sv-SE 가 'YYYY-MM-DD HH:mm' 를 그대로 준다
+     (ko-KR 은 '2026. 9. 4. 오전 9:34' 형태라 기존 표기가 깨진다).
+     타임존은 Asia/Seoul 로 **명시**하므로 브라우저 설정과 무관하게 KST 가 보장된다 —
+     getHours() 로 조립하면 브라우저가 KST 가 아닐 때 라벨과 값이 어긋난다. */
+const fmtKst = v => {
+  if (!v) return '-'
+  const d = new Date(v)
+  if (isNaN(d)) return '-'
+  return d.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+};
 function getNT(d) { if (d.narcotic_type === '한외마약') return '일반'; if (d.narcotic_type === '향정' || d.narcotic_type === '마약') return d.narcotic_type; if (d.is_narcotic === true || d.is_narcotic === 'true') return '향정'; return '일반' }
 function isN(d) { return getNT(d) !== '일반' }
 /* 보험구분 정규화: 입력폼은 '급여'/'비급여', 일부 데이터는 '보험'/'비보험', 또는 NULL.
@@ -3918,7 +3933,8 @@ function WardAdmin() {
     flash('삭제했습니다'); loadAll()
   }
   /* 기간 표기 — 목록 행과 같은 규칙(값이 없으면 '-') */
-  const winRange = w => (w.opens_at ? String(w.opens_at).slice(0, 16).replace('T', ' ') : '-') + ' ~ ' + (w.closes_at ? String(w.closes_at).slice(0, 16).replace('T', ' ') : '-')
+  /* ★ KST 표기 — 범위 끝에 라벨 1회만 붙인다(양쪽에 붙이면 길어져 줄이 접힌다) */
+  const winRange = w => fmtKst(w.opens_at) + ' ~ ' + fmtKst(w.closes_at) + ' KST'
 
   /* ── 신청 내역 ── */
   const itemsOf = id => items.filter(x => x.request_id === id)
@@ -4110,7 +4126,7 @@ function WardAdmin() {
           <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: '1px solid ' + (w.is_open ? t.green : t.border), borderRadius: 10, background: w.is_open ? t.greenL : 'transparent' }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: t.text, minWidth: 90, textAlign: 'left' }}>{w.request_year} {w.season}</div>
             <div style={{ fontSize: 11, color: t.textM, flex: 1, textAlign: 'left' }}>
-              {w.opens_at ? String(w.opens_at).slice(0, 16).replace('T', ' ') : '-'} ~ {w.closes_at ? String(w.closes_at).slice(0, 16).replace('T', ' ') : '-'}
+              {fmtKst(w.opens_at)} ~ {fmtKst(w.closes_at)} KST
               {w.notice ? ' · ' + w.notice : ''}
             </div>
             <button onClick={() => toggleWin(w)} style={{ padding: '5px 14px', borderRadius: 8, border: '1px solid ' + (w.is_open ? t.green : t.border), background: w.is_open ? t.green : t.card, color: w.is_open ? t.card : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{w.is_open ? '열림 · 닫기' : '닫힘 · 열기'}</button>
@@ -4162,7 +4178,7 @@ function WardAdmin() {
       return <div className="no-print" style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.accent, padding: '14px 16px', marginTop: 12, boxShadow: t.shadow }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: t.accent }}>{r.ward}병동 · {r.requester_name}</div>
-          <div style={{ fontSize: 11, color: t.textM }}>{(r.submitted_at || '').slice(0, 16).replace('T', ' ')} · {r.request_year} {r.season}</div>
+          <div style={{ fontSize: 11, color: t.textM }}>{fmtKst(r.submitted_at)} · {r.request_year} {r.season}</div>
           <div style={{ flex: 1 }} />
           <span style={{ fontSize: 10, color: t.textL, fontWeight: 600 }}>상태</span>
           <select value={r.status} onChange={e => setStatus(r, e.target.value)} style={{ ...ip2, width: 'auto' }}>{WARD_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select>
