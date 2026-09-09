@@ -17,7 +17,9 @@ import { createClient } from '@supabase/supabase-js'
 import { randomBytes, scrypt as _scrypt, timingSafeEqual } from 'node:crypto'
 import { currentWindow, corsHeaders, json } from './ward-drugs.js'
 
-const CLOSED_MSG = '접수 기간이 아닙니다 · 문의 약제과 내선 217'
+/* ★ export 한다 — ward-status 가 마감 배너 문구로 **같은 상수**를 쓴다(DUP_MSG 와 같은 방식).
+   문구를 두 벌 두면 한쪽만 바뀌어 화면과 403 응답의 글자가 갈린다. */
+export const CLOSED_MSG = '접수 기간이 아닙니다 · 문의 약제과 내선 217'
 
 /* ── 재조회 비밀번호 ────────────────────────────────────────────
    ★ Node 내장 crypto.scrypt만 쓴다 — 외부 의존성을 넣지 않는다.

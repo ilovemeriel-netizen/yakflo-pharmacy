@@ -89,6 +89,10 @@ export default function App() {
   const [backNotice, setBackNotice] = useState(false)   // 뒤로 가기를 한 번 흡수했을 때의 안내
   const [wardConfirm, setWardConfirm] = useState(null)  // 바꾸려는 병동(확인 대기)
   const [dupWards, setDupWards] = useState([])          // 신청완료 병동 — ward-status 조회 또는 409로 채워진다
+  /* ★ 마감 안내 문구. '' 이면 마감이 아니다(구버전 응답·조회 실패 포함 — fail-open).
+     ★ 입력을 잠그지 않는다 — 재방문 조회(비밀번호 → 내역 보기) 경로가 마감 후에도 살아 있어야 한다.
+       신청 차단은 화면이 아니라 ward-drugs·ward-submit 이 403 으로 한다. */
+  const [closedMsg, setClosedMsg] = useState('')
   const [dupMsg, setDupMsg] = useState('')              // 서버(DUP_MSG)에서 받은 안내 — 409 문구와 글자 단위 동일
   const [pw, setPw] = useState('')                      // 저장 시 만드는 재조회 비밀번호
   const [vPw, setVPw] = useState('')                    // 배너에서 입력하는 조회용 비밀번호
@@ -120,7 +124,14 @@ export default function App() {
     let on = true
     fetch('/api/ward/status')
       .then(r => r.json())
-      .then(d => { if (on && d && d.ok) { setDupWards(Array.isArray(d.wards) ? d.wards.map(String) : []); if (d.msg) setDupMsg(d.msg) } })
+      .then(d => {
+        if (on && d && d.ok) {
+          setDupWards(Array.isArray(d.wards) ? d.wards.map(String) : []); if (d.msg) setDupMsg(d.msg)
+          /* ★ open 이 명시적으로 false 일 때만 마감으로 본다.
+             구버전 서버는 이 필드를 주지 않는다(undefined) — 그때는 현행 동작을 유지한다(fail-open). */
+          if (d.open === false) setClosedMsg(d.msg || '')
+        }
+      })
       .catch(() => { /* fail-open — 아무것도 하지 않는다 */ })
     return () => { on = false }
   }, [])
@@ -537,12 +548,16 @@ export default function App() {
                    위 배너의 minHeight 고정이 무의미해지고 아래 요소가 더 크게 밀린다(T-0 실측).
                    렌더는 유지하고 문구만 갈아, 잠금 전환 시 순 이동량을 0으로 만든다.
                    배경·색·크기·padding 무변경. */}
-            {!ready && (
+            {/* ★ 마감(closedMsg)이면 ready 와 무관하게 띄운다 — 병동·작성자를 넣어도 안내가 남아야 한다.
+                박스는 기존 것을 그대로 쓴다(배경·테두리·색·padding 무변경). 문구만 갈아끼운다. */}
+            {(!ready || closedMsg) && (
               <div style={{
                 marginTop: 12, background: rgba(LAVENDER, 0.24), border: '1px solid ' + rgba(LAVENDER, 0.7), borderRadius: 10,
                 padding: '11px 12px', fontSize: 14, fontWeight: 800, color: PURPLE, textAlign: 'center', lineHeight: 1.6,
               }}>
-                {locked ? '이미 신청이 완료되어 수정할 수 없습니다' : '병동과 작성자 이름을 먼저 입력해 주세요'}
+                {closedMsg
+                  ? closedMsg
+                  : locked ? '이미 신청이 완료되어 수정할 수 없습니다' : '병동과 작성자 이름을 먼저 입력해 주세요'}
               </div>
             )}
           </div>
