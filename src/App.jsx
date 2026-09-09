@@ -1160,10 +1160,46 @@ const ATC_PAL = ['#804A87','#019748','#2E4A62','#BFA6D9','#A8CF5C','#92C8E0','#E
 function atcColor(name){ if(!name) return '#9C7BB5'; let h=0; for(let i=0;i<name.length;i++) h=(h*31+name.charCodeAt(i))>>>0; return ATC_PAL[h%ATC_PAL.length]; }
 function AtcDonut({ data, total, colorFn, onSlice, t }){ const R=58, CIRC=2*Math.PI*R; const tot=total||1; return <svg viewBox="0 0 160 160" style={{ width:150, height:150, flexShrink:0 }}><g transform="rotate(-90 80 80)">{data.map((d,i)=>{ const dash=(d.count/tot)*CIRC; const off=data.slice(0,i).reduce((a,x)=>a+(x.count/tot)*CIRC,0); const el=<circle key={i} cx="80" cy="80" r={R} fill="none" stroke={colorFn(d.name)} strokeWidth="20" strokeDasharray={dash+' '+(CIRC-dash)} strokeDashoffset={-off} style={{ cursor:'pointer' }} onClick={()=>onSlice(d.name)}><title>{d.name+': '+d.count}</title></circle>; return el; })}</g><text x="80" y="76" textAnchor="middle" style={{ fontSize:15, fontWeight:800, fill:t.accent }}>{total}</text><text x="80" y="93" textAnchor="middle" style={{ fontSize:9, fill:t.textL }}>효능군</text></svg>; }
 /* ═══ 통합 알림센터 (3종 경고 집약·데이터 비의존) ═══ */
+/* ★ 섹션은 SECTIONS 배열 하나가 정본이다. 호출부를 나열하지 말 것 —
+   순서·조건·건수가 네 곳에 흩어지면 또 갈린다. 섹션 추가 = 객체 1개 추가. */
+const ALC_BP = 1000        /* 2분할 분기점 — .dsa-grid(1477) 와 동일 기준. ★ 3열 분기는 두지 않는다(약품명 잘림) */
+const ALC_HEAD_H = 41      /* 헤더 실측 = padding 10+10 · 내용 20 · border 1 */
+const ALC_ROW_H = 27       /* 행 실측 = padding 5+5 · font 12(line 16) · border 1 */
+const ALC_EMPTY_H = 36     /* 0건 본문 = padding 10+10 · font 12(line 16). ★ 섹션 자체는 숨기지 않는다 */
+const ALC_MORE_H = 37      /* 더보기 행 = padding 10+10 · font 11(line 16) · border 1 */
+const ALC_BODY_MAX = 220   /* 본문 스크롤 상한 */
+const ALC_CARD_GAP = 16    /* marginBottom 14 + 카드 상하 border 2 */
+/* 섹션 예상 높이 — 컬럼 균형 배분 전용. 렌더에는 쓰지 않는다(실제 높이는 브라우저가 정한다) */
+function alcH(s) {
+  const n = s.items.length
+  if (!n) return ALC_HEAD_H + ALC_EMPTY_H + ALC_CARD_GAP
+  const body = s.mode === 'more'
+    ? Math.min(n, 5) * ALC_ROW_H + (n > 5 ? ALC_MORE_H : 0)
+    : Math.min(n * ALC_ROW_H, ALC_BODY_MAX)
+  return ALC_HEAD_H + body + ALC_CARD_GAP
+}
+/* ★ 순서를 흐트러뜨리지 않는다 — 앞에서부터 잘라 좌·우 높이차가 가장 작은 지점에서 나눈다.
+   낮은 쪽에 하나씩 넣는 그리디는 균형이 같아도 1·3 / 2·4·5 처럼 읽는 순서가 뒤엉킨다. */
+function alcSplit(list) {
+  if (list.length < 2) return [list, []]
+  const hs = list.map(alcH), tot = hs.reduce((x, y) => x + y, 0)
+  let cut = 1, gap = Infinity, run = 0
+  for (let i = 0; i < list.length - 1; i++) { run += hs[i]; const g = Math.abs(run - (tot - run)); if (g < gap) { gap = g; cut = i + 1 } }
+  return [list.slice(0, cut), list.slice(cut)]
+}
 function AlertCenter({ drugs, onNav }) {
   const { t, open360 } = useTheme();
   const [supPlans, setSupPlans] = useState([]); const [supMore, setSupMore] = useState(false); // 수급 이슈(약품변경 재사용, 읽기 전용)
   useEffect(() => { let on = true; supabase.from('drug_change_plans').select('from_drug_code,plan_status,memo,weekly_usage,base_date').in('plan_status', ['모니터링', '생산중단', '일시품절']).order('base_date', { ascending: false }).then(({ data }) => { if (on) setSupPlans(data || []) }); return () => { on = false } }, []);
+  /* 2분할 판정 — CSS 만으로는 높이 균형 배분을 할 수 없어 폭을 JS 로도 읽는다.
+     분기점은 ALC_BP 하나에서만 나온다(아래 <style> 과 동일 상수). matchMedia 선례: hoverable(315) */
+  const [wide, setWide] = useState(() => { try { return window.matchMedia('(min-width:' + ALC_BP + 'px)').matches } catch { return false } });
+  useEffect(() => {
+    let mq; try { mq = window.matchMedia('(min-width:' + ALC_BP + 'px)') } catch { return }
+    const onCh = e => setWide(e.matches)   /* ★ 초기값은 useState 초기화식이 이미 읽었다 — 여기서 다시 set 하지 않는다(연쇄 렌더) */
+    if (mq.addEventListener) { mq.addEventListener('change', onCh); return () => mq.removeEventListener('change', onCh) }
+    mq.addListener(onCh); return () => mq.removeListener(onCh)
+  }, []);
   const _supBg = s => s === '생산중단' ? t.redL : s === '일시품절' ? t.amberL : t.accentL; // 배지 색상: 약품변경 표와 동일 규칙(모니터링=accent)
   const _supFg = s => s === '생산중단' ? t.red : s === '일시품절' ? t.amber : t.accent;
   const _supMap = {}; drugs.forEach(d => { _supMap[d.drug_code] = d });
@@ -1176,32 +1212,65 @@ function AlertCenter({ drugs, onNav }) {
   const reorder = md.filter(d => stockStat(d) === '주문필요').sort((a, b) => (a.current_qty - a.safety_stock) - (b.current_qty - b.safety_stock));
   const narc = md.filter(d => isN(d) && eD(d) !== null && eD(d) <= 90).sort((a, b) => eD(a) - eD(b));
   const ddl = d => { const x = eD(d); return x === null ? '-' : 'D' + (x <= 0 ? x : '-' + x) };
-  const sec = (o) => <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, overflow: 'hidden', marginBottom: 14 }}>
-    <div onClick={o.deeplink} style={{ padding: '14px 18px', borderBottom: '1px solid ' + t.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: o.items.length ? o.color + '0D' : t.bg }}>
-      <span style={{ fontWeight: 700, fontSize: 14, color: t.text, display: 'flex', alignItems: 'center', gap: 8 }}>{o.icon} {o.title}{o.sub}</span>
-      <span style={{ fontWeight: 800, fontSize: 16, color: o.items.length ? o.color : t.textL }}>{o.items.length}건 ›</span>
+  const subS = { fontSize: 11, fontWeight: 500, color: t.textM, marginLeft: 6 };
+  /* 약품 행 좌측 — 4개 섹션 공통. ★ nowrap·ellipsis 를 넣지 않는다(약품명이 잘린다) */
+  const dLeft = d => <span><span style={{ color: t.accent, fontWeight: 600 }}>{d.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code} · {d.category}</span></span>;
+  const openD = d => open360 && open360(d);
+  const toChange = () => onNav({ menu: 'change' });
+  /* ── 섹션 정본 ── mode 'more' = 5건+더보기(수급 이슈) · 기본 = maxHeight 스크롤 */
+  const SECTIONS = [
+    {
+      key: 'exp', icon: '📅', title: '유효기간 임박', color: t.red, items: exp,
+      subtitle: <span style={subS}>(만료 {expired.length} · 긴급 {urgent.length} · 주의 {caution.length})</span>,
+      deeplink: () => onNav({ menu: 'expiry', focus: 'urgent' }), onRow: openD, left: dLeft,
+      right: d => <span style={{ fontSize: 11 }}><span style={exS(d.expiry_date, t)}>{d.expiry_date}</span> <b style={{ color: eD(d) <= 0 ? t.red : eD(d) <= 30 ? t.amber : t.blue }}>{ddl(d)}</b></span>
+    },
+    {
+      key: 'low', icon: '🚨', title: '긴급 재고', color: t.red, items: low, subtitle: null,
+      deeplink: () => onNav({ menu: 'stock', filter: '긴급' }), onRow: openD, left: dLeft,
+      right: d => <span style={{ fontSize: 11, color: t.textM }}>현 <b style={{ color: t.red }}>{(d.current_qty || 0).toLocaleString()}</b> / 안전 {(d.safety_stock || 0).toLocaleString()}</span>
+    },
+    {
+      key: 'reorder', icon: '📦', title: '주문 필요', color: t.amber, items: reorder, subtitle: null,
+      deeplink: () => onNav({ menu: 'stock', filter: '주문필요' }), onRow: openD, left: dLeft,
+      right: d => <span style={{ fontSize: 11, color: t.textM }}>현 <b style={{ color: t.amber }}>{(d.current_qty || 0).toLocaleString()}</b> / 안전 {(d.safety_stock || 0).toLocaleString()}</span>
+    },
+    {
+      key: 'narc', icon: '💊', title: '향정·마약 유효기간 임박', color: t.purple, items: narc,
+      subtitle: <span style={subS}>(≤90일)</span>,
+      deeplink: () => onNav({ menu: 'narcotic' }), onRow: openD, left: dLeft,
+      right: d => <span style={{ fontSize: 11 }}><Bd bg={getNT(d) === '마약' ? t.redL : t.purpleL} color={getNT(d) === '마약' ? t.red : t.purple}>{getNT(d)}</Bd> <b style={{ color: t.purple, marginLeft: 4 }}>{ddl(d)}</b></span>
+    },
+    /* 수급 이슈: 약품변경(drug_change_plans) 재사용·읽기 전용. ★ 0건이면 미표시(현행 동작 보존) · 행 클릭 → 약품변경 */
+    {
+      key: 'sup', icon: '⚠', title: '수급 이슈', color: t.amber, items: supRows, mode: 'more', hideWhenEmpty: true,
+      subtitle: <span style={subS}>(모니터링·생산중단·일시품절)</span>,
+      deeplink: toChange, onRow: toChange,
+      left: r => <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span style={{ color: t.accent, fontWeight: 600 }}>{r.name}</span> <Bd bg={_supBg(r.status)} color={_supFg(r.status)}>{r.status}</Bd>{r.memo ? <span style={{ color: t.textL, fontSize: 10 }}> · {r.memo}</span> : null}</span>,
+      right: r => <span style={{ fontSize: 11, color: t.textM, flexShrink: 0, marginLeft: 8 }}>{r.weeksLeft != null ? '남은 ' + (Math.round(r.weeksLeft * 10) / 10) + '주' : '남은 -'}{r.etaStr ? ' · 예상 ' + r.etaStr : ''}</span>
+    },
+  ].filter(s => !(s.hideWhenEmpty && !s.items.length));
+  const hv = e => e.currentTarget.style.background = t.glass, hvOut = e => e.currentTarget.style.background = '';
+  const renderSec = s => {
+    const n = s.items.length
+    const rows = s.mode === 'more' ? (supMore ? s.items : s.items.slice(0, 5)) : s.items.slice(0, 60)
+    return <div key={s.key} style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, overflow: 'hidden', marginBottom: 14 }}>
+      <div onClick={s.deeplink} style={{ padding: '10px 18px', borderBottom: '1px solid ' + t.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: n ? s.color + '0D' : t.bg }}>
+        <span style={{ fontWeight: 700, fontSize: 14, color: t.text, display: 'flex', alignItems: 'center', gap: 8 }}>{s.icon} {s.title}{s.subtitle}</span>
+        <span style={{ fontWeight: 800, fontSize: 16, color: n ? s.color : t.textL }}>{n}건 ›</span>
+      </div>
+      {n ? <div style={s.mode === 'more' ? undefined : { maxHeight: ALC_BODY_MAX, overflowY: 'auto' }}>
+        {rows.map((it, i) => <div key={i} onClick={() => s.onRow(it)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 18px', borderBottom: '1px solid ' + t.border, cursor: 'pointer', fontSize: 12 }} onMouseEnter={hv} onMouseLeave={hvOut}>{s.left(it)}{s.right(it)}</div>)}
+      </div> : <div style={{ padding: 10, textAlign: 'center', color: t.textL, fontSize: 12 }}>0건</div>}
+      {s.mode === 'more' && n > 5 && <div onClick={() => setSupMore(v => !v)} style={{ padding: '10px 18px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: t.accent, cursor: 'pointer', borderTop: '1px solid ' + t.border }} onMouseEnter={hv} onMouseLeave={hvOut}>{supMore ? '접기' : '더보기 (' + n + ')'}</div>}
     </div>
-    {o.items.length ? <div style={{ maxHeight: 300, overflowY: 'auto' }}>{o.items.slice(0, 60).map((d, i) => <div key={i} onClick={() => open360 && open360(d)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 18px', borderBottom: '1px solid ' + t.border, cursor: 'pointer', fontSize: 12 }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}><span><span style={{ color: t.accent, fontWeight: 600 }}>{d.drug_name}</span> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code} · {d.category}</span></span>{o.render(d)}</div>)}</div> : <div style={{ padding: 18, textAlign: 'center', color: t.textL, fontSize: 12 }}>0건</div>}
-  </div>;
+  };
+  const [colA, colB] = wide ? alcSplit(SECTIONS) : [SECTIONS, null];
   return <div style={{ padding: '20px 24px' }}>
     <div style={{ fontSize: 18, fontWeight: 800, color: t.text, marginBottom: 4 }}>🔔 통합 알림센터</div>
     <div style={{ fontSize: 11, color: t.textL, marginBottom: 16 }}>사용·휴면 약품 기준 · 중지(아카이브) 제외</div>
-    {sec({ icon: '📅', title: '유효기간 임박', color: t.red, items: exp, sub: <span style={{ fontSize: 11, fontWeight: 500, color: t.textM, marginLeft: 6 }}>(만료 {expired.length} · 긴급 {urgent.length} · 주의 {caution.length})</span>, deeplink: () => onNav({ menu: 'expiry', focus: 'urgent' }), render: d => <span style={{ fontSize: 11 }}><span style={exS(d.expiry_date, t)}>{d.expiry_date}</span> <b style={{ color: eD(d) <= 0 ? t.red : eD(d) <= 30 ? t.amber : t.blue }}>{ddl(d)}</b></span> })}
-    {sec({ icon: '🚨', title: '긴급 재고', color: t.red, items: low, sub: null, deeplink: () => onNav({ menu: 'stock', filter: '긴급' }), render: d => <span style={{ fontSize: 11, color: t.textM }}>현 <b style={{ color: t.red }}>{(d.current_qty || 0).toLocaleString()}</b> / 안전 {(d.safety_stock || 0).toLocaleString()}</span> })}
-    {sec({ icon: '📦', title: '주문 필요', color: t.amber, items: reorder, sub: null, deeplink: () => onNav({ menu: 'stock', filter: '주문필요' }), render: d => <span style={{ fontSize: 11, color: t.textM }}>현 <b style={{ color: t.amber }}>{(d.current_qty || 0).toLocaleString()}</b> / 안전 {(d.safety_stock || 0).toLocaleString()}</span> })}
-    {sec({ icon: '💊', title: '향정·마약 유효기간 임박', color: t.purple, items: narc, sub: <span style={{ fontSize: 11, fontWeight: 500, color: t.textM, marginLeft: 6 }}>(≤90일)</span>, deeplink: () => onNav({ menu: 'narcotic' }), render: d => <span style={{ fontSize: 11 }}><Bd bg={getNT(d) === '마약' ? t.redL : t.purpleL} color={getNT(d) === '마약' ? t.red : t.purple}>{getNT(d)}</Bd> <b style={{ color: t.purple, marginLeft: 4 }}>{ddl(d)}</b></span> })}
-    {/* 수급 이슈: 약품변경(drug_change_plans) 재사용·읽기 전용. 0건이면 미표시. 5건+더보기(3분할 패턴). 행 클릭 → 약품변경 */}
-    {supRows.length > 0 && (() => { const shown = supMore ? supRows : supRows.slice(0, 5); return <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, overflow: 'hidden', marginBottom: 14 }}>
-      <div onClick={() => onNav({ menu: 'change' })} style={{ padding: '14px 18px', borderBottom: '1px solid ' + t.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: t.amber + '0D' }}>
-        <span style={{ fontWeight: 700, fontSize: 14, color: t.text, display: 'flex', alignItems: 'center', gap: 8 }}>⚠ 수급 이슈 <span style={{ fontSize: 11, fontWeight: 500, color: t.textM, marginLeft: 6 }}>(모니터링·생산중단·일시품절)</span></span>
-        <span style={{ fontWeight: 800, fontSize: 16, color: t.amber }}>{supRows.length}건 ›</span>
-      </div>
-      <div>{shown.map((r, i) => <div key={i} onClick={() => onNav({ menu: 'change' })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 18px', borderBottom: '1px solid ' + t.border, cursor: 'pointer', fontSize: 12 }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
-        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span style={{ color: t.accent, fontWeight: 600 }}>{r.name}</span> <Bd bg={_supBg(r.status)} color={_supFg(r.status)}>{r.status}</Bd>{r.memo ? <span style={{ color: t.textL, fontSize: 10 }}> · {r.memo}</span> : null}</span>
-        <span style={{ fontSize: 11, color: t.textM, flexShrink: 0, marginLeft: 8 }}>{r.weeksLeft != null ? '남은 ' + (Math.round(r.weeksLeft * 10) / 10) + '주' : '남은 -'}{r.etaStr ? ' · 예상 ' + r.etaStr : ''}</span>
-      </div>)}</div>
-      {supRows.length > 5 && <div onClick={() => setSupMore(v => !v)} style={{ padding: '10px 18px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: t.accent, cursor: 'pointer', borderTop: '1px solid ' + t.border }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>{supMore ? '접기' : '더보기 (' + supRows.length + ')'}</div>}
-    </div>; })()}
+    <style>{'.alc-grid{display:grid;grid-template-columns:1fr;gap:0 14px;align-items:start}@media(min-width:' + ALC_BP + 'px){.alc-grid{grid-template-columns:repeat(2,1fr)}}'}</style>
+    <div className="alc-grid">{colB ? <><div>{colA.map(renderSec)}</div><div>{colB.map(renderSec)}</div></> : colA.map(renderSec)}</div>
   </div>;
 }
 
