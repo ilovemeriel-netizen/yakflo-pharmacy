@@ -1,12 +1,21 @@
 // verify_vaccine_purge.mjs — apply_vaccine_purge 이후 운영 검증.
 //
+// ★★★ 아카이브 — 재실행하지 말 것.
+//   2026-09-09 purge 검증 완료(10/10). 이후 TT-FLU44 계정이 재생성되어
+//   검사 1·2(백신 3종 0행)는 무효다. 지금 돌리면 반드시 FAIL 하는데,
+//   그것은 회귀가 아니라 이 스크립트가 낡았다는 뜻이다.
+//   ★ 정본 기준값은 이 파일이 아니라 **백로그 「변동값」 절**을 볼 것.
+//   ★ 4번은 트랜잭션 안에서 임시행을 넣는다 — 재실행 금지 이유가 하나 더 있다.
+//
 // ★★ 거의 전부 읽기 전용이다. 단 하나의 예외가 4번(가드 복구 실증)으로,
 //    트랜잭션 안에서 임시행 1건을 넣고 DELETE 가 23514 로 막히는지 본 뒤
 //    **반드시 ROLLBACK** 한다. 데이터가 0행이라 이 방법 외에는 가드를
 //    실증할 길이 없다(0행 DELETE 는 행 트리거를 발화시키지 않는다).
 //
-// ★ 정본 기준일 2026-09-09 — 약품 1,119 는 LVT5 신규 등록분이 반영된 값이다.
-//   이 값은 **변동값**이므로 다음에 읽을 때 기준일과 함께 확인할 것.
+// ★ 정본 기준일 2026-09-10 — 변동값은 **거래 1,412** · **약품 1,119** 다.
+//   거래 1,411 → 1,412 는 2026-09-03 TT-FLU44 입고 120(15,400) 반영분이고,
+//   약품 1,118 → 1,119 는 2026-09-08 LVT5 레비탐정500mg 신규 등록분이다.
+//   둘 다 업무 입력이 있을 때마다 바뀐다 — FAIL 이면 코드보다 이 값이 낡았는지 먼저 볼 것.
 import { createRequire } from 'node:module'
 const REPO = 'c:/Users/iamam/OneDrive/바탕 화면/yakflo-pharmacy-main/'
 const pg = createRequire(REPO + 'package.json')('pg')
@@ -80,10 +89,10 @@ try {
     (select count(*)::int from public.transactions where type='조정') adj,
     (select coalesce(sum(closing_amount),0)::text from public.monthly_snapshots where snap_year=2026 and snap_month between 1 and 7) snap7,
     (select coalesce(sum(closing_amount),0)::text from public.monthly_snapshots where snap_year=2026 and snap_month=8) snap8`)
-  P('5 정본 무변동 (2026-09-09)',
-    k.txs === 1411 && k.drugs === 1119 && k.barcodes === 2894 && k.adj === 75
+  P('5 정본 대조 (2026-09-10)',
+    k.txs === 1412 && k.drugs === 1119 && k.barcodes === 2894 && k.adj === 75
     && k.snap7.startsWith('885285628.424') && k.snap8.startsWith('101208155.9'),
-    `거래 ${k.txs}/1411 · 약품 ${k.drugs}/1119 · 바코드 ${k.barcodes}/2894 · 조정 ${k.adj}/75 · 1~7월 ${k.snap7} · 8월 ${k.snap8}`)
+    `거래 ${k.txs}/1412 · 약품 ${k.drugs}/1119 · 바코드 ${k.barcodes}/2894 · 조정 ${k.adj}/75 · 1~7월 ${k.snap7} · 8월 ${k.snap8}`)
 
   /* ── 6. 실사 계통 미접촉 ── */
   const inv = await one(`select
@@ -103,7 +112,7 @@ try {
   let pass = 0
   for (const x of R) { console.log((x.ok ? '  통과' : '★ 실패') + '  ' + x.k.padEnd(24) + ' ' + x.d); if (x.ok) pass++ }
   console.log('─'.repeat(88))
-  console.log(`${pass}/${R.length} 통과 · 기준일 2026-09-09`)
+  console.log(`${pass}/${R.length} 통과 · 기준일 2026-09-10`)
   process.exitCode = pass === R.length ? 0 : 1
 } catch (e) { console.error('★ 실패:', e.message); process.exitCode = 1 }
 finally { await c.end() }
