@@ -51,6 +51,11 @@ const ACC_DEL_RESTRICT = '이 계정에는 기록이 있어 삭제할 수 없습
 const ACC_LOCKED_MSG = '변경하려면 새 계정을 만드세요'
 /* 이력 모달 상단 안내 — append-only 규약을 조작 직전에 알린다. */
 const LEDGER_FIX_MSG = '기록은 수정·삭제할 수 없습니다. 잘못 입력한 경우 [정정]으로 반대 수량을 추가해 상계하세요.'
+/* ★ 접종 모달의 대상 구분 안내는 두 경우를 갈라야 한다 —
+   "아예 없음" 과 "있는데 전부 중지" 는 사용자가 할 일이 다르다.
+   같은 문구를 쓰면 중지된 것을 없는 것으로 오인해 원인을 못 찾는다. */
+const CAT_NONE_MSG = '이 계정에 대상 구분이 없습니다 — 카드의 「대상 구분」에서 먼저 추가해 주세요.'
+const CAT_ALL_OFF_MSG = '대상 구분이 모두 중지되어 있습니다 — 카드의 「대상 구분」에서 [다시 사용]을 눌러 주세요.'
 /* 카테고리 프리셋 — ★ funding_source 로 자동 결정하지 않는다.
    같은 '보건소'에 독감 어르신과 코로나가 함께 들어가는데 카테고리가 서로 다르다. */
 const PRESETS = [
@@ -917,7 +922,7 @@ function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onA
             <div style={lb}>대상 구분 <span style={{ color: t.purple }}>*</span></div>
             {!accCats.filter(c => c.is_active).length
               ? <div style={{ fontSize: 11, color: t.text, borderLeft: '3px solid ' + t.lavender, paddingLeft: 8, lineHeight: 1.6 }}>
-                이 계정에 대상 구분이 없습니다 — 카드의 「대상 구분」에서 먼저 추가해 주세요.</div>
+                {accCats.length ? CAT_ALL_OFF_MSG : CAT_NONE_MSG}</div>
               : <select value={f.category_id} onChange={e => set('category_id', e.target.value)} style={{ ...ip, width: '100%' }}>
                 <option value="">선택해 주세요</option>
                 {accCats.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
@@ -968,7 +973,7 @@ function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onA
                 style={{ ...ip, flex: 1, fontSize: 12 }} />
               <button disabled={i === 0 || busy} onClick={async () => { setBusy(true); await onCat('move', { id: c.id, sort_order: (arr[i - 1].sort_order ?? 0) - 1 }); setBusy(false) }} style={{ ...btn(t.bg, t.textM, t.border), padding: '5px 8px', fontSize: 11 }}>↑</button>
               <button disabled={i === arr.length - 1 || busy} onClick={async () => { setBusy(true); await onCat('move', { id: c.id, sort_order: (arr[i + 1].sort_order ?? 0) + 1 }); setBusy(false) }} style={{ ...btn(t.bg, t.textM, t.border), padding: '5px 8px', fontSize: 11 }}>↓</button>
-              <button disabled={busy} onClick={async () => { setBusy(true); await onCat('toggle', { id: c.id, is_active: !c.is_active }); setBusy(false) }} style={{ ...btn(t.bg, c.is_active ? t.green : t.textL, t.border), padding: '5px 9px', fontSize: 11 }}>{c.is_active ? '사용' : '중지'}</button>
+              <button disabled={busy} onClick={async () => { setBusy(true); await onCat('toggle', { id: c.id, is_active: !c.is_active }); setBusy(false) }} style={{ ...btn(t.bg, c.is_active ? t.textL : t.green, t.border), padding: '5px 9px', fontSize: 11 }}>{c.is_active ? '중지' : '다시 사용'}</button>
               <button disabled={busy} onClick={async () => {
                 setBusy(true); const r = await onCat('del', { id: c.id }); setBusy(false)
                 if (r && r.restrict) setRestrictAsk(c)
