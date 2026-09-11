@@ -439,6 +439,26 @@ function Drug360Modal({ drug: dr, onClose, pos, setPos, onSaved }) {
   </div>;
 }
 
+/* ═══ 보관위치 제안 목록 (location_vocab) — 입력칸 3곳 공용 ═══
+   ★ select 가 아니라 datalist 다. 자유 입력을 유지해야 미등록 값을 가진 약품을 편집할 때
+     값이 소실되지 않는다(실측: 미등록 19종 · 약품 1,006건).
+   ★ 설명은 location_vocab.code 를 재활용한다. 0030 시드가 code 에 label 을 복사해 두었으므로
+     둘이 같으면 설명 없음으로 본다 — 데이터는 고치지 않는다(정정은 보관위치 화면에서).
+   ★ option 의 value 는 항상 label(코드)이다. drugs.storage_location 과 완전일치로 연결되므로
+     설명을 value 에 섞으면 연결이 끊긴다. */
+const lvDesc = r => (r && r.code !== r.label ? (r.code || '') : '')
+function LocVocabDatalist({ id }) {
+  const [opts, setOpts] = useState([])
+  useEffect(() => {
+    let on = true
+    supabase.from('location_vocab').select('label,code,sort_order,is_active').order('sort_order').order('label')
+      .then(({ data }) => { if (on) setOpts((data || []).filter(x => x.is_active !== false)) })
+    return () => { on = false }
+  }, [])
+  return <datalist id={id}>{opts.map(o => { const d = lvDesc(o)
+    return <option key={o.label} value={o.label}>{d ? o.label + ' · ' + d : o.label}</option> })}</datalist>
+}
+
 /* ═══ 약품 수정 모달 (드래그 가능) ═══ */
 function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   const { t, profile, memberRole } = useTheme(); const oc = dr.drug_code || ''
@@ -774,7 +794,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>현재고</label><input type="number" value={f.current_qty} onChange={e => set('current_qty', e.target.value)} style={ip} /></div><div><label style={lb}>안전재고</label><input type="number" value={f.safety_stock} onChange={e => set('safety_stock', e.target.value)} style={ip} /></div><div><label style={lb}>최대재고</label><input type="number" value={f.max_stock} onChange={e => set('max_stock', e.target.value)} style={ip} /></div></div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>보험코드</label><input value={f.insurance_code} onChange={e => set('insurance_code', e.target.value)} style={ip} /></div><div><label style={lb}>유효기한(대표)</label><input type="date" value={f.expiry_date} onChange={e => set('expiry_date', e.target.value)} style={ip} /></div></div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>품목기준코드</label><input value={f.standard_code} onChange={e => set('standard_code', e.target.value)} style={ip} /></div></div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>보관방법</label><select value={f.storage_method} onChange={e => set('storage_method', e.target.value)} style={ip}>{STORAGE_OPTS.map(s => <option key={s}>{s}</option>)}</select></div><div><label style={lb}>보관위치</label><input value={f.storage_location} onChange={e => set('storage_location', e.target.value)} style={ip} /></div></div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>보관방법</label><select value={f.storage_method} onChange={e => set('storage_method', e.target.value)} style={ip}>{STORAGE_OPTS.map(s => <option key={s}>{s}</option>)}</select></div><div><label style={lb}>보관위치</label><input value={f.storage_location} onChange={e => set('storage_location', e.target.value)} style={ip} list="loc-vocab-new" /><LocVocabDatalist id="loc-vocab-new" /></div></div>
                 <div style={{ marginBottom: 10 }}><label style={lb}>도매사</label><select value={f.supplier_id || ''} onChange={e => set('supplier_id', e.target.value)} style={ip}><option value=''>미지정</option>{edSuppliers.map(su => <option key={su.id} value={su.id}>{su.name}</option>)}</select></div>
                 <div style={{ marginBottom: 10 }}><label style={lb}>비고</label><textarea value={f.memo} onChange={e => set('memo', e.target.value)} rows={2} style={{ ...ip, resize: 'vertical' }} /></div>
                 {memberRole === 'owner' && <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }}><input type="checkbox" checked={!!f.is_high_alert} onChange={e => set('is_high_alert', e.target.checked)} style={{ width: 16, height: 16, accentColor: '#D9342B' }} /><span style={{ fontSize: 12, fontWeight: 700, color: '#D9342B' }}>⚠ 고위험 의약품으로 지정</span></label>}
@@ -791,7 +811,7 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>품목기준코드</label><input value={f.standard_code} onChange={e => set('standard_code', e.target.value)} style={ip} /></div></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>현재고</label><input type="number" value={f.current_qty} onChange={e => set('current_qty', e.target.value)} style={ip} /></div><div><label style={lb}>안전재고</label><input type="number" value={f.safety_stock} onChange={e => set('safety_stock', e.target.value)} style={ip} /></div><div><label style={lb}>최대재고</label><input type="number" value={f.max_stock} onChange={e => set('max_stock', e.target.value)} style={ip} /></div></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>유효기한 (대표)</label><input type="date" value={f.expiry_date} onChange={e => set('expiry_date', e.target.value)} style={ip} /></div><div><label style={lb}>LOT번호 · 다중 유효기한</label><div style={{ display: 'flex', gap: 4 }}><input value={f.lot_no} onChange={e => set('lot_no', e.target.value)} placeholder="대표 LOT" style={{ ...ip, flex: 1 }} /><button onClick={() => onLotManage?.(dr)} style={{ padding: '0 14px', borderRadius: 6, border: `1px solid ${t.purple}`, background: t.purpleL, color: t.purple, cursor: 'pointer', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>LOT관리 →</button></div></div></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>보관방법</label><select value={f.storage_method} onChange={e => set('storage_method', e.target.value)} style={ip}>{STORAGE_OPTS.map(s=><option key={s}>{s}</option>)}</select></div><div><label style={lb}>보관위치</label><input value={f.storage_location} onChange={e => set('storage_location', e.target.value)} style={ip} /></div></div><div style={{ marginBottom: 10 }}><label style={lb}>도매사</label><select value={f.supplier_id || ''} onChange={e => set('supplier_id', e.target.value)} style={ip}><option value=''>미지정</option>{edSuppliers.map(su => <option key={su.id} value={su.id}>{su.name}</option>)}</select></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>보관방법</label><select value={f.storage_method} onChange={e => set('storage_method', e.target.value)} style={ip}>{STORAGE_OPTS.map(s=><option key={s}>{s}</option>)}</select></div><div><label style={lb}>보관위치</label><input value={f.storage_location} onChange={e => set('storage_location', e.target.value)} style={ip} list="loc-vocab-edit" /><LocVocabDatalist id="loc-vocab-edit" /></div></div><div style={{ marginBottom: 10 }}><label style={lb}>도매사</label><select value={f.supplier_id || ''} onChange={e => set('supplier_id', e.target.value)} style={ip}><option value=''>미지정</option>{edSuppliers.map(su => <option key={su.id} value={su.id}>{su.name}</option>)}</select></div>
           <div style={{ marginBottom: 10 }}><label style={lb}>비고</label><textarea value={f.memo} onChange={e => set('memo', e.target.value)} rows={2} style={{ ...ip, resize: 'vertical' }} /></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>첨가제</label><input value={f.additive || ''} onChange={e => set('additive', e.target.value)} placeholder="자동채움·수정 가능" style={ip} /></div><div><label style={lb}>복합/단일</label><select value={f.compound_type || '단일제'} onChange={e => set('compound_type', e.target.value)} style={ip}>{['단일제', '복합제'].map(s => <option key={s}>{s}</option>)}</select></div></div>
           <div><label style={lb}>마약구분</label><div style={{ display: 'flex', gap: 4 }}>{['일반', '향정', '마약', '한외마약'].map(x => { const a = f.narcotic_type === x, cl = x === '일반' ? t.green : x === '향정' ? t.purple : x === '마약' ? t.red : t.blue; return <button key={x} onClick={() => set('narcotic_type', x)} style={{ flex: 1, padding: '8px', borderRadius: 6, border: `1px solid ${a ? cl : t.border}`, cursor: 'pointer', fontSize: 12, fontWeight: 600, background: a ? cl + '18' : 'transparent', color: a ? cl : t.textL }}>{x}</button> })}</div></div>
@@ -2878,7 +2898,7 @@ function DrugRegister({onRefresh, drugs}) {
               <div><label style={lbl}>LOT번호</label><input value={form.lot_no} onChange={e=>set('lot_no',e.target.value)} placeholder="LOT번호 입력" style={inp}/></div>
             </div>
             <div style={{marginBottom:12}}><label style={lbl}>보관방법</label><select value={form.storage_method} onChange={e=>set('storage_method',e.target.value)} style={{...inp,background:'#fff'}}>{STORAGE_OPTS.map(s=><option key={s}>{s}</option>)}</select></div>
-            <div style={{marginBottom:12}}><label style={lbl}>보관위치</label><input value={form.storage_location||''} onChange={e=>set('storage_location',e.target.value)} placeholder="예: A-3-2, 냉장-B-1" style={inp}/></div>
+            <div style={{marginBottom:12}}><label style={lbl}>보관위치</label><input value={form.storage_location||''} onChange={e=>set('storage_location',e.target.value)} placeholder="예: O-1" list="loc-vocab-reg" style={inp}/><LocVocabDatalist id="loc-vocab-reg" /></div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
               <div><label style={lbl}>상태</label><select value={form.status} onChange={e=>set('status',e.target.value)} style={{...inp,background:'#fff'}}>{['사용','휴면','중지'].map(s=><option key={s}>{s}</option>)}</select></div>
               <div><label style={lbl}>마약구분</label><select value={form.narcotic_type} onChange={e=>set('narcotic_type',e.target.value)} style={{...inp,background:'#fff'}}>{['해당없음','향정','마약','한외마약'].map(s=><option key={s}>{s}</option>)}</select></div>
@@ -6167,8 +6187,8 @@ function DeleteAccountModal({ isEmailUser, onClose, onDeleted }) {
 }
 
 /* ═══ 보관위치 관리 (location_vocab · 0030) ═══
-   ★ code 는 label 과 동일하게 기록한다 — 0030 시드 규약(`select t.id, v.label, v.label, v.ord`)이 그렇다.
-     화면에는 읽기 전용으로만 보인다. code 에는 UNIQUE 가 없어 따로 편집하게 두면 중복이 들어간다.
+   ★ 「설명」은 죽은 컬럼 code 를 재활용한다 — 마이그레이션 0건. label 은 코드만 담는다.
+     0030 시드가 code 에 label 을 복사해 두었으므로, 둘이 같으면 설명 없음으로 본다(lvDesc).
    ★ drugs.storage_location 은 FK 가 아니라 문자열이다. 이름을 바꿔도 약품 값은 따라오지 않는다 —
      그래서 「미등록 위치」가 된다는 사실을 바꾸기 전에 알린다.
    ★ drugs 는 SELECT 만 한다. 쓰기 경로가 아니다.
@@ -6196,6 +6216,7 @@ function LocationVocab() {
   const [newLabel, setNewLabel] = useState('')
   const [renId, setRenId] = useState(null); const [renVal, setRenVal] = useState('')
   const [delAsk, setDelAsk] = useState(null); const [openMiss, setOpenMiss] = useState(false)
+  const [descId, setDescId] = useState(null); const [descVal, setDescVal] = useState('')
   const [tick, setTick] = useState(0); const reload = () => setTick(x => x + 1)
   const flash = (msg, kind) => setToast({ msg, kind: kind || 'ok' })
 
@@ -6229,7 +6250,7 @@ function LocationVocab() {
     if (!tm?.tenant_id) { setBusy(false); flash('소속 정보를 찾을 수 없습니다 — 관리자에게 문의해 주세요', 'err'); return }
     /* ★ sort_order = 현재 최대값 + 1. 음수도 중복도 생기지 않는다(백신 대상 구분의 음수 누적 선례 차단) */
     const next = rows.reduce((m, r) => Math.max(m, Number(r.sort_order) || 0), 0) + 1
-    const { error } = await supabase.from('location_vocab').insert([{ tenant_id: tm.tenant_id, code: v, label: v, sort_order: next, is_active: true }])
+    const { error } = await supabase.from('location_vocab').insert([{ tenant_id: tm.tenant_id, code: '', label: v, sort_order: next, is_active: true }])
     setBusy(false)
     if (error) { flash(error.code === '23505' ? LV_DUP_MSG : dbErrorMsg(error), 'err'); return }
     setNewLabel(''); flash('「' + v + '」를 추가했습니다'); reload()
@@ -6238,11 +6259,23 @@ function LocationVocab() {
     const v = renVal.trim()
     if (!v || v === row.label) { setRenId(null); return }
     setBusy(true)
-    /* ★ code 도 함께 갱신한다 — label 과 동일값 유지가 규약이다 */
-    const { error } = await supabase.from('location_vocab').update({ label: v, code: v }).eq('id', row.id)
+    /* ★ code(=설명) 를 덮어쓰지 않는다 — 덮어쓰면 이름을 바꿀 때마다 설명이 지워진다 */
+    const { error } = await supabase.from('location_vocab').update({ label: v }).eq('id', row.id)
     setBusy(false)
     if (error) { flash(error.code === '23505' ? LV_DUP_MSG : dbErrorMsg(error), 'err'); return }
     setRenId(null); flash('이름을 바꿨습니다'); reload()
+  }
+  /* ★ 설명은 code 열에 넣는다. label 은 절대 건드리지 않는다 —
+     drugs.storage_location 과 문자열 완전일치로 연결되므로 label 이 바뀌면 그 약품들이 끊긴다.
+     빈 문자열로 저장하면 설명 없음이다(code 는 not null 이라 null 을 넣지 않는다). */
+  async function saveDesc(row) {
+    const v = descVal.trim()
+    if (v === lvDesc(row)) { setDescId(null); return }
+    setBusy(true)
+    const { error } = await supabase.from('location_vocab').update({ code: v }).eq('id', row.id)
+    setBusy(false)
+    if (error) { flash(dbErrorMsg(error), 'err'); return }
+    setDescId(null); flash(v ? '설명을 저장했습니다' : '설명을 지웠습니다'); reload()
   }
   /* ★ 인접 행과 sort_order 를 교환한다 — 값의 다중집합이 그대로이므로 음수도 신규 중복도 생길 수 없다.
      (두 값이 이미 같으면 교환이 무효과가 되는데, 추가가 항상 max+1 이라 같아지지 않는다) */
@@ -6316,17 +6349,19 @@ function LocationVocab() {
               <thead><tr style={{ background: t.bg }}>
                 <th style={{ ...th, width: 56 }}>순서</th>
                 <th style={thL}>위치 이름</th>
-                <th style={thL}>code</th>
+                <th style={thL}>설명</th>
                 <th style={{ ...th, width: 86 }}>사용 약품</th>
                 <th style={{ ...th, width: 72 }}>상태</th>
-                <th style={{ ...th, width: 268 }}>관리</th>
+                <th style={{ ...th, width: 324 }}>관리</th>
               </tr></thead>
               <tbody>{rows.map((r, i) => <tr key={r.id} style={{ borderTop: '1px solid ' + t.border, opacity: r.is_active ? 1 : 0.55 }}>
                 <td style={{ ...tdC, fontSize: 11 }}>{r.sort_order}</td>
                 <td style={{ padding: '8px 12px' }}>{renId === r.id
                   ? <input autoFocus value={renVal} onChange={e => setRenVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') rename(r) }} style={{ ...ip, fontSize: 12, padding: '5px 9px', width: '100%' }} />
                   : <span style={{ color: t.text, fontWeight: 600 }}>{r.label}</span>}</td>
-                <td style={{ padding: '8px 12px', color: t.textL, fontFamily: 'monospace', fontSize: 11 }}>{r.code}</td>
+                <td style={{ padding: '8px 12px', color: t.textM, fontSize: 11 }}>{descId === r.id
+                  ? <input autoFocus value={descVal} onChange={e => setDescVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveDesc(r) }} placeholder="예: 경구제 조제구역" style={{ ...ip, fontSize: 12, padding: '5px 9px', width: '100%' }} />
+                  : (lvDesc(r) || <span style={{ color: t.textL }}>—</span>)}</td>
                 <td style={{ ...tdC, fontSize: 11 }}>{used(r.label) ? used(r.label).toLocaleString() + '건' : <span style={{ color: t.textL }}>0</span>}</td>
                 <td style={{ ...tdC, padding: '8px 10px' }}>{r.is_active
                   ? <span style={{ background: t.greenL, color: t.green, padding: '3px 10px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>사용</span>
@@ -6334,11 +6369,15 @@ function LocationVocab() {
                 <td style={{ padding: '6px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>{renId === r.id
                   ? <><button disabled={busy} onClick={() => rename(r)} style={pri}>저장</button>
                     <button disabled={busy} onClick={() => setRenId(null)} style={{ ...bs(t.textM), marginLeft: 4 }}>취소</button></>
-                  : <><button disabled={busy || i === 0} onClick={() => move(i, -1)} style={bs(t.textM)}>↑</button>
-                    <button disabled={busy || i === rows.length - 1} onClick={() => move(i, 1)} style={{ ...bs(t.textM), marginLeft: 4 }}>↓</button>
-                    <button disabled={busy} onClick={() => { setRenId(r.id); setRenVal(r.label) }} style={{ ...bs(t.textM), marginLeft: 4 }}>이름 변경</button>
-                    <button disabled={busy} onClick={() => toggle(r)} style={{ ...bs(r.is_active ? t.textL : t.green), marginLeft: 4 }}>{r.is_active ? '중지' : '다시 사용'}</button>
-                    <button disabled={busy} onClick={() => setDelAsk(r)} style={{ ...bs(t.textM), marginLeft: 4 }}>삭제</button></>}
+                  : descId === r.id
+                    ? <><button disabled={busy} onClick={() => saveDesc(r)} style={pri}>저장</button>
+                      <button disabled={busy} onClick={() => setDescId(null)} style={{ ...bs(t.textM), marginLeft: 4 }}>취소</button></>
+                    : <><button disabled={busy || i === 0} onClick={() => move(i, -1)} style={bs(t.textM)}>↑</button>
+                      <button disabled={busy || i === rows.length - 1} onClick={() => move(i, 1)} style={{ ...bs(t.textM), marginLeft: 4 }}>↓</button>
+                      <button disabled={busy} onClick={() => { setDescId(null); setRenId(r.id); setRenVal(r.label) }} style={{ ...bs(t.textM), marginLeft: 4 }}>이름 변경</button>
+                      <button disabled={busy} onClick={() => { setRenId(null); setDescId(r.id); setDescVal(lvDesc(r)) }} style={{ ...bs(t.textM), marginLeft: 4 }}>설명</button>
+                      <button disabled={busy} onClick={() => toggle(r)} style={{ ...bs(r.is_active ? t.textL : t.green), marginLeft: 4 }}>{r.is_active ? '중지' : '다시 사용'}</button>
+                      <button disabled={busy} onClick={() => setDelAsk(r)} style={{ ...bs(t.textM), marginLeft: 4 }}>삭제</button></>}
                 </td>
               </tr>)}</tbody>
             </table>
