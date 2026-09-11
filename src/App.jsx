@@ -1061,7 +1061,7 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
   const ms = [
     { id: 'dashboard', l: '대시보드' },
     { id: 'alerts', l: '🔔 알림' },
-    { id: 'druglist', l: '약품관리', landing: 'druglist', children: [{ id: 'druglist', l: '약품목록' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }] },
+    { id: 'druglist', l: '약품관리', landing: 'druglist', children: [{ id: 'druglist', l: '약품목록' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'locvocab', l: '보관위치' }] },
     { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'count', l: '실사' }, { id: 'vaccine', l: '백신 관리' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }, { id: 'ward', l: '병동신청' }] },
     { id: 'transaction', l: '입출고' },
     { id: 'report', l: '보고서' },
@@ -6166,6 +6166,202 @@ function DeleteAccountModal({ isEmailUser, onClose, onDeleted }) {
   </div>
 }
 
+/* ═══ 보관위치 관리 (location_vocab · 0030) ═══
+   ★ code 는 label 과 동일하게 기록한다 — 0030 시드 규약(`select t.id, v.label, v.label, v.ord`)이 그렇다.
+     화면에는 읽기 전용으로만 보인다. code 에는 UNIQUE 가 없어 따로 편집하게 두면 중복이 들어간다.
+   ★ drugs.storage_location 은 FK 가 아니라 문자열이다. 이름을 바꿔도 약품 값은 따라오지 않는다 —
+     그래서 「미등록 위치」가 된다는 사실을 바꾸기 전에 알린다.
+   ★ drugs 는 SELECT 만 한다. 쓰기 경로가 아니다.
+   ★ location_vocab 에는 tenant_id 자동 설정 트리거가 없다(실측 0건) — INSERT 때 직접 넣는다. */
+const LV_DUP_MSG = '이미 있는 위치입니다'
+const LV_RENAME_NOTE = n => '이 위치를 쓰는 약품 ' + n + '건의 값은 바뀌지 않습니다. 이름을 바꾸면 그 ' + n + '건은 「미등록 위치」가 되어 위치 필터에 잡히지 않습니다.'
+const LV_DEL_USED = n => '이 위치를 쓰는 약품이 ' + n + '건 있습니다. 삭제해도 약품의 위치 값은 그대로 남아 목록에 나타나지 않게 됩니다. 비활성화를 권합니다.'
+/* ★ drugs 는 1,119행이고 PostgREST 기본 상한은 1,000행이다 — 청크로 읽지 않으면 조용히 잘린다.
+   ★ SELECT 만 한다. 컴포넌트 state 를 쓰지 않으므로 모듈 레벨에 둔다(effect deps 오염 방지). */
+async function lvUsage() {
+  const cnt = {}
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from('drugs').select('storage_location').range(from, from + 999)
+    if (error) return { error }
+    for (const r of data || []) { const v = (r.storage_location || '').trim(); if (v) cnt[v] = (cnt[v] || 0) + 1 }
+    if (!data || data.length < 1000) break
+  }
+  return { cnt }
+}
+function LocationVocab() {
+  const { t } = useTheme()
+  const [rows, setRows] = useState([]); const [usage, setUsage] = useState({})
+  const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false)
+  const [errMsg, setErrMsg] = useState(null); const [toast, setToast] = useState(null)
+  const [newLabel, setNewLabel] = useState('')
+  const [renId, setRenId] = useState(null); const [renVal, setRenVal] = useState('')
+  const [delAsk, setDelAsk] = useState(null); const [openMiss, setOpenMiss] = useState(false)
+  const [tick, setTick] = useState(0); const reload = () => setTick(x => x + 1)
+  const flash = (msg, kind) => setToast({ msg, kind: kind || 'ok' })
+
+  /* ★ 조회는 useEffect 안에서만 한다 — 밖에 load() 를 두고 부르면 set-state-in-effect·exhaustive-deps
+     두 규칙에 걸린다(실측). 재조회는 tick 을 올려 같은 effect 를 다시 돌린다(VaccineManage 와 같은 규약). */
+  useEffect(() => {
+    let on = true
+    ;(async () => {
+      const [v, u] = await Promise.all([
+        supabase.from('location_vocab').select('*').order('sort_order').order('label'),
+        lvUsage(),
+      ])
+      if (!on) return
+      setLoading(false)
+      if (v.error) { setErrMsg(dbErrorMsg(v.error)); return }
+      if (u.error) { setErrMsg(dbErrorMsg(u.error)); return }
+      setErrMsg(null); setRows(v.data || []); setUsage(u.cnt)
+    })()
+    return () => { on = false }
+  }, [tick])
+
+  const used = lb => usage[String(lb || '').trim()] || 0
+  const labels = new Set(rows.map(r => String(r.label || '').trim()))
+  const missing = Object.entries(usage).filter(([v]) => !labels.has(v)).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  const missRows = missing.reduce((a, x) => a + x[1], 0)
+
+  async function addLabel(raw) {
+    const v = String(raw || '').trim(); if (!v) { flash('위치 이름을 입력해 주세요', 'err'); return }
+    setBusy(true)
+    const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle()
+    if (!tm?.tenant_id) { setBusy(false); flash('소속 정보를 찾을 수 없습니다 — 관리자에게 문의해 주세요', 'err'); return }
+    /* ★ sort_order = 현재 최대값 + 1. 음수도 중복도 생기지 않는다(백신 대상 구분의 음수 누적 선례 차단) */
+    const next = rows.reduce((m, r) => Math.max(m, Number(r.sort_order) || 0), 0) + 1
+    const { error } = await supabase.from('location_vocab').insert([{ tenant_id: tm.tenant_id, code: v, label: v, sort_order: next, is_active: true }])
+    setBusy(false)
+    if (error) { flash(error.code === '23505' ? LV_DUP_MSG : dbErrorMsg(error), 'err'); return }
+    setNewLabel(''); flash('「' + v + '」를 추가했습니다'); reload()
+  }
+  async function rename(row) {
+    const v = renVal.trim()
+    if (!v || v === row.label) { setRenId(null); return }
+    setBusy(true)
+    /* ★ code 도 함께 갱신한다 — label 과 동일값 유지가 규약이다 */
+    const { error } = await supabase.from('location_vocab').update({ label: v, code: v }).eq('id', row.id)
+    setBusy(false)
+    if (error) { flash(error.code === '23505' ? LV_DUP_MSG : dbErrorMsg(error), 'err'); return }
+    setRenId(null); flash('이름을 바꿨습니다'); reload()
+  }
+  /* ★ 인접 행과 sort_order 를 교환한다 — 값의 다중집합이 그대로이므로 음수도 신규 중복도 생길 수 없다.
+     (두 값이 이미 같으면 교환이 무효과가 되는데, 추가가 항상 max+1 이라 같아지지 않는다) */
+  async function move(i, dir) {
+    const j = i + dir; if (j < 0 || j >= rows.length) return
+    const a = rows[i], b = rows[j]
+    setBusy(true)
+    const r1 = await supabase.from('location_vocab').update({ sort_order: b.sort_order }).eq('id', a.id)
+    const r2 = r1.error ? r1 : await supabase.from('location_vocab').update({ sort_order: a.sort_order }).eq('id', b.id)
+    setBusy(false)
+    if (r2.error) { flash(dbErrorMsg(r2.error), 'err'); return }
+    reload()
+  }
+  async function toggle(row) {
+    setBusy(true)
+    const { error } = await supabase.from('location_vocab').update({ is_active: !row.is_active }).eq('id', row.id)
+    setBusy(false)
+    if (error) { flash(dbErrorMsg(error), 'err'); return }
+    flash(row.is_active ? '「' + row.label + '」를 중지했습니다' : '「' + row.label + '」를 다시 사용합니다'); reload()
+  }
+  async function doDelete(row) {
+    setBusy(true)
+    const { error } = await supabase.from('location_vocab').delete().eq('id', row.id)
+    setBusy(false); setDelAsk(null)
+    if (error) { flash(dbErrorMsg(error), 'err'); return }
+    flash('「' + row.label + '」를 삭제했습니다'); reload()
+  }
+
+  const bs = fg => ({ padding: '5px 11px', borderRadius: 7, border: '1px solid ' + t.border, background: 'transparent', color: fg, cursor: 'pointer', fontSize: 11, fontWeight: 600 })
+  const pri = { ...bs('#fff'), background: t.accent, borderColor: t.accent }
+  const ip = { padding: '8px 12px', border: '1px solid ' + t.border, borderRadius: 9, fontSize: 12.5, outline: 'none', background: t.card, color: t.text, boxSizing: 'border-box' }
+  const th = { padding: '10px 12px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: t.textM, borderBottom: '1px solid ' + t.border, whiteSpace: 'nowrap' }
+  const thL = { ...th, textAlign: 'left' }
+  const tdC = { padding: '8px 12px', textAlign: 'center', color: t.textM }
+  const note = { marginTop: 12, padding: '11px 14px', borderLeft: '3px solid ' + t.lavender, background: t.bg, borderRadius: 8, fontSize: 12, color: t.text, lineHeight: 1.6 }
+  const empty = { padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 13 }
+  const renRow = rows.find(r => r.id === renId)
+
+  return <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 20px 80px' }}>
+    <div style={{ marginBottom: 20 }}>
+      <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, margin: 0, letterSpacing: -0.3 }}>보관위치</h2>
+      <div style={{ fontSize: 12, color: t.textL, marginTop: 6 }}>대시보드 위치 필터가 이 목록에서 선택지를 읽습니다 · 등록 {rows.length}종 (사용 {rows.filter(r => r.is_active).length}종)</div>
+    </div>
+
+    {errMsg && <div style={{ background: t.redL, color: t.red, borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, fontWeight: 500, border: `1px solid ${t.red}30` }}>{errMsg}</div>}
+
+    {/* ★ 목록에 없는 위치 — 각 행에서 바로 등록할 수 있다(20종 수기 입력 회피) */}
+    {missing.length > 0 && <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, overflow: 'hidden', marginBottom: 16 }}>
+      <div onClick={() => setOpenMiss(v => !v)} style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: t.amber + '0D' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: t.text }}>목록에 없는 위치 {missing.length}종<span style={{ fontSize: 11, fontWeight: 500, color: t.textM, marginLeft: 8 }}>약품 {missRows.toLocaleString()}건이 쓰고 있습니다 — 위치 필터에 잡히지 않습니다</span></span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: t.amber, flexShrink: 0, marginLeft: 10 }}>{openMiss ? '접기' : '펼치기'} ›</span>
+      </div>
+      {openMiss && <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+        {missing.map(([v, n]) => <div key={v} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 16px', borderTop: '1px solid ' + t.border, fontSize: 12 }}>
+          <span><span style={{ color: t.accent, fontWeight: 600 }}>{v}</span><span style={{ color: t.textL, fontSize: 11, marginLeft: 6 }}>· 약품 {n.toLocaleString()}건</span></span>
+          <button disabled={busy} onClick={() => addLabel(v)} style={bs(t.accent)}>등록</button>
+        </div>)}
+      </div>}
+    </div>}
+
+    <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <input value={newLabel} onChange={e => setNewLabel(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addLabel(newLabel) }} placeholder="추가할 보관위치 (예: O-1)" style={{ ...ip, flex: 1, maxWidth: 320 }} />
+      <button disabled={busy} onClick={() => addLabel(newLabel)} style={pri}>추가</button>
+    </div>
+
+    <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, overflow: 'hidden' }}>
+      {loading ? <div style={empty}>불러오는 중...</div>
+        : !rows.length ? <div style={empty}>등록된 보관위치가 없습니다.</div>
+          : <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead><tr style={{ background: t.bg }}>
+                <th style={{ ...th, width: 56 }}>순서</th>
+                <th style={thL}>위치 이름</th>
+                <th style={thL}>code</th>
+                <th style={{ ...th, width: 86 }}>사용 약품</th>
+                <th style={{ ...th, width: 72 }}>상태</th>
+                <th style={{ ...th, width: 268 }}>관리</th>
+              </tr></thead>
+              <tbody>{rows.map((r, i) => <tr key={r.id} style={{ borderTop: '1px solid ' + t.border, opacity: r.is_active ? 1 : 0.55 }}>
+                <td style={{ ...tdC, fontSize: 11 }}>{r.sort_order}</td>
+                <td style={{ padding: '8px 12px' }}>{renId === r.id
+                  ? <input autoFocus value={renVal} onChange={e => setRenVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') rename(r) }} style={{ ...ip, fontSize: 12, padding: '5px 9px', width: '100%' }} />
+                  : <span style={{ color: t.text, fontWeight: 600 }}>{r.label}</span>}</td>
+                <td style={{ padding: '8px 12px', color: t.textL, fontFamily: 'monospace', fontSize: 11 }}>{r.code}</td>
+                <td style={{ ...tdC, fontSize: 11 }}>{used(r.label) ? used(r.label).toLocaleString() + '건' : <span style={{ color: t.textL }}>0</span>}</td>
+                <td style={{ ...tdC, padding: '8px 10px' }}>{r.is_active
+                  ? <span style={{ background: t.greenL, color: t.green, padding: '3px 10px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>사용</span>
+                  : <span style={{ background: t.purpleL, color: t.purple, border: '1px solid ' + t.lavender, padding: '2px 9px', borderRadius: 8, fontSize: 10, fontWeight: 700 }}>중지</span>}</td>
+                <td style={{ padding: '6px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>{renId === r.id
+                  ? <><button disabled={busy} onClick={() => rename(r)} style={pri}>저장</button>
+                    <button disabled={busy} onClick={() => setRenId(null)} style={{ ...bs(t.textM), marginLeft: 4 }}>취소</button></>
+                  : <><button disabled={busy || i === 0} onClick={() => move(i, -1)} style={bs(t.textM)}>↑</button>
+                    <button disabled={busy || i === rows.length - 1} onClick={() => move(i, 1)} style={{ ...bs(t.textM), marginLeft: 4 }}>↓</button>
+                    <button disabled={busy} onClick={() => { setRenId(r.id); setRenVal(r.label) }} style={{ ...bs(t.textM), marginLeft: 4 }}>이름 변경</button>
+                    <button disabled={busy} onClick={() => toggle(r)} style={{ ...bs(r.is_active ? t.textL : t.green), marginLeft: 4 }}>{r.is_active ? '중지' : '다시 사용'}</button>
+                    <button disabled={busy} onClick={() => setDelAsk(r)} style={{ ...bs(t.textM), marginLeft: 4 }}>삭제</button></>}
+                </td>
+              </tr>)}</tbody>
+            </table>
+          </div>}
+    </div>
+
+    {/* ★ 이름을 바꿔도 약품 값은 따라오지 않는다 — 바꾸기 전에 알린다 */}
+    {renRow && <div style={note}>{LV_RENAME_NOTE(used(renRow.label))}</div>}
+
+    {delAsk && (() => { const n = used(delAsk.label); return <div style={note}>
+      {n ? LV_DEL_USED(n) : '「' + delAsk.label + '」를 삭제합니다. 이 위치를 쓰는 약품은 없습니다.'}
+      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+        {n > 0 && <button disabled={busy} onClick={() => { const r = delAsk; setDelAsk(null); toggle(r) }} style={pri}>비활성화</button>}
+        <button disabled={busy} onClick={() => doDelete(delAsk)} style={bs(t.red)}>{n ? '그래도 삭제' : '삭제'}</button>
+        <button disabled={busy} onClick={() => setDelAsk(null)} style={bs(t.textM)}>취소</button>
+      </div>
+    </div> })()}
+
+    <Toast msg={toast?.msg} kind={toast?.kind} onClose={() => setToast(null)} />
+    <Ft />
+  </div>
+}
+
 /* ═══ 관리자 — 가입자 조회 ═══ */
 function AdminUsers() {
   const { t, user } = useTheme()
@@ -6566,7 +6762,7 @@ function Schedule({ drugs, onNav }) {
   </div>;
 }
 
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'count', 'narcotic', 'nonins', 'ordering', 'ward', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive'];
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'count', 'narcotic', 'nonins', 'ordering', 'ward', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive', 'locvocab'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); const m = h.split('/')[0]; return ROUTES.includes(m) ? m : 'dashboard'; }
 function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
 /* 입출고 월 선택: 해시 3번째 세그먼트(#transaction/out/2026-08). 없으면 현재 월(하위호환). 「전체」는 URL에 월 세그먼트 없음(→새로고침 시 현재 월로 복원). */
@@ -7159,6 +7355,7 @@ export default function App() {
         {menu === 'schedule' && <Schedule drugs={drugs} onNav={handleNav} />}
         {menu === 'register' && <DrugRegister onRefresh={load} drugs={drugs} />}
         {menu === 'mypage' && <MyPage profile={profile} onProfileUpdated={loadProfile} />}
+        {menu === 'locvocab' && <LocationVocab />}
         {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
 
         {editDrug && <DrugEditModal drug={editDrug} onClose={() => setEditDrug(null)} onSaved={() => { setEditDrug(null); load() }} onLotManage={d => { setEditDrug(null); setLotDrug(d) }} />}
