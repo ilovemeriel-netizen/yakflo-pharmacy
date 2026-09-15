@@ -6209,6 +6209,74 @@ async function lvUsage() {
   }
   return { cnt }
 }
+/* ═══ 보관위치별 약품 목록 (확인 전용 · 1차) ═══
+   ★ drugs 는 SELECT 만 한다. 쓰기 경로가 아니다.
+   ★ storage_location 은 FK 가 아니라 문자열이라 값과 완전일치로만 건다 —
+     그래서 vocab 에 없는 값(J-2/C-2 등)도 같은 방식으로 조회된다.
+   ★ 한 위치의 최대 건수는 실측 691건(O-1)이라 PostgREST 1,000행 캡 아래지만,
+     캡에 걸리면 조용히 잘리므로 정확히 1,000이면 알린다.
+   ★ 모든 td 에 textAlign 을 명시한다 — index.css 의 #root { text-align:center } 가
+     상속되어, 지정하지 않은 셀은 가운데로 렌더된다. */
+function LocDrugsModal({ loc, desc, onClose }) {
+  const { t } = useTheme()
+  const boxRef = useRef(null); const [pos, setPos] = useState({ x: 0, y: 0 })
+  const { dragging, onHeaderMouseDown } = useDraggableModal(boxRef, pos, setPos)
+  const [rows, setRows] = useState(null); const [err, setErr] = useState(null); const [capped, setCapped] = useState(false)
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  useEffect(() => {
+    let on = true
+    supabase.from('drugs').select('drug_code,drug_name,category,current_qty,status').eq('storage_location', loc).range(0, 999)
+      .then(({ data, error }) => {
+        if (!on) return
+        if (error) { setErr(dbErrorMsg(error)); setRows([]); return }
+        const d = data || []
+        setCapped(d.length === 1000)
+        setRows([...d].sort((a, b) => String(a.drug_name || '').localeCompare(String(b.drug_name || ''), 'ko')))
+      })
+    return () => { on = false }
+  }, [loc])
+  const mh = { padding: '8px 12px', fontSize: 11, fontWeight: 700, color: t.textM, borderBottom: '1px solid ' + t.border, whiteSpace: 'nowrap' }
+  const md = { padding: '7px 12px', fontSize: 11.5, color: t.text }
+  const msg = c => ({ padding: '28px 20px', textAlign: 'center', color: c, fontSize: 13 })
+  return <div style={{ position: 'fixed', inset: 0, background: 'transparent', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto', pointerEvents: 'none' }}>
+    <div ref={boxRef} style={{ background: t.card, borderRadius: 16, width: '100%', maxWidth: 680, boxShadow: t.shadowH, overflow: 'hidden', transform: `translate(${pos.x}px, ${pos.y}px)`, pointerEvents: 'auto' }}>
+      <div onMouseDown={onHeaderMouseDown} style={{ background: t.nav, padding: '16px 20px', color: '#fff', cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ textAlign: 'left' }}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>{loc}{desc ? ' · ' + desc : ''}</div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{rows === null ? '불러오는 중…' : rows.length.toLocaleString() + '건'}</div>
+        </div>
+        <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 28, height: 28, borderRadius: 8, cursor: 'pointer', fontSize: 15, flexShrink: 0 }}>✕</button>
+      </div>
+      <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+        {err ? <div style={msg(t.red)}>{err}</div>
+          : rows === null ? <div style={msg(t.textL)}>불러오는 중…</div>
+            : !rows.length ? <div style={msg(t.textL)}>해당 위치의 약품이 없습니다</div>
+              : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ background: t.bg }}>
+                  <th style={{ ...mh, textAlign: 'left', width: 112 }}>약품코드</th>
+                  <th style={{ ...mh, textAlign: 'left' }}>약품명</th>
+                  <th style={{ ...mh, textAlign: 'left', width: 76 }}>구분</th>
+                  <th style={{ ...mh, textAlign: 'right', width: 76 }}>현재고</th>
+                  <th style={{ ...mh, textAlign: 'center', width: 64 }}>상태</th>
+                </tr></thead>
+                <tbody>{rows.map(d => <tr key={d.drug_code} style={{ borderTop: '1px solid ' + t.border }}>
+                  <td style={{ ...md, textAlign: 'left', color: t.textM, whiteSpace: 'nowrap' }}>{d.drug_code}</td>
+                  <td style={{ ...md, textAlign: 'left', fontWeight: 600 }}>{d.drug_name}</td>
+                  <td style={{ ...md, textAlign: 'left', color: t.textM }}>{d.category || '-'}</td>
+                  <td style={{ ...md, textAlign: 'right' }}>{(d.current_qty || 0).toLocaleString()}</td>
+                  <td style={{ ...md, textAlign: 'center' }}><SB s={d.status} /></td>
+                </tr>)}</tbody>
+              </table>}
+        {capped && <div style={{ padding: '10px 14px', borderTop: '1px solid ' + t.border, background: t.bg, fontSize: 11.5, color: t.amber, textAlign: 'left' }}>1,000건 상한에 걸려 일부가 표시되지 않았을 수 있습니다.</div>}
+      </div>
+    </div>
+  </div>
+}
+
 function LocationVocab() {
   const { t } = useTheme()
   const [rows, setRows] = useState([]); const [usage, setUsage] = useState({})
@@ -6218,6 +6286,8 @@ function LocationVocab() {
   const [renId, setRenId] = useState(null); const [renVal, setRenVal] = useState('')
   const [delAsk, setDelAsk] = useState(null); const [openMiss, setOpenMiss] = useState(false)
   const [descId, setDescId] = useState(null); const [descVal, setDescVal] = useState('')
+  /* ★ 건수 클릭 시 열리는 약품 목록 모달 — { loc, desc }. 미등록 값은 desc 가 빈 문자열이다. */
+  const [locView, setLocView] = useState(null)
   const [tick, setTick] = useState(0); const reload = () => setTick(x => x + 1)
   /* ★ 헤더 정렬 — ColMenu·useSort 는 고치지 않고 호출만 한다.
      초기 키 '' 는 해제 상태이고, so() 는 sk 가 비면 배열을 그대로 돌려준다(useSort 정의부) —
@@ -6353,7 +6423,9 @@ function LocationVocab() {
       </div>
       {openMiss && <div style={{ maxHeight: 260, overflowY: 'auto' }}>
         {missing.map(([v, n]) => <div key={v} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 16px', borderTop: '1px solid ' + t.border, fontSize: 12 }}>
-          <span><span style={{ color: t.accent, fontWeight: 600 }}>{v}</span><span style={{ color: t.textL, fontSize: 11, marginLeft: 6 }}>· 약품 {n.toLocaleString()}건</span></span>
+          {/* ★ 미등록 값도 storage_location 완전일치로 조회된다 — 같은 모달을 재사용한다.
+              vocab 행이 없어 설명이 없으므로 제목은 값만 표시한다(desc: ''). */}
+          <span><span style={{ color: t.accent, fontWeight: 600 }}>{v}</span><span onClick={() => setLocView({ loc: v, desc: '' })} title="약품 목록 보기" style={{ color: t.purple, fontSize: 11, marginLeft: 6, cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}>· 약품 {n.toLocaleString()}건</span></span>
           <button disabled={busy} onClick={() => addLabel(v)} style={bs(t.accent)}>등록</button>
         </div>)}
       </div>}
@@ -6394,7 +6466,10 @@ function LocationVocab() {
                 <td style={{ padding: '8px 12px', textAlign: 'left', color: t.textM, fontSize: 11 }}>{descId === r.id
                   ? <input autoFocus value={descVal} onChange={e => setDescVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveDesc(r) }} placeholder="예: 경구제 조제구역" style={{ ...ip, fontSize: 12, padding: '5px 9px', width: '100%' }} />
                   : (lvDesc(r) || <span style={{ color: t.textL }}>—</span>)}</td>
-                <td style={{ ...tdR, fontSize: 11 }}>{used(r.label) ? used(r.label).toLocaleString() + '건' : <span style={{ color: t.textL }}>0</span>}</td>
+                {/* ★ 1건 이상일 때만 클릭 가능. 0건은 현행 회색 그대로 둔다(열 것이 없다) */}
+                <td style={{ ...tdR, fontSize: 11 }}>{used(r.label)
+                  ? <span onClick={() => setLocView({ loc: r.label, desc: lvDesc(r) })} title="약품 목록 보기" style={{ color: t.purple, cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}>{used(r.label).toLocaleString()}건</span>
+                  : <span style={{ color: t.textL }}>0</span>}</td>
                 <td style={{ ...tdC, padding: '8px 10px' }}>{r.is_active
                   ? <span style={{ background: t.greenL, color: t.green, padding: '3px 10px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>사용</span>
                   : <span style={{ background: t.purpleL, color: t.purple, border: '1px solid ' + t.lavender, padding: '2px 9px', borderRadius: 8, fontSize: 10, fontWeight: 700 }}>중지</span>}</td>
@@ -6427,6 +6502,8 @@ function LocationVocab() {
         <button disabled={busy} onClick={() => setDelAsk(null)} style={bs(t.textM)}>취소</button>
       </div>
     </div> })()}
+
+    {locView && <LocDrugsModal loc={locView.loc} desc={locView.desc} onClose={() => setLocView(null)} />}
 
     <Toast msg={toast?.msg} kind={toast?.kind} onClose={() => setToast(null)} />
     <Ft />
