@@ -6196,6 +6196,7 @@ function DeleteAccountModal({ isEmailUser, onClose, onDeleted }) {
 const LV_DUP_MSG = '이미 있는 위치입니다'
 const LV_RENAME_NOTE = n => '이 위치를 쓰는 약품 ' + n + '건의 값은 바뀌지 않습니다. 이름을 바꾸면 그 ' + n + '건은 「미등록 위치」가 되어 위치 필터에 잡히지 않습니다.'
 const LV_DEL_USED = n => '이 위치를 쓰는 약품이 ' + n + '건 있습니다. 삭제해도 약품의 위치 값은 그대로 남아 목록에 나타나지 않게 됩니다. 비활성화를 권합니다.'
+const LV_SORT_LOCK = '정렬을 해제해야 순서를 바꿀 수 있습니다'
 /* ★ drugs 는 1,119행이고 PostgREST 기본 상한은 1,000행이다 — 청크로 읽지 않으면 조용히 잘린다.
    ★ SELECT 만 한다. 컴포넌트 state 를 쓰지 않으므로 모듈 레벨에 둔다(effect deps 오염 방지). */
 async function lvUsage() {
@@ -6218,6 +6219,13 @@ function LocationVocab() {
   const [delAsk, setDelAsk] = useState(null); const [openMiss, setOpenMiss] = useState(false)
   const [descId, setDescId] = useState(null); const [descVal, setDescVal] = useState('')
   const [tick, setTick] = useState(0); const reload = () => setTick(x => x + 1)
+  /* ★ 헤더 정렬 — ColMenu·useSort 는 고치지 않고 호출만 한다.
+     초기 키 '' 는 해제 상태이고, so() 는 sk 가 비면 배열을 그대로 돌려준다(useSort 정의부) —
+     따라서 「해제」가 곧 조회 순서(sort_order → label)다. 별도 복원 처리가 필요 없다.
+     ★ ColMenu 는 filter 를 넘기지 않으면 정렬 전용이 된다 — 라벨 클릭 핸들러가 붙지 않아
+       필터 팝오버가 열릴 경로 자체가 없다(필터 드롭다운 추가 금지 제약 준수). */
+  const { so, sk, sd, setSort } = useSort('')
+  const sorted = !!sk
   const flash = (msg, kind) => setToast({ msg, kind: kind || 'ok' })
 
   /* ★ 조회는 useEffect 안에서만 한다 — 밖에 load() 를 두고 부르면 set-state-in-effect·exhaustive-deps
@@ -6242,6 +6250,15 @@ function LocationVocab() {
   const labels = new Set(rows.map(r => String(r.label || '').trim()))
   const missing = Object.entries(usage).filter(([v]) => !labels.has(v)).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
   const missRows = missing.reduce((a, x) => a + x[1], 0)
+
+  /* ★ so() 는 행 원본 속성(x[sk])만 본다. 5열 중 3열이 그대로는 정렬되지 않는다:
+       · 설명     — 화면 표시는 lvDesc(code===label 이면 빈값)라 원본 code 로 정렬하면 화면과 어긋난다
+       · 사용 약품 — usage state 에서 파생되는 값이라 행에 존재하지 않는다
+       · 상태     — boolean 이라 수치 분기를 타지 못하고 'true'/'false' 문자열 비교가 된다
+     그래서 정렬용 파생 필드를 붙인 뷰 배열을 만든다. 원본 rows 는 건드리지 않는다
+     (rows 는 move 의 인덱스 기준이자 조회 순서 보관처다).
+     _used·_act 는 number 라 수치 비교, _desc 는 string 이라 ko localeCompare 로 간다. */
+  const view = so(rows.map(r => ({ ...r, _desc: lvDesc(r), _used: used(r.label), _act: r.is_active ? 1 : 0 })))
 
   async function addLabel(raw) {
     const v = String(raw || '').trim(); if (!v) { flash('위치 이름을 입력해 주세요', 'err'); return }
@@ -6309,7 +6326,13 @@ function LocationVocab() {
   const ip = { padding: '8px 12px', border: '1px solid ' + t.border, borderRadius: 9, fontSize: 12.5, outline: 'none', background: t.card, color: t.text, boxSizing: 'border-box' }
   const th = { padding: '10px 12px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: t.textM, borderBottom: '1px solid ' + t.border, whiteSpace: 'nowrap' }
   const thL = { ...th, textAlign: 'left' }
+  /* ★ 숫자 열은 우측 정렬한다. th 와 tdC 의 좌우 패딩이 모두 12px 이라 헤더·본문 정렬선이 맞는다
+     (약품변경 화면에서 헤더 12px / 본문 10px 로 2px 어긋난 선례를 되풀이하지 않는다). */
+  const thR = { ...th, textAlign: 'right' }
   const tdC = { padding: '8px 12px', textAlign: 'center', color: t.textM }
+  const tdR = { ...tdC, textAlign: 'right' }
+  /* ★ 정렬이 걸린 동안에만 비활성 — 기존 비활성 표현(not-allowed · 0.55)을 그대로 쓴다 */
+  const mvBtn = dis => dis ? { ...bs(t.textM), cursor: 'not-allowed', opacity: 0.55 } : bs(t.textM)
   const note = { marginTop: 12, padding: '11px 14px', borderLeft: '3px solid ' + t.lavender, background: t.bg, borderRadius: 8, fontSize: 12, color: t.text, lineHeight: 1.6 }
   const empty = { padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 13 }
   const renRow = rows.find(r => r.id === renId)
@@ -6341,28 +6364,34 @@ function LocationVocab() {
       <button disabled={busy} onClick={() => addLabel(newLabel)} style={pri}>추가</button>
     </div>
 
+    {/* ★ 기존 note(좌측 3px 라벤더) 를 그대로 쓰고 여백만 뒤집는다 — 신색 0건 */}
+    {sorted && <div style={{ ...note, marginTop: 0, marginBottom: 12 }}>정렬 중 — 순서 변경은 정렬을 해제한 뒤 가능합니다</div>}
+
     <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, overflow: 'hidden' }}>
       {loading ? <div style={empty}>불러오는 중...</div>
         : !rows.length ? <div style={empty}>등록된 보관위치가 없습니다.</div>
           : <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead><tr style={{ background: t.bg }}>
-                <th style={{ ...th, width: 56 }}>순서</th>
-                <th style={thL}>위치 이름</th>
-                <th style={thL}>설명</th>
-                <th style={{ ...th, width: 86 }}>사용 약품</th>
-                <th style={{ ...th, width: 72 }}>상태</th>
+                <th style={{ ...thR, width: 56 }}><ColMenu colKey="sort_order" label="순서" sk={sk} sd={sd} setSort={setSort} /></th>
+                <th style={thL}><ColMenu colKey="label" label="위치 이름" sk={sk} sd={sd} setSort={setSort} /></th>
+                <th style={thL}><ColMenu colKey="_desc" label="설명" sk={sk} sd={sd} setSort={setSort} /></th>
+                <th style={{ ...thR, width: 86 }}><ColMenu colKey="_used" label="사용 약품" sk={sk} sd={sd} setSort={setSort} /></th>
+                <th style={{ ...th, width: 72 }}><ColMenu colKey="_act" label="상태" sk={sk} sd={sd} setSort={setSort} /></th>
                 <th style={{ ...th, width: 324 }}>관리</th>
               </tr></thead>
-              <tbody>{rows.map((r, i) => <tr key={r.id} style={{ borderTop: '1px solid ' + t.border, opacity: r.is_active ? 1 : 0.55 }}>
-                <td style={{ ...tdC, fontSize: 11 }}>{r.sort_order}</td>
+              {/* ★ 렌더는 정렬된 view 로 하되, 순서 이동은 반드시 rows 기준 인덱스(oi)로 넘긴다.
+                  정렬 인덱스를 move 에 넘기면 엉뚱한 두 행의 sort_order 가 교환되어 데이터가 훼손된다.
+                  정렬 중 [↑][↓] 비활성은 UI 방어일 뿐이라, 인덱스 자체를 원본 기준으로 잡아 이중으로 막는다. */}
+              <tbody>{view.map(r => { const oi = rows.findIndex(x => x.id === r.id); return <tr key={r.id} style={{ borderTop: '1px solid ' + t.border, opacity: r.is_active ? 1 : 0.55 }}>
+                <td style={{ ...tdR, fontSize: 11 }}>{r.sort_order}</td>
                 <td style={{ padding: '8px 12px' }}>{renId === r.id
                   ? <input autoFocus value={renVal} onChange={e => setRenVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') rename(r) }} style={{ ...ip, fontSize: 12, padding: '5px 9px', width: '100%' }} />
                   : <span style={{ color: t.text, fontWeight: 600 }}>{r.label}</span>}</td>
                 <td style={{ padding: '8px 12px', color: t.textM, fontSize: 11 }}>{descId === r.id
                   ? <input autoFocus value={descVal} onChange={e => setDescVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveDesc(r) }} placeholder="예: 경구제 조제구역" style={{ ...ip, fontSize: 12, padding: '5px 9px', width: '100%' }} />
                   : (lvDesc(r) || <span style={{ color: t.textL }}>—</span>)}</td>
-                <td style={{ ...tdC, fontSize: 11 }}>{used(r.label) ? used(r.label).toLocaleString() + '건' : <span style={{ color: t.textL }}>0</span>}</td>
+                <td style={{ ...tdR, fontSize: 11 }}>{used(r.label) ? used(r.label).toLocaleString() + '건' : <span style={{ color: t.textL }}>0</span>}</td>
                 <td style={{ ...tdC, padding: '8px 10px' }}>{r.is_active
                   ? <span style={{ background: t.greenL, color: t.green, padding: '3px 10px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>사용</span>
                   : <span style={{ background: t.purpleL, color: t.purple, border: '1px solid ' + t.lavender, padding: '2px 9px', borderRadius: 8, fontSize: 10, fontWeight: 700 }}>중지</span>}</td>
@@ -6372,14 +6401,14 @@ function LocationVocab() {
                   : descId === r.id
                     ? <><button disabled={busy} onClick={() => saveDesc(r)} style={pri}>저장</button>
                       <button disabled={busy} onClick={() => setDescId(null)} style={{ ...bs(t.textM), marginLeft: 4 }}>취소</button></>
-                    : <><button disabled={busy || i === 0} onClick={() => move(i, -1)} style={bs(t.textM)}>↑</button>
-                      <button disabled={busy || i === rows.length - 1} onClick={() => move(i, 1)} style={{ ...bs(t.textM), marginLeft: 4 }}>↓</button>
+                    : <><button disabled={busy || sorted || oi <= 0} title={sorted ? LV_SORT_LOCK : undefined} onClick={() => move(oi, -1)} style={mvBtn(sorted || oi <= 0)}>↑</button>
+                      <button disabled={busy || sorted || oi < 0 || oi === rows.length - 1} title={sorted ? LV_SORT_LOCK : undefined} onClick={() => move(oi, 1)} style={{ ...mvBtn(sorted || oi < 0 || oi === rows.length - 1), marginLeft: 4 }}>↓</button>
                       <button disabled={busy} onClick={() => { setDescId(null); setRenId(r.id); setRenVal(r.label) }} style={{ ...bs(t.textM), marginLeft: 4 }}>이름 변경</button>
                       <button disabled={busy} onClick={() => { setRenId(null); setDescId(r.id); setDescVal(lvDesc(r)) }} style={{ ...bs(t.textM), marginLeft: 4 }}>설명</button>
                       <button disabled={busy} onClick={() => toggle(r)} style={{ ...bs(r.is_active ? t.textL : t.green), marginLeft: 4 }}>{r.is_active ? '중지' : '다시 사용'}</button>
                       <button disabled={busy} onClick={() => setDelAsk(r)} style={{ ...bs(t.textM), marginLeft: 4 }}>삭제</button></>}
                 </td>
-              </tr>)}</tbody>
+              </tr> })}</tbody>
             </table>
           </div>}
     </div>
