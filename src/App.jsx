@@ -6385,10 +6385,13 @@ function LocationVocab() {
                   정렬 중 [↑][↓] 비활성은 UI 방어일 뿐이라, 인덱스 자체를 원본 기준으로 잡아 이중으로 막는다. */}
               <tbody>{view.map(r => { const oi = rows.findIndex(x => x.id === r.id); return <tr key={r.id} style={{ borderTop: '1px solid ' + t.border, opacity: r.is_active ? 1 : 0.55 }}>
                 <td style={{ ...tdR, fontSize: 11 }}>{r.sort_order}</td>
-                <td style={{ padding: '8px 12px' }}>{renId === r.id
+                {/* ★ textAlign 을 명시한다 — #root 의 전역 text-align:center(index.css)가 상속되어
+                    미지정 셀은 가운데로 렌더된다. 헤더(thL)는 좌측이라 정렬선이 어긋난다.
+                    도매사 표 등 이 파일의 다른 표들이 좌측을 매번 명시하는 것과 같은 이유다. */}
+                <td style={{ padding: '8px 12px', textAlign: 'left' }}>{renId === r.id
                   ? <input autoFocus value={renVal} onChange={e => setRenVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') rename(r) }} style={{ ...ip, fontSize: 12, padding: '5px 9px', width: '100%' }} />
                   : <span style={{ color: t.text, fontWeight: 600 }}>{r.label}</span>}</td>
-                <td style={{ padding: '8px 12px', color: t.textM, fontSize: 11 }}>{descId === r.id
+                <td style={{ padding: '8px 12px', textAlign: 'left', color: t.textM, fontSize: 11 }}>{descId === r.id
                   ? <input autoFocus value={descVal} onChange={e => setDescVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveDesc(r) }} placeholder="예: 경구제 조제구역" style={{ ...ip, fontSize: 12, padding: '5px 9px', width: '100%' }} />
                   : (lvDesc(r) || <span style={{ color: t.textL }}>—</span>)}</td>
                 <td style={{ ...tdR, fontSize: 11 }}>{used(r.label) ? used(r.label).toLocaleString() + '건' : <span style={{ color: t.textL }}>0</span>}</td>
