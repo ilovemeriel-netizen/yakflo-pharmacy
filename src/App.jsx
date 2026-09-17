@@ -6217,19 +6217,29 @@ async function lvUsage() {
      캡에 걸리면 조용히 잘리므로 정확히 1,000이면 알린다.
    ★ 모든 td 에 textAlign 을 명시한다 — index.css 의 #root { text-align:center } 가
      상속되어, 지정하지 않은 셀은 가운데로 렌더된다. */
-function LocDrugsModal({ loc, desc, onClose }) {
+function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
   const { t } = useTheme()
   const boxRef = useRef(null); const [pos, setPos] = useState({ x: 0, y: 0 })
   const { dragging, onHeaderMouseDown } = useDraggableModal(boxRef, pos, setPos)
   const [rows, setRows] = useState(null); const [err, setErr] = useState(null); const [capped, setCapped] = useState(false)
+  /* ★ 보관위치 인라인 편집 — 한 번에 한 행만. editId 는 id 우선(없으면 drug_code). */
+  const [editId, setEditId] = useState(null); const [editVal, setEditVal] = useState(''); const [saving, setSaving] = useState(false)
+  const rid = d => d.id || d.drug_code
+  /* ★ 편집 키에 loc 을 섞는다. 모달이 열린 채 다른 위치의 건수를 클릭하면 loc 만 바뀌는데,
+     그때 effect 안에서 setEditId(null) 로 지우면 set-state-in-effect 규칙에 걸린다(이 파일의 기존 주의사항).
+     키에 loc 이 들어 있으면 위치가 바뀐 순간 어떤 행과도 일치하지 않아 편집칸이 저절로 닫힌다. */
+  const ekey = d => loc + ' ' + rid(d)
+  const editing = (rows || []).some(d => ekey(d) === editId)
+  /* ★ Esc 는 편집 중이면 편집만 취소하고, 아니면 모달을 닫는다 —
+     편집 중 모달이 닫히면 저장하지 않은 입력이 조용히 사라진다. */
   useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') onClose() }
+    function onKey(e) { if (e.key !== 'Escape') return; if (editing) { setEditId(null); return } onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, editing])
   useEffect(() => {
     let on = true
-    supabase.from('drugs').select('drug_code,drug_name,category,current_qty,status').eq('storage_location', loc).range(0, 999)
+    supabase.from('drugs').select('id,drug_code,drug_name,category,current_qty,status').eq('storage_location', loc).range(0, 999)
       .then(({ data, error }) => {
         if (!on) return
         if (error) { setErr(dbErrorMsg(error)); setRows([]); return }
@@ -6239,6 +6249,24 @@ function LocDrugsModal({ loc, desc, onClose }) {
       })
     return () => { on = false }
   }, [loc])
+  /* ★ storage_location 하나만 보낸다. 다른 컬럼을 payload 에 넣지 않는다 —
+     특히 current_qty 는 0055 가드(BEFORE UPDATE)가 직접 변경을 차단한다.
+     여기 목록은 전부 storage_location = loc 이므로 현재값 비교 대상은 loc 이다. */
+  async function saveLoc(d) {
+    const v = editVal.trim()
+    if (v === loc) { setEditId(null); return }      /* 동일값 — UPDATE 를 보내지 않고 행도 남긴다 */
+    setSaving(true)
+    const q = supabase.from('drugs').update({ storage_location: v || null })
+    const { error } = d.id ? await q.eq('id', d.id) : await q.eq('drug_code', d.drug_code)
+    setSaving(false)
+    if (error) { onFlash?.(dbErrorMsg(error), 'err'); return }
+    setEditId(null)
+    /* 위치가 바뀌었으므로 이 목록에서 빠진다. rows.length 가 곧 제목의 건수이고,
+       0 이 되면 기존 분기가 그대로 빈 상태 문구를 띄운다. */
+    setRows(p => (p || []).filter(x => rid(x) !== rid(d)))
+    onFlash?.('「' + d.drug_name + '」 위치를 ' + (v ? '「' + v + '」로 옮겼습니다' : '비웠습니다'))
+    onSaved?.()   /* 상위 usage 재조회 — 보관위치 표와 미등록 패널 건수가 함께 갱신된다 */
+  }
   const mh = { padding: '8px 12px', fontSize: 11, fontWeight: 700, color: t.textM, borderBottom: '1px solid ' + t.border, whiteSpace: 'nowrap' }
   const md = { padding: '7px 12px', fontSize: 11.5, color: t.text }
   const msg = c => ({ padding: '28px 20px', textAlign: 'center', color: c, fontSize: 13 })
@@ -6263,15 +6291,24 @@ function LocDrugsModal({ loc, desc, onClose }) {
                   <th style={{ ...mh, textAlign: 'right', width: 76 }}>현재고</th>
                   <th style={{ ...mh, textAlign: 'center', width: 64 }}>상태</th>
                 </tr></thead>
-                <tbody>{rows.map(d => <tr key={d.drug_code} style={{ borderTop: '1px solid ' + t.border }}>
+                <tbody>{rows.map(d => <tr key={rid(d)} style={{ borderTop: '1px solid ' + t.border }}>
                   <td style={{ ...md, textAlign: 'left', color: t.textM, whiteSpace: 'nowrap' }}>{d.drug_code}</td>
-                  <td style={{ ...md, textAlign: 'left', fontWeight: 600 }}>{d.drug_name}</td>
+                  {/* ★ 편집칸은 약품명 셀 안에 넣는다 — 열을 늘리면 약품명 폭이 부족해진다.
+                      datalist 는 기존 LocVocabDatalist 를 그대로 쓴다(자유 입력 유지). */}
+                  <td style={{ ...md, textAlign: 'left', fontWeight: 600 }}>{editId === ekey(d)
+                    ? <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <input autoFocus list="loc-vocab-inline" value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveLoc(d) }} placeholder="예: O-1" style={{ flex: 1, minWidth: 80, padding: '4px 8px', border: '1px solid ' + t.border, borderRadius: 7, fontSize: 11.5, outline: 'none', background: t.card, color: t.text, textAlign: 'left', boxSizing: 'border-box' }} />
+                      <button disabled={saving} onClick={() => saveLoc(d)} style={{ padding: '4px 9px', borderRadius: 7, border: '1px solid ' + t.accent, background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>저장</button>
+                      <button disabled={saving} onClick={() => setEditId(null)} style={{ padding: '4px 9px', borderRadius: 7, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap' }}>취소</button>
+                    </span>
+                    : <span onClick={() => { setEditId(ekey(d)); setEditVal(loc) }} title="보관위치 수정" style={{ color: t.purple, cursor: 'pointer' }}>{d.drug_name}</span>}</td>
                   <td style={{ ...md, textAlign: 'left', color: t.textM }}>{d.category || '-'}</td>
                   <td style={{ ...md, textAlign: 'right' }}>{(d.current_qty || 0).toLocaleString()}</td>
                   <td style={{ ...md, textAlign: 'center' }}><SB s={d.status} /></td>
                 </tr>)}</tbody>
               </table>}
         {capped && <div style={{ padding: '10px 14px', borderTop: '1px solid ' + t.border, background: t.bg, fontSize: 11.5, color: t.amber, textAlign: 'left' }}>1,000건 상한에 걸려 일부가 표시되지 않았을 수 있습니다.</div>}
+        <LocVocabDatalist id="loc-vocab-inline" />
       </div>
     </div>
   </div>
@@ -6503,7 +6540,10 @@ function LocationVocab() {
       </div>
     </div> })()}
 
-    {locView && <LocDrugsModal loc={locView.loc} desc={locView.desc} onClose={() => setLocView(null)} />}
+    {/* ★ onSaved 는 reload — 같은 effect 가 location_vocab 과 lvUsage 를 함께 다시 읽으므로
+        보관위치 표의 건수와 미등록 패널 건수가 한 번에 갱신된다. locView 는 그대로라 모달은 닫히지 않는다.
+        ★ 토스트는 부모의 flash 를 빌려 쓴다 — 모달이 Toast 를 또 렌더하면 중첩이 된다. */}
+    {locView && <LocDrugsModal loc={locView.loc} desc={locView.desc} onClose={() => setLocView(null)} onSaved={reload} onFlash={flash} />}
 
     <Toast msg={toast?.msg} kind={toast?.kind} onClose={() => setToast(null)} />
     <Ft />
