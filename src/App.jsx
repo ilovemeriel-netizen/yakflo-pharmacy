@@ -6224,6 +6224,9 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
   const [rows, setRows] = useState(null); const [err, setErr] = useState(null); const [capped, setCapped] = useState(false)
   /* ★ 보관위치 인라인 편집 — 한 번에 한 행만. editId 는 id 우선(없으면 drug_code). */
   const [editId, setEditId] = useState(null); const [editVal, setEditVal] = useState(''); const [saving, setSaving] = useState(false)
+  const [clearAsk, setClearAsk] = useState(false)        /* [위치 해제] 인라인 확인 줄 */
+  const [sel, setSel] = useState(() => new Set())        /* 일괄 이동 선택 — 모달 로컬, 닫으면 사라진다 */
+  const [dest, setDest] = useState(''); const [destOpts, setDestOpts] = useState([]); const [moveAsk, setMoveAsk] = useState(false)
   const rid = d => d.id || d.drug_code
   /* ★ 편집 키에 loc 을 섞는다. 모달이 열린 채 다른 위치의 건수를 클릭하면 loc 만 바뀌는데,
      그때 effect 안에서 setEditId(null) 로 지우면 set-state-in-effect 규칙에 걸린다(이 파일의 기존 주의사항).
@@ -6249,23 +6252,77 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
       })
     return () => { on = false }
   }, [loc])
+  /* ★ 목적지 select — 등록 어휘만 고르게 한다(자유 입력은 개별 편집의 datalist 쪽에만 남긴다).
+     LocVocabDatalist 는 수정 금지라 내부 데이터를 빌려올 수 없어 여기서 따로 읽는다(38행, 비용 무시 가능). */
+  useEffect(() => {
+    let on = true
+    supabase.from('location_vocab').select('label,code,sort_order,is_active').order('sort_order').order('label')
+      .then(({ data }) => { if (on) setDestOpts((data || []).filter(x => x.is_active !== false)) })
+    return () => { on = false }
+  }, [])
+  const selRows = (rows || []).filter(d => sel.has(rid(d)))
+  const allSel = !!(rows || []).length && selRows.length === (rows || []).length
+  const someSel = selRows.length > 0 && !allSel
+  function toggleAll() { setSel(allSel ? new Set() : new Set((rows || []).map(rid))) }
+  function toggleOne(d) { setSel(p => { const n = new Set(p); const k = rid(d); if (n.has(k)) n.delete(k); else n.add(k); return n }) }
   /* ★ storage_location 하나만 보낸다. 다른 컬럼을 payload 에 넣지 않는다 —
      특히 current_qty 는 0055 가드(BEFORE UPDATE)가 직접 변경을 차단한다.
      여기 목록은 전부 storage_location = loc 이므로 현재값 비교 대상은 loc 이다. */
+  /* 이동·해제 후 공통 뒷정리 — 목록에서 빼고(제목 건수가 곧 rows.length), 선택에서도 뺀다.
+     0 이 되면 기존 분기가 그대로 빈 상태 문구를 띄운다. 모달은 닫지 않는다(연속 작업). */
+  function dropRows(keys) {
+    const k = new Set(keys)
+    setRows(p => (p || []).filter(x => !k.has(rid(x))))
+    setSel(p => { const n = new Set(p); for (const x of k) n.delete(x); return n })
+  }
   async function saveLoc(d) {
     const v = editVal.trim()
-    if (v === loc) { setEditId(null); return }      /* 동일값 — UPDATE 를 보내지 않고 행도 남긴다 */
+    /* ★ 빈 값은 「변경 없음」이다. 위치를 비우는 경로는 [위치 해제] 하나뿐이라,
+       입력칸을 비워 둔 채 저장해도 실수로 위치가 지워지지 않는다. */
+    if (!v || v === loc) { setEditId(null); return }
     setSaving(true)
-    const q = supabase.from('drugs').update({ storage_location: v || null })
+    const q = supabase.from('drugs').update({ storage_location: v })
     const { error } = d.id ? await q.eq('id', d.id) : await q.eq('drug_code', d.drug_code)
     setSaving(false)
     if (error) { onFlash?.(dbErrorMsg(error), 'err'); return }
     setEditId(null)
-    /* 위치가 바뀌었으므로 이 목록에서 빠진다. rows.length 가 곧 제목의 건수이고,
-       0 이 되면 기존 분기가 그대로 빈 상태 문구를 띄운다. */
-    setRows(p => (p || []).filter(x => rid(x) !== rid(d)))
-    onFlash?.('「' + d.drug_name + '」 위치를 ' + (v ? '「' + v + '」로 옮겼습니다' : '비웠습니다'))
+    dropRows([rid(d)])
+    onFlash?.('「' + d.drug_name + '」 위치를 「' + v + '」로 옮겼습니다')
     onSaved?.()   /* 상위 usage 재조회 — 보관위치 표와 미등록 패널 건수가 함께 갱신된다 */
+  }
+  /* ★ 위치를 비우는 유일한 경로. 인라인 확인을 거친 뒤에만 불린다. */
+  async function clearLoc(d) {
+    setSaving(true)
+    const q = supabase.from('drugs').update({ storage_location: null })
+    const { error } = d.id ? await q.eq('id', d.id) : await q.eq('drug_code', d.drug_code)
+    setSaving(false)
+    if (error) { onFlash?.(dbErrorMsg(error), 'err'); return }
+    setClearAsk(false); setEditId(null)
+    dropRows([rid(d)])
+    onFlash?.('「' + d.drug_name + '」의 보관위치를 지웠습니다')
+    onSaved?.()
+  }
+  /* ★ 100건씩 나눠 보낸다. .in() 은 쿼리스트링으로 나가는데 UUID 36자 × 691건(O-1 전체 선택)이면
+     25KB 를 넘겨 Kong 의 URI 한계(8KB)에 걸린다 — 전체 선택이 있는 한 실제로 도달하는 경로다.
+     ★ 청크마다 독립 요청이라 단일 트랜잭션이 아니다. 부분 실패 시 롤백하지 않고
+     성공한 청크만 목록에서 빼고 실패 건수를 알린다. */
+  async function bulkMove() {
+    /* ★ .in() 은 id 로만 건다(실측: drugs 1,120건 전부 id 보유). id 가 없는 행은 보내지 않고
+       실패로 센다 — drug_code 를 id 컬럼에 넣으면 조용히 0건 매칭이 된다. */
+    const targets = selRows.filter(d => d.id)
+    let failed = selRows.length - targets.length
+    if (!selRows.length || !dest) return
+    setSaving(true)
+    const okKeys = []
+    for (let i = 0; i < targets.length; i += 100) {
+      const chunk = targets.slice(i, i + 100)
+      const { error } = await supabase.from('drugs').update({ storage_location: dest }).in('id', chunk.map(d => d.id))
+      if (error) failed += chunk.length; else okKeys.push(...chunk.map(rid))
+    }
+    setSaving(false); setMoveAsk(false)
+    if (okKeys.length) { dropRows(okKeys); onSaved?.() }
+    if (failed) onFlash?.(okKeys.length.toLocaleString() + '건 이동 완료, ' + failed.toLocaleString() + '건 실패했습니다', 'err')
+    else onFlash?.(okKeys.length.toLocaleString() + '건을 「' + dest + '」로 옮겼습니다')
   }
   const mh = { padding: '8px 12px', fontSize: 11, fontWeight: 700, color: t.textM, borderBottom: '1px solid ' + t.border, whiteSpace: 'nowrap' }
   const md = { padding: '7px 12px', fontSize: 11.5, color: t.text }
@@ -6285,6 +6342,8 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
             : !rows.length ? <div style={msg(t.textL)}>해당 위치의 약품이 없습니다</div>
               : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ background: t.bg }}>
+                  {/* ★ 부분 선택은 indeterminate — React 가 prop 으로 받지 않아 ref 로 DOM 에 직접 건다 */}
+                  <th style={{ ...mh, textAlign: 'center', width: 36 }}><input type="checkbox" checked={allSel} ref={el => { if (el) el.indeterminate = someSel }} onChange={toggleAll} title="전체 선택" style={{ accentColor: t.accent, cursor: 'pointer', margin: 0 }} /></th>
                   <th style={{ ...mh, textAlign: 'left', width: 112 }}>약품코드</th>
                   <th style={{ ...mh, textAlign: 'left' }}>약품명</th>
                   <th style={{ ...mh, textAlign: 'left', width: 76 }}>구분</th>
@@ -6292,16 +6351,30 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
                   <th style={{ ...mh, textAlign: 'center', width: 64 }}>상태</th>
                 </tr></thead>
                 <tbody>{rows.map(d => <tr key={rid(d)} style={{ borderTop: '1px solid ' + t.border }}>
+                  <td style={{ ...md, textAlign: 'center' }}><input type="checkbox" checked={sel.has(rid(d))} onChange={() => toggleOne(d)} style={{ accentColor: t.accent, cursor: 'pointer', margin: 0 }} /></td>
                   <td style={{ ...md, textAlign: 'left', color: t.textM, whiteSpace: 'nowrap' }}>{d.drug_code}</td>
                   {/* ★ 편집칸은 약품명 셀 안에 넣는다 — 열을 늘리면 약품명 폭이 부족해진다.
                       datalist 는 기존 LocVocabDatalist 를 그대로 쓴다(자유 입력 유지). */}
                   <td style={{ ...md, textAlign: 'left', fontWeight: 600 }}>{editId === ekey(d)
-                    ? <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                      <input autoFocus list="loc-vocab-inline" value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveLoc(d) }} placeholder="예: O-1" style={{ flex: 1, minWidth: 80, padding: '4px 8px', border: '1px solid ' + t.border, borderRadius: 7, fontSize: 11.5, outline: 'none', background: t.card, color: t.text, textAlign: 'left', boxSizing: 'border-box' }} />
-                      <button disabled={saving} onClick={() => saveLoc(d)} style={{ padding: '4px 9px', borderRadius: 7, border: '1px solid ' + t.accent, background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>저장</button>
-                      <button disabled={saving} onClick={() => setEditId(null)} style={{ padding: '4px 9px', borderRadius: 7, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap' }}>취소</button>
+                    ? <span style={{ display: 'block', textAlign: 'left' }}>
+                      {/* ★ 입력칸은 빈 상태로 시작하고 현재값은 placeholder 로만 보여준다 —
+                          datalist 는 입력값으로 자동 필터링되므로, 현재값이 채워져 있으면
+                          그 값으로 시작하는 제안만 남는다(브라우저 기본 동작이라 끌 수 없다). */}
+                      <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <input autoFocus list="loc-vocab-inline" value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveLoc(d) }} placeholder={'현재: ' + loc} style={{ flex: 1, minWidth: 80, padding: '4px 8px', border: '1px solid ' + t.border, borderRadius: 7, fontSize: 11.5, outline: 'none', background: t.card, color: t.text, textAlign: 'left', boxSizing: 'border-box' }} />
+                        <button disabled={saving} onClick={() => saveLoc(d)} style={{ padding: '4px 9px', borderRadius: 7, border: '1px solid ' + t.accent, background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>저장</button>
+                        <button disabled={saving} onClick={() => { setClearAsk(false); setEditId(null) }} style={{ padding: '4px 9px', borderRadius: 7, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap' }}>취소</button>
+                      </span>
+                      {/* ★ [위치 해제] 는 둘째 줄 — 첫 줄에 넣으면 입력칸이 128px 로 좁아져 datalist 제안이 잘린다 */}
+                      <span style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
+                        {clearAsk
+                          ? <><span style={{ fontSize: 10.5, fontWeight: 500, color: t.textM, textAlign: 'left' }}>이 약품의 보관위치를 지웁니다</span>
+                            <button disabled={saving} onClick={() => clearLoc(d)} style={{ padding: '3px 9px', borderRadius: 7, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>확인</button>
+                            <button disabled={saving} onClick={() => setClearAsk(false)} style={{ padding: '3px 9px', borderRadius: 7, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap' }}>취소</button></>
+                          : <button disabled={saving} onClick={() => setClearAsk(true)} style={{ padding: '3px 9px', borderRadius: 7, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap' }}>위치 해제</button>}
+                      </span>
                     </span>
-                    : <span onClick={() => { setEditId(ekey(d)); setEditVal(loc) }} title="보관위치 수정" style={{ color: t.purple, cursor: 'pointer' }}>{d.drug_name}</span>}</td>
+                    : <span onClick={() => { setClearAsk(false); setEditVal(''); setEditId(ekey(d)) }} title="보관위치 수정" style={{ color: t.purple, cursor: 'pointer' }}>{d.drug_name}</span>}</td>
                   <td style={{ ...md, textAlign: 'left', color: t.textM }}>{d.category || '-'}</td>
                   <td style={{ ...md, textAlign: 'right' }}>{(d.current_qty || 0).toLocaleString()}</td>
                   <td style={{ ...md, textAlign: 'center' }}><SB s={d.status} /></td>
@@ -6310,6 +6383,26 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
         {capped && <div style={{ padding: '10px 14px', borderTop: '1px solid ' + t.border, background: t.bg, fontSize: 11.5, color: t.amber, textAlign: 'left' }}>1,000건 상한에 걸려 일부가 표시되지 않았을 수 있습니다.</div>}
         <LocVocabDatalist id="loc-vocab-inline" />
       </div>
+      {/* ★ 푸터는 스크롤 컨테이너 밖이다 — 안에 두면 691건(O-1) 목록을 끝까지 내려야 보인다.
+          ★ 확인은 이 줄을 바꿔 치는 방식이다. 모달을 새로 띄우지 않는다(중첩 금지). */}
+      {!!(rows || []).length && <div style={{ borderTop: '1px solid ' + t.border, background: t.bg, padding: '10px 14px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', textAlign: 'left' }}>
+        {moveAsk
+          ? <><span style={{ fontSize: 12, color: t.text, fontWeight: 600 }}>{selRows.length.toLocaleString()}건을 「{dest}」로 이동합니다</span>
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              <button disabled={saving} onClick={bulkMove} style={{ padding: '5px 13px', borderRadius: 7, border: '1px solid ' + t.accent, background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{saving ? '이동 중…' : '확인'}</button>
+              <button disabled={saving} onClick={() => setMoveAsk(false)} style={{ padding: '5px 13px', borderRadius: 7, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>취소</button>
+            </span></>
+          : <><span style={{ fontSize: 11.5, color: selRows.length ? t.text : t.textL, fontWeight: 600 }}>{selRows.length.toLocaleString()}건 선택됨</span>
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+              {/* ★ 등록 어휘만 · sort_order 순 · 지금 보고 있는 위치는 뺀다(같은 곳으로 옮길 이유가 없다).
+                  표시는 「label · 설명」이지만 저장되는 값은 label 뿐이다. */}
+              <select value={dest} onChange={e => setDest(e.target.value)} style={{ padding: '5px 9px', borderRadius: 7, border: '1px solid ' + t.border, background: t.card, color: t.text, fontSize: 11, maxWidth: 220 }}>
+                <option value="">목적지 선택</option>
+                {destOpts.filter(o => o.label !== loc).map(o => { const dd = lvDesc(o); return <option key={o.label} value={o.label}>{dd ? o.label + ' · ' + dd : o.label}</option> })}
+              </select>
+              <button disabled={saving || !selRows.length || !dest} onClick={() => setMoveAsk(true)} style={{ padding: '5px 13px', borderRadius: 7, border: '1px solid ' + ((selRows.length && dest) ? t.accent : t.border), background: (selRows.length && dest) ? t.accent : 'transparent', color: (selRows.length && dest) ? '#fff' : t.textL, cursor: (selRows.length && dest) ? 'pointer' : 'not-allowed', fontSize: 11, fontWeight: 700, opacity: (selRows.length && dest) ? 1 : 0.55 }}>이동</button>
+            </span></>}
+      </div>}
     </div>
   </div>
 }
