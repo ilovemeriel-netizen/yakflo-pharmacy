@@ -6227,6 +6227,7 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
   const [clearAsk, setClearAsk] = useState(false)        /* [위치 해제] 인라인 확인 줄 */
   const [sel, setSel] = useState(() => new Set())        /* 일괄 이동 선택 — 모달 로컬, 닫으면 사라진다 */
   const [dest, setDest] = useState(''); const [destOpts, setDestOpts] = useState([]); const [moveAsk, setMoveAsk] = useState(false)
+  const [q, setQ] = useState('')                         /* 약품코드·약품명 검색 — 선택은 유지된다 */
   const rid = d => d.id || d.drug_code
   /* ★ 편집 키에 loc 을 섞는다. 모달이 열린 채 다른 위치의 건수를 클릭하면 loc 만 바뀌는데,
      그때 effect 안에서 setEditId(null) 로 지우면 set-state-in-effect 규칙에 걸린다(이 파일의 기존 주의사항).
@@ -6260,10 +6261,23 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
       .then(({ data }) => { if (on) setDestOpts((data || []).filter(x => x.is_active !== false)) })
     return () => { on = false }
   }, [])
+  /* ★ 검색은 이미 받아온 rows 를 거르는 클라이언트 필터다 — 추가 조회를 하지 않는다.
+     ★ selRows 는 검색과 무관하게 누적 선택 전체를 가리킨다. 검색어를 바꿔도 선택이 풀리지 않고,
+       bulkMove 가 이 값을 쓰므로 여러 번 검색해 모은 선택분이 한 번에 옮겨진다. */
+  const qq = q.trim().toLowerCase()
+  const shown = qq
+    ? (rows || []).filter(d => String(d.drug_code || '').toLowerCase().includes(qq) || String(d.drug_name || '').toLowerCase().includes(qq))
+    : (rows || [])
   const selRows = (rows || []).filter(d => sel.has(rid(d)))
-  const allSel = !!(rows || []).length && selRows.length === (rows || []).length
-  const someSel = selRows.length > 0 && !allSel
-  function toggleAll() { setSel(allSel ? new Set() : new Set((rows || []).map(rid))) }
+  const selShown = shown.filter(d => sel.has(rid(d)))
+  const offscr = selRows.length - selShown.length      /* 검색으로 가려진 선택분 */
+  /* ★ 전체 선택·해제는 「지금 보이는 행」만 건드린다 — 앞선 검색에서 모아 둔 선택은 남는다. */
+  const allSel = !!shown.length && selShown.length === shown.length
+  const someSel = selShown.length > 0 && !allSel
+  function toggleAll() {
+    setSel(p => { const n = new Set(p); const ks = shown.map(rid)
+      if (allSel) ks.forEach(k => n.delete(k)); else ks.forEach(k => n.add(k)); return n })
+  }
   function toggleOne(d) { setSel(p => { const n = new Set(p); const k = rid(d); if (n.has(k)) n.delete(k); else n.add(k); return n }) }
   /* ★ storage_location 하나만 보낸다. 다른 컬럼을 payload 에 넣지 않는다 —
      특히 current_qty 는 0055 가드(BEFORE UPDATE)가 직접 변경을 차단한다.
@@ -6336,10 +6350,20 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
         </div>
         <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 28, height: 28, borderRadius: 8, cursor: 'pointer', fontSize: 15, flexShrink: 0 }}>✕</button>
       </div>
+      {/* ★ 검색창은 스크롤 박스 밖이다 — 안에 두면 691건(O-1)을 훑는 동안 위로 밀려 사라진다.
+          ★ 헤더의 건수는 구역 총건수를 그대로 두고, 필터 결과는 이 줄 우측에만 표시한다. */}
+      {!!(rows || []).length && <div style={{ borderTop: '1px solid ' + t.border, padding: '9px 14px', display: 'flex', gap: 8, alignItems: 'center', textAlign: 'left' }}>
+        <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="약품코드 · 약품명 검색" style={{ width: '100%', padding: '5px 26px 5px 9px', border: '1px solid ' + t.border, borderRadius: 7, fontSize: 11.5, outline: 'none', background: t.card, color: t.text, textAlign: 'left', boxSizing: 'border-box' }} />
+          {!!q && <button onClick={() => setQ('')} title="검색어 지우기" style={{ position: 'absolute', right: 4, border: 'none', background: 'transparent', color: t.textL, cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '0 3px' }}>×</button>}
+        </div>
+        <span style={{ fontSize: 11, color: t.textM, whiteSpace: 'nowrap', fontWeight: 600 }}>{qq ? rows.length.toLocaleString() + '건 중 ' + shown.length.toLocaleString() + '건' : rows.length.toLocaleString() + '건'}</span>
+      </div>}
       <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
         {err ? <div style={msg(t.red)}>{err}</div>
           : rows === null ? <div style={msg(t.textL)}>불러오는 중…</div>
             : !rows.length ? <div style={msg(t.textL)}>해당 위치의 약품이 없습니다</div>
+              : !shown.length ? <div style={msg(t.textL)}>검색 결과가 없습니다</div>
               : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ background: t.bg }}>
                   {/* ★ 부분 선택은 indeterminate — React 가 prop 으로 받지 않아 ref 로 DOM 에 직접 건다 */}
@@ -6350,7 +6374,7 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
                   <th style={{ ...mh, textAlign: 'right', width: 76 }}>현재고</th>
                   <th style={{ ...mh, textAlign: 'center', width: 64 }}>상태</th>
                 </tr></thead>
-                <tbody>{rows.map(d => <tr key={rid(d)} style={{ borderTop: '1px solid ' + t.border }}>
+                <tbody>{shown.map(d => <tr key={rid(d)} style={{ borderTop: '1px solid ' + t.border }}>
                   <td style={{ ...md, textAlign: 'center' }}><input type="checkbox" checked={sel.has(rid(d))} onChange={() => toggleOne(d)} style={{ accentColor: t.accent, cursor: 'pointer', margin: 0 }} /></td>
                   <td style={{ ...md, textAlign: 'left', color: t.textM, whiteSpace: 'nowrap' }}>{d.drug_code}</td>
                   {/* ★ 편집칸은 약품명 셀 안에 넣는다 — 열을 늘리면 약품명 폭이 부족해진다.
@@ -6384,7 +6408,11 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
         <LocVocabDatalist id="loc-vocab-inline" />
       </div>
       {/* ★ 푸터는 스크롤 컨테이너 밖이다 — 안에 두면 691건(O-1) 목록을 끝까지 내려야 보인다.
-          ★ 확인은 이 줄을 바꿔 치는 방식이다. 모달을 새로 띄우지 않는다(중첩 금지). */}
+          ★ 확인은 이 줄을 바꿔 치는 방식이다. 모달을 새로 띄우지 않는다(중첩 금지).
+          ★ 렌더 조건은 rows.length 다 — shown.length 로 바꾸면 검색 결과가 0건일 때 푸터가 사라져
+            누적해 둔 선택분을 옮길 수 없게 된다.
+          ★ 선택 건수는 누적 전체(selRows)이고, 검색으로 가려진 선택분은 「화면 밖 M건」으로 병기한다 —
+            화면에 안 보이는 것까지 함께 옮겨진다는 사실을 숨기지 않는다. */}
       {!!(rows || []).length && <div style={{ borderTop: '1px solid ' + t.border, background: t.bg, padding: '10px 14px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', textAlign: 'left' }}>
         {moveAsk
           ? <><span style={{ fontSize: 12, color: t.text, fontWeight: 600 }}>{selRows.length.toLocaleString()}건을 「{dest}」로 이동합니다</span>
@@ -6392,7 +6420,7 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
               <button disabled={saving} onClick={bulkMove} style={{ padding: '5px 13px', borderRadius: 7, border: '1px solid ' + t.accent, background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{saving ? '이동 중…' : '확인'}</button>
               <button disabled={saving} onClick={() => setMoveAsk(false)} style={{ padding: '5px 13px', borderRadius: 7, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>취소</button>
             </span></>
-          : <><span style={{ fontSize: 11.5, color: selRows.length ? t.text : t.textL, fontWeight: 600 }}>{selRows.length.toLocaleString()}건 선택됨</span>
+          : <><span style={{ fontSize: 11.5, color: selRows.length ? t.text : t.textL, fontWeight: 600 }}>{selRows.length.toLocaleString()}건 선택됨{offscr > 0 ? ' (화면 밖 ' + offscr.toLocaleString() + '건)' : ''}</span>
             <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
               {/* ★ 등록 어휘만 · sort_order 순 · 지금 보고 있는 위치는 뺀다(같은 곳으로 옮길 이유가 없다).
                   표시는 「label · 설명」이지만 저장되는 값은 label 뿐이다. */}
