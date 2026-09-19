@@ -3968,6 +3968,8 @@ function WardAdmin() {
      행 클릭 · [추가] 버튼)가 모두 이 값을 쓴다. 검색 결과 행에는 수량 칸을 두지 않는다. */
   const [aQty, setAQty] = useState('')
   const [adding, setAdding] = useState(false)
+  /* ★ 중복 약품 합산 확인 — { reqId, row, add }. 모달을 띄우지 않고 검색창 아래 한 줄로 묻는다. */
+  const [dupAsk, setDupAsk] = useState(null)
   const [addOpen, setAddOpen] = useState(false)          // 「약품 추가」 접기·펴기(기본 접힘)
   /* 상세를 열고 닫거나 다른 신청으로 옮길 때 추가 영역을 초기 상태로 되돌린다 */
   const resetAdd = () => { setAddOpen(false); setAq(''); setAFound([]); setASearched(false); setAQty('') }
@@ -4163,7 +4165,14 @@ function WardAdmin() {
     /* ★ 5개 경로가 모두 이 함수를 지나므로, 여기서 한 번 막으면 qty:0이 새어 나갈 구멍이 없다 */
     if (!wardValidQty(aQty)) { flash(WARD_QTY_MSG, 'err'); return }
     const list = itemsOf(r.id)
-    if (list.some(x => (x.drug_code || x.drug_name) === (d.drug_code || nm))) { flash('이미 담긴 약품입니다', 'err'); return }
+    /* ★ 중복이면 새 행을 만들지 않고 기존 행에 합산한다 — 같은 약품이 두 줄이면 인쇄·집계가 어긋난다.
+       ★ 판정 기준이 경로마다 다르다: 검색으로 고른 약은 drug_code 로, 「직접 추가」는 drug_code 가
+         없으므로(0083 의도된 설계) trim 후 약품명 **정확 일치**로만 본다. 부분일치·정규화는 하지 않는다 —
+         오타로 엉뚱한 품목을 합치는 것보다 두 줄이 생기는 편이 되돌리기 쉽다. */
+    const dup = d.drug_code
+      ? list.find(x => x.drug_code === d.drug_code)
+      : list.find(x => String(x.drug_name || '').trim() === nm)
+    if (dup) { setDupAsk({ reqId: r.id, row: dup, add: Number(aQty) }); return }
     setAdding(true)
     /* ★ sort_order를 WARD_ADMIN_SORT_BASE 위에서 매겨 추가분으로 식별한다(스키마 변경 없음) */
     const nextOrder = Math.max(WARD_ADMIN_SORT_BASE, ...list.map(x => Number(x.sort_order) || 0)) + 1
@@ -4175,6 +4184,19 @@ function WardAdmin() {
     if (error) { flash('추가 실패: ' + error.message, 'err'); return }
     setAq(''); setAFound([]); setASearched(false); setAQty('')
     flash('「' + nm + '」 ' + aQty + '개를 추가했습니다'); loadAll()
+  }
+  /* ★ 합계는 기존 행의 qty 를 갱신하는 것뿐이다 — 인라인 편집과 같은 saveItem 을 그대로 쓴다.
+     같은 검증(wardValidQty)·같은 오류 문구·같은 loadAll 갱신을 공유하므로 UPDATE 경로를 새로 만들지 않는다.
+     ★ 단위는 기존 행의 unit 을 그대로 둔다(합산 시 단위를 바꾸지 않는다).
+     ★ 0.25 배수라 이진수로 정확하지만, 부동소수 잔재를 남기지 않도록 소수 둘째 자리에서 맞춘다. */
+  const wardSumQty = (a, b) => Math.round((Number(a) + Number(b)) * 100) / 100
+  async function mergeDup() {
+    if (!dupAsk) return
+    const { row, add } = dupAsk
+    setAdding(true)
+    await saveItem(row, 'qty', String(wardSumQty(row.qty, add)))
+    setAdding(false)
+    setDupAsk(null); setAq(''); setAFound([]); setASearched(false); setAQty('')
   }
 
   const cols = [
@@ -4326,11 +4348,24 @@ function WardAdmin() {
                 {/* ★ A안 — 수량 칸 **1개**. 5개 추가 경로가 모두 이 값을 쓴다. 숫자와 소수점만 · 0.25 배수 */}
                 <input value={aQty} onChange={e => onAQtyInput(e.target.value)} inputMode="decimal" maxLength={6} placeholder="수량" style={{ ...ip2, width: 62, textAlign: 'center', height: 30 }} />
               </span>
+              {/* ★ 중복 합산 확인 — 인라인 한 줄. 모달을 새로 띄우지 않는다(중첩 금지).
+                  단위는 기존 행의 unit 을 쓰고, 비어 있으면 수량만 적는다. */}
+              {dupAsk && dupAsk.reqId === r.id && (() => {
+                const u = String(dupAsk.row.unit || '').trim()
+                const fq = n => Number(n).toLocaleString() + u
+                return <div style={{ marginTop: 8, padding: '8px 10px', border: '1px solid ' + t.amber, background: t.amberL, borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', textAlign: 'left' }}>
+                  <span style={{ fontSize: 11.5, color: t.text, fontWeight: 600 }}>{dupAsk.row.drug_name}은(는) 이미 담겨 있습니다. {fq(dupAsk.row.qty)} + {fq(dupAsk.add)} = {fq(wardSumQty(dupAsk.row.qty, dupAsk.add))}로 변경합니다</span>
+                  <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                    <button disabled={adding} onClick={mergeDup} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>확인</button>
+                    <button disabled={adding} onClick={() => setDupAsk(null)} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>취소</button>
+                  </span>
+                </div>
+              })()}
               {aSearching && <div style={{ fontSize: 11, color: t.textL, marginTop: 6 }}>찾는 중...</div>}
             {/* drug_code는 nullable(0083) — 목록에 없는 약도 이름만으로 추가할 수 있다.
                 「직접 추가」도 [추가]와 같은 가운데 정렬로 맞춘다(검색창 아래 한 줄). */}
             {aq.trim().length >= 2 && <div style={{ marginTop: 8 }}>
-              <button onClick={() => addItem(r, { drug_name: aq.trim() })} disabled={adding || !wardValidQty(aQty)} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 10, fontWeight: 600 }}>「{aq.trim()}」 직접 추가</button>
+              <button onClick={() => addItem(r, { drug_name: aq.trim() })} disabled={adding || !wardValidQty(aQty)} title={wardValidQty(aQty) ? undefined : '수량을 입력해 주세요'} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 10, fontWeight: 600 }}>「{aq.trim()}」 직접 추가</button>
             </div>}
             {aSearched && !aSearching && (
               <div style={{ marginTop: 10, border: '1px solid ' + t.border, borderRadius: 8, overflow: 'hidden', maxHeight: 240, overflowY: 'auto', textAlign: 'left' }}>
@@ -4348,7 +4383,7 @@ function WardAdmin() {
                       style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 8, padding: '8px 10px', borderTop: '1px solid ' + t.border, fontSize: 12, cursor: adding ? 'not-allowed' : 'pointer' }}
                       onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>
                       <span style={{ minWidth: 0, fontWeight: 600, color: t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_name} <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}</span></span>
-                      <button onClick={e => { e.stopPropagation(); addItem(r, d) }} disabled={adding || !wardValidQty(aQty)} style={{ padding: '4px 14px', borderRadius: 8, border: '1px solid ' + t.lavender, background: t.lavender + '22', color: t.purple, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700 }}>추가</button>
+                      <button onClick={e => { e.stopPropagation(); addItem(r, d) }} disabled={adding || !wardValidQty(aQty)} title={wardValidQty(aQty) ? undefined : '수량을 입력해 주세요'} style={{ padding: '4px 14px', borderRadius: 8, border: '1px solid ' + t.lavender, background: t.lavender + '22', color: t.purple, cursor: adding ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700 }}>추가</button>
                       {/* ★ status로 거르지 않는다 — 약제과가 중지·휴면 약품으로 대체할 수 있어야 하므로 상태만 보여준다 */}
                       <span style={{ minWidth: 0, display: 'flex', justifyContent: 'flex-end' }}>
                         <Bd bg={d.status === '사용' ? t.greenL : t.bg} color={d.status === '사용' ? t.green : t.textM}>{d.status || '-'}</Bd>
