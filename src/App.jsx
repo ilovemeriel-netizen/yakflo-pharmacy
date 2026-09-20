@@ -6805,20 +6805,21 @@ function LocationVocab() {
         ★ 열 폭 6/40/54 는 실측으로 정했다: 번호는 한 구역 최대 314행이라 3자리(4.4%)면 되고,
           약품명 40%(70.2mm)면 최장 「지씨플루프리필드시린지주PFS/독감_일반0.5mL」(66.7mm)까지
           530건 전건이 잘리지 않는다. 남은 54%를 성분명에 준다(잘림 26건 — 말줄임 의도대로). */}
-    <style>{'.loc-print{display:none}@media print{.lp-root{padding:0!important;max-width:none!important}.lp-root>*:not(.loc-print){display:none!important}.loc-print{display:block!important;color:black}.loc-print .lp-page{page-break-after:always;break-after:page}.loc-print .lp-page:last-child{page-break-after:auto;break-after:auto}.loc-print .lp-h{font-size:12pt;font-weight:700;margin:0 0 1mm}.loc-print .lp-m{font-size:8.5pt;color:#888;margin:0 0 2.5mm}.loc-print table{width:100%;border-collapse:collapse;table-layout:fixed}.loc-print thead{display:table-header-group}.loc-print tr{break-inside:avoid;page-break-inside:avoid}.loc-print th,.loc-print td{border:0.4pt solid #bbb;padding:0.8mm 1.6mm;vertical-align:top;line-height:1.25}.loc-print th{font-size:8.5pt;font-weight:700;border-bottom:1pt solid black}.loc-print td{font-size:9pt}.loc-print .c-no{width:6%;text-align:right}.loc-print .c-nm{width:40%;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.loc-print .c-ig{width:54%;text-align:left;font-size:9pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}'}</style>
+    <style>{'.loc-print{display:none}@media print{.lp-root{padding:0!important;max-width:none!important}.lp-root>*:not(.loc-print){display:none!important}.loc-print{display:block!important;color:black}.loc-print .lp-page{page-break-after:always;break-after:page}.loc-print .lp-page:last-child{page-break-after:auto;break-after:auto}.loc-print .lp-h{font-size:12pt;font-weight:700;margin:0 0 1mm}.loc-print .lp-m{font-size:8.5pt;color:#888;margin:0 0 2.5mm}.loc-print table{width:100%;border-collapse:collapse;table-layout:fixed}.loc-print thead{display:table-header-group}.loc-print tr{break-inside:avoid;page-break-inside:avoid}.loc-print th,.loc-print td{border:0.4pt solid #bbb;padding:0.6mm 1.5mm!important;line-height:1.2!important;vertical-align:top}.loc-print th{font-size:8.5pt;font-weight:700;border-bottom:1pt solid black}.loc-print td{font-size:9pt}.loc-print .c-no{width:6%;text-align:center}.loc-print .c-nm{width:40%;text-align:left}.loc-print .c-ig{width:54%;text-align:left}.loc-print td.c-no{font-weight:700}.loc-print td.c-nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.loc-print td.c-ig{font-weight:400;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}'}</style>
     <div className="loc-print">
-      {printPicked.map(r => { const list = printByLoc[r.label] || []; const dsc = lvDesc(r)
+      {printPicked.map(r => { const list = printByLoc[r.label] || []
         return <div className="lp-page" key={r.id}>
-          <div className="lp-h" style={{ textAlign: 'left' }}>{r.label}{dsc ? ' · ' + dsc : ''}</div>
+          {/* ★ 머리말은 구역 코드만 — 설명은 부제로도 안 넣는다(요청). 부제는 그대로 둔다. */}
+          <div className="lp-h" style={{ textAlign: 'left' }}>{r.label}</div>
           <div className="lp-m" style={{ textAlign: 'left' }}>사용·휴면 {list.length.toLocaleString()}건 · 약품명 가나다순 · 출력 {new Date().toISOString().slice(0, 10)}</div>
           <table>
             <thead><tr>
-              <th className="c-no" style={{ textAlign: 'right' }}>번호</th>
+              <th className="c-no" style={{ textAlign: 'center' }}>번호</th>
               <th className="c-nm" style={{ textAlign: 'left' }}>약품명</th>
               <th className="c-ig" style={{ textAlign: 'left' }}>성분명</th>
             </tr></thead>
             <tbody>{list.map((d, i) => <tr key={d.drug_code || i}>
-              <td className="c-no" style={{ textAlign: 'right' }}>{i + 1}</td>
+              <td className="c-no" style={{ textAlign: 'center' }}>{i + 1}</td>
               <td className="c-nm" style={{ textAlign: 'left' }}>{d.drug_name}</td>
               <td className="c-ig" style={{ textAlign: 'left' }}>{lpIng(d)}</td>
             </tr>)}</tbody>
