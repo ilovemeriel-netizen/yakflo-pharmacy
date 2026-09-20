@@ -6470,6 +6470,39 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
   </div>
 }
 
+/* ═══ 구역별 인쇄 — 성분명 포매터 (ATC printIng 을 본으로 복제한 별도 구현) ═══
+   ★ ATC 의 printIng(AtcManage 내부)을 옮기거나 고치지 않는다. 기존 인쇄 3곳은 무수정이다.
+     ATC 와 다른 점이 셋 있어 공유하지 않고 복제한다:
+       ① 「외」 여부를 compound_type 으로 판정한다(슬래시 조각 수가 아니다).
+          실측: 사용+휴면 530건 = 복합제 68 + 단일제 462 + 미분류 0 → 컬럼만으로 전건이 갈린다.
+       ② 괄호·대괄호 **밖의** '/' 에서만 자른다. 단순 split 은 지씨플루의 [A/Victoria/…] 와
+          스카이조스터의 (Strain: Oka/SK, …) 를 중간에서 끊어 괄호가 열린 채 남는다.
+       ③ 영문·한글이 모두 없으면 「—」.
+   ★ 개수 표기·공백 없는 괄호 결합은 ATC 와 같게 둔다 — 「Gabapentin(가바펜틴)」·「… 외 6종」. */
+function lpSplitTop(s) {
+  const out = []; let depth = 0, cur = ''
+  for (const ch of String(s || '')) {
+    if (ch === '(' || ch === '[') { depth++; cur += ch }
+    else if (ch === ')' || ch === ']') { depth = Math.max(0, depth - 1); cur += ch }
+    else if (ch === '/' && depth === 0) { out.push(cur.trim()); cur = '' }
+    else cur += ch
+  }
+  if (cur.trim()) out.push(cur.trim())
+  return out.filter(Boolean)
+}
+function lpIng(d) {
+  const en = String((d && d.ingredient_en) || '').trim()
+  const kr = String((d && d.ingredient_kr) || '').trim()
+  if (!en && !kr) return '—'
+  const eP = lpSplitTop(en), kP = lpSplitTop(kr)
+  const fe = eP[0] || '', fk = kP[0] || ''
+  const first = fe && fk ? fe + '(' + fk + ')' : (fe || fk)
+  /* 개수는 영문 조각 기준, 영문이 없으면 한글 기준 — ATC 와 같은 규약.
+     ★ 복합제인데 최상위 조각이 1개면(구분자가 전부 괄호 안) 개수를 셀 수 없어 「외」를 붙이지 않는다. */
+  const cnt = eP.length || kP.length
+  return (d && d.compound_type === '복합제' && cnt > 1) ? first + ' 외 ' + (cnt - 1) + '종' : first
+}
+
 function LocationVocab() {
   const { t } = useTheme()
   const [rows, setRows] = useState([]); const [usage, setUsage] = useState({})
@@ -6481,6 +6514,10 @@ function LocationVocab() {
   const [descId, setDescId] = useState(null); const [descVal, setDescVal] = useState('')
   /* ★ 건수 클릭 시 열리는 약품 목록 모달 — { loc, desc }. 미등록 값은 desc 가 빈 문자열이다. */
   const [locView, setLocView] = useState(null)
+  /* ★ 구역별 인쇄 — 같은 화면 오버레이. printRows 는 사용+휴면만 담는다(중지 제외). */
+  const [printOpen, setPrintOpen] = useState(false)
+  const [printSel, setPrintSel] = useState(() => new Set())
+  const [printRows, setPrintRows] = useState(null)
   const [tick, setTick] = useState(0); const reload = () => setTick(x => x + 1)
   /* ★ 헤더 정렬 — ColMenu·useSort 는 고치지 않고 호출만 한다.
      초기 키 '' 는 해제 상태이고, so() 는 sk 가 비면 배열을 그대로 돌려준다(useSort 정의부) —
@@ -6508,6 +6545,31 @@ function LocationVocab() {
     })()
     return () => { on = false }
   }, [tick])
+
+  /* ★ 인쇄 대상 조회 — status IN ('사용','휴면') 만. drugs 는 SELECT 뿐이다.
+     실측 530건이라 1,000행 캡 아래지만, 캡에 걸리면 조용히 잘리므로 range 를 명시한다. */
+  useEffect(() => {
+    if (!printOpen) return
+    let on = true
+    supabase.from('drugs').select('drug_code,drug_name,ingredient_en,ingredient_kr,compound_type,storage_location')
+      .in('status', ['사용', '휴면']).range(0, 999)
+      .then(({ data, error }) => { if (on) setPrintRows(error ? [] : (data || [])) })
+    return () => { on = false }
+  }, [printOpen])
+  /* 구역 label → 인쇄 대상 행. 약품명 ko 정렬은 여기서 한 번만 한다. */
+  const printByLoc = (() => {
+    const m = {}
+    for (const d of (printRows || [])) {
+      const k = String(d.storage_location || '').trim(); if (!k) continue
+      ;(m[k] = m[k] || []).push(d)
+    }
+    for (const k of Object.keys(m)) m[k].sort((a, b) => String(a.drug_name || '').localeCompare(String(b.drug_name || ''), 'ko'))
+    return m
+  })()
+  const printCount = lb => (printByLoc[String(lb || '').trim()] || []).length
+  const printPicked = rows.filter(r => printSel.has(r.label) && printCount(r.label) > 0)
+  const printTotal = printPicked.reduce((s, r) => s + printCount(r.label), 0)
+  const printable = rows.filter(r => printCount(r.label) > 0)
 
   const used = lb => usage[String(lb || '').trim()] || 0
   const labels = new Set(rows.map(r => String(r.label || '').trim()))
@@ -6602,11 +6664,40 @@ function LocationVocab() {
 
   return <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 20px 80px' }}>
     <div style={{ marginBottom: 20 }}>
-      <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, margin: 0, letterSpacing: -0.3 }}>보관위치</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, margin: 0, letterSpacing: -0.3 }}>보관위치</h2>
+        <button onClick={() => setPrintOpen(v => !v)} style={{ padding: '5px 13px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{printOpen ? '인쇄 닫기' : '인쇄'}</button>
+      </div>
       <div style={{ fontSize: 12, color: t.textL, marginTop: 6 }}>대시보드 위치 필터가 이 목록에서 선택지를 읽습니다 · 등록 {rows.length}종 (사용 {rows.filter(r => r.is_active).length}종)</div>
     </div>
 
     {errMsg && <div style={{ background: t.redL, color: t.red, borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, fontWeight: 500, border: `1px solid ${t.red}30` }}>{errMsg}</div>}
+
+    {/* ★ 인쇄 구역 선택 — 별도 라우트 없이 같은 화면 오버레이(기존 인쇄 3곳과 같은 방식).
+        ★ 사용+휴면 0건 구역은 체크 자체를 막는다 — 고르면 빈 페이지가 나온다. */}
+    {printOpen && <div className="no-print" style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.blue, padding: '14px 16px', marginBottom: 16, boxShadow: t.shadow, textAlign: 'left' }}>
+      {printRows === null ? <div style={{ fontSize: 12.5, color: t.textL }}>불러오는 중…</div> : <>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: t.text }}>인쇄할 구역</span>
+          <span style={{ fontSize: 11, color: t.textM }}>사용·휴면 약품만 · 중지 제외</span>
+          <span style={{ flex: 1 }} />
+          <button onClick={() => setPrintSel(new Set(printable.map(r => r.label)))} style={{ padding: '4px 11px', borderRadius: 7, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>전체 선택</button>
+          <button onClick={() => setPrintSel(new Set())} style={{ padding: '4px 11px', borderRadius: 7, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>해제</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(178px, 1fr))', gap: 6, marginBottom: 12 }}>
+          {rows.map(r => { const n = printCount(r.label); const dis = n === 0; const on = printSel.has(r.label)
+            return <label key={r.id} title={dis ? '인쇄할 약품이 없습니다' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', border: '1px solid ' + (on ? t.blue : t.border), borderRadius: 8, background: on ? t.blueL : 'transparent', cursor: dis ? 'not-allowed' : 'pointer', opacity: dis ? 0.5 : 1, textAlign: 'left' }}>
+              <input type="checkbox" disabled={dis} checked={on} onChange={() => setPrintSel(p => { const s = new Set(p); if (s.has(r.label)) s.delete(r.label); else s.add(r.label); return s })} style={{ accentColor: t.blue, cursor: dis ? 'not-allowed' : 'pointer', margin: 0 }} />
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: t.text, whiteSpace: 'nowrap' }}>{r.label}</span>
+              <span style={{ fontSize: 10.5, color: t.textL, marginLeft: 'auto' }}>{n}</span>
+            </label> })}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: printTotal ? t.text : t.textL, fontWeight: 600 }}>{printPicked.length}개 구역 · {printTotal.toLocaleString()}행</span>
+          <button disabled={!printTotal} onClick={() => window.print()} style={{ padding: '6px 16px', borderRadius: 8, border: '1px solid ' + (printTotal ? t.blue : t.border), background: printTotal ? t.blueL : 'transparent', color: printTotal ? t.blue : t.textL, cursor: printTotal ? 'pointer' : 'not-allowed', fontSize: 11.5, fontWeight: 700, opacity: printTotal ? 1 : 0.55 }}>인쇄</button>
+        </div>
+      </>}
+    </div>}
 
     {/* ★ 목록에 없는 위치 — 각 행에서 바로 등록할 수 있다(20종 수기 입력 회피) */}
     {missing.length > 0 && <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, overflow: 'hidden', marginBottom: 16 }}>
@@ -6699,6 +6790,32 @@ function LocationVocab() {
     {/* ★ onSaved 는 reload — 같은 effect 가 location_vocab 과 lvUsage 를 함께 다시 읽으므로
         보관위치 표의 건수와 미등록 패널 건수가 한 번에 갱신된다. locView 는 그대로라 모달은 닫히지 않는다.
         ★ 토스트는 부모의 flash 를 빌려 쓴다 — 모달이 Toast 를 또 렌더하면 중첩이 된다. */}
+    {/* ═══ 인쇄 전용 DOM — 화면에서는 숨고 @media print 에서만 나온다(ATC .atc-print-only 패턴 복제) ═══
+        ★ 페이지 분리는 병동신청 .wp-page 패턴을 빌린다 — page-break-after:always 에
+          :last-child{auto} 를 반드시 짝지어야 마지막 장 뒤에 백지가 생기지 않는다.
+        ★ min-height:100vh 는 쓰지 않는다(백지 함정). 높이를 강제하지 않는다. */}
+    {/* ★ 색은 기존 인쇄 CSS 가 쓰던 회색만 재사용한다 — black · #888(.wp-meta) · #bbb(.ward-print 표 테두리). 신색 0건 */}
+    <style>{'.loc-print{display:none}@media print{.loc-print{display:block!important;color:black}.loc-print .lp-page{page-break-after:always;break-after:page}.loc-print .lp-page:last-child{page-break-after:auto;break-after:auto}.loc-print .lp-h{font-size:12pt;font-weight:700;margin:0 0 1mm}.loc-print .lp-m{font-size:8.5pt;color:#888;margin:0 0 2.5mm}.loc-print table{width:100%;border-collapse:collapse;table-layout:fixed}.loc-print thead{display:table-header-group}.loc-print tr{break-inside:avoid;page-break-inside:avoid}.loc-print th,.loc-print td{border:0.4pt solid #bbb;padding:0.8mm 1.6mm;vertical-align:top;line-height:1.25}.loc-print th{font-size:8.5pt;font-weight:700;border-bottom:1pt solid black}.loc-print td{font-size:9pt}.loc-print .c-no{width:9%;text-align:right}.loc-print .c-nm{width:38%;text-align:left;word-break:break-all}.loc-print .c-ig{width:53%;text-align:left;font-size:8pt;word-break:break-all}}'}</style>
+    <div className="loc-print">
+      {printPicked.map(r => { const list = printByLoc[r.label] || []; const dsc = lvDesc(r)
+        return <div className="lp-page" key={r.id}>
+          <div className="lp-h" style={{ textAlign: 'left' }}>{r.label}{dsc ? ' · ' + dsc : ''}</div>
+          <div className="lp-m" style={{ textAlign: 'left' }}>사용·휴면 {list.length.toLocaleString()}건 · 약품명 가나다순 · 출력 {new Date().toISOString().slice(0, 10)}</div>
+          <table>
+            <thead><tr>
+              <th className="c-no" style={{ textAlign: 'right' }}>번호</th>
+              <th className="c-nm" style={{ textAlign: 'left' }}>약품명</th>
+              <th className="c-ig" style={{ textAlign: 'left' }}>성분명</th>
+            </tr></thead>
+            <tbody>{list.map((d, i) => <tr key={d.drug_code || i}>
+              <td className="c-no" style={{ textAlign: 'right' }}>{i + 1}</td>
+              <td className="c-nm" style={{ textAlign: 'left' }}>{d.drug_name}</td>
+              <td className="c-ig" style={{ textAlign: 'left' }}>{lpIng(d)}</td>
+            </tr>)}</tbody>
+          </table>
+        </div> })}
+    </div>
+
     {locView && <LocDrugsModal loc={locView.loc} desc={locView.desc} onClose={() => setLocView(null)} onSaved={reload} onFlash={flash} />}
 
     <Toast msg={toast?.msg} kind={toast?.kind} onClose={() => setToast(null)} />
