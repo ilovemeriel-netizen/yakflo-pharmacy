@@ -6662,7 +6662,7 @@ function LocationVocab() {
   const empty = { padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 13 }
   const renRow = rows.find(r => r.id === renId)
 
-  return <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 20px 80px' }}>
+  return <div className="lp-root" style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 20px 80px' }}>
     <div style={{ marginBottom: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, margin: 0, letterSpacing: -0.3 }}>보관위치</h2>
@@ -6798,10 +6798,14 @@ function LocationVocab() {
         ★ 약품명·성분명은 ATC 인쇄(.nm/.ig)와 같이 한 줄 말줄임이다 — 줄바꿈을 허용하면
           프리베나20 성분명(780mm 상당)이 한 행으로 10줄을 먹어 목록 구실을 못 한다.
           table-layout:fixed 가 있어야 text-overflow 가 듣는다.
+        ★ 인쇄에는 .loc-print 하나만 남긴다 — .lp-root 의 직계 자식 중 .loc-print 가 아닌 것을 전부 숨긴다.
+          전역 .no-print 규칙은 그 클래스를 붙인 요소만 숨기므로, 붙이지 않은 표·입력칸·안내가
+          앞 페이지로 딸려 나왔다(실제 결함). 자식 전체를 한 번에 막아 빠뜨릴 여지를 없앤다.
+          padding 해제는 ATC 의 .atc-root{padding:0!important} 와 같은 처리다.
         ★ 열 폭 6/40/54 는 실측으로 정했다: 번호는 한 구역 최대 314행이라 3자리(4.4%)면 되고,
           약품명 40%(70.2mm)면 최장 「지씨플루프리필드시린지주PFS/독감_일반0.5mL」(66.7mm)까지
           530건 전건이 잘리지 않는다. 남은 54%를 성분명에 준다(잘림 26건 — 말줄임 의도대로). */}
-    <style>{'.loc-print{display:none}@media print{.loc-print{display:block!important;color:black}.loc-print .lp-page{page-break-after:always;break-after:page}.loc-print .lp-page:last-child{page-break-after:auto;break-after:auto}.loc-print .lp-h{font-size:12pt;font-weight:700;margin:0 0 1mm}.loc-print .lp-m{font-size:8.5pt;color:#888;margin:0 0 2.5mm}.loc-print table{width:100%;border-collapse:collapse;table-layout:fixed}.loc-print thead{display:table-header-group}.loc-print tr{break-inside:avoid;page-break-inside:avoid}.loc-print th,.loc-print td{border:0.4pt solid #bbb;padding:0.8mm 1.6mm;vertical-align:top;line-height:1.25}.loc-print th{font-size:8.5pt;font-weight:700;border-bottom:1pt solid black}.loc-print td{font-size:9pt}.loc-print .c-no{width:6%;text-align:right}.loc-print .c-nm{width:40%;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.loc-print .c-ig{width:54%;text-align:left;font-size:8pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}'}</style>
+    <style>{'.loc-print{display:none}@media print{.lp-root{padding:0!important;max-width:none!important}.lp-root>*:not(.loc-print){display:none!important}.loc-print{display:block!important;color:black}.loc-print .lp-page{page-break-after:always;break-after:page}.loc-print .lp-page:last-child{page-break-after:auto;break-after:auto}.loc-print .lp-h{font-size:12pt;font-weight:700;margin:0 0 1mm}.loc-print .lp-m{font-size:8.5pt;color:#888;margin:0 0 2.5mm}.loc-print table{width:100%;border-collapse:collapse;table-layout:fixed}.loc-print thead{display:table-header-group}.loc-print tr{break-inside:avoid;page-break-inside:avoid}.loc-print th,.loc-print td{border:0.4pt solid #bbb;padding:0.8mm 1.6mm;vertical-align:top;line-height:1.25}.loc-print th{font-size:8.5pt;font-weight:700;border-bottom:1pt solid black}.loc-print td{font-size:9pt}.loc-print .c-no{width:6%;text-align:right}.loc-print .c-nm{width:40%;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.loc-print .c-ig{width:54%;text-align:left;font-size:9pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}'}</style>
     <div className="loc-print">
       {printPicked.map(r => { const list = printByLoc[r.label] || []; const dsc = lvDesc(r)
         return <div className="lp-page" key={r.id}>
