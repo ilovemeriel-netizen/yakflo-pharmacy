@@ -6794,8 +6794,14 @@ function LocationVocab() {
         ★ 페이지 분리는 병동신청 .wp-page 패턴을 빌린다 — page-break-after:always 에
           :last-child{auto} 를 반드시 짝지어야 마지막 장 뒤에 백지가 생기지 않는다.
         ★ min-height:100vh 는 쓰지 않는다(백지 함정). 높이를 강제하지 않는다. */}
-    {/* ★ 색은 기존 인쇄 CSS 가 쓰던 회색만 재사용한다 — black · #888(.wp-meta) · #bbb(.ward-print 표 테두리). 신색 0건 */}
-    <style>{'.loc-print{display:none}@media print{.loc-print{display:block!important;color:black}.loc-print .lp-page{page-break-after:always;break-after:page}.loc-print .lp-page:last-child{page-break-after:auto;break-after:auto}.loc-print .lp-h{font-size:12pt;font-weight:700;margin:0 0 1mm}.loc-print .lp-m{font-size:8.5pt;color:#888;margin:0 0 2.5mm}.loc-print table{width:100%;border-collapse:collapse;table-layout:fixed}.loc-print thead{display:table-header-group}.loc-print tr{break-inside:avoid;page-break-inside:avoid}.loc-print th,.loc-print td{border:0.4pt solid #bbb;padding:0.8mm 1.6mm;vertical-align:top;line-height:1.25}.loc-print th{font-size:8.5pt;font-weight:700;border-bottom:1pt solid black}.loc-print td{font-size:9pt}.loc-print .c-no{width:9%;text-align:right}.loc-print .c-nm{width:38%;text-align:left;word-break:break-all}.loc-print .c-ig{width:53%;text-align:left;font-size:8pt;word-break:break-all}}'}</style>
+    {/* ★ 색은 기존 인쇄 CSS 가 쓰던 회색만 재사용한다 — black · #888(.wp-meta) · #bbb(.ward-print 표 테두리). 신색 0건
+        ★ 약품명·성분명은 ATC 인쇄(.nm/.ig)와 같이 한 줄 말줄임이다 — 줄바꿈을 허용하면
+          프리베나20 성분명(780mm 상당)이 한 행으로 10줄을 먹어 목록 구실을 못 한다.
+          table-layout:fixed 가 있어야 text-overflow 가 듣는다.
+        ★ 열 폭 6/40/54 는 실측으로 정했다: 번호는 한 구역 최대 314행이라 3자리(4.4%)면 되고,
+          약품명 40%(70.2mm)면 최장 「지씨플루프리필드시린지주PFS/독감_일반0.5mL」(66.7mm)까지
+          530건 전건이 잘리지 않는다. 남은 54%를 성분명에 준다(잘림 26건 — 말줄임 의도대로). */}
+    <style>{'.loc-print{display:none}@media print{.loc-print{display:block!important;color:black}.loc-print .lp-page{page-break-after:always;break-after:page}.loc-print .lp-page:last-child{page-break-after:auto;break-after:auto}.loc-print .lp-h{font-size:12pt;font-weight:700;margin:0 0 1mm}.loc-print .lp-m{font-size:8.5pt;color:#888;margin:0 0 2.5mm}.loc-print table{width:100%;border-collapse:collapse;table-layout:fixed}.loc-print thead{display:table-header-group}.loc-print tr{break-inside:avoid;page-break-inside:avoid}.loc-print th,.loc-print td{border:0.4pt solid #bbb;padding:0.8mm 1.6mm;vertical-align:top;line-height:1.25}.loc-print th{font-size:8.5pt;font-weight:700;border-bottom:1pt solid black}.loc-print td{font-size:9pt}.loc-print .c-no{width:6%;text-align:right}.loc-print .c-nm{width:40%;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.loc-print .c-ig{width:54%;text-align:left;font-size:8pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}'}</style>
     <div className="loc-print">
       {printPicked.map(r => { const list = printByLoc[r.label] || []; const dsc = lvDesc(r)
         return <div className="lp-page" key={r.id}>
