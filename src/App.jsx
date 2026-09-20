@@ -6502,6 +6502,21 @@ function lpIng(d) {
   const cnt = eP.length || kP.length
   return (d && d.compound_type === '복합제' && cnt > 1) ? first + ' 외 ' + (cnt - 1) + '종' : first
 }
+/* ★ lpIng 과 **같은 규칙**으로 JSX 를 돌려주는 별도 함수 — lpIng 은 건드리지 않는다.
+   괄호 안 한글만 <span className="kor"> 로 감싸 인쇄에서 진하게 보이게 한다(비전공자 가독성).
+   ★ 텍스트 결과는 lpIng 과 글자 하나까지 같아야 한다: fe + '(' + fk + ')' + 꼬리.
+     괄호 밖 첫 '/' 분할(lpSplitTop)과 복합제 「외 N종」 규칙을 그대로 공유한다. */
+function lpIngNode(d) {
+  const eP = lpSplitTop(String((d && d.ingredient_en) || '').trim())
+  const kP = lpSplitTop(String((d && d.ingredient_kr) || '').trim())
+  const fe = eP[0] || '', fk = kP[0] || ''
+  /* ★ 괄호 한글이 없는 경우는 lpIng 을 그대로 돌려준다 — 문자열이 갈릴 여지를 아예 없앤다
+     (영문만·한글만·둘 다 없음). 실측상 사용+휴면 530건은 전부 둘 다 보유해 아래 분기를 탄다. */
+  if (!fe || !fk) return lpIng(d)
+  const cnt = eP.length || kP.length
+  const tail = (d && d.compound_type === '복합제' && cnt > 1) ? ' 외 ' + (cnt - 1) + '종' : ''
+  return <>{fe}{'('}<span className="kor">{fk}</span>{')'}{tail}</>
+}
 
 function LocationVocab() {
   const { t } = useTheme()
@@ -6805,7 +6820,7 @@ function LocationVocab() {
         ★ 열 폭 6/40/54 는 실측으로 정했다: 번호는 한 구역 최대 314행이라 3자리(4.4%)면 되고,
           약품명 40%(70.2mm)면 최장 「지씨플루프리필드시린지주PFS/독감_일반0.5mL」(66.7mm)까지
           530건 전건이 잘리지 않는다. 남은 54%를 성분명에 준다(잘림 26건 — 말줄임 의도대로). */}
-    <style>{'.loc-print{display:none}@media print{.lp-root{padding:0!important;max-width:none!important}.lp-root>*:not(.loc-print){display:none!important}.loc-print{display:block!important;color:black}.loc-print .lp-page{page-break-after:always;break-after:page}.loc-print .lp-page:last-child{page-break-after:auto;break-after:auto}.loc-print .lp-h{font-size:12pt;font-weight:700;margin:0 0 1mm}.loc-print .lp-m{font-size:8.5pt;color:#888;margin:0 0 2.5mm}.loc-print table{width:100%;border-collapse:collapse;table-layout:fixed}.loc-print thead{display:table-header-group}.loc-print tr{break-inside:avoid;page-break-inside:avoid}.loc-print th,.loc-print td{border:0.4pt solid #bbb;padding:0.6mm 1.5mm!important;line-height:1.2!important;vertical-align:top}.loc-print th{font-size:8.5pt;font-weight:700;border-bottom:1pt solid black}.loc-print td{font-size:9pt}.loc-print .c-no{width:6%;text-align:center}.loc-print .c-nm{width:40%;text-align:left}.loc-print .c-ig{width:54%;text-align:left}.loc-print td.c-no{font-weight:700}.loc-print td.c-nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.loc-print td.c-ig{font-weight:400;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}'}</style>
+    <style>{'.loc-print{display:none}@media print{.lp-root{padding:0!important;max-width:none!important}.lp-root>*:not(.loc-print){display:none!important}.loc-print{display:block!important;color:black;--lp-title:#804A87;--lp-head:#804A87;--lp-line:#804A87;--lp-accent:#019748;--lp-kor:#804A87;--lp-rule:#bbb;--lp-muted:#888}body.profile-mono .loc-print{--lp-title:black;--lp-head:black;--lp-line:black;--lp-accent:#888;--lp-kor:black}.loc-print .lp-page{page-break-after:always;break-after:page}.loc-print .lp-page:last-child{page-break-after:auto;break-after:auto}.loc-print .lp-h{font-size:16pt;font-weight:700;line-height:1.25;color:var(--lp-title);margin:0 0 1.5mm}.loc-print .lp-h::after{content:"";display:block;width:60mm;height:0;border-top:1.5pt solid var(--lp-accent);margin-top:1.2mm}.loc-print .lp-m{font-size:8.5pt;color:var(--lp-muted);line-height:1.4;margin:2.5mm 0 6mm}.loc-print table{width:100%;border-collapse:collapse;table-layout:fixed}.loc-print thead{display:table-header-group}.loc-print tr{break-inside:avoid;page-break-inside:avoid}.loc-print th,.loc-print td{border:0;border-bottom:0.4pt solid var(--lp-rule);padding:0.6mm 1.5mm!important;line-height:1.2!important;vertical-align:top}.loc-print th{font-size:8.5pt;font-weight:700;color:var(--lp-head);border-bottom:1pt solid var(--lp-line)}.loc-print td{font-size:9pt}.loc-print tbody td{height:9mm;vertical-align:middle}.loc-print tbody tr:nth-child(even){background:none}.loc-print .c-no{width:6%;text-align:center}.loc-print .c-nm{width:40%;text-align:left}.loc-print .c-ig{width:54%;text-align:left}.loc-print td.c-no{font-weight:700;font-variant-numeric:tabular-nums}.loc-print td.c-nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.loc-print td.c-ig{font-weight:400;color:var(--lp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.loc-print td.c-ig .kor{color:var(--lp-kor);font-weight:600}}'}</style>
     <div className="loc-print">
       {printPicked.map(r => { const list = printByLoc[r.label] || []
         return <div className="lp-page" key={r.id}>
@@ -6821,7 +6836,7 @@ function LocationVocab() {
             <tbody>{list.map((d, i) => <tr key={d.drug_code || i}>
               <td className="c-no" style={{ textAlign: 'center' }}>{i + 1}</td>
               <td className="c-nm" style={{ textAlign: 'left' }}>{d.drug_name}</td>
-              <td className="c-ig" style={{ textAlign: 'left' }}>{lpIng(d)}</td>
+              <td className="c-ig" style={{ textAlign: 'left' }}>{lpIngNode(d)}</td>
             </tr>)}</tbody>
           </table>
         </div> })}
