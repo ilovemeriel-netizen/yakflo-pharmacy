@@ -805,10 +805,15 @@ function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onA
             <div style={lb}>약품 <span style={{ color: t.purple }}>*</span></div>
             <input value={dq} onChange={e => setDq(e.target.value)} placeholder="약품명·코드 검색" style={{ ...ip, width: '100%', marginBottom: 5 }} />
             <select value={f.drug_code} onChange={e => set('drug_code', e.target.value)} size={5}
+              onClick={e => {
+                const v = e.target && e.target.tagName === 'OPTION' ? e.target.value : ''
+                if (v && drugs && drugs.some(d => d.drug_code === v)) set('drug_code', v)
+              }}
               style={{ ...ip, width: '100%', height: 118, ...(noDrug ? { borderColor: t.purple } : {}) }}>
               {drugs === null ? <option>불러오는 중...</option>
-                : drugs.filter(d => !dq.trim() || (d.drug_name + d.drug_code).toLowerCase().includes(dq.trim().toLowerCase())).slice(0, 300)
-                  .map(d => <option key={d.drug_code} value={d.drug_code}>{d.drug_name} · {d.drug_code}</option>)}
+                : <><option value="" disabled hidden />
+                  {drugs.filter(d => !dq.trim() || (d.drug_name + d.drug_code).toLowerCase().includes(dq.trim().toLowerCase())).slice(0, 300)
+                    .map(d => <option key={d.drug_code} value={d.drug_code}>{d.drug_name} · {d.drug_code}</option>)}</>}
             </select>
             {/* ★ 약품이 없으면 이름 없는 계정이 생긴다 — 저장 버튼도 함께 막힌다 */}
             {noDrug && <div style={{ marginTop: 5, fontSize: 11, color: t.text, borderLeft: '3px solid ' + t.purple, paddingLeft: 8, lineHeight: 1.6 }}>{DRUG_REQ_MSG}</div>}
