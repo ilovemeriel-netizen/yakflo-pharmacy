@@ -3,7 +3,7 @@
    - 모든 값은 문자열로 들어온다(SheetJS raw:false). 숫자/날짜 자동 변환 없음.
    - 빈 셀은 out 에 담지 않는다 → upsert 시 기존 DB 값을 덮어쓰지 않는다.
    - 통제 어휘 이탈 값은 errors 로 분류(해당 필드만 제외; 필수 이탈이면 행 오류).
-   - 단가(purchase_price·edi_price)·is_high_alert 는 owner 인 경우에만 반영(0019 트리거/권한 규칙과 일치).
+   - 단가(purchase_price·edi_price)·is_high_alert·is_public_supply 는 owner 인 경우에만 반영(0019 트리거/권한 규칙과 일치).
    - price_unit(통당)·current_amount(파생 금액)은 절대 쓰지 않는다(CLAUDE.md 단가 철칙).
    ── 필드 정의 단일 출처: 라벨(통일)·입력타입(input)·통제어휘·필수·표시순서(order)·상세섹션(section)·CSV별칭(aliases).
       검증 로직(VOCAB·autoMap·normalizeDrugRow)은 col/type/vocab/aliases 만 사용 — 신규 속성은 표시 전용(가산적). */
@@ -57,6 +57,7 @@ export const FIELD_DEFS = [
   { key: 'storage_location', col: 'storage_location', label: '보관위치', type: 'string', input: 'text', section: 'detail', order: 46, aliases: ['보관위치', '위치', 'storage_location'] },
   { key: 'notes', col: 'memo', label: '비고', type: 'string', input: 'textarea', section: 'detail', order: 47, aliases: ['비고', '메모', 'memo', 'notes'] },
   { key: 'is_high_alert', col: 'is_high_alert', label: '고위험', type: 'bool', owner: true, input: 'checkbox', section: 'detail', order: 48, aliases: ['고위험', '고위험의약품', 'high_alert', 'is_high_alert'] },
+  { key: 'is_public_supply', col: 'is_public_supply', label: '보건소공급', type: 'bool', owner: true, input: 'checkbox', section: 'detail', order: 49, aliases: ['보건소공급', '보건소 공급', '무상공급', 'public_supply', 'is_public_supply'] },
 ]
 
 /* 라벨 단일 출처 조회 — 등록/수정 폼과 화면 표 헤더가 공유(통일). */
@@ -121,7 +122,7 @@ export function normalizeDrugRow(raw, mapping, existing, isOwner) {
       if (!Number.isFinite(n)) { errors.push(`${fd.label} 숫자 아님: "${v}"`); continue }
       fields[fd.col] = n
     } else if (fd.type === 'bool') {
-      if (!isOwner) continue                             // is_high_alert 는 owner 만
+      if (!isOwner) continue                             // bool 필드(is_high_alert·is_public_supply) 는 owner 만
       fields[fd.col] = TRUEY.has(v.toLowerCase())
     } else {
       fields[fd.col] = v                                 // string / date(문자열 그대로)
