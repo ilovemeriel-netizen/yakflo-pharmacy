@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, createContext, useContext, lazy, Suspense 
 import { createPortal } from 'react-dom'
 import { supabase } from './lib/supabase'
 import { passesDrugFilters } from './lib/drugFilter'
+import { planReorder } from './lib/locOrder'
 import { RX_TOGGLE, RX_MORE, autoMap } from './lib/drugRules'
 import { classifyDrugRows, applyDrugRows } from './lib/drugBulk'
 import { decomposeAtc } from './lib/atcMap'
@@ -6646,17 +6647,22 @@ function LocationVocab() {
     if (error) { flash(dbErrorMsg(error), 'err'); return }
     setDescId(null); flash(v ? '설명을 저장했습니다' : '설명을 지웠습니다'); reload()
   }
-  /* ★ 인접 행과 sort_order 를 교환한다 — 값의 다중집합이 그대로이므로 음수도 신규 중복도 생길 수 없다.
-     (두 값이 이미 같으면 교환이 무효과가 되는데, 추가가 항상 max+1 이라 같아지지 않는다) */
+  /* ★ 순서 저장은 「전체 다시 번호 매기기 + 요청 1번」이다 — 인접 교환(UPDATE 2번)은 두 번째가 실패하면
+     sort_order 중복을 남기는데, location_vocab.sort_order 에는 unique 제약이 없어 막아 주지 않는다.
+     번호 계산은 planReorder(순수 함수·단위 테스트 있음)에 있고 여기서는 저장만 한다.
+     보낼 행이 0개면 요청을 생략한다. 1..N 만 쓰므로 음수가 생기지 않고 기존 번호 구멍도 메워진다. */
+  async function reorder(fromIdx, toIdx) {
+    const ups = planReorder(rows, fromIdx, toIdx)
+    if (!ups.length) return
+    setBusy(true)
+    const { error } = await supabase.from('location_vocab').upsert(ups, { onConflict: 'id' })
+    setBusy(false)
+    if (error) { flash(dbErrorMsg(error), 'err'); return }
+    reload()
+  }
   async function move(i, dir) {
     const j = i + dir; if (j < 0 || j >= rows.length) return
-    const a = rows[i], b = rows[j]
-    setBusy(true)
-    const r1 = await supabase.from('location_vocab').update({ sort_order: b.sort_order }).eq('id', a.id)
-    const r2 = r1.error ? r1 : await supabase.from('location_vocab').update({ sort_order: a.sort_order }).eq('id', b.id)
-    setBusy(false)
-    if (r2.error) { flash(dbErrorMsg(r2.error), 'err'); return }
-    reload()
+    await reorder(i, j)
   }
   async function toggle(row) {
     setBusy(true)
@@ -6790,8 +6796,10 @@ function LocationVocab() {
                   : descId === r.id
                     ? <><button disabled={busy} onClick={() => saveDesc(r)} style={pri}>저장</button>
                       <button disabled={busy} onClick={() => setDescId(null)} style={{ ...bs(t.textM), marginLeft: 4 }}>취소</button></>
-                    : <><button disabled={busy || sorted || oi <= 0} title={sorted ? LV_SORT_LOCK : undefined} onClick={() => move(oi, -1)} style={mvBtn(sorted || oi <= 0)}>↑</button>
-                      <button disabled={busy || sorted || oi < 0 || oi === rows.length - 1} title={sorted ? LV_SORT_LOCK : undefined} onClick={() => move(oi, 1)} style={{ ...mvBtn(sorted || oi < 0 || oi === rows.length - 1), marginLeft: 4 }}>↓</button>
+                    : <><button disabled={busy || sorted || oi <= 0} title={sorted ? LV_SORT_LOCK : '맨 위로'} onClick={() => reorder(oi, 0)} style={mvBtn(sorted || oi <= 0)}>⤒</button>
+                      <button disabled={busy || sorted || oi <= 0} title={sorted ? LV_SORT_LOCK : '위로'} onClick={() => move(oi, -1)} style={{ ...mvBtn(sorted || oi <= 0), marginLeft: 4 }}>↑</button>
+                      <button disabled={busy || sorted || oi < 0 || oi === rows.length - 1} title={sorted ? LV_SORT_LOCK : '아래로'} onClick={() => move(oi, 1)} style={{ ...mvBtn(sorted || oi < 0 || oi === rows.length - 1), marginLeft: 4 }}>↓</button>
+                      <button disabled={busy || sorted || oi < 0 || oi === rows.length - 1} title={sorted ? LV_SORT_LOCK : '맨 아래로'} onClick={() => reorder(oi, rows.length - 1)} style={{ ...mvBtn(sorted || oi < 0 || oi === rows.length - 1), marginLeft: 4 }}>⤓</button>
                       <button disabled={busy} onClick={() => { setDescId(null); setRenId(r.id); setRenVal(r.label) }} style={{ ...bs(t.textM), marginLeft: 4 }}>이름 변경</button>
                       <button disabled={busy} onClick={() => { setRenId(null); setDescId(r.id); setDescVal(lvDesc(r)) }} style={{ ...bs(t.textM), marginLeft: 4 }}>설명</button>
                       <button disabled={busy} onClick={() => toggle(r)} style={{ ...bs(r.is_active ? t.textL : t.green), marginLeft: 4 }}>{r.is_active ? '중지' : '다시 사용'}</button>
