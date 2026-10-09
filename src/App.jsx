@@ -2459,7 +2459,7 @@ function _mergeDrugMaster(prev, dm) {
 }
 function DrugRegister({onRefresh, drugs}) {
   const { memberRole, profile } = useTheme(); const isOwner = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
-  const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:'',purchase_price:'',storage_location:'',memo:'',additive:'',compound_type:'단일제'}
+  const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:'',purchase_price:'',storage_location:'',memo:'',additive:'',compound_type:'단일제',is_high_alert:false,is_public_supply:false}
   const[form,setForm]=useState(initForm)
   const[msg,setMsg]=useState(null)
   const[saving,setSaving]=useState(false)
@@ -2716,6 +2716,8 @@ function DrugRegister({onRefresh, drugs}) {
       prescription_type:form.prescription_type||null,additive:form.additive||null,compound_type:form.compound_type||'단일제',
       atc_code:form.atc_code?form.atc_code.trim().toUpperCase():null,atc_l1:_atc.atc_l1||null,atc_l2:_atc.atc_l2||null,atc_l3:_atc.atc_l3||null,
     }
+    if (isOwner) row.is_high_alert = !!form.is_high_alert
+    if (isOwner) row.is_public_supply = !!form.is_public_supply
     /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) */
     let res=await supabase.from('drugs').insert([row])
     for(let retry=0;retry<3&&res.error&&res.error.message.includes('column');retry++){
@@ -2912,6 +2914,10 @@ function DrugRegister({onRefresh, drugs}) {
             </div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}><div><label style={lbl}>첨가제</label><input value={form.additive||''} onChange={e=>set('additive',e.target.value)} placeholder="자동채움·수정 가능" style={inp}/></div><div><label style={lbl}>복합/단일</label><select value={form.compound_type||'단일제'} onChange={e=>set('compound_type',e.target.value)} style={{...inp,background:'#fff'}}>{['단일제','복합제'].map(s=><option key={s}>{s}</option>)}</select></div></div>
             <div style={{marginBottom:16}}><label style={lbl}>비고</label><textarea value={form.memo||''} onChange={e=>set('memo',e.target.value)} rows={2} style={{...inp,resize:'vertical'}}/></div>
+            {isOwner && <div style={{marginBottom:16}}>
+              <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',padding:'6px 0'}}><input type="checkbox" checked={!!form.is_high_alert} onChange={e=>set('is_high_alert',e.target.checked)} style={{width:16,height:16,accentColor:'#D9342B'}}/><span style={{fontSize:12,fontWeight:700,color:'#D9342B'}}>⚠ 고위험 의약품으로 지정</span></label>
+              <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',padding:'6px 0'}}><input type="checkbox" checked={!!form.is_public_supply} onChange={e=>set('is_public_supply',e.target.checked)} style={{width:16,height:16,accentColor:C.blue}}/><span style={{fontSize:12,fontWeight:700,color:C.blue}}>보건소 공급 (무상)</span></label>
+            </div>}
             <button onClick={submit} disabled={saving} style={{width:'100%',padding:12,borderRadius:10,border:'none',cursor:saving?'not-allowed':'pointer',background:saving?C.grayB:C.purple,color:'#fff',fontSize:14,fontWeight:700}}>
               {saving?'등록 중...':'약품 등록'}
             </button>
