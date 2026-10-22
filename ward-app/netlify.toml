@@ -5,6 +5,10 @@
   publish = "dist"
   functions = "netlify/functions"
 
+# Node 고정 — 루트 netlify.toml·package.json engines 와 같은 값을 유지할 것
+[build.environment]
+  NODE_VERSION = "24"
+
 # SPA: 정적 파일·Function 경로가 아니면 index.html 로
 [[redirects]]
   from = "/*"

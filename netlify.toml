@@ -2,5 +2,11 @@
   command = "npm run build"
   publish = "dist"
 
+# Node 를 고정한다 — 고정하지 않으면 Netlify 빌드 이미지의 기본 Node 가 바뀔 때
+# 코드 변경 없이 빌드가 깨진다(2026-10-22 프리뷰 실패). 24 는 로컬 빌드로 확인한 버전이고
+# vite 8 의 요구(^20.19 || >=22.12)도 만족한다. package.json engines 와 같은 값을 유지할 것.
+[build.environment]
+  NODE_VERSION = "24"
+
 # 공공데이터 API는 netlify/functions/datago.js 가 /api/datago/* 로 처리
 # (서버 측에서 DATA_API_KEY 자동 첨부 — 클라이언트에 키 노출 없음)
