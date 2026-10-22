@@ -52,6 +52,9 @@ export const PW_MAX_FAIL = 20
 export const PW_LOCK_MIN = 10
 const NOT_SET_MSG = '비밀번호가 아직 설정되지 않았습니다 · 문의 약제과 내선 217'
 const FAIL_MSG = '비밀번호가 올바르지 않습니다'
+const NO_IP_MSG = '접속 정보를 확인할 수 없습니다 · 문의 약제과 내선 217'
+/* 실패 기록 보관 기간 — 잠금이 풀린 지 오래된 행은 남겨 둘 이유가 없다 */
+export const ATTEMPT_TTL_H = 24
 
 /* ── KST(+09:00) 기준 날짜 유틸 ───────────────────────────────────────────
    서버 시간대에 기대지 않는다. UTC epoch 에 9시간을 더해 날짜 부분을 읽고,
@@ -126,8 +129,14 @@ export default async (req) => {
   const pw = String(body.pw ?? '')
   if (!validPw(pw)) return json({ ok: false, message: PW_MSG }, 400)
 
+  /* ★ IP 헤더가 없으면 **scrypt 전에** 끊는다.
+     헤더가 비면 ip_hash 가 모든 호출에서 같아져 한 사람의 실패로 전체가 잠긴다(공용 잠금 사고).
+     해시 비용을 치르기 전에 막아 두드리기 통로로도 쓰이지 않게 한다. */
+  const rawIp = (req.headers.get('x-nf-client-connection-ip') || '').trim()
+  if (!rawIp) return json({ ok: false, code: 'NO_IP', message: NO_IP_MSG }, 400)
+
   /* ★ IP 는 해시만 쓴다 — 원문을 변수에 오래 들고 있지 않고 로그에도 남기지 않는다 */
-  const ih = ipHash(secret, req.headers.get('x-nf-client-connection-ip') || '')
+  const ih = ipHash(secret, rawIp)
 
   const admin = createClient(supaUrl, supaSrv, { auth: { persistSession: false, autoRefreshToken: false } })
 
@@ -142,6 +151,22 @@ export default async (req) => {
   if (att?.locked_until && Date.parse(att.locked_until) > Date.now()) {
     const mins = Math.max(1, Math.ceil((Date.parse(att.locked_until) - Date.now()) / 60000))
     return json({ ok: false, code: 'LOCKED', message: `잠시 후 다시 시도해 주세요 (약 ${mins}분)` }, 429)
+  }
+
+  /* 1-b) 묵은 실패 기록 정리 — 잠금이 없거나 이미 풀렸고 24시간 넘게 손대지 않은 행만 지운다.
+     ★ tenant_id 조건은 필수다 — service_role 은 RLS 를 우회하므로 빼면 남의 테넌트 행까지 지운다.
+     ★ 지금 잠겨 있는 행은 locked_until 조건에 걸려 살아남는다(잠금을 앞당겨 풀지 않는다).
+     실패해도 인증을 막지 않는다 — 청소는 부가 작업이라 로그만 남긴다. */
+  {
+    const nowIso = new Date().toISOString()
+    const cutoff = new Date(Date.now() - ATTEMPT_TTL_H * 60 * 60 * 1000).toISOString()
+    const { error: cErr } = await admin
+      .from('vaccine_public_attempts')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .lt('updated_at', cutoff)
+      .or(`locked_until.is.null,locked_until.lt.${nowIso}`)
+    if (cErr) console.error('[vaccine-verify] 묵은 실패 기록 정리 실패:', cErr.message)
   }
 
   /* 2) 설정 조회 */
