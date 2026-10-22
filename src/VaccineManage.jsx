@@ -20,6 +20,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { useTheme } from './lib/theme'
 import { dbErrorMsg } from './lib/dbError'
+import VaccinePublicPanel from './VaccinePublicPanel'
 /* ★ GS1-128 파서는 scan.js 의 것을 **호출만** 한다(무수정).
    AI 10 = LOT · AI 17 = 유효기한을 이미 파싱한다. 카메라 라이브러리는 쓰지 않는다 —
    스캐너가 키보드 웨지로 넣어 주는 문자열을 그대로 받는다. */
@@ -715,6 +716,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
       onClose={() => setModal(null)} onAccount={addAccount} onEvent={addEvent} onFix={fixEvent} onCat={saveCat}
       onUpdAccount={updAccount} onDelAccount={delAccount} onAccActive={setAccActive}
       todayYmd={todayYmd} ymd={ymd} />}
+    <VaccinePublicPanel accounts={accs} season={sel} drugNames={dnames} onReload={loadAll} onFlash={flash} />
   </div>
 }
 
