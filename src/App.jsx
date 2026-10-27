@@ -7844,8 +7844,10 @@ export default function App() {
       <div className="cnc-app-root" style={{ minHeight: '100vh', background: t.bg }}>
         <Header menu={menu} setMenu={setMenu} onRegister={() => setMenu('register')} />
         {menu === 'dashboard' && <Dashboard drugs={drugs} inv={inv} txns={txns} onNav={handleNav} onEdit={setEditDrug} />}
-        {menu === 'alerts' && <AlertCenter drugs={drugs} onNav={handleNav} />}
-        {menu === 'ordering' && <Ordering drugs={drugs} onAdjust={setAdjustDrug} />}
+        {/* ★ 푸터가 빠져 있던 6화면 — 화면 컴포넌트는 손대지 않고 라우팅에서 붙인다(2026-10-27).
+            인쇄에는 나오지 않아야 하므로 반드시 no-print 로 감싼다. */}
+        {menu === 'alerts' && <><AlertCenter drugs={drugs} onNav={handleNav} /><div className="no-print"><Ft /></div></>}
+        {menu === 'ordering' && <><Ordering drugs={drugs} onAdjust={setAdjustDrug} /><div className="no-print"><Ft /></div></>}
         {menu === 'druglist' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} />}
         {menu === 'nonins' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} nonins />}
         {menu === 'change' && <DrugChangePlans drugs={drugs} onReload={load} navFilter={nf} />}
@@ -7855,13 +7857,13 @@ export default function App() {
         {menu === 'ward' && <WardAdmin />}
         {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
         {menu === 'count' && <InventoryCount drugs={drugs} onReload={load} />}
-        {menu === 'vaccine' && <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: t.textL, fontSize: 12 }}>불러오는 중...</div>}><VaccineManage ColMenu={ColMenu} useSort={useSort} ymd={ymd} todayYmd={todayYmd} /></Suspense>}
+        {menu === 'vaccine' && <><Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: t.textL, fontSize: 12 }}>불러오는 중...</div>}><VaccineManage ColMenu={ColMenu} useSort={useSort} ymd={ymd} todayYmd={todayYmd} /></Suspense><div className="no-print"><Ft /></div></>}
         {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
         {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
         {menu === 'report' && <Report drugs={drugs} onNav={handleNav} />}
-        {menu === 'emergency' && <EmergencyDispense />}
-        {menu === 'atc' && <AtcView drugs={drugs} onReload={load} />}
-        {menu === 'schedule' && <Schedule drugs={drugs} onNav={handleNav} />}
+        {menu === 'emergency' && <><EmergencyDispense /><div className="no-print"><Ft /></div></>}
+        {menu === 'atc' && <><AtcView drugs={drugs} onReload={load} /><div className="no-print"><Ft /></div></>}
+        {menu === 'schedule' && <><Schedule drugs={drugs} onNav={handleNav} /><div className="no-print"><Ft /></div></>}
         {menu === 'register' && <DrugRegister onRefresh={load} drugs={drugs} />}
         {menu === 'mypage' && <MyPage profile={profile} onProfileUpdated={loadProfile} />}
         {menu === 'locvocab' && <LocationVocab />}

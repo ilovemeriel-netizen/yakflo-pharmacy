@@ -19,6 +19,7 @@
    환경변수: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY (기존과 동일 · 신규 없음)
    ════════════════════════════════════════════════════════════════ */
 import { createClient } from '@supabase/supabase-js'
+import { checkEnv, SUPABASE_ENV } from './_lib/env.js'
 import { randomBytes, scrypt as _scrypt } from 'node:crypto'
 
 /* ★ scrypt 규격 이중 정의 방어 — 두 사이트가 별개 npm 프로젝트라 import할 수 없어 복제한다.
@@ -39,70 +40,76 @@ const hashPw = (pw, salt) => new Promise((res, rej) =>
   _scrypt(pw, salt, PW_KEYLEN, (e, dk) => (e ? rej(e) : res(dk.toString('hex')))))
 
 export default async (req) => {
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  }
-  if (req.method === 'OPTIONS') return new Response('', { headers: cors })
-  if (req.method !== 'POST') return json({ ok: false, msg: 'POST only' }, 405, cors)
+  /* ★ CORS 헤더를 내리지 않는다 — 관리 화면이 **같은 사이트**에서 부르므로 동일 출처이고,
+     헤더를 주지 않음으로써 다른 도메인에서의 브라우저 호출은 기본 차단된다(가장 좁은 노출면).
+     vaccine-app 의 두 Function 과 같은 방침이다. 동일 출처 요청은 preflight 를 보내지 않으므로
+     OPTIONS 처리도 함께 뺐다(오면 아래 메서드 검사에서 405). */
+  if (req.method !== 'POST') return json({ ok: false, msg: 'POST only' }, 405)
 
+  /* ★ 환경변수 **형식**까지 본다 — 「있음」만 보면 한 글자짜리 값도 통과해
+     createClient 에서 터진다(2026-10-27 운영 장애). 자세한 내용은 _lib/env.js 머리말.
+     응답 문구는 기존 그대로 두고, 로그에 어느 변수가 어떤 검사에 걸렸는지만 남긴다. */
+  const badEnv = checkEnv(process.env, SUPABASE_ENV)
+  if (badEnv.length) {
+    console.error('[ward-pw-reset] 환경변수 형식 오류 — ' + badEnv.join(' / '))
+    return json({ ok: false, msg: '서버 설정 오류' }, 500)
+  }
   const supaUrl = process.env.SUPABASE_URL
   const supaSrv = process.env.SUPABASE_SERVICE_ROLE_KEY
   const supaAnon = process.env.SUPABASE_ANON_KEY
-  if (!supaUrl || !supaSrv || !supaAnon) return json({ ok: false, msg: '서버 설정 오류' }, 500, cors)
 
   const authHeader = req.headers.get('authorization') || ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
-  if (!token) return json({ ok: false, msg: '인증 헤더 누락' }, 401, cors)
+  if (!token) return json({ ok: false, msg: '인증 헤더 누락' }, 401)
 
   let body = {}
-  try { body = await req.json() } catch { return json({ ok: false, msg: '잘못된 요청 본문' }, 400, cors) }
+  try { body = await req.json() } catch { return json({ ok: false, msg: '잘못된 요청 본문' }, 400) }
 
   const requestId = String(body.requestId ?? '').trim()
   const pw = String(body.pw ?? '')
-  if (!requestId) return json({ ok: false, msg: '신청을 찾을 수 없습니다' }, 400, cors)
-  if (!validPw(pw)) return json({ ok: false, msg: PW_MSG }, 400, cors)
+  if (!requestId) return json({ ok: false, msg: '신청을 찾을 수 없습니다' }, 400)
+  if (!validPw(pw)) return json({ ok: false, msg: PW_MSG }, 400)
 
   /* 1) JWT 검증 */
   const userClient = createClient(supaUrl, supaAnon, { auth: { persistSession: false, autoRefreshToken: false } })
   const { data: userData, error: userErr } = await userClient.auth.getUser(token)
-  if (userErr || !userData?.user) return json({ ok: false, msg: '인증 실패 (만료된 세션)' }, 401, cors)
+  if (userErr || !userData?.user) return json({ ok: false, msg: '인증 실패 (만료된 세션)' }, 401)
 
   const admin = createClient(supaUrl, supaSrv, { auth: { persistSession: false, autoRefreshToken: false } })
 
   /* 2) ★ tenant 확인 — 호출자가 속한 tenant의 신청만 손댈 수 있다 */
   const { data: mem, error: mErr } = await admin
     .from('tenant_members').select('tenant_id').eq('user_id', userData.user.id)
-  if (mErr) { console.error('[ward-pw-reset] 소속 조회 실패:', mErr.message); return json({ ok: false, msg: '일시적인 오류입니다' }, 500, cors) }
+  if (mErr) { console.error('[ward-pw-reset] 소속 조회 실패:', mErr.message); return json({ ok: false, msg: '일시적인 오류입니다' }, 500) }
   const tenantIds = (mem || []).map(m => m.tenant_id)
-  if (!tenantIds.length) return json({ ok: false, msg: '권한이 없습니다' }, 403, cors)
+  if (!tenantIds.length) return json({ ok: false, msg: '권한이 없습니다' }, 403)
 
   const { data: rows, error: rErr } = await admin
     .from('ward_requests').select('id, ward').eq('id', requestId).in('tenant_id', tenantIds).limit(1)
-  if (rErr) { console.error('[ward-pw-reset] 신청 조회 실패:', rErr.message); return json({ ok: false, msg: '일시적인 오류입니다' }, 500, cors) }
+  if (rErr) { console.error('[ward-pw-reset] 신청 조회 실패:', rErr.message); return json({ ok: false, msg: '일시적인 오류입니다' }, 500) }
   const row = (rows || [])[0]
-  if (!row) return json({ ok: false, msg: '신청을 찾을 수 없습니다' }, 404, cors)
+  if (!row) return json({ ok: false, msg: '신청을 찾을 수 없습니다' }, 404)
 
   /* 3) 해시 갱신 + 잠금·실패 카운터 초기화 */
   let pw_salt, pw_hash
   try { pw_salt = makeSalt(); pw_hash = await hashPw(pw, pw_salt) }
-  catch (e) { console.error('[ward-pw-reset] 해시 실패:', e.message); return json({ ok: false, msg: '일시적인 오류입니다' }, 500, cors) }
+  catch (e) { console.error('[ward-pw-reset] 해시 실패:', e.message); return json({ ok: false, msg: '일시적인 오류입니다' }, 500) }
 
   const { data: upd, error: uErr } = await admin
     .from('ward_requests')
     .update({ pw_hash, pw_salt, pw_fail: 0, pw_locked_until: null })
     .eq('id', row.id).in('tenant_id', tenantIds)
     .select('id')
-  if (uErr) { console.error('[ward-pw-reset] 갱신 실패:', uErr.message); return json({ ok: false, msg: '재설정에 실패했습니다' }, 500, cors) }
+  if (uErr) { console.error('[ward-pw-reset] 갱신 실패:', uErr.message); return json({ ok: false, msg: '재설정에 실패했습니다' }, 500) }
   /* RLS·조건에 막히면 오류 없이 0행이 돌아온다 — 행 수로 성공을 판정한다 */
-  if (!upd || !upd.length) return json({ ok: false, msg: '재설정에 실패했습니다' }, 500, cors)
+  if (!upd || !upd.length) return json({ ok: false, msg: '재설정에 실패했습니다' }, 500)
 
-  return json({ ok: true, ward: row.ward }, 200, cors)
+  return json({ ok: true, ward: row.ward }, 200)
 }
 
-function json(obj, status, cors) {
-  return new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
+function json(obj, status) {
+  /* ★ CORS 헤더 없음(같은 사이트 전용) */
+  return new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
 export const config = { path: '/api/ward/pw-reset' }

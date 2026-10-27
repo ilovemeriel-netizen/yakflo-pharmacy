@@ -7,6 +7,7 @@
    응답: { ok, year, upserted, rows:[{date,name}], source }  또는 { ok:false, msg }
    ════════════════════════════════════════════════════════════════ */
 import { createClient } from '@supabase/supabase-js'
+import { checkEnv, SUPABASE_ENV } from './_lib/env.js'
 
 export default async (req) => {
   const cors = {
@@ -17,11 +18,18 @@ export default async (req) => {
   if (req.method === 'OPTIONS') return new Response('', { headers: cors })
   if (req.method !== 'POST') return json({ ok: false, msg: 'POST only' }, 405, cors)
 
+  /* ★ 환경변수 **형식**까지 본다 — 「있음」만 보면 한 글자짜리 값도 통과해
+     createClient 에서 터진다(2026-10-27 운영 장애). 자세한 내용은 _lib/env.js 머리말.
+     응답 문구는 기존 그대로 두고, 로그에 어느 변수가 어떤 검사에 걸렸는지만 남긴다. */
+  const badEnv = checkEnv(process.env, SUPABASE_ENV)
+  if (badEnv.length) {
+    console.error('[holidays] 환경변수 형식 오류 — ' + badEnv.join(' / '))
+    return json({ ok: false, msg: '서버 환경변수 누락(SUPABASE_*)' }, 500, cors)
+  }
   const supaUrl = process.env.SUPABASE_URL
   const supaSrv = process.env.SUPABASE_SERVICE_ROLE_KEY
   const supaAnon = process.env.SUPABASE_ANON_KEY
   const apiKey = process.env.HOLIDAY_API_KEY || process.env.DATA_API_KEY // 특일정보 승인 키 우선, 없으면 공용 키
-  if (!supaUrl || !supaSrv || !supaAnon) return json({ ok: false, msg: '서버 환경변수 누락(SUPABASE_*)' }, 500, cors)
   if (!apiKey) return json({ ok: false, msg: '서버에 HOLIDAY_API_KEY/DATA_API_KEY 미설정' }, 500, cors)
 
   const authHeader = req.headers.get('authorization') || ''

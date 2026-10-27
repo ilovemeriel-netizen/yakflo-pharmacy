@@ -14,6 +14,7 @@
    ════════════════════════════════════════════════════════════════ */
 import crypto from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
+import { checkEnv } from './_lib/env.js'
 
 const STATE_MAX_AGE_MS = 5 * 60 * 1000
 
@@ -62,7 +63,16 @@ export default async (req) => {
   const supaUrl = process.env.SUPABASE_URL
   const supaSrv = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-  if (!clientId || !clientSecret || !stateSecret || !supaUrl || !supaSrv) {
+  if (!clientId || !clientSecret || !stateSecret) {
+    return errPage('서버 환경변수 누락 (관리자에게 문의)')
+  }
+  /* ★ SUPABASE_* 는 **형식**까지 본다 — 「있음」만 보면 한 글자짜리 값도 통과해
+     createClient 에서 터진다(2026-10-27 운영 장애). 자세한 내용은 _lib/env.js 머리말.
+     NAVER_* 는 모양을 규정할 근거가 없어 기존 「있음」 검사를 그대로 둔다.
+     응답 문구는 기존 그대로, 로그에 어느 변수가 어떤 검사에 걸렸는지만 남긴다. */
+  const badEnv = checkEnv(process.env, ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'])
+  if (badEnv.length) {
+    console.error('[auth-naver-callback] 환경변수 형식 오류 — ' + badEnv.join(' / '))
     return errPage('서버 환경변수 누락 (관리자에게 문의)')
   }
   if (!verifyState(state, stateSecret)) return errPage('state 검증 실패 (만료 또는 위조)')
