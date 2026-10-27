@@ -26,6 +26,10 @@
 import { createClient } from '@supabase/supabase-js'
 import { randomBytes, scrypt as _scrypt, timingSafeEqual, createHmac } from 'node:crypto'
 import { loadStock } from './_lib/stock.js'
+import { checkEnv, CONFIG_CODE, CONFIG_MSG } from './_lib/env.js'
+
+/* 이 사이트의 두 Function 이 쓰는 환경변수 — 양쪽이 같은 목록을 본다 */
+export const ENV_NAMES = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'VACCINE_TOKEN_SECRET', 'VACCINE_TENANT_ID']
 
 /* ★ scrypt 규격 **네 번째 복제본** — 아래 세 파일과 규격을 함께 바꿔야 한다.
    ★ 한 곳만 고치면 해시가 어긋나 검증이 **조용히 실패**한다(저장은 되는데 조회만 안 된다).
@@ -120,11 +124,18 @@ export function json(obj, status) {
 export default async (req) => {
   if (req.method !== 'POST') return json({ ok: false, message: 'POST 만 받습니다' }, 405)
 
+  /* ★ 환경변수 **형식**까지 본다 — 「있음」만 보면 한 글자짜리 값도 통과해
+     createClient 에서 터진다(2026-10-27 운영 장애). 자세한 내용은 _lib/env.js 머리말.
+     ★ DB 접속·scrypt 보다 앞이다. 로그에는 어느 변수가 어떤 검사에 걸렸는지만 남는다. */
+  const badEnv = checkEnv(process.env, ENV_NAMES)
+  if (badEnv.length) {
+    console.error('[vaccine-verify] 환경변수 형식 오류 — ' + badEnv.join(' / '))
+    return json({ ok: false, code: CONFIG_CODE, message: CONFIG_MSG }, 500)
+  }
   const supaUrl = process.env.SUPABASE_URL
   const supaSrv = process.env.SUPABASE_SERVICE_ROLE_KEY
   const secret = process.env.VACCINE_TOKEN_SECRET
   const tenantId = process.env.VACCINE_TENANT_ID
-  if (!supaUrl || !supaSrv || !secret || !tenantId) return json({ ok: false, message: '서버 설정 오류' }, 500)
 
   let body = {}
   try { body = await req.json() } catch { return json({ ok: false, message: '잘못된 요청 본문' }, 400) }

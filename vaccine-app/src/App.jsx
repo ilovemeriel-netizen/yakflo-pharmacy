@@ -21,6 +21,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { itemsOf, viewState, totalOf } from './lib/stockView'
+import { sanitizePw, boxFill, pwReady } from './lib/pwInput'
 
 const TOKEN_KEY = 'vaccine_public_token'
 const REFRESH_MS = 60_000
@@ -146,15 +147,22 @@ export default function App() {
   return <Stock data={data} loading={loading} err={err} onLock={lock} onReload={manualReload} />
 }
 
-/* ═══ 시안 ⓐ-1 — 로그인 ═══════════════════════════════════════════════════ */
+/* ═══ 시안 ⓐ-1 — 로그인 (2026-10-27 승인 시안) ═══════════════════════════
+   ★ 네 상자는 **장식**이다. 실제 입력은 상자 위에 투명하게 덮인 input 하나뿐이고,
+     그래서 상자 아무 곳을 눌러도 바로 입력이 시작된다(포커스 옮기는 코드가 없다).
+   ★ 입력 규칙(숫자만·4자리·붙여넣기)은 lib/pwInput.js 에 있다.
+   ★ 로그인 로직(토큰·initial·오류 분기)은 이 개편에서 건드리지 않았다. */
 function Login({ onDone }) {
   const [pw, setPw] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
+  /* 투명한 input 은 자기 포커스 테두리를 보여 줄 수 없다 — 다음 칸을 짚어 대신 알린다 */
+  const [focused, setFocused] = useState(false)
   const ref = useRef(null)
   useEffect(() => { ref.current?.focus() }, [])
 
-  const ready = new RegExp('^\\d{' + PW_LEN + '}$').test(pw)
+  const ready = pwReady(pw, PW_LEN)
+  const fill = boxFill(pw, PW_LEN)
 
   async function submit(e) {
     e?.preventDefault()
@@ -178,45 +186,99 @@ function Login({ onDone }) {
     }
   }
 
-  return <main style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-    <form onSubmit={submit} style={{ width: '100%', maxWidth: 340 }}>
-      <div style={{ textAlign: 'center', marginBottom: 26 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--v-purple)', letterSpacing: '0.02em' }}>약제과</div>
-        <h1 style={{ margin: '6px 0 0', fontSize: 22, fontWeight: 700, color: 'var(--v-navy)' }}>백신 잔량 조회</h1>
+  return <main style={{
+    minHeight: '100dvh', background: 'rgba(191, 166, 217, 0.18)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+  }}>
+    <form onSubmit={submit} style={{ width: '100%', maxWidth: 360, minWidth: 0 }}>
+
+      {/* 아이콘 — 보라 사각형 안의 흰 십자 */}
+      <div style={{
+        width: 56, height: 56, borderRadius: 14, background: 'var(--v-purple)',
+        margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <svg viewBox="0 0 20 20" width="26" height="26" aria-hidden="true">
+          <path d="M7 1h6v6h6v6h-6v6H7v-6H1V7h6z" fill="#FFFFFF" />
+        </svg>
       </div>
 
-      <label htmlFor="pw" style={{ display: 'block', fontSize: 13, color: 'var(--v-ink-dim)', marginBottom: 8 }}>
-        공용 비밀번호
-      </label>
-      <input
-        id="pw" ref={ref}
-        type="password" inputMode="numeric" autoComplete="one-time-code"
-        maxLength={PW_LEN}
-        value={pw}
-        onChange={e => setPw(e.target.value.replace(/\D/g, '').slice(0, PW_LEN))}
-        className="num"
-        style={{
-          width: '100%', padding: '15px 16px', fontSize: 26, fontWeight: 600,
-          letterSpacing: '0.42em', textAlign: 'center',
-          border: '1.5px solid var(--v-line)', borderRadius: 14,
-          background: 'var(--v-card)', color: 'var(--v-navy)',
-        }} />
+      <h1 style={{
+        margin: '16px 0 0', textAlign: 'center',
+        fontSize: 24, fontWeight: 800, color: 'var(--v-navy)',
+      }}>백신 잔량 조회</h1>
 
-      {msg && <div role="alert" style={{
-        marginTop: 12, padding: '10px 12px', borderRadius: 10,
-        background: 'rgba(128, 74, 135, 0.08)', borderLeft: '3px solid var(--v-purple)',
-        fontSize: 13, color: 'var(--v-navy)', lineHeight: 1.6,
-      }}>{msg}</div>}
+      <p style={{
+        margin: '10px 0 22px', textAlign: 'center',
+        fontSize: 15, color: 'rgba(46, 74, 98, 0.8)', lineHeight: 1.6,
+      }}>직원 공용 비밀번호 {PW_LEN}자리를<br />입력해 주세요</p>
 
-      <button type="submit" disabled={!ready || busy} style={{
-        width: '100%', marginTop: 16, padding: '15px 16px', borderRadius: 14, border: 'none',
-        background: ready && !busy ? 'var(--v-purple)' : 'rgba(128, 74, 135, 0.3)',
-        color: '#FFFFFF', fontSize: 16, fontWeight: 700,
-        cursor: ready && !busy ? 'pointer' : 'not-allowed',
-      }}>{busy ? '확인 중...' : '확인'}</button>
+      {/* 흰 카드 */}
+      <div style={{
+        background: '#FFFFFF', borderRadius: 18,
+        border: '1px solid rgba(46, 74, 98, 0.12)', padding: '24px 20px',
+      }}>
+        <label htmlFor="pw" style={{
+          display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--v-navy)', marginBottom: 10,
+        }}>비밀번호</label>
 
-      <p style={{ marginTop: 18, textAlign: 'center', fontSize: 12, color: 'var(--v-ink-dim)', lineHeight: 1.7 }}>
-        비밀번호는 {TEL}로 문의해 주세요
+        {/* 네 상자 + 그 위에 덮인 투명 input.
+            ★ input 이 상자 영역을 그대로 덮으므로 어디를 눌러도 포커스가 들어온다. */}
+        <div style={{ position: 'relative' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
+            {fill.map((on, i) => <div key={i} style={{
+              height: 60, borderRadius: 12,
+              /* 입력된 칸은 보라, 빈 칸은 라벤더. 포커스 중이면 다음 칸을 보라로 짚어 준다 */
+              border: '2px solid ' + (on || (focused && i === pw.length) ? 'var(--v-purple)' : 'var(--v-lav)'),
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {on ? <span style={{
+                width: 12, height: 12, borderRadius: '50%', background: 'var(--v-navy)',
+              }} /> : null}
+            </div>)}
+          </div>
+          <input
+            id="pw" ref={ref}
+            type="password" inputMode="numeric" autoComplete="off"
+            aria-label={`비밀번호 ${PW_LEN}자리`}
+            maxLength={PW_LEN}
+            value={pw}
+            onChange={e => setPw(sanitizePw(e.target.value, PW_LEN))}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            style={{
+              /* 상자 위에 투명하게 덮는다 — 보이지 않지만 누를 수 있고 입력도 받는다 */
+              position: 'absolute', inset: 0, width: '100%', height: '100%',
+              opacity: 0, border: 'none', background: 'transparent',
+              cursor: 'pointer', font: 'inherit',
+            }} />
+        </div>
+
+        <button type="submit" disabled={!ready || busy} style={{
+          width: '100%', height: 52, marginTop: 16, borderRadius: 12, border: 'none',
+          background: ready && !busy ? 'var(--v-purple)' : 'rgba(128, 74, 135, 0.3)',
+          color: '#FFFFFF', fontSize: 16, fontWeight: 700,
+          cursor: ready && !busy ? 'pointer' : 'not-allowed',
+        }}>{busy ? '확인 중...' : '확인'}</button>
+
+        {/* 오류 문구(틀림·잠금·NOT_SET·NO_IP) — 아래 안내 자리 바로 위 */}
+        {msg && <div role="alert" style={{
+          marginTop: 14, padding: '10px 12px', borderRadius: 10,
+          background: 'rgba(128, 74, 135, 0.08)', borderLeft: '3px solid var(--v-purple)',
+          fontSize: 13, color: 'var(--v-navy)', lineHeight: 1.6,
+        }}>{msg}</div>}
+
+        <p style={{
+          margin: '14px 0 0', textAlign: 'center',
+          fontSize: 13, color: 'rgba(46, 74, 98, 0.8)', lineHeight: 1.6,
+        }}>확인하면 오늘 하루 동안 다시 묻지 않습니다.</p>
+      </div>
+
+      <p style={{
+        margin: '22px 0 0', textAlign: 'center',
+        fontSize: 13, color: 'rgba(46, 74, 98, 0.8)', lineHeight: 1.8,
+      }}>
+        비밀번호를 모르면 약제과로 문의해 주세요
+        <br /><span style={{ fontWeight: 700, color: 'var(--v-navy)' }}>{TEL}</span>
       </p>
     </form>
   </main>

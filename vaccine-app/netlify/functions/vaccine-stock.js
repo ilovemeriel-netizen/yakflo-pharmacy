@@ -18,17 +18,23 @@
    환경변수: SUPABASE_URL · SUPABASE_SERVICE_ROLE_KEY · VACCINE_TOKEN_SECRET · VACCINE_TENANT_ID
    ════════════════════════════════════════════════════════════════ */
 import { createClient } from '@supabase/supabase-js'
-import { readToken, kstToday, json } from './vaccine-verify.js'
+import { readToken, kstToday, json, ENV_NAMES } from './vaccine-verify.js'
 import { loadStock } from './_lib/stock.js'
+import { checkEnv, CONFIG_CODE, CONFIG_MSG } from './_lib/env.js'
 
 export default async (req) => {
   if (req.method !== 'GET') return json({ ok: false, message: 'GET 만 받습니다' }, 405)
 
+  /* ★ 환경변수 형식 검사 — 토큰 확인·DB 접속보다 앞이다. 자세한 내용은 _lib/env.js 머리말 */
+  const badEnv = checkEnv(process.env, ENV_NAMES)
+  if (badEnv.length) {
+    console.error('[vaccine-stock] 환경변수 형식 오류 — ' + badEnv.join(' / '))
+    return json({ ok: false, code: CONFIG_CODE, message: CONFIG_MSG }, 500)
+  }
   const supaUrl = process.env.SUPABASE_URL
   const supaSrv = process.env.SUPABASE_SERVICE_ROLE_KEY
   const secret = process.env.VACCINE_TOKEN_SECRET
   const tenantId = process.env.VACCINE_TENANT_ID
-  if (!supaUrl || !supaSrv || !secret || !tenantId) return json({ ok: false, message: '서버 설정 오류' }, 500)
 
   const authHeader = req.headers.get('authorization') || ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
