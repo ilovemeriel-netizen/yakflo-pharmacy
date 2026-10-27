@@ -6,6 +6,12 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    include: ['src/**/*.{test,spec}.{js,jsx}'],
+    /* 루트 앱 + 공개 조회 사이트(vaccine-app). vaccine-app 은 별도 빌드지만
+       시험은 루트 vitest 하나로 돌린다 — Function 쪽 순수 모듈도 포함한다. */
+    include: [
+      'src/**/*.{test,spec}.{js,jsx}',
+      'vaccine-app/src/**/*.{test,spec}.{js,jsx}',
+      'vaccine-app/netlify/**/*.{test,spec}.{js,jsx}',
+    ],
   },
 })
