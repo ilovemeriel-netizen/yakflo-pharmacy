@@ -10,6 +10,7 @@
    환경변수: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY
    ════════════════════════════════════════════════════════════════ */
 import { createClient } from '@supabase/supabase-js'
+import { checkEnv, SUPABASE_ENV } from './_lib/env.js'
 
 const CONFIRM_WORD = '탈퇴'
 
@@ -22,10 +23,17 @@ export default async (req) => {
   if (req.method === 'OPTIONS') return new Response('', { headers: cors })
   if (req.method !== 'POST') return json({ ok: false, msg: 'POST only' }, 405, cors)
 
+  /* ★ 환경변수 **형식**까지 본다 — 「있음」만 보면 한 글자짜리 값도 통과해
+     createClient 에서 터진다(2026-10-27 운영 장애). 자세한 내용은 _lib/env.js 머리말.
+     응답 문구는 기존 그대로 두고, 로그에 어느 변수가 어떤 검사에 걸렸는지만 남긴다. */
+  const badEnv = checkEnv(process.env, SUPABASE_ENV)
+  if (badEnv.length) {
+    console.error('[account-delete] 환경변수 형식 오류 — ' + badEnv.join(' / '))
+    return json({ ok: false, msg: '서버 환경변수 누락' }, 500, cors)
+  }
   const supaUrl = process.env.SUPABASE_URL
   const supaSrv = process.env.SUPABASE_SERVICE_ROLE_KEY
   const supaAnon = process.env.SUPABASE_ANON_KEY
-  if (!supaUrl || !supaSrv || !supaAnon) return json({ ok: false, msg: '서버 환경변수 누락' }, 500, cors)
 
   const authHeader = req.headers.get('authorization') || ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
