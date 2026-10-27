@@ -11,7 +11,12 @@ const { default: handler, hashPw, makeSalt, PW_MAX_FAIL, PW_LOCK_MIN, PW_MSG } =
   await import('../netlify/functions/vaccine-verify.js')
 const { loadStock } = await import('../netlify/functions/_lib/stock.js')
 
-const TENANT = 'tenant-1'
+/* ★ 환경변수 형식 검사(_lib/env.js)가 붙었으므로 시험 설정값도 **실제와 같은 모양**이어야 한다.
+   tenant 는 UUID, 비밀키는 JWT, 토큰 비밀값은 32자 이상. */
+const TENANT = '1b7e1f6a-2c3d-4e5f-8a9b-0c1d2e3f4a5b'
+const GOOD_URL = 'https://example.supabase.co'
+const GOOD_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.c2ln'
+const GOOD_SECRET = 's'.repeat(32)
 const PW = '1234'
 const IP = '203.0.113.9'
 
@@ -72,9 +77,9 @@ function req({ pw = PW, ip = IP, method = 'POST' } = {}) {
 const body = async res => JSON.parse(await res.text())
 
 beforeEach(() => {
-  process.env.SUPABASE_URL = 'https://example.supabase.co'
-  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key'
-  process.env.VACCINE_TOKEN_SECRET = 'test-secret'
+  process.env.SUPABASE_URL = GOOD_URL
+  process.env.SUPABASE_SERVICE_ROLE_KEY = GOOD_JWT
+  process.env.VACCINE_TOKEN_SECRET = GOOD_SECRET
   process.env.VACCINE_TENANT_ID = TENANT
   stub.admin = null
 })
@@ -199,6 +204,42 @@ describe('기존 분기가 그대로다', () => {
   it('GET 은 405', async () => {
     stub.admin = fakeAdmin(makeAnswer({}))
     expect((await handler(req({ method: 'GET' }))).status).toBe(405)
+  })
+
+  it('★ 환경변수 형식이 어긋나면 DB·scrypt 전에 500 SERVER_CONFIG', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    process.env.SUPABASE_URL = 'x'                  /* 2026-10-27 사고와 같은 한 글자 값 */
+    stub.admin = fakeAdmin(makeAnswer({ settings: await settingsRow() }))
+
+    const res = await handler(req())
+    const j = await body(res)
+    expect(res.status).toBe(500)
+    expect(j).toEqual({ ok: false, code: 'SERVER_CONFIG', message: '서버 설정 오류입니다 · 문의 약제과 내선 217' })
+    expect(stub.admin._log).toHaveLength(0)         /* DB 에 닿지 않았다 */
+
+    /* 로그에는 변수 이름과 기대 모양만 — 값("x")은 남지 않는다 */
+    const logged = spy.mock.calls.map(c => c.join(' ')).join('\n')
+    expect(logged).toContain('SUPABASE_URL')
+    expect(logged).toContain('환경변수 형식 오류')
+    expect(logged).not.toMatch(/:\s*x\b/)
+    spy.mockRestore()
+  })
+
+  it('비밀값이 로그에 찍히지 않는다 — 네 변수를 모두 어긋나게 둬도', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    process.env.SUPABASE_URL = 'LEAK-URL'
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'LEAK-KEY'
+    process.env.VACCINE_TOKEN_SECRET = 'LEAK-SECRET'
+    process.env.VACCINE_TENANT_ID = 'LEAK-TENANT'
+    stub.admin = fakeAdmin(makeAnswer({}))
+
+    expect((await handler(req())).status).toBe(500)
+    const logged = spy.mock.calls.map(c => c.join(' ')).join('\n')
+    for (const v of ['LEAK-URL', 'LEAK-KEY', 'LEAK-SECRET', 'LEAK-TENANT']) {
+      expect(logged).not.toContain(v)
+    }
+    expect(logged).toContain('SUPABASE_URL')        /* 이름은 남는다 */
+    spy.mockRestore()
   })
 
   it('응답에 Cache-Control: no-store 가 붙고 CORS 헤더는 없다', async () => {
