@@ -7,7 +7,7 @@ import { fetchMonthlyReport, fetchMonthlyReportDetail } from '../appApi'
    인쇄: @media print로 격리(.yf-print-report만 보임), 화면 레이아웃 회귀 0. */
 
 const HOSPITAL = '씨엔씨재활의학과병원' // 병원명(인쇄 양식 헤더)
-const COPYRIGHT = 'Copyright © 2026 Jeonghwa Lee. All rights reserved.'
+const COPYRIGHT = 'Copyright © 2026 JEONGHWALEE. All rights reserved. 무단 전재 및 재배포 금지.'
 const pad2 = (n) => String(n).padStart(2, '0')
 const stampNow = () => {
   const n = new Date()
