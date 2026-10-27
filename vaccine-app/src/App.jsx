@@ -2,8 +2,14 @@
    백신 잔량 공개 조회 — 시안 ⓐ-1(로그인) · ⓐ-2(휴대폰) · ⓐ-3(PC·태블릿)
 
    ★ 이 앱은 Supabase 클라이언트도 키도 가지지 않는다. 같은 사이트의 Function 두 개만 부른다.
-       POST /api/vaccine/verify  { pw }  → { ok, token }
+       POST /api/vaccine/verify  { pw }  → { ok, token, initial? }
        GET  /api/vaccine/stock           → { season, updated_at, items:[{label, qty, status}] }
+
+   ★ 로그인 응답의 initial 이 stock 과 같은 형식이다 — 있으면 그걸로 바로 그리고
+     로그인 직후 stock 을 다시 부르지 않는다(왕복 1회 절약). 다음 갱신부터 stock 을 쓴다.
+
+   ★ 숫자를 그리기 전에 「응답을 받았는지」를 먼저 가린다 — src/lib/stockView.js.
+     그러지 않으면 1~2초 동안 "공개 중인 백신이 없습니다" 가 사실과 다르게 보인다.
 
    ★ 표시 문자열을 **파싱하지 않는다**(병동신청앱 원칙).
      그래서 독감/코로나 같은 섹션 제목도, 분류별 합계 줄도 만들지 않는다.
@@ -14,11 +20,14 @@
    ★ 자동 갱신은 **화면이 보일 때만** 60초마다 — 배경 탭에서 Function 을 두드리지 않는다.
    ═══════════════════════════════════════════════════════════════════════════ */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { itemsOf, viewState, totalOf } from './lib/stockView'
 
 const TOKEN_KEY = 'vaccine_public_token'
 const REFRESH_MS = 60_000
 const PW_LEN = 4
 const TEL = '약제과 내선 217'
+/* 불러오는 동안 숫자 자리에 들어가는 문구 — 한 곳에만 둔다 */
+const LOADING = '불러오는 중...'
 
 /* ── 토큰 보관 — 읽을 때 exp 를 보고 지난 것은 버린다 ── */
 function readStored() {
@@ -69,6 +78,9 @@ export default function App() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
+  /* 로그인 응답의 initial 로 이미 그렸는지 — true 면 첫 stock 호출을 건너뛴다.
+     ★ 렌더 중에는 읽지도 쓰지도 않는다(이벤트 처리기에서 쓰고 effect 에서 읽는다). */
+  const seeded = useRef(false)
 
   const lock = useCallback(() => { clearStored(); setToken(null); setData(null); setErr(null) }, [])
 
@@ -102,9 +114,15 @@ export default function App() {
       else stop()
     }
     /* ★ 첫 조회도 타이머로 건다 — effect 본문에서 직접 부르면 동기 setState 로 잡힌다.
-       0ms 지연이라 사용자에게는 즉시 시작하는 것과 같다. */
+       0ms 지연이라 사용자에게는 즉시 시작하는 것과 같다.
+       ★ 로그인 응답에 initial 이 실려 와 이미 그린 경우에는 건너뛴다 — 같은 데이터를
+         두 번 받으러 가지 않는다. 깃발은 한 번 쓰고 내려서 다음 토큰에서는 정상 조회한다. */
     let kick = null
-    if (document.visibilityState === 'visible') { kick = setTimeout(() => load(token), 0); start() }
+    if (document.visibilityState === 'visible') {
+      if (seeded.current) seeded.current = false
+      else kick = setTimeout(() => load(token), 0)
+      start()
+    }
     document.addEventListener('visibilitychange', onVis)
     return () => {
       stop()
@@ -119,7 +137,12 @@ export default function App() {
     setLoading(false)
   }
 
-  if (!token) return <Login onDone={tok => { saveStored(tok); setToken(tok) }} />
+  if (!token) return <Login onDone={(tok, initial) => {
+    saveStored(tok)
+    /* 로그인 응답에 첫 데이터가 실려 왔으면 그걸로 바로 그린다 — 빈 화면을 거치지 않는다 */
+    if (itemsOf(initial)) { setData(initial); seeded.current = true }
+    setToken(tok)
+  }} />
   return <Stock data={data} loading={loading} err={err} onLock={lock} onReload={manualReload} />
 }
 
@@ -145,7 +168,8 @@ function Login({ onDone }) {
       })
       const j = await r.json().catch(() => null)
       setBusy(false)
-      if (r.ok && j?.ok && j.token) { setPw(''); onDone(j.token); return }
+      /* initial 은 없을 수도 있다(서버에서 첫 조회가 실패한 경우) — 그러면 화면이 stock 으로 채운다 */
+      if (r.ok && j?.ok && j.token) { setPw(''); onDone(j.token, j.initial); return }
       setMsg(j?.message || '잠시 후 다시 시도해 주세요')
       setPw('')
       ref.current?.focus()
@@ -215,8 +239,10 @@ function useWide() {
 
 function Stock({ data, loading, err, onLock, onReload }) {
   const wide = useWide()
-  const items = data?.items || []
-  const total = items.reduce((s, x) => s + Number(x.qty || 0), 0)
+  /* 'loading'(응답 전) · 'empty'(받았는데 비었다) · 'list' — 판정은 lib/stockView.js 에 있다 */
+  const state = viewState(data, loading)
+  const items = itemsOf(data) || []
+  const total = totalOf(data)
   const when = fmtKst(data?.updated_at)
 
   const head = <header style={{
@@ -244,16 +270,24 @@ function Stock({ data, loading, err, onLock, onReload }) {
     margin: wide ? '22px 28px 30px' : '18px 16px 26px',
     fontSize: 11, color: 'var(--v-ink-dim)', lineHeight: 1.7, textAlign: wide ? 'left' : 'center',
   }}>
-    {when ? <>마지막 입력 <span className="num">{when}</span></> : '입력 기록이 없습니다'}
+    {/* ★ "입력 기록이 없습니다" 는 응답을 받은 뒤에만 — 응답 전에는 불러오는 중이라고 적는다 */}
+    {state === 'loading' ? LOADING
+      : when ? <>마지막 입력 <span className="num">{when}</span></>
+        : '입력 기록이 없습니다'}
     {data?.season ? <> · <span className="num">{data.season}</span> 절기</> : null}
     <br />문의 {TEL}
   </p>
 
-  const empty = <div style={{
-    margin: wide ? '28px' : '16px', padding: '40px 20px', borderRadius: 16,
+  /* 안내 상자 — 빈 목록과 불러오는 중이 같은 자리·같은 모양을 쓴다(새 레이아웃을 만들지 않는다) */
+  const boxStyle = {
+    padding: '40px 20px', borderRadius: 16,
     background: 'var(--v-card)', border: '1px solid var(--v-line)',
     textAlign: 'center', color: 'var(--v-ink-dim)', fontSize: 14,
-  }}>{loading ? '불러오는 중...' : '공개 중인 백신이 없습니다'}</div>
+  }
+  /* ★ 응답을 받았고 목록이 진짜 빈 경우에만 쓴다 */
+  const empty = <div style={{ margin: wide ? '28px' : '16px', ...boxStyle }}>공개 중인 백신이 없습니다</div>
+  /* 카드 자리에 들어가는 불러오는 중 — 합계 상자와 나란히 서므로 margin 을 두지 않는다 */
+  const pending = <div style={boxStyle}>{LOADING}</div>
 
   const alert = err && <div role="alert" style={{
     margin: wide ? '16px 28px 0' : '12px 16px 0', padding: '10px 12px', borderRadius: 10,
@@ -271,13 +305,21 @@ function Stock({ data, loading, err, onLock, onReload }) {
   }}>
     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-ink-dim)' }}>전체 잔량</div>
     <div style={{ flex: wide ? undefined : 1 }} />
-    <div className="num" style={{
-      fontSize: wide ? 56 : 30, fontWeight: 700, color: 'var(--v-navy)', lineHeight: 1.1,
-      marginTop: wide ? 6 : 0,
-    }}>{total.toLocaleString()}</div>
-    <div style={{ fontSize: 12, color: 'var(--v-ink-dim)', marginTop: wide ? 4 : 0 }}>
+    {/* ★ 숫자 자리 — 응답 전에는 0 을 보여 주지 않고 같은 자리에 문구를 적는다.
+        큰 숫자 크기로는 문구가 넘치므로 글자 크기만 줄인다(색·자리·구조는 그대로). */}
+    {state === 'loading'
+      ? <div style={{
+        fontSize: wide ? 20 : 15, fontWeight: 600, color: 'var(--v-ink-dim)', lineHeight: 1.1,
+        marginTop: wide ? 6 : 0,
+      }}>{LOADING}</div>
+      : <div className="num" style={{
+        fontSize: wide ? 56 : 30, fontWeight: 700, color: 'var(--v-navy)', lineHeight: 1.1,
+        marginTop: wide ? 6 : 0,
+      }}>{total.toLocaleString()}</div>}
+    {/* 종 수도 응답 전에는 비워 둔다 — "0종" 이 사실과 다르게 보이지 않게 */}
+    {state === 'loading' ? null : <div style={{ fontSize: 12, color: 'var(--v-ink-dim)', marginTop: wide ? 4 : 0 }}>
       <span className="num">{items.length}</span>종
-    </div>
+    </div>}
   </div>
 
   const cards = <div style={{
@@ -291,15 +333,16 @@ function Stock({ data, loading, err, onLock, onReload }) {
   return <main style={{ minHeight: '100dvh' }}>
     {head}
     {alert}
-    {!items.length ? empty
+    {/* ★ 'loading' 도 'list' 와 같은 배치를 쓴다 — 데이터가 도착할 때 자리가 밀리지 않는다 */}
+    {state === 'empty' ? empty
       : wide
         ? <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 260px) minmax(0, 1fr)', gap: 20, padding: '20px 28px 0', alignItems: 'start' }}>
           <div style={{ position: 'sticky', top: 96 }}>{totalBox}</div>
-          {cards}
+          {state === 'list' ? cards : pending}
         </div>
         : <div style={{ padding: '12px 16px 0', display: 'grid', gap: 12 }}>
           {totalBox}
-          {cards}
+          {state === 'list' ? cards : pending}
         </div>}
     {foot}
   </main>

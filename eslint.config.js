@@ -28,7 +28,10 @@ export default defineConfig([
   },
   {
     /* Node 컨텍스트(빌드·서버리스 설정/스크립트): Buffer/process 등 Node 전역 허용 */
-    files: ['*.config.js', 'vite.config.js', 'vitest.config.js', 'netlify/**/*.js', 'scripts/**/*.js'],
+    /* ★ vaccine-app/netlify 도 같은 Node 컨텍스트다 — 빠져 있어 Buffer·process 가
+       no-undef 로 잡혔다(2026-10-27 추가). ward-app 은 자체 설정이 따로 있다. */
+    files: ['*.config.js', 'vite.config.js', 'vitest.config.js', 'netlify/**/*.js', 'scripts/**/*.js',
+      'vaccine-app/netlify/**/*.js', 'vaccine-app/tests/**/*.js'],
     languageOptions: { globals: globals.node },
   },
 ])

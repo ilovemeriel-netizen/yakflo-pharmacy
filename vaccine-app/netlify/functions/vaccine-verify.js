@@ -1,6 +1,7 @@
 /* ════════════════════════════════════════════════════════════════
    백신 잔량 공개 조회 — 비밀번호 확인 (비회원 API)
    POST /api/vaccine/verify  { pw }
+     → { ok:true, token, initial? }   initial 은 stock 과 같은 { season, updated_at, items }
    ─────────────────────────────────────────────────────────────────
    ★ service_role 은 RLS 를 우회한다 — 모든 조회에 tenant_id 조건을 **직접** 건다.
      VACCINE_TENANT_ID 를 쓰고, 환경변수 값은 코드에 적지 않는다.
@@ -24,6 +25,7 @@
    ════════════════════════════════════════════════════════════════ */
 import { createClient } from '@supabase/supabase-js'
 import { randomBytes, scrypt as _scrypt, timingSafeEqual, createHmac } from 'node:crypto'
+import { loadStock } from './_lib/stock.js'
 
 /* ★ scrypt 규격 **네 번째 복제본** — 아래 세 파일과 규격을 함께 바꿔야 한다.
    ★ 한 곳만 고치면 해시가 어긋나 검증이 **조용히 실패**한다(저장은 되는데 조회만 안 된다).
@@ -203,17 +205,26 @@ export default async (req) => {
     return json({ ok: false, message: FAIL_MSG }, 401)
   }
 
-  /* 4) 성공 — 그 ip_hash 행을 지우고 토큰을 발급한다 */
-  const { error: dErr } = await admin.from('vaccine_public_attempts')
-    .delete().eq('tenant_id', tenantId).eq('ip_hash', ih)
-  if (dErr) console.error('[vaccine-verify] 잠금 행 삭제 실패:', dErr.message)
+  /* 4) 성공 — 그 ip_hash 행을 지우고, 첫 데이터까지 함께 읽어 토큰과 같이 보낸다.
+     ★ 두 작업은 서로 무관하므로 동시에 보낸다(로그인 체감 시간을 늘리지 않기 위해서다).
+     ★ `initial` 은 /api/vaccine/stock 과 **같은 코드**(_lib/stock.js)의 결과다.
+       덕분에 화면이 로그인 직후 stock 을 한 번 더 부르지 않아도 되고(왕복 1회 절약),
+       판정 기준이 두 곳으로 갈라지지도 않는다.
+     ★ 첫 데이터 조회가 실패해도 로그인은 성공시킨다 — initial 을 빼고 보내면
+       화면이 예전처럼 stock 을 불러 채운다(기능 손실 없음). */
+  const [del, got] = await Promise.all([
+    admin.from('vaccine_public_attempts').delete().eq('tenant_id', tenantId).eq('ip_hash', ih),
+    loadStock(admin, tenantId, kstToday()).catch(e => ({ ok: false, step: '예외', message: e.message })),
+  ])
+  if (del.error) console.error('[vaccine-verify] 잠금 행 삭제 실패:', del.error.message)
+  if (!got.ok) console.error('[vaccine-verify] 첫 데이터 ' + got.step + ' 조회 실패:', got.message)
 
   const token = makeToken(secret, {
     t: tenantId,
     exp: kstEndOfDayEpoch(),
     v: Date.parse(st.updated_at) || 0,
   })
-  return json({ ok: true, token }, 200)
+  return json(got.ok ? { ok: true, token, initial: got.data } : { ok: true, token }, 200)
 }
 
 export const config = { path: '/api/vaccine/verify' }
