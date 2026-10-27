@@ -8,8 +8,8 @@ const stub = { admin: null }
 vi.mock('@supabase/supabase-js', () => ({ createClient: () => stub.admin }))
 
 const { default: handler, hashPw, makeSalt, PW_MAX_FAIL, PW_LOCK_MIN, PW_MSG } =
-  await import('./vaccine-verify.js')
-const { loadStock } = await import('./_lib/stock.js')
+  await import('../netlify/functions/vaccine-verify.js')
+const { loadStock } = await import('../netlify/functions/_lib/stock.js')
 
 const TENANT = 'tenant-1'
 const PW = '1234'

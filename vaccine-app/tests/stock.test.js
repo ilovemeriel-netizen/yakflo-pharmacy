@@ -1,7 +1,7 @@
 /* 잔량 조회·판정 공용 모듈 — DB 없이 가짜 client 를 주입해 확인한다.
    보는 것: 상태 경계값 / 응답 필드가 딱 세 개 / 조회 순서와 병렬 / tenant_id 조건 유지 */
 import { describe, it, expect } from 'vitest'
-import { LOW_QTY, WARN_RATIO, stockStatus, loadStock } from './stock.js'
+import { LOW_QTY, WARN_RATIO, stockStatus, loadStock } from '../netlify/functions/_lib/stock.js'
 
 const TENANT = 'tenant-1'
 const TODAY = '2026-10-27'
