@@ -32,6 +32,37 @@ export function stockStatus(balance, received) {
   return '충분'
 }
 
+/* ── 공개 화면에 보일 약품명 ──────────────────────────────────────────────
+   drugs 의 약품명에는 약제과 내부 구분용 앞머리가 붙어 있다
+   (「독감-6 (…)」·「독감-5 지자체 (…)」). 공개 화면에서는 그 앞머리가 뜻이 없고
+   오히려 제품명을 가린다. **보여 줄 때만** 다듬는다 —
+   drugs 원본 값도, 약플로 다른 화면·엑셀도 그대로 둔다.
+
+   규칙 ① 맨 앞의 「독감-숫자」와 그 뒤에 선택적으로 오는 「지자체」를 없앤다
+        ② 남은 이름 **전체**가 괄호 하나로 둘러싸여 있으면 바깥 괄호도 없앤다
+        ③ 그 결과가 비면 원래 이름을 그대로 쓴다(이름을 잃지 않는다)
+   ★ 앞머리가 없는 이름(지씨플루…·스파이크박스…·코미나티…)은 한 글자도 바뀌지 않는다. */
+export function publicDrugName(raw) {
+  const src = String(raw ?? '').trim()
+  if (!src) return ''
+  let s = src.replace(/^독감-\d+\s*(?:지자체\s*)?/, '').trim()
+  /* 바깥 괄호 벗기기 — **첫 괄호의 짝이 마지막 글자일 때만** 한다.
+     「(가)와 (나)」 처럼 괄호가 둘이면 벗기지 않는다. */
+  while (s.startsWith('(') && s.endsWith(')')) {
+    let depth = 0, matchesEnd = true
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === '(') depth++
+      else if (s[i] === ')') {
+        depth--
+        if (depth === 0 && i !== s.length - 1) { matchesEnd = false; break }
+      }
+    }
+    if (!matchesEnd || depth !== 0) break
+    s = s.slice(1, -1).trim()
+  }
+  return s || src
+}
+
 /* ── 잔량 목록 한 번 읽기 ─────────────────────────────────────────────────
    admin    : service_role 로 만든 Supabase 클라이언트
    tenantId : VACCINE_TENANT_ID
@@ -102,7 +133,7 @@ export async function loadStock(admin, tenantId, today) {
     /* 값이 없으면 빈 문자열 — 화면이 그 줄을 그리지 않는다 */
     return {
       label: String(a.public_label), qty, status: stockStatus(qty, b.received_qty),
-      drug_name: String(d.drug_name || ''), maker: String(d.manufacturer || ''),
+      drug_name: publicDrugName(d.drug_name), maker: String(d.manufacturer || ''),
     }
   }).sort((x, y) => x.label.localeCompare(y.label, 'ko'))
 
