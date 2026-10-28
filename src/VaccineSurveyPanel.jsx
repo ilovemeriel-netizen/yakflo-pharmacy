@@ -6,7 +6,7 @@
    ★ 산식의 정본은 DB 뷰 v_vaccine_demand 다. 화면에서 D·A·R·S·G·O 를 다시 계산하지 않는다.
      뷰가 주지 않는 것(날짜별 누적·가림표시)만 lib/surveyCalc.js 에서 만든다.
    ★ 차트는 저장소 방식대로 인라인 SVG — 차트 라이브러리를 들이지 않는다.
-   ★ 성명·사번은 가려서 보여 준다. 원문은 「정정」을 눌러 audit 을 남긴 뒤에만.
+   ★ 성명·사번은 가려서 보여 준다. 원문은 「원문 보기」를 눌러 audit 을 남긴 뒤에만.
    ★ 내려받기는 audit INSERT 가 성공한 **뒤에만** 파일을 만든다.
    ★ 1,000행을 넘을 수 있으므로 .range() 로 쪽을 나눠 읽는다.
    ★ 표 컨테이너에 textAlign:'left' 를 명시한다 — #root 의 center 가 상속된다.
@@ -49,7 +49,7 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
   const [msg, setMsg] = useState(null)
   const [busy, setBusy] = useState(false)
   const [modal, setModal] = useState(null)      /* { kind:'round'|'purge', ... } */
-  const [revealed, setRevealed] = useState({})  /* id → true (정정으로 원문 공개) */
+  const [revealed, setRevealed] = useState({})  /* id → true (「원문 보기」로 공개) */
   const [hfV, setHfV] = useState({})            /* 표 헤더 필터 */
   const sort = useSort('wish_date', 'asc')
 
@@ -132,7 +132,7 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     await load(); await loadDetail(sel.id)
   }
 
-  /* ── 정정(원문 공개) — audit 을 먼저 남긴다 ───────────────────────────── */
+  /* ── 원문 보기 — audit 을 먼저 남긴다 ───────────────────────────── */
   async function reveal(r) {
     if (revealed[r.id]) return
     /* ★ tenant_id·user_id 를 보내지 않는다 — 0095 의 BEFORE INSERT 트리거가
@@ -379,7 +379,7 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
                           {!open ? <button onClick={() => reveal(r)} style={{
                             marginLeft: 6, padding: '1px 7px', borderRadius: 6, border: '1px solid ' + t.border,
                             background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 10, fontWeight: 700,
-                          }}>정정</button> : null}
+                          }}>원문 보기</button> : null}
                         </td>
                         <td style={td(t, 'center')}>{r._self}</td>
                         <td style={td(t, 'right')}><span className="num">{r.family_count}</span></td>
