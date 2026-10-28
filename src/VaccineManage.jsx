@@ -20,6 +20,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { useTheme } from './lib/theme'
 import { dbErrorMsg } from './lib/dbError'
+import { VACCINE_TAB_DEFAULT, vaccineTabFromHash, vaccineHash } from './lib/vaccineRoute'
 import VaccinePublicPanel from './VaccinePublicPanel'
 import VaccineSurveyPanel from './VaccineSurveyPanel'
 /* ★ GS1-128 파서는 scan.js 의 것을 **호출만** 한다(무수정).
@@ -108,7 +109,15 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
   const [openLot, setOpenLot] = useState(false)
   /* ★ 수요조사 탭 — 0093 정책과 같은 기준(tenant_members.role ∈ owner·admin)으로만 그린다.
      화면에서만 숨기는 것이 아니라 DB 정책이 정본이고, 여기는 보여 줄지 말지를 맞추는 것이다. */
-  const [tab, setTab] = useState('manage')
+  /* ★ 하위 탭을 주소에 담는다(#vaccine/survey) — 새로고침해도 보던 탭으로 돌아온다.
+     모르는 값이면 null 이 와서 기본 탭으로 간다. 주소 규칙은 lib/vaccineRoute.js 가 정본이다. */
+  const [tab, setTab] = useState(() => vaccineTabFromHash() || VACCINE_TAB_DEFAULT)
+  /* 탭을 누를 때 주소만 갈아 끼운다 — pushState 가 아니라 replaceState 라
+     뒤로가기 한 번이면 탭이 아니라 직전 **화면**으로 간다(기존 동작 유지). */
+  function goTab(k) {
+    setTab(k)
+    if (typeof window !== 'undefined') window.history.replaceState({ ykMenu: 'vaccine', ykSub: k }, '', vaccineHash(k))
+  }
   const [me, setMe] = useState(null)        // { tenant_id, user_id, role }
   const isSurveyAdmin = me?.role === 'owner' || me?.role === 'admin'
 
@@ -526,7 +535,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
     {isSurveyAdmin && <nav className="no-print" style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
       {[['manage', '백신 관리'], ['survey', '수요 현황']].map(([k, lab]) => {
         const on = tab === k
-        return <button key={k} onClick={() => setTab(k)} style={{
+        return <button key={k} onClick={() => goTab(k)} style={{
           padding: '7px 15px', borderRadius: 9, cursor: 'pointer', fontSize: 12, fontWeight: 700,
           border: '1px solid ' + (on ? t.accent : t.border),
           background: on ? t.accent : t.card, color: on ? t.navText : t.textM,

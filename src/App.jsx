@@ -7,6 +7,7 @@ import { RX_TOGGLE, RX_MORE, autoMap } from './lib/drugRules'
 import { classifyDrugRows, applyDrugRows } from './lib/drugBulk'
 import { decomposeAtc } from './lib/atcMap'
 import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT } from './lib/txTypes'
+import { vaccineTabFromHash } from './lib/vaccineRoute'
 import { handleScan as scanHandle, decodeGs1 as scanDecode, scanCountQty, scanAddItem, saveScanMapping, deactivateBarcode, listBarcodes, gtinCheckOk, ownCodeLooksLikeGs1, OWN_CODE_WARN } from './lib/scan'
 import { dbErrorMsg, noRowMsg, bulkFailKind } from './lib/dbError'
 import { ThemeCtx, useTheme } from './lib/theme'
@@ -7270,7 +7271,7 @@ function Schedule({ drugs, onNav }) {
   </div>;
 }
 
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'count', 'narcotic', 'nonins', 'ordering', 'ward', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive', 'locvocab'];
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'count', 'narcotic', 'nonins', 'ordering', 'ward', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive', 'locvocab', 'vaccine'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); const m = h.split('/')[0]; return ROUTES.includes(m) ? m : 'dashboard'; }
 function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
 /* 입출고 월 선택: 해시 3번째 세그먼트(#transaction/out/2026-08). 없으면 현재 월(하위호환). 「전체」는 URL에 월 세그먼트 없음(→새로고침 시 현재 월로 복원). */
@@ -7665,7 +7666,8 @@ export default function App() {
      popstate→직전 약플로 화면 복원. URL 미변경(새로고침=대시보드, 기존 동작 유지). */
   useEffect(() => {
     const raw = (window.location.hash || '') + (window.location.search || '')
-    if (!/access_token|refresh_token|provider_token|type=recovery|[?&]code=|error=/.test(raw)) { const init = routeFromHash(); const initSub = subFromHash(); const ih = '#' + init + (init === 'transaction' && initSub ? '/' + (TX_URL_KEY[initSub] || encodeURIComponent(initSub)) : ''); window.history.replaceState({ ykMenu: init, ykSub: initSub }, '', ih) }
+    if (!/access_token|refresh_token|provider_token|type=recovery|[?&]code=|error=/.test(raw)) { const init = routeFromHash(); const initSub = subFromHash(); const initVac = init === 'vaccine' ? vaccineTabFromHash() : null; /* ★ 백신 하위 탭을 지우지 않는다 — VaccineManage 는 lazy 라 이 effect 뒤에 붙어 주소를 읽는다 */
+      const ih = '#' + init + (init === 'transaction' && initSub ? '/' + (TX_URL_KEY[initSub] || encodeURIComponent(initSub)) : (initVac ? '/' + initVac : '')); window.history.replaceState({ ykMenu: init, ykSub: initSub }, '', ih) }
     function onPop(e) { isPopRef.current = true; setMenu((e.state && e.state.ykMenu) || routeFromHash()) }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
