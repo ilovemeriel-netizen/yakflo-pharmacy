@@ -2034,7 +2034,7 @@ function UsageCell({ value, dirty, onChange, onUndo }) {
   return <input value={value} inputMode="numeric" onChange={e => onChange(e.target.value)} onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); onUndo() } }} style={{ width: '100%', padding: '4px 6px', textAlign: 'right', border: '1px solid ' + (dirty ? t.accent : t.border), borderRadius: 4, fontSize: 11, background: dirty ? t.accent + '0D' : t.bg, color: t.text, fontWeight: dirty ? 700 : 400, outline: 'none', boxSizing: 'border-box' }} />;
 }
 /* 헤더 메뉴: 텍스트클릭=필터 드롭다운 / 아이콘클릭=정렬 즉시토글(오름→내림→해제, ▲ 1개 회전). StockStatus 전용. 공유 SI/HeaderFilter 미사용. */
-function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
+export function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
   const { t } = useTheme();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
