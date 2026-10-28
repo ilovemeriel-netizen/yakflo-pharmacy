@@ -223,16 +223,53 @@ describe('헤더 필터 — 눌러도 터지지 않고 실제로 걸린다', () 
   it('★ 값을 고르면 줄 수가 바뀐다 — 희망일로 거르기', async () => {
     render(<VaccineSurveyPanel {...props} />)
     await screen.findByText('김*화')
-    expect(screen.getByText('2건')).toBeTruthy()          /* 거르기 전 2건 */
+    expect(screen.getByText('1건')).toBeTruthy()          /* 기본: 신청 1건 */
+
+    fireEvent.click(head('상태'))
+    fireEvent.click(screen.getByRole('button', { name: /^전체/ }))   /* 상태 필터 해제 */
+    expect(await screen.findByText('2건')).toBeTruthy()   /* 취소 줄까지 2건 */
 
     fireEvent.click(head('희망일'))
     fireEvent.click(screen.getByRole('button', { name: /2026-11-04/ }))
-    expect(await screen.findByText('1건')).toBeTruthy()
+    expect(await screen.findByText('1건')).toBeTruthy()   /* 11-04 는 취소 줄 하나 */
     expect(screen.getByText('한*람')).toBeTruthy()
     expect(screen.queryByText('김*화')).toBeNull()
+  })
+})
 
-    fireEvent.click(head('희망일'))
+describe('취소된 줄 기본 숨김', () => {
+  it('★ 처음에는 신청만 보인다 — 취소 줄은 감춰진다', async () => {
+    render(<VaccineSurveyPanel {...props} />)
+    expect(await screen.findByText('김*화')).toBeTruthy()
+    expect(screen.queryByText('한*람'), '취소 줄이 보이면 안 된다').toBeNull()
+    expect(screen.getByText('1건')).toBeTruthy()
+  })
+
+  it('★ 「필터 초기화」는 기본값과 다를 때만 보이고, 누르면 신청만으로 돌아온다', async () => {
+    render(<VaccineSurveyPanel {...props} />)
+    await screen.findByText('김*화')
+    /* 기본 상태 — 버튼이 없다 */
+    expect(screen.queryByRole('button', { name: /필터 초기화/ })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '상태' }))
     fireEvent.click(screen.getByRole('button', { name: /^전체/ }))
-    expect(await screen.findByText('2건')).toBeTruthy()   /* 해제하면 다시 2건 */
+    expect(await screen.findByText('한*람')).toBeTruthy()
+    const reset = screen.getByRole('button', { name: /필터 초기화/ })
+    expect(reset).toBeTruthy()
+
+    fireEvent.click(reset)
+    expect(await screen.findByText('1건')).toBeTruthy()
+    expect(screen.queryByText('한*람')).toBeNull()
+    expect(screen.queryByRole('button', { name: /필터 초기화/ })).toBeNull()
+  })
+
+  it('★ 내려받기 행 수와 audit row_count 가 화면에 보이는 줄을 따른다', async () => {
+    render(<VaccineSurveyPanel {...props} />)
+    await screen.findByText('김*화')
+    fireEvent.click(screen.getByRole('button', { name: '엑셀' }))
+    await screen.findByText(/엑셀 .*행을 내려받았습니다|내려받기 기록/)
+    const ex = audits.filter(a => a.action === 'export_xlsx')
+    expect(ex).toHaveLength(1)
+    expect(ex[0].row_count, '기본 필터에서 보이는 1건이어야 한다').toBe(1)
   })
 })

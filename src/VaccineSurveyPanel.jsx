@@ -56,8 +56,12 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
      ★ 값은 **스칼라 또는 없음**이다 — 공용 ColMenu 가 `on(v)` 로 값 하나(또는 null)를
        돌려주기 때문이다. 예전에는 배열로 담고 prop 이름도 달라(values·sel·onSel)
        머리글을 누르는 순간 `filter.items.map` 에서 터졌다.
-     ★ 값이 없으면 그 열은 거르지 않는다(= 전체). */
-  const [hfV, setHfV] = useState({})
+     ★ 값이 없으면 그 열은 거르지 않는다(= 전체).
+     ★ 기본값은 **상태=신청** — 취소된 줄은 기본으로 감춘다. 이 상수가 ① 진입 초기값
+       ②「필터 초기화」 복원값 ③ 초기화 버튼 표시 판정의 **단일 출처**다
+       (약품목록·비보험·아카이브가 쓰는 방식과 같다). */
+  const HF_DEFAULT = { status: '신청' }
+  const [hfV, setHfV] = useState(HF_DEFAULT)
   const sort = useSort('wish_date', 'asc')
 
   const sel = useMemo(() => surveys.find(s => s.id === selId) || null, [surveys, selId])
@@ -252,6 +256,11 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
      행 수는 많아야 수천이라 정렬 비용은 무시할 수 있다. */
   const shown = so(filtered)
 
+  /* 필터가 기본값과 다른가 — 초기화 버튼 표시 판정. 괄호 숫자는 걸린 필터 개수다. */
+  const hfKeys = [...new Set([...Object.keys(hfV), ...Object.keys(HF_DEFAULT)])]
+  const hfDirty = hfKeys.some(k => (hfV[k] ?? null) !== (HF_DEFAULT[k] ?? null))
+  const hfCount = Object.values(hfV).filter(v => v != null && v !== '').length
+
   const series = useMemo(
     () => cumulativeDemand(rows, demand?.balance_qty, today), [rows, demand, today])
   const shortAt = firstShortDate(series)
@@ -355,6 +364,13 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
             }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: t.text }}>신청 명단</span>
               <span style={{ fontSize: 11, color: t.textL }}>{shown.length}건</span>
+              {/* 사양 ⑪ — 필터가 기본값과 다를 때만 보인다. 모양은 약품목록의 초기화 버튼 그대로. */}
+              {hfDirty ? <button className="no-print" onClick={() => setHfV(HF_DEFAULT)}
+                title="필터 초기화 (상태=신청)" style={{
+                  padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.accent,
+                  background: t.accent + '12', color: t.accent, cursor: 'pointer',
+                  fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
+                }}>필터 초기화{hfCount > 0 ? ' (' + hfCount + ')' : ''}</button> : null}
               <div style={{ flex: 1 }} />
               <button className="no-print" onClick={() => download('xlsx')} disabled={busy} style={btn()}>엑셀</button>
               <button className="no-print" onClick={() => download('pdf')} disabled={busy} style={btn()}>PDF</button>
