@@ -106,13 +106,13 @@ try {
       args: [sv.tenant_id, sv.id],
     },
     {
-      name: '정정(view_raw) — 화면 현재 코드',
+      name: '원문 보기(view_raw) — 화면 현재 코드',
       sql: `insert into public.vaccine_survey_audit (tenant_id, survey_id, action, response_id)
             values ($1,$2,'view_raw',$3)`,
       args: [sv.tenant_id, sv.id, rsp.id],
     },
     {
-      name: '정정(view_raw) — user_id 올바로',
+      name: '원문 보기(view_raw) — user_id 올바로',
       sql: `insert into public.vaccine_survey_audit (tenant_id, survey_id, user_id, action, response_id)
             values ($1,$2,auth.uid(),'view_raw',$3)`,
       args: [sv.tenant_id, sv.id, rsp.id],
