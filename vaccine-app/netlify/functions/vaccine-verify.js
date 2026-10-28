@@ -223,19 +223,53 @@ export default async (req) => {
        판정 기준이 두 곳으로 갈라지지도 않는다.
      ★ 첫 데이터 조회가 실패해도 로그인은 성공시킨다 — initial 을 빼고 보내면
        화면이 예전처럼 stock 을 불러 채운다(기능 손실 없음). */
-  const [del, got] = await Promise.all([
+  /* ★ 열린 수요조사 회차도 함께 읽는다 — 로그인 직후 탭(「잔량 · 수요조사」) 표시가
+     한 박자 늦지 않게 하려는 것이다. 실패해도 로그인은 성공시킨다. */
+  const [del, got, sv] = await Promise.all([
     admin.from('vaccine_public_attempts').delete().eq('tenant_id', tenantId).eq('ip_hash', ih),
     loadStock(admin, tenantId, kstToday()).catch(e => ({ ok: false, step: '예외', message: e.message })),
+    loadOpenSurvey(admin, tenantId).catch(e => ({ ok: false, message: e.message })),
   ])
   if (del.error) console.error('[vaccine-verify] 잠금 행 삭제 실패:', del.error.message)
   if (!got.ok) console.error('[vaccine-verify] 첫 데이터 ' + got.step + ' 조회 실패:', got.message)
+  if (!sv.ok) console.error('[vaccine-verify] 수요조사 회차 조회 실패:', sv.message)
 
   const token = makeToken(secret, {
     t: tenantId,
     exp: kstEndOfDayEpoch(),
     v: Date.parse(st.updated_at) || 0,
   })
-  return json(got.ok ? { ok: true, token, initial: got.data } : { ok: true, token }, 200)
+  const out = { ok: true, token }
+  if (got.ok) out.initial = got.data
+  if (sv.ok) out.survey = sv.survey          /* null 이면 「열린 회차 없음」 — 탭을 그리지 않는다 */
+  return json(out, 200)
+}
+
+/* 열린 회차 1건 + 표시명. 없으면 survey: null.
+   ★ 반환 필드는 공개 화면이 그릴 것만 — 회차 id·account_id·분류는 싣지 않는다. */
+async function loadOpenSurvey(admin, tenantId) {
+  const { data, error } = await admin
+    .from('vaccine_surveys')
+    .select('title, season, account_id, vax_start, vax_end, close_at')
+    .eq('tenant_id', tenantId).eq('status', 'open').limit(1)
+  if (error) return { ok: false, message: error.message }
+  const s = (data || [])[0]
+  if (!s) return { ok: true, survey: null }
+  const { data: acc, error: aErr } = await admin
+    .from('vaccine_accounts').select('public_label')
+    .eq('tenant_id', tenantId).eq('id', s.account_id).limit(1)
+  if (aErr) return { ok: false, message: aErr.message }
+  return {
+    ok: true,
+    survey: {
+      title: s.title,
+      season: s.season,
+      public_label: (acc || [])[0]?.public_label || null,
+      vax_start: s.vax_start,
+      vax_end: s.vax_end,
+      close_at: s.close_at,
+    },
+  }
 }
 
 export const config = { path: '/api/vaccine/verify' }

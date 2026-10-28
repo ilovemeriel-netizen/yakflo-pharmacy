@@ -21,7 +21,9 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { itemsOf, viewState, totalOf } from './lib/stockView'
-import { sanitizePw, boxFill, pwReady } from './lib/pwInput'
+import { pwReady } from './lib/pwInput'
+import PinBoxes from './PinBoxes'
+import SurveyTab from './SurveyTab'
 
 const TOKEN_KEY = 'vaccine_public_token'
 const REFRESH_MS = 60_000
@@ -82,8 +84,16 @@ export default function App() {
   /* 로그인 응답의 initial 로 이미 그렸는지 — true 면 첫 stock 호출을 건너뛴다.
      ★ 렌더 중에는 읽지도 쓰지도 않는다(이벤트 처리기에서 쓰고 effect 에서 읽는다). */
   const seeded = useRef(false)
+  /* 열린 수요조사 회차 — null 이면 탭을 **그리지 않는다**(지금 화면과 한 픽셀도 다르지 않다).
+     로그인 응답(initial 과 함께 오는 survey)으로 채우고, 재방문 때는 /survey info 로 받는다. */
+  const [survey, setSurvey] = useState(null)
+  const [tab, setTab] = useState('stock')
+  /* 로그인 응답으로 회차를 이미 받았는지 — true 면 info 호출을 건너뛴다(왕복 1회 절약) */
+  const seededSurvey = useRef(false)
 
-  const lock = useCallback(() => { clearStored(); setToken(null); setData(null); setErr(null) }, [])
+  const lock = useCallback(() => {
+    clearStored(); setToken(null); setData(null); setErr(null); setSurvey(null); setTab('stock')
+  }, [])
 
   /* ── 잔량 조회 ──
      ★ 토큰을 인자로 받는다 — ref 를 렌더 중에 쓰지 않기 위해서다.
@@ -132,19 +142,43 @@ export default function App() {
     }
   }, [token, load])
 
+  /* ── 열린 회차 조회 — 재방문(저장된 토큰으로 바로 들어온 경우)에서만 필요하다.
+     로그인 직후에는 verify 응답에 survey 가 함께 오므로 이 호출을 하지 않는다. */
+  useEffect(() => {
+    if (!token || seededSurvey.current) return
+    let alive = true
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch('/api/vaccine/survey', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ action: 'info' }),
+        })
+        const j = await r.json().catch(() => null)
+        if (alive && r.ok && j?.ok) setSurvey(j.survey || null)
+      } catch { /* 수요조사 탭이 안 보일 뿐 — 잔량 조회는 그대로 동작한다 */ }
+    }, 0)
+    return () => { alive = false; clearTimeout(t) }
+  }, [token])
+
   async function manualReload() {
     setLoading(true)
     await load(token)
     setLoading(false)
   }
 
-  if (!token) return <Login onDone={(tok, initial) => {
+  if (!token) return <Login onDone={(tok, initial, sv) => {
     saveStored(tok)
     /* 로그인 응답에 첫 데이터가 실려 왔으면 그걸로 바로 그린다 — 빈 화면을 거치지 않는다 */
     if (itemsOf(initial)) { setData(initial); seeded.current = true }
+    /* survey 는 「없음(null)」도 유효한 답이다 — 키가 왔으면 info 호출을 건너뛴다 */
+    if (sv !== undefined) { setSurvey(sv || null); seededSurvey.current = true }
     setToken(tok)
   }} />
-  return <Stock data={data} loading={loading} err={err} onLock={lock} onReload={manualReload} />
+  return <Stock
+    data={data} loading={loading} err={err} onLock={lock} onReload={manualReload}
+    survey={survey} tab={survey ? tab : 'stock'} onTab={setTab} token={token}
+    onSurveyGone={lock} />
 }
 
 /* ═══ 시안 ⓐ-1 — 로그인 (2026-10-27 승인 시안) ═══════════════════════════
@@ -156,13 +190,11 @@ function Login({ onDone }) {
   const [pw, setPw] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
-  /* 투명한 input 은 자기 포커스 테두리를 보여 줄 수 없다 — 다음 칸을 짚어 대신 알린다 */
-  const [focused, setFocused] = useState(false)
-  const ref = useRef(null)
-  useEffect(() => { ref.current?.focus() }, [])
+  /* 실패 뒤 다시 입력칸으로 돌아가기 위한 값 — 바뀌면 PinBoxes 가 포커스를 가져간다.
+     입력칸이 PinBoxes 안으로 들어가서 ref 로 직접 부를 수 없게 됐다(2026-10-28). */
+  const [refocus, setRefocus] = useState(0)
 
   const ready = pwReady(pw, PW_LEN)
-  const fill = boxFill(pw, PW_LEN)
 
   async function submit(e) {
     e?.preventDefault()
@@ -177,10 +209,10 @@ function Login({ onDone }) {
       const j = await r.json().catch(() => null)
       setBusy(false)
       /* initial 은 없을 수도 있다(서버에서 첫 조회가 실패한 경우) — 그러면 화면이 stock 으로 채운다 */
-      if (r.ok && j?.ok && j.token) { setPw(''); onDone(j.token, j.initial); return }
+      if (r.ok && j?.ok && j.token) { setPw(''); onDone(j.token, j.initial, j.survey); return }
       setMsg(j?.message || '잠시 후 다시 시도해 주세요')
       setPw('')
-      ref.current?.focus()
+      setRefocus(n => n + 1)
     } catch {
       setBusy(false); setMsg('연결이 불안정합니다')
     }
@@ -221,37 +253,10 @@ function Login({ onDone }) {
           display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--v-navy)', marginBottom: 10,
         }}>비밀번호</label>
 
-        {/* 네 상자 + 그 위에 덮인 투명 input.
-            ★ input 이 상자 영역을 그대로 덮으므로 어디를 눌러도 포커스가 들어온다. */}
-        <div style={{ position: 'relative' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
-            {fill.map((on, i) => <div key={i} style={{
-              height: 60, borderRadius: 12,
-              /* 입력된 칸은 보라, 빈 칸은 라벤더. 포커스 중이면 다음 칸을 보라로 짚어 준다 */
-              border: '2px solid ' + (on || (focused && i === pw.length) ? 'var(--v-purple)' : 'var(--v-lav)'),
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              {on ? <span style={{
-                width: 12, height: 12, borderRadius: '50%', background: 'var(--v-navy)',
-              }} /> : null}
-            </div>)}
-          </div>
-          <input
-            id="pw" ref={ref}
-            type="password" inputMode="numeric" autoComplete="off"
-            aria-label={`비밀번호 ${PW_LEN}자리`}
-            maxLength={PW_LEN}
-            value={pw}
-            onChange={e => setPw(sanitizePw(e.target.value, PW_LEN))}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            style={{
-              /* 상자 위에 투명하게 덮는다 — 보이지 않지만 누를 수 있고 입력도 받는다 */
-              position: 'absolute', inset: 0, width: '100%', height: '100%',
-              opacity: 0, border: 'none', background: 'transparent',
-              cursor: 'pointer', font: 'inherit',
-            }} />
-        </div>
+        {/* 네 상자 + 그 위에 덮인 투명 input — 2026-10-28 에 PinBoxes 로 떼어 냈다.
+            수요조사 확인번호가 같은 것을 쓴다. 모양·동작은 전과 같다. */}
+        <PinBoxes id="pw" value={pw} onChange={setPw} len={PW_LEN}
+          label={`비밀번호 ${PW_LEN}자리`} autoFocus focusKey={refocus} />
 
         <button type="submit" disabled={!ready || busy} style={{
           width: '100%', height: 52, marginTop: 16, borderRadius: 12, border: 'none',
@@ -299,7 +304,7 @@ function useWide() {
   return wide
 }
 
-function Stock({ data, loading, err, onLock, onReload }) {
+function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token, onSurveyGone }) {
   const wide = useWide()
   /* 'loading'(응답 전) · 'empty'(받았는데 비었다) · 'list' — 판정은 lib/stockView.js 에 있다 */
   const state = viewState(data, loading)
@@ -318,10 +323,10 @@ function Stock({ data, loading, err, onLock, onReload }) {
       <div style={{ fontSize: wide ? 18 : 16, fontWeight: 700, color: 'var(--v-navy)' }}>백신 잔량</div>
     </div>
     <div style={{ flex: 1 }} />
-    <button onClick={onReload} style={{
+    {tab === 'survey' ? null : <button onClick={onReload} style={{
       padding: '8px 12px', borderRadius: 10, border: '1px solid var(--v-line)',
       background: 'var(--v-card)', color: 'var(--v-ink-dim)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-    }}>새로고침</button>
+    }}>새로고침</button>}
     <button onClick={onLock} style={{
       padding: '8px 12px', borderRadius: 10, border: '1px solid var(--v-purple)',
       background: 'var(--v-card)', color: 'var(--v-purple)', fontSize: 12, fontWeight: 700, cursor: 'pointer',
@@ -392,8 +397,34 @@ function Stock({ data, loading, err, onLock, onReload }) {
     {items.map((x, i) => <Card key={x.label + ':' + i} item={x} wide={wide} />)}
   </div>
 
+  /* ── 탭 띠 — 열린 회차가 있을 때만 그린다.
+     ★ survey 가 null 이면 이 블록 전체가 null 이라 **기존 화면과 DOM 이 같다**. */
+  const tabs = survey ? <nav style={{
+    display: 'flex', gap: 6, padding: wide ? '14px 28px 0' : '12px 16px 0',
+  }}>
+    {[['stock', '잔량'], ['survey', '수요조사']].map(([k, lab]) => {
+      const on = tab === k
+      return <button key={k} onClick={() => onTab(k)} style={{
+        flex: wide ? '0 0 auto' : 1, minWidth: wide ? 120 : 0, minHeight: 44, padding: '0 18px',
+        borderRadius: 12, cursor: 'pointer', fontSize: 14, fontWeight: 700,
+        border: '1.5px solid ' + (on ? 'var(--v-purple)' : 'var(--v-line)'),
+        background: on ? 'var(--v-purple)' : 'var(--v-card)',
+        color: on ? '#FFFFFF' : 'var(--v-ink-dim)',
+      }}>{lab}</button>
+    })}
+  </nav> : null
+
+  if (tab === 'survey' && survey) {
+    return <main style={{ minHeight: '100dvh' }}>
+      {head}
+      {tabs}
+      <SurveyTab survey={survey} token={token} wide={wide} onSurveyGone={onSurveyGone} />
+    </main>
+  }
+
   return <main style={{ minHeight: '100dvh' }}>
     {head}
+    {tabs}
     {alert}
     {/* ★ 'loading' 도 'list' 와 같은 배치를 쓴다 — 데이터가 도착할 때 자리가 밀리지 않는다 */}
     {state === 'empty' ? empty
