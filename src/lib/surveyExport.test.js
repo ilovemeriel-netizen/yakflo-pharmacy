@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { buildWorkbook, buildPdf, fileName } from './surveyExport'
+import { buildWorkbook, buildPdf, pdfLayout, fileName } from './surveyExport'
 
 const survey = { title: '독감(유료) 수요조사', season: '2026-2027' }
 const rows = [
@@ -114,10 +114,10 @@ describe('PDF', () => {
   const fontB64 = readFileSync(
     resolve(process.cwd(), 'public/fonts/NotoSansKR-Regular-subset.ttf')).toString('base64')
 
-  it('희망일마다 쪽을 나눈다', async () => {
+  it('★ 희망일이 달라도 쪽을 나누지 않는다 — 한 목록에 구분 행으로 잇는다', async () => {
     const doc = await buildPdf({ survey, rows, user, fontB64 })
-    /* 희망일 2종 → 2쪽 */
-    expect(doc.getNumberOfPages()).toBe(2)
+    /* 희망일 2종 · 4명 → 종이가 차지 않으므로 1쪽 */
+    expect(doc.getNumberOfPages()).toBe(1)
   })
 
   it('A4 가로다', async () => {
@@ -164,8 +164,10 @@ describe('PDF', () => {
   })
 
   it('취소된 신청도 명단에 남는다(상태로 구별)', async () => {
-    const doc = await buildPdf({ survey, rows, user, fontB64 })
-    expect(doc.getNumberOfPages()).toBe(2)   /* 11-04 쪽에 취소 행이 함께 들어간다 */
+    const L = await pdfLayout({ survey, rows, user, fontB64 })
+    /* 신청 4행 + 구분 2 + 소계 2 + 전체 합계 1 = 9 — 취소 행도 빠지지 않는다 */
+    expect(L.bodyLen).toBe(9)
+    expect(L.kinds.filter(k => k === null)).toHaveLength(4)
   })
 
   it('신청이 없어도 한 쪽을 만든다', async () => {
@@ -177,5 +179,164 @@ describe('PDF', () => {
     const doc = await buildPdf({ survey, rows, user, fontB64 })
     const s = Buffer.from(doc.output('arraybuffer')).toString('latin1')
     expect((s.match(/FontFile2/g) || []).length).toBe(1)
+  })
+})
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   한 목록 PDF — 구분 행·소계·합계 · 매 쪽 머리말·바닥글 · 쪽 번호 · 고아 방지
+   ★ 쪽별 글자는 평문으로 들어가지 않는다(글리프 코드). ToUnicode 로 되읽어 확인한다.
+   ═══════════════════════════════════════════════════════════════════════════ */
+describe('PDF — 한 목록 · 쪽마다 머리말·바닥글', () => {
+  const fontB64 = readFileSync(
+    resolve(process.cwd(), 'public/fonts/NotoSansKR-Regular-subset.ttf')).toString('base64')
+
+  /* 쪽별로 그려진 글자 조각을 돌려준다 — [['신청번호', …], …] */
+  async function pageTexts(doc) {
+    const { inflateSync } = await import('node:zlib')
+    const s = Buffer.from(doc.output('arraybuffer')).toString('latin1')
+    const unz = i => {
+      const st = s.indexOf('stream', i) + 6
+      const body = s.slice(st, s.indexOf('endstream', st)).replace(/^\r?\n/, '')
+      try { return inflateSync(Buffer.from(body, 'latin1')).toString('latin1') } catch { return body }
+    }
+    /* 글리프 코드 → 글자 */
+    const g2c = new Map()
+    for (const m of s.matchAll(/\/ToUnicode\s+(\d+)\s+0\s+R/g)) {
+      const i = s.indexOf('\n' + m[1] + ' 0 obj')
+      if (i < 0) continue
+      for (const p of unz(i).matchAll(/<([0-9a-fA-F]{2,4})>\s*<([0-9a-fA-F]{4,})>/g))
+        g2c.set(parseInt(p[1], 16), String.fromCharCode(parseInt(p[2].slice(0, 4), 16)))
+    }
+    const pages = [...s.matchAll(/\/Type\s*\/Page[^s][\s\S]{0,400}?\/Contents\s+(\d+)\s+0\s+R/g)]
+    return pages.map(m => {
+      const c = unz(s.indexOf('\n' + m[1] + ' 0 obj'))
+      return [...c.matchAll(/<([0-9a-fA-F]+)>\s*Tj/g)].map(t => {
+        let out = ''
+        for (let k = 0; k + 4 <= t[1].length; k += 4) out += g2c.get(parseInt(t[1].slice(k, k + 4), 16)) ?? '?'
+        return out
+      })
+    })
+  }
+
+  const manyRows = (n, date) => Array.from({ length: n }, (_, i) => ({
+    receipt_code: 'AB' + String(2345 + i).padStart(4, '0'),
+    emp_no: String(100000 + i), name: '사람' + i, name_key: '사람' + i,
+    self_dose: true, family_count: 1, wish_date: date,
+    status: 'applied', done_self: false, done_family: 0,
+  }))
+
+  it('★ 같은 희망일 40명 → 2쪽, 모든 쪽에 머리말·바닥글, 쪽 번호 1 / 2 · 2 / 2', async () => {
+    const doc = await buildPdf({ survey, rows: manyRows(40, '2026-11-03'), fontB64 })
+    expect(doc.getNumberOfPages()).toBe(2)
+    const pt = await pageTexts(doc)
+    expect(pt).toHaveLength(2)
+    pt.forEach((parts, i) => {
+      const has = t => parts.some(p => p.includes(t))
+      expect(has('독감(유료) 수요조사'), (i + 1) + '쪽 머리말 제목').toBe(true)
+      expect(has('출력자 약제과'), (i + 1) + '쪽 머리말 출력자').toBe(true)
+      expect(has('업무용 · 사용 후 파기'), (i + 1) + '쪽 바닥글 업무용 표기').toBe(true)
+      expect(has('무단 전재 및 재배포 금지'), (i + 1) + '쪽 바닥글 저작권').toBe(true)
+      expect(parts, (i + 1) + '쪽 쪽번호').toContain(`${i + 1} / 2`)
+    })
+  })
+
+  it('★ 표 머리가 매 쪽 반복된다', async () => {
+    const doc = await buildPdf({ survey, rows: manyRows(40, '2026-11-03'), fontB64 })
+    const pt = await pageTexts(doc)
+    for (const parts of pt) {
+      expect(parts).toContain('신청번호')
+      expect(parts).toContain('비고')
+      expect(parts).toContain('확인')
+    }
+  })
+
+  it('★ 희망일 3종 각 1명 → 1쪽 (날짜마다 쪽을 나누지 않는다)', async () => {
+    const rows3 = ['2026-11-03', '2026-11-04', '2026-11-05'].map(d => manyRows(1, d)[0])
+    const L = await pdfLayout({ survey, rows: rows3, fontB64 })
+    expect(L.pages).toBe(1)
+    /* 신청 3 + 구분 3 + 소계 3 + 전체 합계 1 */
+    expect(L.bodyLen).toBe(10)
+  })
+
+  it('구분 행·소계 행·전체 합계 행이 글자로 들어간다', async () => {
+    const rows2 = [...manyRows(2, '2026-11-03'), ...manyRows(1, '2026-11-04')]
+    const doc = await buildPdf({ survey, rows: rows2, fontB64 })
+    const parts = (await pageTexts(doc)).flat()
+    expect(parts).toContain('희망일 2026-11-03')
+    expect(parts).toContain('희망일 2026-11-04')
+    expect(parts.some(p => /^소계 2명 · 4도즈 · 접종 완료 0$/.test(p))).toBe(true)
+    expect(parts.some(p => /^전체 합계 3명 · 6도즈 · 접종 완료 0$/.test(p))).toBe(true)
+  })
+
+  it('★ 구분 행이 쪽 마지막 줄에 단독으로 오지 않는다 — 그룹 수 × 인원 훑기', async () => {
+    for (const groups of [3, 8, 10, 14]) {
+      for (const per of [1, 3, 4, 5]) {
+        const rows = []
+        for (let g = 0; g < groups; g++)
+          for (const r of manyRows(per, '2026-11-' + String(3 + g).padStart(2, '0')))
+            rows.push({ ...r, receipt_code: 'AB' + String(2000 + rows.length).padStart(4, '0') })
+        const L = await pdfLayout({ survey, rows, fontB64 })
+        expect(L.orphans, `그룹 ${groups} × ${per}명 — 고아 구분 행`).toEqual([])
+      }
+    }
+  }, 60000)
+
+  it('쪽을 강제로 끊어도 쪽 번호는 실제 전체 쪽수로 찍힌다', async () => {
+    const rows = []
+    for (let g = 0; g < 14; g++)
+      for (const r of manyRows(3, '2026-11-' + String(3 + g).padStart(2, '0')))
+        rows.push({ ...r, receipt_code: 'AB' + String(2000 + rows.length).padStart(4, '0') })
+    const doc = await buildPdf({ survey, rows, fontB64 })
+    const n = doc.getNumberOfPages()
+    expect(n).toBeGreaterThan(1)
+    const pt = await pageTexts(doc)
+    pt.forEach((parts, i) => expect(parts).toContain(`${i + 1} / ${n}`))
+  }, 30000)
+})
+
+describe('출력자 · 비고 · 확인 열 — 엑셀과 PDF 가 같아야 한다', () => {
+  const fontB64 = readFileSync(
+    resolve(process.cwd(), 'public/fonts/NotoSansKR-Regular-subset.ttf')).toString('base64')
+
+  it('★ 출력자는 고정 「약제과」 — 로그인 이름을 묻지 않는다', async () => {
+    const wb = await buildWorkbook({ survey, rows })
+    expect(String(wb.Sheets['명단'].A2.v)).toContain('출력자 약제과')
+    expect(String(wb.Sheets['날짜별 집계'].A2.v)).toContain('출력자 약제과')
+    const doc = await buildPdf({ survey, rows, fontB64 })
+    const s = Buffer.from(doc.output('arraybuffer')).toString('latin1')
+    expect(s).toContain('FontFile2')      /* 문서가 정상으로 만들어졌다 */
+  })
+
+  it('★ 비고가 행마다 자동으로 들어간다 — 사번 없음 · 이름 중복', async () => {
+    const dupRows = [
+      { receipt_code: 'AB2345', emp_no: '123456', name: '김정화', name_key: '김정화', self_dose: true, family_count: 0, wish_date: '2026-11-03', status: 'applied' },
+      { receipt_code: 'CD2345', emp_no: null, name: '김정화', name_key: '김정화', self_dose: true, family_count: 0, wish_date: '2026-11-03', status: 'applied' },
+      { receipt_code: 'EF2345', emp_no: null, name: '박영수', name_key: '박영수', self_dose: true, family_count: 0, wish_date: '2026-11-03', status: 'applied' },
+      { receipt_code: 'GH2345', emp_no: '999999', name: '최윤서', name_key: '최윤서', self_dose: true, family_count: 0, wish_date: '2026-11-03', status: 'applied' },
+    ]
+    const ws = (await buildWorkbook({ survey, rows: dupRows })).Sheets['명단']
+    expect(ws.J6.v).toBe('이름 중복')
+    expect(ws.J7.v).toBe('사번 없음 · 이름 중복')
+    expect(ws.J8.v).toBe('사번 없음')
+    expect(ws.J9?.v ?? '').toBe('')
+  })
+
+  it('★ 중복 판정은 회차 전체로 한다 — 화면 필터로 1건만 보여도 「이름 중복」', async () => {
+    const all = [
+      { receipt_code: 'AB2345', emp_no: '1', name: '김정화', name_key: '김정화', self_dose: true, family_count: 0, wish_date: '2026-11-03', status: 'applied' },
+      { receipt_code: 'CD2345', emp_no: '2', name: '김정화', name_key: '김정화', self_dose: true, family_count: 0, wish_date: '2026-11-04', status: 'applied' },
+    ]
+    const ws = (await buildWorkbook({ survey, rows: [all[0]], allRows: all })).Sheets['명단']
+    expect(ws.J6.v).toBe('이름 중복')
+    /* allRows 를 주지 않으면 보이는 1건만 보므로 중복이 아니다 — 호출부가 꼭 넘겨야 한다 */
+    const ws2 = (await buildWorkbook({ survey, rows: [all[0]] })).Sheets['명단']
+    expect(ws2.J6.v).toBe('')
+  })
+
+  it('★ 확인 열은 PDF 에만 있다 — 엑셀은 10열 그대로', async () => {
+    const ws = (await buildWorkbook({ survey, rows })).Sheets['명단']
+    expect(String(ws.J5.v)).toBe('비고')
+    expect(ws.K5).toBeUndefined()
+    expect(ws['!cols']).toHaveLength(10)
   })
 })

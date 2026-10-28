@@ -120,6 +120,43 @@ export function defaultCategoryIds(cats) {
   return (staff.length ? staff : list).map(c => c.id)
 }
 
+/* ── 비고 — 행 단위 자동 표기 ───────────────────────────────────────────
+   「사번 없음」(emp_no 비었음) · 「이름 중복」(같은 회차에서 name_key 가 같은 applied 행 2건 이상).
+   둘 다면 「사번 없음 · 이름 중복」, 해당 없으면 빈칸.
+   ★ 취소는 상태 열에 이미 있으므로 비고에 넣지 않는다.
+   ★ 중복 판정은 **회차 전체 응답**으로 한다 — 화면 필터로 1건만 보여도 중복이면 표시해야 한다.
+     그래서 dupNameKeys() 에 필터 전 목록(rows)을 넘기고, 그 결과를 rowNote() 가 받는다. */
+
+/* name_key 는 서버가 채우는 열이다(공백 제거·소문자).
+   그 값이 없을 때만 같은 규칙으로 직접 만든다 — DB 값이 정본이다. */
+export function nameKeyOf(r) {
+  const k = String(r?.name_key ?? '').trim()
+  if (k) return k
+  return String(r?.name ?? '').replace(/\s+/g, '').toLowerCase()
+}
+
+/* applied 행 중 name_key 가 둘 이상 겹치는 키 집합 */
+export function dupNameKeys(allRows) {
+  const n = new Map()
+  for (const r of allRows || []) {
+    if (!r || r.status !== 'applied') continue
+    const k = nameKeyOf(r)
+    if (!k) continue
+    n.set(k, (n.get(k) || 0) + 1)
+  }
+  const out = new Set()
+  for (const [k, c] of n) if (c > 1) out.add(k)
+  return out
+}
+
+/* 한 행의 비고 문자열. dupKeys 는 dupNameKeys() 결과(Set). */
+export function rowNote(r, dupKeys) {
+  const out = []
+  if (!String(r?.emp_no ?? '').trim()) out.push('사번 없음')
+  if (dupKeys && dupKeys.has(nameKeyOf(r))) out.push('이름 중복')
+  return out.join(' · ')
+}
+
 /* ── 엑셀·PDF 공통 — 날짜별 집계 ───────────────────────────────────────── */
 export function byDateSummary(rows) {
   const m = new Map()

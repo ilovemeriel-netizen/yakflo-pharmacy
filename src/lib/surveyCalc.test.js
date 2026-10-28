@@ -5,6 +5,7 @@ import {
   maskEmpNo, maskName, doseOf, doneOf, pendingOf,
   cumulativeDemand, firstShortDate, shortDate,
   alertLine, needsPurge, canPurge, defaultCategoryIds, byDateSummary,
+  nameKeyOf, dupNameKeys, rowNote,
 } from './surveyCalc'
 
 const R = (o = {}) => ({
@@ -217,5 +218,62 @@ describe('날짜별 집계 (엑셀·PDF 공용)', () => {
   it('날짜순으로 정렬한다', () => {
     const out = byDateSummary([R({ wish_date: '2026-12-01' }), R({ wish_date: '2026-11-01' })])
     expect(out.map(x => x.date)).toEqual(['2026-11-01', '2026-12-01'])
+  })
+})
+
+/* ── 비고 — 행 단위 자동 표기 ───────────────────────────────────────────── */
+describe('nameKeyOf — DB 의 name_key 가 정본', () => {
+  it('name_key 가 있으면 그 값을 쓴다', () => {
+    expect(nameKeyOf({ name_key: '김정화', name: '다른이름' })).toBe('김정화')
+  })
+  it('name_key 가 없으면 성명에서 같은 규칙으로 만든다 (공백 제거·소문자)', () => {
+    expect(nameKeyOf({ name: '  김 정 화 ' })).toBe('김정화')
+    expect(nameKeyOf({ name: 'Kim HyeJin' })).toBe('kimhyejin')
+  })
+  it('둘 다 없으면 빈 문자열', () => {
+    expect(nameKeyOf({})).toBe('')
+    expect(nameKeyOf(null)).toBe('')
+  })
+})
+
+describe('dupNameKeys — 회차 전체에서 겹치는 이름', () => {
+  it('2건 이상인 키만 담는다', () => {
+    const d = dupNameKeys([
+      R({ name_key: '김정화' }), R({ name_key: '김정화' }), R({ name_key: '박영수' }),
+    ])
+    expect([...d]).toEqual(['김정화'])
+  })
+  it('취소 행은 중복 판정에서 뺀다 — 상태 열에 이미 드러난다', () => {
+    const d = dupNameKeys([
+      R({ name_key: '김정화' }), R({ name_key: '김정화', status: 'cancelled' }),
+    ])
+    expect(d.size).toBe(0)
+  })
+  it('빈 키는 담지 않는다 — 파기 후 이름이 없는 행끼리 묶이면 안 된다', () => {
+    const d = dupNameKeys([R({ name_key: '', name: '' }), R({ name_key: '', name: '' })])
+    expect(d.size).toBe(0)
+  })
+  it('목록이 없어도 터지지 않는다', () => {
+    expect(dupNameKeys(null).size).toBe(0)
+  })
+})
+
+describe('rowNote — 4가지 경우', () => {
+  const dup = new Set(['김정화'])
+  it('해당 없음 → 빈칸', () => {
+    expect(rowNote(R({ emp_no: '123456', name_key: '박영수' }), dup)).toBe('')
+  })
+  it('사번 없음', () => {
+    expect(rowNote(R({ emp_no: null, name_key: '박영수' }), dup)).toBe('사번 없음')
+    expect(rowNote(R({ emp_no: '   ', name_key: '박영수' }), dup)).toBe('사번 없음')
+  })
+  it('이름 중복', () => {
+    expect(rowNote(R({ emp_no: '123456', name_key: '김정화' }), dup)).toBe('이름 중복')
+  })
+  it('둘 다 → 「사번 없음 · 이름 중복」', () => {
+    expect(rowNote(R({ emp_no: null, name_key: '김정화' }), dup)).toBe('사번 없음 · 이름 중복')
+  })
+  it('중복 집합을 안 주면 사번만 본다', () => {
+    expect(rowNote(R({ emp_no: null, name_key: '김정화' }))).toBe('사번 없음')
   })
 })

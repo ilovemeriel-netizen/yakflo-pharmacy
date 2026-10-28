@@ -97,7 +97,7 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     for (let from = 0; ; from += CHUNK) {
       const { data, error } = await supabase
         .from('vaccine_survey_responses')
-        .select('id, receipt_code, emp_no, name, self_dose, family_count, wish_date, status, done_self, done_family, created_at')
+        .select('id, receipt_code, emp_no, name, name_key, self_dose, family_count, wish_date, status, done_self, done_family, created_at')
         .eq('survey_id', id)
         .order('wish_date', { ascending: true })
         .order('created_at', { ascending: true })
@@ -165,11 +165,10 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     if (error) { setBusy(false); setMsg('내려받기 기록을 남기지 못해 파일을 만들지 않았습니다 — ' + dbErrorMsg(error)); return }
     try {
       const mod = await import('./lib/surveyExport')
-      /* 출력자 — profile 은 tenant_members 행이라 이름·메일이 없다(늘 '—' 가 찍혔다).
-         파일 머리말에 들어가는 값이라 로그인 계정의 메일을 그때 읽어 쓴다. */
-      const { data: au } = await supabase.auth.getUser()
-      const who = au?.user?.email || au?.user?.id || '—'
-      const args = { survey: sel, rows: shown, user: who, raw: true }
+      /* ★ 출력자는 파일 쪽에서 「약제과」로 고정한다 — 사람 이름·메일을 문서에 남기지 않는다.
+         ★ allRows 는 **필터 전 회차 전체** 응답이다. 비고의 「이름 중복」을 필터와 무관하게
+           판정하려면 전체가 필요하다(필터로 1건만 보여도 중복이면 표시해야 한다). */
+      const args = { survey: sel, rows: shown, allRows: rows, raw: true }
       if (kind === 'pdf') await mod.exportPdf(args); else await mod.exportXlsx(args)
       setMsg(`${kind === 'pdf' ? 'PDF' : '엑셀'} ${shown.length}행을 내려받았습니다 (기록 남김)`)
     } catch (e) {
