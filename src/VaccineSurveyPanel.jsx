@@ -52,7 +52,12 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
   const [busy, setBusy] = useState(false)
   const [modal, setModal] = useState(null)      /* { kind:'round'|'purge', ... } */
   const [revealed, setRevealed] = useState({})  /* id → true (「원문 보기」로 공개) */
-  const [hfV, setHfV] = useState({})            /* 표 헤더 필터 */
+  /* ── 표 헤더 필터 ────────────────────────────────────────────────────────
+     ★ 값은 **스칼라 또는 없음**이다 — 공용 ColMenu 가 `on(v)` 로 값 하나(또는 null)를
+       돌려주기 때문이다. 예전에는 배열로 담고 prop 이름도 달라(values·sel·onSel)
+       머리글을 누르는 순간 `filter.items.map` 에서 터졌다.
+     ★ 값이 없으면 그 열은 거르지 않는다(= 전체). */
+  const [hfV, setHfV] = useState({})
   const sort = useSort('wish_date', 'asc')
 
   const sel = useMemo(() => surveys.find(s => s.id === selId) || null, [surveys, selId])
@@ -233,11 +238,11 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
   const { sk, sd, so } = sort
   const filtered = useMemo(() => {
     let out = view
-    for (const [k, vals] of Object.entries(hfV)) {
-      if (!vals || !vals.length) continue
+    for (const [k, val] of Object.entries(hfV)) {
+      if (val == null || val === '') continue
       out = out.filter(r => {
         const v = k === 'self_dose' ? r._self : k === 'status' ? r._status : String(r[k] ?? '')
-        return vals.includes(v || '—')
+        return (v || '—') === val
       })
     }
     return out
@@ -370,12 +375,19 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
                       padding: '8px 10px', textAlign: c.align, whiteSpace: 'nowrap',
                       borderBottom: '1px solid ' + t.border, fontSize: 11, color: t.textM, fontWeight: 700,
                     }}>
+                      {/* ★ 공용 ColMenu 가 읽는 모양 그대로 — items·value·on.
+                          고르는 값은 **원문 기준**이다(가려진 값으로 모으면 * 끼리 묶인다). */}
                       <ColMenu colKey={c.k} label={c.h} sk={sk} sd={sd} setSort={sort.setSort}
                         filter={c.filter ? {
-                          values: [...new Set(view.map(r => (
-                            c.k === 'self_dose' ? r._self : c.k === 'status' ? r._status : String(r[c.k] ?? '')) || '—'))].sort(),
-                          sel: hfV[c.k] || [],
-                          onSel: v => setHfV(s => ({ ...s, [c.k]: v })),
+                          items: [...new Set(view.map(r => (
+                            c.k === 'self_dose' ? r._self : c.k === 'status' ? r._status : String(r[c.k] ?? '')) || '—'))]
+                            .sort((a, b) => a.localeCompare(b, 'ko')),
+                          value: hfV[c.k] ?? null,
+                          on: v => setHfV(s => {
+                            const n = { ...s }
+                            if (v) n[c.k] = v; else delete n[c.k]
+                            return n
+                          }),
                         } : null} />
                     </th>)}
                   </tr>
