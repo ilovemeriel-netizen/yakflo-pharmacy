@@ -96,7 +96,6 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
   const [cats, setCats] = useState([])      // vaccine_categories
   const [evts, setEvts] = useState([])      // vaccine_events
   const [dnames, setDnames] = useState({})  // ★ drug_code → drug_name (drugs SELECT 전용)
-  const [dmakers, setDmakers] = useState({}) // ★ drug_code → manufacturer (같은 조회에서 함께 받는다)
   const [ld, setLd] = useState(true)
   const [msg, setMsg] = useState(null)
   const [season, setSeason] = useState(DEF.season)
@@ -150,13 +149,13 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
          못 찾은 코드는 그냥 빠지고 화면에서 '—' 가 된다 — 오류가 아니다
          (중지·삭제된 약품이거나 코드가 바뀐 경우다). */
     const codes = [...new Set((a.data || []).map(x => (x.drug_code || '').trim()).filter(Boolean))]
-    let nm = {}, mk = {}
+    let nm = {}
     if (codes.length) {
-      const { data: dd, error: de } = await supabase.from('drugs').select('drug_code,drug_name,manufacturer').in('drug_code', codes)
+      const { data: dd, error: de } = await supabase.from('drugs').select('drug_code,drug_name').in('drug_code', codes)
       if (de) flash('약품명 조회 실패: ' + dbErrorMsg(de), 'err')
-      else (dd || []).forEach(d => { nm[d.drug_code] = d.drug_name || ''; mk[d.drug_code] = d.manufacturer || '' })
+      else (dd || []).forEach(d => { nm[d.drug_code] = d.drug_name || '' })
     }
-    setDnames(nm); setDmakers(mk)
+    setDnames(nm)
     /* ★ 「기준 시각」 — 화면을 캡쳐해 타 부서에 넘기므로 언제 값인지 남아야 한다 */
     const n = new Date()
     setAsOf(ymd(n.getFullYear(), n.getMonth() + 1, n.getDate()) + ' ' +
@@ -238,13 +237,11 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
          매칭 실패는 '' 로 두고 표시 계층에서 '—' 를 낸다(오류가 아니다).
          '' 로 두는 이유: 필터 목록 uniq() 가 빈 값을 걸러내는 기존 동작과 맞춘다. */
       drug_name: dnames[(a.drug_code || '').trim()] || '',
-      /* 제약사 — 같은 조회에서 함께 받는다. 빈 값은 표시 계층에서 생략한다(오류가 아니다). */
-      manufacturer: dmakers[(a.drug_code || '').trim()] || '',
       /* 경고 — 표시 전용. 저장을 막지 않는다 */
       warnNeg: balq < 0,
       warnOver: !paid && N(b.received_qty) > N(b.allocated_qty),
     }
-  }), [accs, balOf, catsOf, evtsOf, dnames, dmakers, sel, todayYmd, ymd])
+  }), [accs, balOf, catsOf, evtsOf, dnames, sel, todayYmd, ymd])
 
   /* ── LOT·유효기한 집계 ──────────────────────────────────────────────────────
      ★ LOT 은 **입고 이벤트에만** 기록한다(접종 시 입력 없음) — 확정 사항 ③.
@@ -625,14 +622,6 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
                 {r.storage_location && <span style={{ fontSize: 10, opacity: 0.85, flexShrink: 0 }}>{r.storage_location}</span>}
               </div>
               <div style={{ padding: '11px 13px' }}>
-                {/* ★ 약품명 · 제약사 — 카드 헤더는 색 배경이라 긴 이름이 들어갈 자리가 없다.
-                    본문 첫 줄에 이 화면의 보조 글씨(fontSize 11 · t.textM) 그대로 한 줄로 둔다.
-                    한 줄을 넘으면 … 로 줄이고 전체는 title 로 본다.
-                    ★ 약품 마스터에 없는 코드면 줄 자체를 그리지 않는다 — 빈 줄이 남지 않는다. */}
-                {r.drug_name ? <div title={r.drug_name + (r.manufacturer ? ' · ' + r.manufacturer : '')}
-                  style={{ fontSize: 11, color: t.textM, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {r.drug_name}{r.manufacturer ? ' · ' + r.manufacturer : ''}
-                </div> : null}
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
                   {r.warnNeg && badge('입력 누락 의심', t.lavender)}
                   {r.warnOver && badge('배정 초과 입고', t.lavender)}

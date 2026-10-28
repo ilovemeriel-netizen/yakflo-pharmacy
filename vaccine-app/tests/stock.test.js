@@ -68,7 +68,7 @@ describe('stockStatus — 경계값', () => {
 })
 
 describe('loadStock — 응답 형식', () => {
-  it('필드가 season · updated_at · items 셋뿐이고 item 은 label · qty · status 셋뿐이다', async () => {
+  it('필드가 season · updated_at · items 셋뿐이고 item 은 다섯 키뿐이다', async () => {
     const admin = fakeAdmin({
       vaccine_accounts: ok([ACC('a1', '독감 4가'), ACC('a2', '코로나')]),
       v_vaccine_balance: ok([BAL('a1', 80, 100), BAL('a2', 8, 40)]),
@@ -78,7 +78,7 @@ describe('loadStock — 응답 형식', () => {
     expect(got.ok).toBe(true)
     expect(Object.keys(got.data).sort()).toEqual(['items', 'season', 'updated_at'])
     for (const it of got.data.items) {
-      expect(Object.keys(it).sort()).toEqual(['label', 'qty', 'status'])
+      expect(Object.keys(it).sort()).toEqual(['drug_name', 'label', 'maker', 'qty', 'status'])
     }
   })
 
@@ -116,7 +116,7 @@ describe('loadStock — 응답 형식', () => {
       vaccine_events: ok([]),
     })
     const got = await loadStock(admin, TENANT, TODAY)
-    expect(got.data.items).toEqual([{ label: '독감 4가', qty: 0, status: '소진' }])
+    expect(got.data.items).toEqual([{ label: '독감 4가', qty: 0, status: '소진', drug_name: '', maker: '' }])
     expect(got.data.updated_at).toBe(null)
   })
 

@@ -458,6 +458,15 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
   </main>
 }
 
+/* 「약품명 · 제약사」 한 줄. 둘 다 없으면 빈 문자열이라 호출부가 줄을 그리지 않는다.
+   ★ 휴대폰 목록형(wide=false)과 PC 카드형(wide=true)이 같은 Card 를 쓰므로 한 곳이면 된다. */
+function drugLine(item) {
+  const name = String(item?.drug_name || '').trim()
+  const maker = String(item?.maker || '').trim()
+  if (!name) return maker            /* 이름이 없으면 제약사만(보통은 둘 다 없다) */
+  return maker ? name + ' · ' + maker : name
+}
+
 function Card({ item, wide }) {
   const badge = BADGE[item.status] || BADGE['충분']
   return <div style={{
@@ -471,6 +480,14 @@ function Card({ item, wide }) {
         fontSize: wide ? 15 : 14, fontWeight: 700, color: 'var(--v-navy)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }} title={item.label}>{item.label}</div>
+      {/* ★ 약품명 · 제약사 — 표시명만으로는 어느 제품인지 알 수 없다는 문의가 잦았다.
+          이 앱의 기존 보조 글씨(var(--v-ink-dim)) 그대로, 새 색을 만들지 않는다.
+          한 줄을 넘으면 … 로 줄이고 전체는 title 로 본다.
+          ★ 값이 없으면(약품 마스터에 없는 코드) 줄 자체를 그리지 않는다. */}
+      {drugLine(item) ? <div style={{
+        fontSize: 11, color: 'var(--v-ink-dim)', marginTop: 2,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }} title={drugLine(item)}>{drugLine(item)}</div> : null}
     </div>
     <div style={{
       display: 'flex', alignItems: wide ? 'flex-end' : 'center',

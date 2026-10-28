@@ -11,7 +11,9 @@
    ★ service_role 은 RLS 를 우회한다 — 모든 조회에 tenant_id 조건을 **직접** 건다.
 
    ★ 반환 필드 최소화 — { season, updated_at, items:[{label, qty, status}] } 가 전부다.
-     drug_code · 약품명 · 입고량 · 배정량 · LOT · 유효기간은 **일절 싣지 않는다**.
+     ★ 2026-10-28 — items 에 drug_name·maker 를 더했다(어느 제품인지 묻는 문의가 잦았다).
+       drugs 에서 읽는 열은 **drug_name·manufacturer 두 개뿐**이다.
+     입고량 · 배정량 · LOT · 유효기간 · 단가는 여전히 **일절 싣지 않는다**.
 
    ★ Supabase 클라이언트를 여기서 만들지 않는다 — 호출부가 넘긴다.
      그래서 이 파일은 DB 없이 단위 시험할 수 있다(가짜 client 주입).
@@ -45,7 +47,7 @@ export async function loadStock(admin, tenantId, today) {
   /* 1) 대상 계정 — tenant · 활성 · 오늘(KST)이 절기 안 · 공개 표시명 있음 */
   const { data: accs, error: aErr } = await admin
     .from('vaccine_accounts')
-    .select('id, season, public_label')
+    .select('id, season, public_label, drug_code')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
     .lte('season_start', today)
@@ -60,7 +62,14 @@ export async function loadStock(admin, tenantId, today) {
 
   /* 2) 잔량 + 마지막 입력 시각 — 서로를 기다릴 이유가 없으므로 동시에 보낸다.
      마지막 시각은 집계 함수를 PostgREST 로 바로 쓰기 어려워 내림차순 1행만 받는다. */
-  const [balRes, lastRes] = await Promise.all([
+  /* ★ 약품명·제약사 — 「독감(유료)」 같은 표시명만으로는 어느 제품인지 알 수 없어
+     문의가 들어왔다. drugs 에서 **두 열만** 읽는다. 단가·재고 등은 읽지 않는다.
+     drugs 에 FK 가 없어 drug_code 문자열로 맞춘다(0089 설계).
+     service_role 은 drugs SELECT 권한이 있고 rolbypassrls 라 RLS 도 통과한다(실측).
+     ★ 이 조회는 잔량·시각과 서로 독립이므로 같은 Promise.all 에 넣는다 — 왕복이 늘지 않는다.
+     ★ 실패해도 잔량 조회는 살린다 — 약품명은 덧붙이는 정보지 본문이 아니다. */
+  const codes = [...new Set(list.map(a => (a.drug_code || '').trim()).filter(Boolean))]
+  const [balRes, lastRes, drugRes] = await Promise.all([
     admin
       .from('v_vaccine_balance')
       .select('account_id, balance_qty, received_qty')
@@ -73,17 +82,28 @@ export async function loadStock(admin, tenantId, today) {
       .in('account_id', ids)
       .order('created_at', { ascending: false })
       .limit(1),
+    codes.length
+      ? admin.from('drugs').select('drug_code, drug_name, manufacturer').in('drug_code', codes)
+      : Promise.resolve({ data: [], error: null }),
   ])
   if (balRes.error) return { ok: false, step: '잔량', message: balRes.error.message }
   if (lastRes.error) return { ok: false, step: '시각', message: lastRes.error.message }
 
   const balOf = {}
   for (const b of (balRes.data || [])) balOf[b.account_id] = b
+  /* 약품 조회만 실패하면 이름 없이 간다 — 잔량 화면은 그대로 떠야 한다 */
+  const drugOf = {}
+  if (!drugRes.error) for (const d of (drugRes.data || [])) drugOf[d.drug_code] = d
 
   const items = list.map(a => {
     const b = balOf[a.id] || {}
+    const d = drugOf[(a.drug_code || '').trim()] || {}
     const qty = Number(b.balance_qty || 0)
-    return { label: String(a.public_label), qty, status: stockStatus(qty, b.received_qty) }
+    /* 값이 없으면 빈 문자열 — 화면이 그 줄을 그리지 않는다 */
+    return {
+      label: String(a.public_label), qty, status: stockStatus(qty, b.received_qty),
+      drug_name: String(d.drug_name || ''), maker: String(d.manufacturer || ''),
+    }
   }).sort((x, y) => x.label.localeCompare(y.label, 'ko'))
 
   /* ★ season 은 대상 계정의 값. 여럿이면 첫 번째를 쓴다(현재 운영은 한 절기만 열린다). */
