@@ -538,7 +538,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
 
     {tab === 'survey' && isSurveyAdmin
       ? <VaccineSurveyPanel ColMenu={ColMenu} useSort={useSort} accs={accs} cats={cats}
-        isAdmin={isSurveyAdmin} profile={me} />
+        isAdmin={isSurveyAdmin} />
       : <>
     {/* ↓↓↓ 기존 백신 관리 화면 — 내용 변경 없음 ↓↓↓ */}
 
