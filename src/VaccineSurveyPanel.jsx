@@ -7,6 +7,8 @@
      뷰가 주지 않는 것(날짜별 누적·가림표시)만 lib/surveyCalc.js 에서 만든다.
    ★ 차트는 저장소 방식대로 인라인 SVG — 차트 라이브러리를 들이지 않는다.
    ★ 성명·사번은 가려서 보여 준다. 원문은 「원문 보기」를 눌러 audit 을 남긴 뒤에만.
+     같은 자리의 「가리기」로 그 줄만 다시 가린다 — 가리기는 audit 을 남기지 않는다.
+     탭을 떠나거나 회차를 바꾸거나 새로고침하면 열린 줄이 **모두** 다시 가려진다(저장 안 함).
    ★ 내려받기는 audit INSERT 가 성공한 **뒤에만** 파일을 만든다.
    ★ 1,000행을 넘을 수 있으므로 .range() 로 쪽을 나눠 읽는다.
    ★ 표 컨테이너에 textAlign:'left' 를 명시한다 — #root 의 center 가 상속된다.
@@ -143,6 +145,20 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
       .insert({ survey_id: sel.id, action: 'view_raw', response_id: r.id })
     if (error) { setMsg('열람 기록을 남기지 못해 원문을 열지 않았습니다 — ' + dbErrorMsg(error)); return }
     setRevealed(v => ({ ...v, [r.id]: true }))
+  }
+
+  /* ── 가리기 — 그 줄만 다시 가린다 ─────────────────────────────────────
+     ★ audit 을 남기지 않는다. 기록해야 할 일은 「원문을 봤다」이지 「다시 가렸다」가 아니다.
+       다시 열면 그때 view_raw 가 또 남으므로 열람 횟수는 그대로 다 잡힌다.
+     ★ 회차를 바꿀 때(select onChange)·탭을 떠날 때(패널 언마운트)·새로고침할 때는
+       revealed 가 통째로 비워지므로 여기서 따로 할 일이 없다. */
+  function hide(r) {
+    setRevealed(v => {
+      if (!v[r.id]) return v
+      const next = { ...v }
+      delete next[r.id]
+      return next
+    })
   }
 
   /* ── 명단 체크 ────────────────────────────────────────────────────────── */
@@ -376,10 +392,11 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
                         </td>
                         <td style={td(t, 'left')}>
                           {open ? (r.name || '—') : maskName(r.name)}
-                          {!open ? <button onClick={() => reveal(r)} style={{
+                          {/* ★ 같은 자리·같은 모양의 버튼 하나. 열렸으면 글자만 「가리기」로 바뀐다. */}
+                          <button onClick={() => (open ? hide(r) : reveal(r))} style={{
                             marginLeft: 6, padding: '1px 7px', borderRadius: 6, border: '1px solid ' + t.border,
                             background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 10, fontWeight: 700,
-                          }}>원문 보기</button> : null}
+                          }}>{open ? '가리기' : '원문 보기'}</button>
                         </td>
                         <td style={td(t, 'center')}>{r._self}</td>
                         <td style={td(t, 'right')}><span className="num">{r.family_count}</span></td>
