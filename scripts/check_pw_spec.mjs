@@ -34,6 +34,7 @@ const TARGETS = [
   { path: 'netlify/functions/ward-pw-reset.js', note: '루트 사이트 · 관리 화면 재설정' },
   { path: 'netlify/functions/vaccine-public-admin.js', note: '루트 사이트 · 공개 비밀번호 설정' },
   { path: 'vaccine-app/netlify/functions/vaccine-verify.js', note: '공개 조회 앱 · 비밀번호 확인' },
+  { path: 'vaccine-app/netlify/functions/vaccine-survey.js', note: '공개 조회 앱 · 수요조사 확인번호' },
 ]
 const BEGIN = '// PW_SPEC:BEGIN'
 const END = '// PW_SPEC:END'

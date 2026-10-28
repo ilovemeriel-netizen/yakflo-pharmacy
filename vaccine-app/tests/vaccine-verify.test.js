@@ -59,13 +59,21 @@ async function settingsRow(pw = PW) {
 }
 
 /* answer 조립 — attempts/settings 는 시나리오별로, 잔량 3종은 공통 */
-function makeAnswer({ attempts = [], settings, stock = STOCK_TABLES, fail = {} } = {}) {
+function makeAnswer({ attempts = [], settings, stock = STOCK_TABLES, fail = {},
+  surveys = [], accountLabel = null } = {}) {
   return rec => {
     if (fail[rec.table]) return { data: null, error: { message: fail[rec.table] } }
     if (rec.table === 'vaccine_public_attempts') {
       return rec.op === 'select' ? ok(attempts) : { data: null, error: null }
     }
     if (rec.table === 'vaccine_public_settings') return ok(settings ? [settings] : [])
+    if (rec.table === 'vaccine_surveys') return ok(surveys)
+    /* vaccine_accounts 는 두 곳에서 쓰인다 — 잔량(loadStock)과 회차 표시명(loadOpenSurvey).
+       표시명 조회는 public_label 만 고르므로 select 목록으로 구별한다. */
+    if (rec.table === 'vaccine_accounts' && accountLabel != null
+        && rec.filters.some(f => f[0] === 'eq' && f[1] === 'id')) {
+      return ok([{ public_label: accountLabel }])
+    }
     return stock[rec.table] ?? ok([])
   }
 }
@@ -85,11 +93,13 @@ beforeEach(() => {
 })
 
 describe('성공 응답 — initial 이 stock 과 같은 형식으로 함께 온다', () => {
-  it('키는 ok · token · initial 뿐이고 initial 은 season · updated_at · items 뿐', async () => {
+  it('키는 ok · token · initial · survey 뿐이고 initial 은 season · updated_at · items 뿐', async () => {
     stub.admin = fakeAdmin(makeAnswer({ settings: await settingsRow() }))
     const j = await body(await handler(req()))
 
-    expect(Object.keys(j).sort()).toEqual(['initial', 'ok', 'token'])
+    /* survey 는 2026-10-28 에 추가됐다 — 열린 회차가 없으면 null 로 온다(탭을 그리지 않는다) */
+    expect(Object.keys(j).sort()).toEqual(['initial', 'ok', 'survey', 'token'])
+    expect(j.survey).toBe(null)
     expect(j.ok).toBe(true)
     expect(typeof j.token).toBe('string')
     expect(Object.keys(j.initial).sort()).toEqual(['items', 'season', 'updated_at'])
@@ -128,10 +138,35 @@ describe('성공 응답 — initial 이 stock 과 같은 형식으로 함께 온
     const j = await body(res)
 
     expect(res.status).toBe(200)
-    expect(Object.keys(j).sort()).toEqual(['ok', 'token'])
+    /* initial 만 빠진다 — survey 조회는 따로여서 영향받지 않는다 */
+    expect(Object.keys(j).sort()).toEqual(['ok', 'survey', 'token'])
+    expect(j.initial).toBeUndefined()
     expect(j.ok).toBe(true)
     expect(typeof j.token).toBe('string')
     spy.mockRestore()
+  })
+
+  it('열린 회차가 있으면 survey 가 실려 온다 — 탭 표시가 늦지 않게', async () => {
+    stub.admin = fakeAdmin(makeAnswer({
+      settings: await settingsRow(),
+      surveys: [{
+        title: '독감(유료) 수요조사', season: '2026-2027', account_id: 'a1',
+        vax_start: '2026-11-01', vax_end: '2026-11-30', close_at: '2026-11-20T14:59:59Z',
+      }],
+      accountLabel: '독감(유료)',
+    }))
+    const j = await body(await handler(req()))
+    expect(j.survey).toEqual({
+      title: '독감(유료) 수요조사',
+      season: '2026-2027',
+      public_label: '독감(유료)',
+      vax_start: '2026-11-01',
+      vax_end: '2026-11-30',
+      close_at: '2026-11-20T14:59:59Z',
+    })
+    /* ★ 회차 id·account_id·분류는 공개 응답에 싣지 않는다 */
+    const text = JSON.stringify(j.survey)
+    for (const bad of ['account_id', 'a1', 'category', 'id"']) expect(text).not.toContain(bad)
   })
 
   it('잠금 행 삭제와 첫 데이터 조회가 함께 나간다 — 삭제가 끝나기를 기다리지 않는다', async () => {

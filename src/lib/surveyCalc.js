@@ -1,0 +1,138 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   수요 현황 — 순수 계산 (React·DB 없음)
+
+   ★ D·A·R·B·S·G·O 의 **정본은 DB 뷰 v_vaccine_demand** 다. 여기서 다시 만들지 않는다.
+     이 파일은 ① 뷰 값을 화면용으로 다듬고 ② 뷰가 주지 않는 것(날짜별 누적·가림표시)만 만든다.
+     ※ 같은 산식을 두 곳에 두면 갈라진다 — 0089 잔량 뷰에서 이미 배운 원칙이다.
+
+   ★ 개인정보 가림: 사번 12**56 · 성명 김*수 · 사번 없으면 —
+     원문은 「정정」을 눌러 audit 을 남긴 뒤에만 보여 준다.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 개인정보 가림 ─────────────────────────────────────────────────────── */
+/* 사번 — 앞 2 · 뒤 2 만 남기고 가운데를 * 로. 짧으면 뒤만 남긴다. */
+export function maskEmpNo(v) {
+  const s = String(v ?? '').trim()
+  if (!s) return '—'
+  if (s.length <= 2) return '*'.repeat(s.length)
+  if (s.length <= 4) return s[0] + '*'.repeat(s.length - 2) + s[s.length - 1]
+  return s.slice(0, 2) + '*'.repeat(s.length - 4) + s.slice(-2)
+}
+
+/* 성명 — 가운데를 * 로. 두 글자면 뒤 한 글자를 가린다(김*).
+   ★ 파기된 행의 '(파기)' 는 가리지 않는다 — 가릴 개인정보가 없다. */
+export function maskName(v) {
+  const s = String(v ?? '').trim()
+  if (!s) return '—'
+  if (s === '(파기)') return s
+  if (s.length === 1) return s
+  if (s.length === 2) return s[0] + '*'
+  return s[0] + '*'.repeat(s.length - 2) + s[s.length - 1]
+}
+
+/* ── 도즈 ──────────────────────────────────────────────────────────────── */
+export function doseOf(r) {
+  return (r?.self_dose ? 1 : 0) + Number(r?.family_count || 0)
+}
+/* 명단에서 손으로 체크한 수 */
+export function doneOf(r) {
+  return (r?.done_self ? 1 : 0) + Number(r?.done_family || 0)
+}
+/* 아직 접종하지 않은 신청 도즈 — 날짜별 누적의 재료 */
+export function pendingOf(r) {
+  return Math.max(0, doseOf(r) - doneOf(r))
+}
+
+/* ── 날짜별 누적 수요 ───────────────────────────────────────────────────
+   ★ 희망일이 지난 미접종분은 **오늘로 합산**한다(지시) — 지난 날짜에 쌓아 두면
+     「언제부터 부족」 판단이 과거로 밀려 쓸모없어진다.
+   rows: status='applied' 인 응답. today: 'YYYY-MM-DD'.
+   반환 [{ date, add, cum, short }] — short 는 누적이 잔량 B 를 넘긴 날 */
+export function cumulativeDemand(rows, balance, today) {
+  const byDate = new Map()
+  for (const r of rows || []) {
+    if (r.status !== 'applied') continue
+    const p = pendingOf(r)
+    if (p <= 0) continue
+    const d = String(r.wish_date || '')
+    if (!d) continue
+    const key = d < today ? today : d          /* 지난 희망일은 오늘로 */
+    byDate.set(key, (byDate.get(key) || 0) + p)
+  }
+  const b = Number(balance || 0)
+  let cum = 0
+  return [...byDate.keys()].sort().map(date => {
+    const add = byDate.get(date)
+    cum += add
+    return { date, add, cum, short: cum > b }
+  })
+}
+
+/* 누적이 잔량을 처음 넘는 날 — 없으면 null */
+export function firstShortDate(series) {
+  const hit = (series || []).find(p => p.short)
+  return hit ? hit.date : null
+}
+
+/* 'YYYY-MM-DD' → '11/4' */
+export function shortDate(d) {
+  const m = String(d ?? '').match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return String(d ?? '')
+  return Number(m[2]) + '/' + Number(m[3])
+}
+
+/* ── 상태 배지 ──────────────────────────────────────────────────────────
+   기존 잔량 화면과 같은 어휘 — 충분 / 주의 / 부족. 색은 호출부가 정한다. */
+export const DEMAND_STATUS = ['충분', '주의', '부족']
+
+/* 알림 띠 문구 — 주의·부족일 때만. 「부족 · 잔량 31 < 남은 수요 60 · 주문 권장 40도즈」 */
+export function alertLine(v) {
+  if (!v) return null
+  const st = v.demand_status
+  if (st !== '주의' && st !== '부족') return null
+  const b = Number(v.balance_qty || 0)
+  const r = Number(v.remain_qty || 0)
+  const o = Number(v.order_qty || 0)
+  const rel = st === '부족' ? '<' : '≥'
+  return `${st} · 잔량 ${b.toLocaleString()} ${rel} 남은 수요 ${r.toLocaleString()} · 주문 권장 ${o.toLocaleString()}도즈`
+}
+
+/* ── 파기 안내 ─────────────────────────────────────────────────────────
+   접종 끝날이 지났는데 아직 파기하지 않았으면 띠를 띄운다. */
+export function needsPurge(survey, today) {
+  if (!survey) return false
+  if (survey.purged_at) return false
+  if (!survey.vax_end) return false
+  return today > survey.vax_end
+}
+/* 파기 버튼을 누를 수 있는가 — 닫혔고 끝날이 지났고 아직 파기 전 */
+export function canPurge(survey, today) {
+  if (!survey || survey.purged_at) return false
+  return survey.status === 'closed' && !!survey.vax_end && today > survey.vax_end
+}
+
+/* ── 회차 만들기 기본 체크 ─────────────────────────────────────────────
+   ★ 저장은 id 로 한다. label 로 「직원」 접두사를 보는 것은 **첫 화면 기본값**을
+     편하게 하려는 것뿐이고, 사용자가 바꿀 수 있다(결정 ⓐ). */
+export function defaultCategoryIds(cats) {
+  const list = (cats || []).filter(c => c && c.id)
+  const staff = list.filter(c => String(c.label || '').startsWith('직원'))
+  return (staff.length ? staff : list).map(c => c.id)
+}
+
+/* ── 엑셀·PDF 공통 — 날짜별 집계 ───────────────────────────────────────── */
+export function byDateSummary(rows) {
+  const m = new Map()
+  for (const r of rows || []) {
+    const d = String(r.wish_date || '')
+    if (!d) continue
+    const cur = m.get(d) || { date: d, people: 0, dose: 0, done: 0, cancelled: 0 }
+    if (r.status === 'cancelled') { cur.cancelled++ } else {
+      cur.people++
+      cur.dose += doseOf(r)
+      cur.done += doneOf(r)
+    }
+    m.set(d, cur)
+  }
+  return [...m.values()].sort((a, b) => a.date.localeCompare(b.date))
+}

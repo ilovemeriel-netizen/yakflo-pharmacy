@@ -21,6 +21,7 @@ import { supabase } from './lib/supabase'
 import { useTheme } from './lib/theme'
 import { dbErrorMsg } from './lib/dbError'
 import VaccinePublicPanel from './VaccinePublicPanel'
+import VaccineSurveyPanel from './VaccineSurveyPanel'
 /* ★ GS1-128 파서는 scan.js 의 것을 **호출만** 한다(무수정).
    AI 10 = LOT · AI 17 = 유효기한을 이미 파싱한다. 카메라 라이브러리는 쓰지 않는다 —
    스캐너가 키보드 웨지로 넣어 주는 문자열을 그대로 받는다. */
@@ -83,8 +84,8 @@ const dayDiff = (from, to) => {
   return Math.floor((a - b) / 86400000)
 }
 
-/* eslint-disable-next-line no-unused-vars -- ColMenu 는 JSX 안에서만 쓰인다.
-   이 저장소에는 eslint-plugin-react 가 없어 JSX 사용을 추적하지 못한다(오탐). */
+/* ※ 예전에는 ColMenu 가 JSX 요소 이름으로만 쓰여 no-unused-vars 오탐이 나 disable 이 필요했다.
+   2026-10-28 부터 VaccineSurveyPanel 에 값으로도 넘기므로 오탐이 사라졌다 — disable 을 뗐다. */
 export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
   const { t } = useTheme()
   const { sk, sd, setSort, so, TS } = useSort('drug_code')
@@ -105,6 +106,11 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
      범위 밖 테이블에 신규 쓰기를 만들지 않는다. */
   const [openChart, setOpenChart] = useState(false)
   const [openLot, setOpenLot] = useState(false)
+  /* ★ 수요조사 탭 — 0093 정책과 같은 기준(tenant_members.role ∈ owner·admin)으로만 그린다.
+     화면에서만 숨기는 것이 아니라 DB 정책이 정본이고, 여기는 보여 줄지 말지를 맞추는 것이다. */
+  const [tab, setTab] = useState('manage')
+  const [me, setMe] = useState(null)        // { tenant_id, user_id, role }
+  const isSurveyAdmin = me?.role === 'owner' || me?.role === 'admin'
 
   const flash = (text, kind) => { setMsg({ text, kind }); setTimeout(() => setMsg(null), kind === 'err' ? 3600 : 2000) }
 
@@ -112,12 +118,15 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
      react-hooks/set-state-in-effect 에 걸린다. ld 초기값이 true 이고,
      새로고침 버튼은 호출부에서 setLd(true) 를 먼저 부른다. */
   async function loadAll() {
-    const [a, b, c, e] = await Promise.all([
+    const [a, b, c, e, m] = await Promise.all([
       supabase.from('vaccine_accounts').select('*').order('season', { ascending: false }).order('drug_code'),
       supabase.from('v_vaccine_balance').select('*'),
       supabase.from('vaccine_categories').select('*').order('sort_order').order('label'),
       supabase.from('vaccine_events').select('*').order('event_date', { ascending: false }).order('created_at', { ascending: false }),
+      /* ★ 수요조사 탭 노출 판정 + audit 의 user_id 용. 실패해도 기존 화면은 그대로 동작한다. */
+      supabase.from('tenant_members').select('tenant_id, user_id, role').limit(1).maybeSingle(),
     ])
+    setMe(m?.data || null)
     const err = a.error || b.error || c.error || e.error
     if (err) flash('불러오기 실패: ' + dbErrorMsg(err), 'err')
     setAccs(a.data || []); setBal(b.data || []); setCats(c.data || []); setEvts(e.data || [])
@@ -512,7 +521,26 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
       <button className="no-print" onClick={() => { setLd(true); loadAll() }} style={btn(t.bg, t.textM, t.border)}>새로고침</button>
     </div>
 
+    {/* ═══ 1-A. 탭 — 「수요 현황」은 **관리자(owner·admin)에게만** 그린다(0093 정책과 같은 기준).
+        ★ me 가 관리자가 아니면 탭 띠 자체가 없어 기존 화면과 같다. */}
+    {isSurveyAdmin && <nav className="no-print" style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+      {[['manage', '백신 관리'], ['survey', '수요 현황']].map(([k, lab]) => {
+        const on = tab === k
+        return <button key={k} onClick={() => setTab(k)} style={{
+          padding: '7px 15px', borderRadius: 9, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+          border: '1px solid ' + (on ? t.accent : t.border),
+          background: on ? t.accent : t.card, color: on ? t.navText : t.textM,
+        }}>{lab}</button>
+      })}
+    </nav>}
+
     {msg && <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: msg.kind === 'err' ? t.bg : t.greenL, color: msg.kind === 'err' ? t.text : t.green, borderLeft: '3px solid ' + (msg.kind === 'err' ? t.text : t.green) }}>{msg.text}</div>}
+
+    {tab === 'survey' && isSurveyAdmin
+      ? <VaccineSurveyPanel ColMenu={ColMenu} useSort={useSort} accs={accs} cats={cats}
+        isAdmin={isSurveyAdmin} profile={me} />
+      : <>
+    {/* ↓↓↓ 기존 백신 관리 화면 — 내용 변경 없음 ↓↓↓ */}
 
     {/* ═══ 1-B. 요약 스트립 — 헤더 하단 상시 표시 ═══
         ★ 캡쳐 한 장으로 타 부서에 넘기는 것이 주 용도라 접지 않는다. */}
@@ -717,6 +745,8 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
       onUpdAccount={updAccount} onDelAccount={delAccount} onAccActive={setAccActive}
       todayYmd={todayYmd} ymd={ymd} />}
     <VaccinePublicPanel accounts={accs} season={sel} drugNames={dnames} onReload={loadAll} onFlash={flash} />
+    {/* ↑↑↑ 기존 백신 관리 화면 끝 ↑↑↑ */}
+      </>}
   </div>
 }
 
