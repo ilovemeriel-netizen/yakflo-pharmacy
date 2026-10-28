@@ -15,6 +15,9 @@ base.textContent = `
   }
   input, select, textarea, button { font-family: inherit; font-size: 16px; } /* 16px: iOS 자동 확대 방지 */
 
+  /* 인쇄에서 뺄 것 — 약플로 관리 앱과 같은 이름을 쓴다. 화면에는 영향이 없다. */
+  @media print { .no-print { display: none !important; } }
+
   /* 기본(좁은 화면 · 태블릿·폰): 세로로 쌓임 */
   .wa-wrap { max-width: 720px; margin: 0 auto; padding: 16px 14px 48px; }
   .wa-cols { display: block; }

@@ -285,8 +285,23 @@ function Login({ onDone }) {
         비밀번호를 모르면 약제과로 문의해 주세요
         <br /><span style={{ fontWeight: 700, color: 'var(--v-navy)' }}>{TEL}</span>
       </p>
+      <Ft />
     </form>
   </main>
+}
+
+/* ═══ 저작권 — 세 화면(로그인·잔량·수요조사)이 같은 한 줄을 쓴다 ═══════════
+   ★ 약플로 PR #345 에서 정한 표준 문구 그대로. © 는 U+00A9 다.
+   ★ 모양은 이 앱의 기존 하단(foot)과 같다 — fontSize 11 · var(--v-ink-dim) ·
+     lineHeight 1.7. 새 색·새 크기를 만들지 않는다.
+   ★ 기존 「문의」 줄 **아래**에 온다. 인쇄에는 내지 않는다(no-print). */
+function Ft() {
+  return <p className="no-print" style={{
+    margin: '10px 16px 26px', fontSize: 11, color: 'var(--v-ink-dim)',
+    lineHeight: 1.7, textAlign: 'center',
+  }}>
+    Copyright © 2026 JEONGHWALEE. All rights reserved. 무단 전재 및 재배포 금지.
+  </p>
 }
 
 /* ═══ 시안 ⓐ-2(휴대폰) · ⓐ-3(PC·태블릿) ═══════════════════════════════════
@@ -419,6 +434,7 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
       {head}
       {tabs}
       <SurveyTab survey={survey} token={token} wide={wide} onSurveyGone={onSurveyGone} />
+      <Ft />
     </main>
   }
 
@@ -438,6 +454,7 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
           {state === 'list' ? cards : pending}
         </div>}
     {foot}
+    <Ft />
   </main>
 }
 
