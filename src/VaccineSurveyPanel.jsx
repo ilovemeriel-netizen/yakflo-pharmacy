@@ -52,7 +52,16 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
   const [busy, setBusy] = useState(false)
   const [modal, setModal] = useState(null)      /* { kind:'round'|'purge', ... } */
   const [revealed, setRevealed] = useState({})  /* id → true (「원문 보기」로 공개) */
-  const [hfV, setHfV] = useState({})            /* 표 헤더 필터 */
+  /* ── 표 헤더 필터 ────────────────────────────────────────────────────────
+     ★ 값은 **스칼라 또는 없음**이다 — 공용 ColMenu 가 `on(v)` 로 값 하나(또는 null)를
+       돌려주기 때문이다. 예전에는 배열로 담고 prop 이름도 달라(values·sel·onSel)
+       머리글을 누르는 순간 `filter.items.map` 에서 터졌다.
+     ★ 값이 없으면 그 열은 거르지 않는다(= 전체).
+     ★ 기본값은 **상태=신청** — 취소된 줄은 기본으로 감춘다. 이 상수가 ① 진입 초기값
+       ②「필터 초기화」 복원값 ③ 초기화 버튼 표시 판정의 **단일 출처**다
+       (약품목록·비보험·아카이브가 쓰는 방식과 같다). */
+  const HF_DEFAULT = { status: '신청' }
+  const [hfV, setHfV] = useState(HF_DEFAULT)
   const sort = useSort('wish_date', 'asc')
 
   const sel = useMemo(() => surveys.find(s => s.id === selId) || null, [surveys, selId])
@@ -233,11 +242,11 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
   const { sk, sd, so } = sort
   const filtered = useMemo(() => {
     let out = view
-    for (const [k, vals] of Object.entries(hfV)) {
-      if (!vals || !vals.length) continue
+    for (const [k, val] of Object.entries(hfV)) {
+      if (val == null || val === '') continue
       out = out.filter(r => {
         const v = k === 'self_dose' ? r._self : k === 'status' ? r._status : String(r[k] ?? '')
-        return vals.includes(v || '—')
+        return (v || '—') === val
       })
     }
     return out
@@ -246,6 +255,11 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
      신원이 매번 바뀌어 메모가 한 번도 적중하지 않는다(있으면 오히려 오해를 준다).
      행 수는 많아야 수천이라 정렬 비용은 무시할 수 있다. */
   const shown = so(filtered)
+
+  /* 필터가 기본값과 다른가 — 초기화 버튼 표시 판정. 괄호 숫자는 걸린 필터 개수다. */
+  const hfKeys = [...new Set([...Object.keys(hfV), ...Object.keys(HF_DEFAULT)])]
+  const hfDirty = hfKeys.some(k => (hfV[k] ?? null) !== (HF_DEFAULT[k] ?? null))
+  const hfCount = Object.values(hfV).filter(v => v != null && v !== '').length
 
   const series = useMemo(
     () => cumulativeDemand(rows, demand?.balance_qty, today), [rows, demand, today])
@@ -350,6 +364,13 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
             }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: t.text }}>신청 명단</span>
               <span style={{ fontSize: 11, color: t.textL }}>{shown.length}건</span>
+              {/* 사양 ⑪ — 필터가 기본값과 다를 때만 보인다. 모양은 약품목록의 초기화 버튼 그대로. */}
+              {hfDirty ? <button className="no-print" onClick={() => setHfV(HF_DEFAULT)}
+                title="필터 초기화 (상태=신청)" style={{
+                  padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.accent,
+                  background: t.accent + '12', color: t.accent, cursor: 'pointer',
+                  fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
+                }}>필터 초기화{hfCount > 0 ? ' (' + hfCount + ')' : ''}</button> : null}
               <div style={{ flex: 1 }} />
               <button className="no-print" onClick={() => download('xlsx')} disabled={busy} style={btn()}>엑셀</button>
               <button className="no-print" onClick={() => download('pdf')} disabled={busy} style={btn()}>PDF</button>
@@ -370,12 +391,19 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
                       padding: '8px 10px', textAlign: c.align, whiteSpace: 'nowrap',
                       borderBottom: '1px solid ' + t.border, fontSize: 11, color: t.textM, fontWeight: 700,
                     }}>
+                      {/* ★ 공용 ColMenu 가 읽는 모양 그대로 — items·value·on.
+                          고르는 값은 **원문 기준**이다(가려진 값으로 모으면 * 끼리 묶인다). */}
                       <ColMenu colKey={c.k} label={c.h} sk={sk} sd={sd} setSort={sort.setSort}
                         filter={c.filter ? {
-                          values: [...new Set(view.map(r => (
-                            c.k === 'self_dose' ? r._self : c.k === 'status' ? r._status : String(r[c.k] ?? '')) || '—'))].sort(),
-                          sel: hfV[c.k] || [],
-                          onSel: v => setHfV(s => ({ ...s, [c.k]: v })),
+                          items: [...new Set(view.map(r => (
+                            c.k === 'self_dose' ? r._self : c.k === 'status' ? r._status : String(r[c.k] ?? '')) || '—'))]
+                            .sort((a, b) => a.localeCompare(b, 'ko')),
+                          value: hfV[c.k] ?? null,
+                          on: v => setHfV(s => {
+                            const n = { ...s }
+                            if (v) n[c.k] = v; else delete n[c.k]
+                            return n
+                          }),
                         } : null} />
                     </th>)}
                   </tr>

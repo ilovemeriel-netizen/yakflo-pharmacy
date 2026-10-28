@@ -191,7 +191,7 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
     <div style={labelSt}>개인정보 수집·이용 안내</div>
     <div style={{ ...noteSt, fontSize: 12.5 }}>
       · 수집 목적 — 독감 예방접종 수요 파악과 접종 일정 안내<br />
-      · 수집 항목 — 성명, 사번(선택), 본인 접종 여부, 가족 수, 희망일<br />
+      · 수집 항목 — 성명, 사번(선택), 직원 본인 접종 여부, 함께 접종할 가족 수, 희망일<br />
       · 보관 기간 — 이번 접종 기간이 끝나면 파기합니다<br />
       · 문의 — {TEL}
     </div>
@@ -222,10 +222,10 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
     }}>
       <input type="checkbox" checked={selfDose} onChange={e => setSelfDose(e.target.checked)}
         style={{ width: 22, height: 22, accentColor: 'var(--v-purple)', flexShrink: 0 }} />
-      본인도 접종
+      직원 본인 접종 (무료)
     </label>
 
-    <div style={{ ...labelSt, marginTop: 16 }}>가족 구성원 수</div>
+    <div style={{ ...labelSt, marginTop: 16 }}>함께 접종할 가족 수 (유료)</div>
     <Stepper value={Number(family || 0)} onChange={setFamily} />
 
     <div style={{ ...labelSt, marginTop: 16 }}>백신 종류</div>
@@ -333,10 +333,10 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
     }}>
       <input type="checkbox" checked={selfDose} onChange={e => setSelfDose(e.target.checked)}
         style={{ width: 22, height: 22, accentColor: 'var(--v-purple)', flexShrink: 0 }} />
-      본인도 접종
+      직원 본인 접종 (무료)
     </label>
 
-    <div style={{ ...labelSt, marginTop: 16 }}>가족 구성원 수</div>
+    <div style={{ ...labelSt, marginTop: 16 }}>함께 접종할 가족 수 (유료)</div>
     <Stepper value={Number(family || 0)} onChange={setFamily} />
 
     <label htmlFor="sv-wish2" style={{ ...labelSt, marginTop: 16 }}>접종 희망일</label>
@@ -393,12 +393,12 @@ function Stepper({ value, onChange }) {
   })
   const canDown = value > 0, canUp = value < MAX_FAMILY
   return <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-    <button type="button" aria-label="가족 수 줄이기" disabled={!canDown}
+    <button type="button" aria-label="함께 접종할 가족 수 줄이기" disabled={!canDown}
       onClick={() => onChange(Math.max(0, value - 1))} style={btn(canDown)}>−</button>
     <div className="num" style={{
       flex: 1, textAlign: 'center', fontSize: 22, fontWeight: 800, color: 'var(--v-navy)',
     }}>{value}</div>
-    <button type="button" aria-label="가족 수 늘리기" disabled={!canUp}
+    <button type="button" aria-label="함께 접종할 가족 수 늘리기" disabled={!canUp}
       onClick={() => onChange(Math.min(MAX_FAMILY, value + 1))} style={btn(canUp)}>+</button>
   </div>
 }

@@ -285,8 +285,23 @@ function Login({ onDone }) {
         비밀번호를 모르면 약제과로 문의해 주세요
         <br /><span style={{ fontWeight: 700, color: 'var(--v-navy)' }}>{TEL}</span>
       </p>
+      <Ft />
     </form>
   </main>
+}
+
+/* ═══ 저작권 — 세 화면(로그인·잔량·수요조사)이 같은 한 줄을 쓴다 ═══════════
+   ★ 약플로 PR #345 에서 정한 표준 문구 그대로. © 는 U+00A9 다.
+   ★ 모양은 이 앱의 기존 하단(foot)과 같다 — fontSize 11 · var(--v-ink-dim) ·
+     lineHeight 1.7. 새 색·새 크기를 만들지 않는다.
+   ★ 기존 「문의」 줄 **아래**에 온다. 인쇄에는 내지 않는다(no-print). */
+function Ft() {
+  return <p className="no-print" style={{
+    margin: '10px 16px 26px', fontSize: 11, color: 'var(--v-ink-dim)',
+    lineHeight: 1.7, textAlign: 'center',
+  }}>
+    Copyright © 2026 JEONGHWALEE. All rights reserved. 무단 전재 및 재배포 금지.
+  </p>
 }
 
 /* ═══ 시안 ⓐ-2(휴대폰) · ⓐ-3(PC·태블릿) ═══════════════════════════════════
@@ -419,6 +434,7 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
       {head}
       {tabs}
       <SurveyTab survey={survey} token={token} wide={wide} onSurveyGone={onSurveyGone} />
+      <Ft />
     </main>
   }
 
@@ -438,7 +454,17 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
           {state === 'list' ? cards : pending}
         </div>}
     {foot}
+    <Ft />
   </main>
+}
+
+/* 「약품명 · 제약사」 한 줄. 둘 다 없으면 빈 문자열이라 호출부가 줄을 그리지 않는다.
+   ★ 휴대폰 목록형(wide=false)과 PC 카드형(wide=true)이 같은 Card 를 쓰므로 한 곳이면 된다. */
+function drugLine(item) {
+  const name = String(item?.drug_name || '').trim()
+  const maker = String(item?.maker || '').trim()
+  if (!name) return maker            /* 이름이 없으면 제약사만(보통은 둘 다 없다) */
+  return maker ? name + ' · ' + maker : name
 }
 
 function Card({ item, wide }) {
@@ -454,6 +480,14 @@ function Card({ item, wide }) {
         fontSize: wide ? 15 : 14, fontWeight: 700, color: 'var(--v-navy)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }} title={item.label}>{item.label}</div>
+      {/* ★ 약품명 · 제약사 — 표시명만으로는 어느 제품인지 알 수 없다는 문의가 잦았다.
+          이 앱의 기존 보조 글씨(var(--v-ink-dim)) 그대로, 새 색을 만들지 않는다.
+          한 줄을 넘으면 … 로 줄이고 전체는 title 로 본다.
+          ★ 값이 없으면(약품 마스터에 없는 코드) 줄 자체를 그리지 않는다. */}
+      {drugLine(item) ? <div style={{
+        fontSize: 11, color: 'var(--v-ink-dim)', marginTop: 2,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }} title={drugLine(item)}>{drugLine(item)}</div> : null}
     </div>
     <div style={{
       display: 'flex', alignItems: wide ? 'flex-end' : 'center',
