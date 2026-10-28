@@ -49,6 +49,8 @@ function stamp() {
 const HEAD = ['신청번호', '사번', '성명', '본인', '가족 수', '도즈', '희망일', '상태', '접종 완료', '비고']
 const HEAD_PDF = [...HEAD, '확인']
 const NCOL_PDF = HEAD_PDF.length
+const CHECK_COL = NCOL_PDF - 1   /* 맨 오른쪽 「확인」 열 */
+const CHECK_MM = 3.5             /* 확인 네모 한 변(mm) — 행 높이 약 5.6mm 안에 들어간다 */
 
 /* raw=true 면 성명·사번 원문. 파기된 회차는 원문 자리가 비어 있다(DB 가 이미 지웠다).
    note = 비고(행 단위 자동 표기) — surveyCalc.rowNote() 가 만든 값을 그대로 받는다. */
@@ -226,9 +228,9 @@ async function composePdf({ survey, rows, allRows, user = ISSUER, raw = true, fo
        PDF 가 두 배로 커진다(Regular 만 서브셋했다). 머리글 강조는 바탕색으로 한다. */
     styles: { font: FONT_NAME, fontStyle: 'normal', fontSize: 8, cellPadding: 1.4 },
     headStyles: { font: FONT_NAME, fontStyle: 'normal', fillColor: [128, 74, 135], textColor: 255 },
-    /* 비고는 내용에 맞게(22), 확인은 좁게(12) — 확인 칸은 **비워 둔다**.
-       ※ 글꼴 부분집합에 ☐(U+2610)·□(U+25A1)가 없어 글자로 넣으면 네모로 깨진다.
-         표 선이 이미 칸을 그리므로 빈 칸이 체크박스 구실을 한다. */
+    /* 비고는 내용에 맞게(22), 확인은 좁게(12) — 확인 칸의 **글자는 빈 문자열**이다.
+       ※ 글꼴 부분집합에 ☐(U+2610)·□(U+25A1)가 없다(cmap 확인). 글자로 넣으면 네모로 깨지므로
+         글꼴을 건드리지 않고 didDrawCell 에서 네모를 **선으로 그린다**. */
     columnStyles: { 9: { cellWidth: 22 }, 10: { cellWidth: 12, halign: 'center' } },
     head: [HEAD_PDF],
     margin: { left: 14, right: 14, top: 23, bottom: 18 },
@@ -242,6 +244,7 @@ async function composePdf({ survey, rows, allRows, user = ISSUER, raw = true, fo
     const cuts = [0, ...[...breaks].sort((a, b) => a - b), body.length]
       .filter((v, i, arr) => i === 0 || v !== arr[i - 1])
     const pageOf = new Array(body.length).fill(0)
+    const boxes = []          /* 확인 칸에 그린 네모 — 데이터 행 수와 같아야 한다(시험용) */
     for (let ci = 0; ci + 1 < cuts.length; ci++) {
       const from = cuts[ci], to = cuts[ci + 1]
       if (from >= to) continue
@@ -252,11 +255,27 @@ async function composePdf({ survey, rows, allRows, user = ISSUER, raw = true, fo
         body: body.slice(from, to),
         didDrawPage: () => { drawHeaderOn(target) },
         didDrawCell: d => {
-          if (d.section === 'body' && d.column.index === 0) pageOf[from + d.row.index] = d.pageNumber
+          if (d.section !== 'body') return
+          const bi = from + d.row.index
+          if (d.column.index === 0) pageOf[bi] = d.pageNumber
+          /* ★ 확인 칸의 네모 — 글꼴에 ☐ 가 없어 선으로 그린다.
+             띠 행(구분·소계·합계)은 colSpan 한 칸이라 열 10 이 아예 없으므로 자연히 빠지지만,
+             뜻을 분명히 하려고 kinds 로도 한 번 더 막는다. */
+          if (d.column.index !== CHECK_COL || kinds[bi] !== null) return
+          const tc = d.cell.styles.textColor
+          const c = Array.isArray(tc) ? tc : [tc, tc, tc]
+          const x = d.cell.x + (d.cell.width - CHECK_MM) / 2
+          const y = d.cell.y + (d.cell.height - CHECK_MM) / 2
+          const lw = target.getLineWidth()
+          target.setLineWidth(0.2)
+          target.setDrawColor(c[0], c[1], c[2])
+          target.rect(x, y, CHECK_MM, CHECK_MM)
+          target.setLineWidth(lw)
+          boxes.push({ page: d.pageNumber, row: bi })
         },
       })
     }
-    return pageOf
+    return { pageOf, boxes }
   }
   function drawHeaderOn(target) {
     target.setFont(FONT_NAME, 'normal')
@@ -277,7 +296,7 @@ async function composePdf({ survey, rows, allRows, user = ISSUER, raw = true, fo
       probe.addFileToVFS('NotoSansKR.ttf', fontB64)
       probe.addFont('NotoSansKR.ttf', FONT_NAME, 'normal')
       probe.setFont(FONT_NAME, 'normal')
-      const pageOf = renderInto(probe, breaks)
+      const { pageOf } = renderInto(probe, breaks)
       let added = false
       for (let i = 0; i < kinds.length - 1; i++) {
         if (kinds[i] !== SEP) continue
@@ -293,12 +312,13 @@ async function composePdf({ survey, rows, allRows, user = ISSUER, raw = true, fo
   doc.setFont(FONT_NAME, 'normal')
 
   let pageOf = []
+  let boxes = []
   if (!body.length) {
     drawHeaderOn(doc)
     doc.setFontSize(12)
     doc.text('신청이 없습니다', 14, 30)
   } else {
-    pageOf = renderInto(doc, breaks)
+    ({ pageOf, boxes } = renderInto(doc, breaks))
   }
 
   /* ── 바닥글 — 쪽 번호를 실제 전체 쪽수로 찍으려면 표를 다 그린 뒤에 돌아야 한다 ── */
@@ -315,7 +335,7 @@ async function composePdf({ survey, rows, allRows, user = ISSUER, raw = true, fo
   }
   doc.setPage(1)
 
-  return { doc, pages, kinds, pageOf, breaks: [...breaks].sort((a, b) => a - b), body }
+  return { doc, pages, kinds, pageOf, boxes, breaks: [...breaks].sort((a, b) => a - b), body }
 }
 
 /* 문서만 필요할 때 */
@@ -326,12 +346,12 @@ export async function buildPdf(args) {
 /* 배치만 필요할 때(시험용) — 구분 행이 쪽 맨 아래 혼자 남지 않았는지 확인할 수 있다.
    orphans 가 비어 있어야 정상이다. */
 export async function pdfLayout(args) {
-  const { pages, kinds, pageOf, breaks, body } = await composePdf(args)
+  const { pages, kinds, pageOf, boxes, breaks, body } = await composePdf(args)
   const orphans = []
   for (let i = 0; i < kinds.length - 1; i++) {
     if (kinds[i] === 'sep' && pageOf[i + 1] > pageOf[i]) orphans.push(i)
   }
-  return { pages, kinds, pageOf, breaks, orphans, bodyLen: body.length }
+  return { pages, kinds, pageOf, boxes, breaks, orphans, bodyLen: body.length }
 }
 
 export async function exportPdf(args) {

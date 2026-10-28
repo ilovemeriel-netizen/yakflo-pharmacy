@@ -9,8 +9,14 @@ import * as XLSX from 'xlsx'
 const out = process.argv[2] || '.'
 const survey = { title: '독감(유료) 수요조사', season: '2026-2027' }
 
-// 1쪽짜리 — 희망일 3종에 걸쳐 있어도 한 목록으로 이어진다.
-// 비고가 눈에 보이도록 사번 없는 행과 같은 이름 2건을 섞었다.
+// 1쪽짜리 — 확인 칸의 네모를 가까이서 보기 위한 2명.
+// 한 명은 사번이 없고 둘은 이름이 같아 비고 3가지가 모두 보인다.
+const two = [
+  { receipt_code: 'AB2345', emp_no: '123456', name: '김정화', name_key: '김정화', self_dose: true, family_count: 2, wish_date: '2026-11-03', status: 'applied', done_self: true, done_family: 1 },
+  { receipt_code: 'CD6789', emp_no: null, name: '김정화', name_key: '김정화', self_dose: true, family_count: 0, wish_date: '2026-11-04', status: 'applied', done_self: false, done_family: 0 },
+]
+
+// 엑셀 견본용 — 희망일 3종에 걸쳐 있어도 한 목록으로 이어진다.
 const few = [
   { receipt_code: 'AB2345', emp_no: '123456', name: '김정화', name_key: '김정화', self_dose: true, family_count: 2, wish_date: '2026-11-03', status: 'applied', done_self: true, done_family: 1 },
   { receipt_code: 'CD6789', emp_no: null, name: '김정화', name_key: '김정화', self_dose: true, family_count: 0, wish_date: '2026-11-03', status: 'applied', done_self: false, done_family: 0 },
@@ -33,10 +39,10 @@ const many = Array.from({ length: 40 }, (_, i) => ({
 
 const fontB64 = readFileSync('public/fonts/NotoSansKR-Regular-subset.ttf').toString('base64')
 
-const d1 = await buildPdf({ survey, rows: few, fontB64 })
-const p1 = out + '/' + fileName(survey, 'pdf').replace('.pdf', '_1쪽.pdf')
+const d1 = await buildPdf({ survey, rows: two, allRows: two, fontB64 })
+const p1 = out + '/' + fileName(survey, 'pdf').replace('.pdf', '_2명_1쪽.pdf')
 writeFileSync(p1, Buffer.from(d1.output('arraybuffer')))
-console.log('PDF  ' + p1 + '  (' + d1.getNumberOfPages() + '쪽, 신청 ' + few.length + '건)')
+console.log('PDF  ' + p1 + '  (' + d1.getNumberOfPages() + '쪽, 신청 ' + two.length + '건)')
 
 const d2 = await buildPdf({ survey, rows: many, fontB64 })
 const p2 = out + '/' + fileName(survey, 'pdf').replace('.pdf', '_40명.pdf')

@@ -340,3 +340,108 @@ describe('출력자 · 비고 · 확인 열 — 엑셀과 PDF 가 같아야 한�
     expect(ws['!cols']).toHaveLength(10)
   })
 })
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   확인 칸의 네모 — 글꼴 부분집합에 ☐(U+2610) 가 없어 글자가 아니라 선으로 그린다.
+   그러니 「글자가 있는가」가 아니라 「네모를 데이터 행 수만큼만 그렸는가」를 본다.
+   ═══════════════════════════════════════════════════════════════════════════ */
+describe('PDF 확인 칸 — 네모를 선으로 그린다', () => {
+  const fontB64 = readFileSync(
+    resolve(process.cwd(), 'public/fonts/NotoSansKR-Regular-subset.ttf')).toString('base64')
+
+  const mk = (n, date, from = 0) => Array.from({ length: n }, (_, i) => ({
+    receipt_code: 'AB' + String(2345 + from + i).padStart(4, '0'),
+    emp_no: String(100000 + from + i),
+    name: '사람' + (from + i), name_key: '사람' + (from + i),
+    self_dose: true, family_count: 1, wish_date: date,
+    status: 'applied', done_self: false, done_family: 0,
+  }))
+
+  it('★ 글꼴에 ☐(U+2610)·□(U+25A1) 글리프가 없다 — 글자로 넣으면 깨진다', () => {
+    const b = readFileSync(resolve(process.cwd(), 'public/fonts/NotoSansKR-Regular-subset.ttf'))
+    /* cmap 의 유니코드 서브테이블(형식 4)을 읽어 코드포인트 → 글리프 를 모은다 */
+    let cmapOff = 0
+    const nT = b.readUInt16BE(4)
+    for (let i = 0; i < nT; i++) {
+      const o = 12 + i * 16
+      if (b.toString('latin1', o, o + 4) === 'cmap') cmapOff = b.readUInt32BE(o + 8)
+    }
+    expect(cmapOff).toBeGreaterThan(0)
+    const has = new Set()
+    const nS = b.readUInt16BE(cmapOff + 2)
+    for (let i = 0; i < nS; i++) {
+      const off = cmapOff + b.readUInt32BE(cmapOff + 4 + i * 8 + 4)
+      if (b.readUInt16BE(off) !== 4) continue
+      const segX2 = b.readUInt16BE(off + 6)
+      const endO = off + 14, startO = endO + segX2 + 2, deltaO = startO + segX2, rangeO = deltaO + segX2
+      for (let k = 0; k < segX2 / 2; k++) {
+        const end = b.readUInt16BE(endO + k * 2), start = b.readUInt16BE(startO + k * 2)
+        const delta = b.readInt16BE(deltaO + k * 2), ro = b.readUInt16BE(rangeO + k * 2)
+        if (start === 0xFFFF) continue
+        for (let c = start; c <= end; c++) {
+          let g
+          if (ro === 0) g = (c + delta) & 0xFFFF
+          else {
+            const gi = rangeO + k * 2 + ro + (c - start) * 2
+            if (gi + 1 >= b.length) continue
+            g = b.readUInt16BE(gi)
+            if (g) g = (g + delta) & 0xFFFF
+          }
+          if (g) has.add(c)
+        }
+      }
+    }
+    expect(has.has(0x00A9), '대조군 © 는 있어야 한다').toBe(true)
+    expect(has.has(0xC9C4), '대조군 한글 「진」 은 있어야 한다').toBe(true)
+    expect(has.has(0x2610), '☐ U+2610').toBe(false)
+    expect(has.has(0x25A1), '□ U+25A1').toBe(false)
+  })
+
+  it('★ 네모가 데이터 행 수만큼만 그려진다 — 구분·소계·합계 행은 0개', async () => {
+    /* 희망일 3종 × 각 2명 → 데이터 6행, 띠 행 7개(구분 3 + 소계 3 + 합계 1) */
+    const rows = [...mk(2, '2026-11-03', 0), ...mk(2, '2026-11-04', 2), ...mk(2, '2026-11-05', 4)]
+    const L = await pdfLayout({ survey, rows, fontB64 })
+    const dataIdx = L.kinds.map((k, i) => (k === null ? i : -1)).filter(i => i >= 0)
+    expect(dataIdx).toHaveLength(6)
+    expect(L.kinds.filter(k => k !== null)).toHaveLength(7)
+    expect(L.boxes).toHaveLength(6)
+    /* 네모가 붙은 본문 행이 전부 데이터 행이다 — 띠 행에는 하나도 없다 */
+    expect(L.boxes.map(b => b.row).sort((a, b2) => a - b2)).toEqual(dataIdx)
+    for (const b of L.boxes) expect(L.kinds[b.row]).toBe(null)
+  })
+
+  it('쪽이 넘쳐도 쪽마다 그 쪽의 데이터 행만큼 그린다', async () => {
+    const L = await pdfLayout({ survey, rows: mk(40, '2026-11-10'), fontB64 })
+    expect(L.pages).toBe(2)
+    expect(L.boxes).toHaveLength(40)
+    const per = {}
+    for (const b of L.boxes) per[b.page] = (per[b.page] || 0) + 1
+    expect(Object.keys(per).map(Number).sort()).toEqual([1, 2])
+    /* 각 쪽의 네모 수 = 그 쪽에 떨어진 데이터 행 수 */
+    for (const p of [1, 2]) {
+      const onPage = L.kinds.filter((k, i) => k === null && L.pageOf[i] === p).length
+      expect(per[p], p + '쪽').toBe(onPage)
+    }
+  })
+
+  it('신청이 없으면 네모를 하나도 그리지 않는다', async () => {
+    const L = await pdfLayout({ survey, rows: [], fontB64 })
+    expect(L.boxes).toHaveLength(0)
+  })
+
+  it('★ 네모는 3.5mm 정사각형 · 선 굵기 0.2mm 로 선만 그린다(칠하지 않는다)', async () => {
+    const { inflateSync } = await import('node:zlib')
+    const doc = await buildPdf({ survey, rows: mk(3, '2026-11-03'), fontB64 })
+    const s = Buffer.from(doc.output('arraybuffer')).toString('latin1')
+    const m = /\/Type\s*\/Page[^s][\s\S]{0,400}?\/Contents\s+(\d+)\s+0\s+R/.exec(s)
+    const o = s.indexOf('\n' + m[1] + ' 0 obj')
+    const st = s.indexOf('stream', o) + 6
+    let c = s.slice(st, s.indexOf('endstream', st)).replace(/^\r?\n/, '')
+    try { c = inflateSync(Buffer.from(c, 'latin1')).toString('latin1') } catch { /* 압축 안 됨 */ }
+    /* 3.5mm = 9.9213pt · 0.2mm = 0.5669pt. re 뒤에 S(선) 가 와야 한다 — f(칠) 가 아니다. */
+    const strokes = [...c.matchAll(/9\.921[\d]* -?9\.921[\d]* re\s*\nS/g)]
+    expect(strokes).toHaveLength(3)
+    expect((c.match(/0\.5669[\d]* w/g) || []).length).toBe(3)
+    expect(c).not.toMatch(/9\.921[\d]* -?9\.921[\d]* re\s*\nf/)
+  })
+})
