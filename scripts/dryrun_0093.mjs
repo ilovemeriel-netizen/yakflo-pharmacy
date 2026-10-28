@@ -280,7 +280,13 @@ try {
       `뷰 A=${a2.administered_qty} · 직접집계=${direct.sel}`)
     gate('A 에 외래&입원 제외', Number(direct.outq) > 0 && Number(a2.administered_qty) !== Number(direct.sel) + Number(direct.outq),
       `외래&입원=${direct.outq} (A 에 포함 안 됨)`)
-    gate('B = v_vaccine_balance 그대로', Number(a2.balance_qty) === 31, 'B=' + a2.balance_qty)
+    /* ★ 고정 숫자(=== 31)로 비교하지 않는다 — 잔량은 입고·접종이 생기면 매일 바뀌고,
+       그러면 재고와 무관한 이 시험이 거짓 NG 를 낸다. 같은 조건을 직접 읽어 대조한다. */
+    const bLive = Number((await one(
+      `select coalesce(balance_qty,0)::numeric q from public.v_vaccine_balance where account_id=$1`,
+      [PAID_ACCOUNT]))?.q ?? 0)
+    gate('B = v_vaccine_balance 그대로', Number(a2.balance_qty) === bLive,
+      `B=${a2.balance_qty} · 잔량뷰=${bLive}`)
 
     /* 21) 산식 검산 — D=60, A=0 → O=40 */
     await q(`update public.vaccine_surveys set open_at=now() where id=$1`, [sv.id])  /* A=0 으로 되돌림 */
@@ -291,15 +297,32 @@ try {
         values ($1,$2,$3,'검산','검산',true,19,$4,current_date,now())`,
         [tenant, sv.id, 'AB234' + (i + 2), PAID_ACCOUNT])
     }
-    const v = await one(`select demand_qty,administered_qty,remain_qty,safety_qty,gap_qty,order_qty,demand_status,balance_qty
+    const v = await one(`select demand_qty,administered_qty,remain_qty,safety_qty,gap_qty,order_qty,demand_status,balance_qty,
+      safety_ratio,safety_min,order_unit
       from public.v_vaccine_demand where survey_id=$1`, [sv.id])
-    gate('검산 D=60', Number(v.demand_qty) === 60, 'D=' + v.demand_qty)
-    gate('검산 A=0 (오늘 연 회차)', Number(v.administered_qty) === 0, 'A=' + v.administered_qty)
-    gate('검산 R=60', Number(v.remain_qty) === 60, 'R=' + v.remain_qty)
-    gate('검산 S=6', Number(v.safety_qty) === 6, 'S=' + v.safety_qty)
-    gate('검산 G=35', Number(v.gap_qty) === 35, 'G=' + v.gap_qty)
-    gate('검산 O=40', Number(v.order_qty) === 40, 'O=' + v.order_qty)
-    gate('검산 상태=부족', v.demand_status === '부족', v.demand_status)
+    /* ★ 기대값을 고정 숫자로 적지 않는다 — A(오늘 접종)와 B(잔량)는 운영 데이터다.
+       ① 원재료(A·B)는 뷰가 아닌 곳에서 **직접 집계**해 가져오고
+       ② R·S·G·O·상태는 0093 의 산식대로 JS 에서 다시 계산해 뷰와 맞춘다.
+       D 만 60 으로 고정할 수 있다 — 이 트랜잭션에서 만든 회차의 신청뿐이라 자립적이다. */
+    const aLive = Number((await one(`select coalesce(sum(qty),0)::numeric q from public.vaccine_events
+      where event_type='접종' and account_id=$1 and category_id = any(array[$2::uuid,$3::uuid])
+        and event_date >= (now() at time zone 'Asia/Seoul')::date`,
+      [PAID_ACCOUNT, CAT_STAFF, CAT_FAMILY])).q)
+    const D = 60
+    const B = bLive
+    const R = Math.max(0, D - aLive)
+    const S = Math.max(Number(v.safety_min), Math.ceil(R * Number(v.safety_ratio)))
+    const G = Math.max(0, R + S - B)
+    const unit = Number(v.order_unit)
+    const O = Math.ceil(G / unit) * unit
+    const ST = B >= R + S ? '충분' : B >= R ? '주의' : '부족'
+    gate(`검산 D=${D}`, Number(v.demand_qty) === D, 'D=' + v.demand_qty)
+    gate(`검산 A=${aLive} (직접집계와 같다)`, Number(v.administered_qty) === aLive, 'A=' + v.administered_qty)
+    gate(`검산 R=${R} (D−A)`, Number(v.remain_qty) === R, 'R=' + v.remain_qty)
+    gate(`검산 S=${S} (max(${v.safety_min}, ceil(R×${v.safety_ratio})))`, Number(v.safety_qty) === S, 'S=' + v.safety_qty)
+    gate(`검산 G=${G} (R+S−B, B=${B})`, Number(v.gap_qty) === G, 'G=' + v.gap_qty)
+    gate(`검산 O=${O} (ceil(G/${unit})×${unit})`, Number(v.order_qty) === O, 'O=' + v.order_qty)
+    gate(`검산 상태=${ST}`, v.demand_status === ST, v.demand_status)
   }
 
   /* 22) 정책 수 = 114 + 7 */

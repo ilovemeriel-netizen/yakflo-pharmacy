@@ -31,9 +31,12 @@ function kstToday(now) {
   return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate())
 }
 
+/* ★ profile prop 을 받지 않는다 — 2026-10-28 결함의 원인이었다.
+   호출부가 넘긴 tenant_members 행에는 `id`·`name`·`email` 이 없는데 그걸 읽어 썼다.
+   기록의 tenant_id·user_id 는 DB 트리거(0095)가, 출력자 표시는 auth.getUser() 가 맡는다. */
 /* eslint-disable-next-line no-unused-vars -- ColMenu 는 JSX 요소 이름으로만 쓰인다.
    이 저장소에는 eslint-plugin-react 가 없어 JSX 사용을 추적하지 못한다(오탐). */
-export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdmin, profile }) {
+export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdmin }) {
   const { t } = useTheme()
   const [now] = useState(BOOT_NOW)
   const today = kstToday(now)
@@ -94,7 +97,7 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     for (let from = 0; ; from += CHUNK) {
       const { data, error } = await supabase
         .from('vaccine_survey_responses')
-        .select('id, receipt_code, emp_no, name, self_dose, family_count, wish_date, status, done_self, done_family, created_at')
+        .select('id, receipt_code, emp_no, name, name_key, self_dose, family_count, wish_date, status, done_self, done_family, created_at')
         .eq('survey_id', id)
         .order('wish_date', { ascending: true })
         .order('created_at', { ascending: true })
@@ -132,8 +135,12 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
   /* ── 정정(원문 공개) — audit 을 먼저 남긴다 ───────────────────────────── */
   async function reveal(r) {
     if (revealed[r.id]) return
+    /* ★ tenant_id·user_id 를 보내지 않는다 — 0095 의 BEFORE INSERT 트리거가
+       회차 기준 tenant_id 와 auth.uid() 로 채운다(보내도 덮어쓴다).
+       예전에는 user_id 에 `profile?.id` 를 넣었는데 profile 은 tenant_members 행이라
+       `id` 열이 없어 undefined → NULL → 정책의 `user_id = auth.uid()` 가 false 가 됐다. */
     const { error } = await supabase.from('vaccine_survey_audit')
-      .insert({ tenant_id: sel.tenant_id, survey_id: sel.id, user_id: profile?.id, action: 'view_raw', response_id: r.id })
+      .insert({ survey_id: sel.id, action: 'view_raw', response_id: r.id })
     if (error) { setMsg('열람 기록을 남기지 못해 원문을 열지 않았습니다 — ' + dbErrorMsg(error)); return }
     setRevealed(v => ({ ...v, [r.id]: true }))
   }
@@ -152,12 +159,16 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     if (busy || !sel) return
     setBusy(true); setMsg(null)
     const action = kind === 'pdf' ? 'export_pdf' : 'export_xlsx'
+    /* ★ tenant_id·user_id 는 서버가 채운다 — 위 reveal() 주석 참고 */
     const { error } = await supabase.from('vaccine_survey_audit')
-      .insert({ tenant_id: sel.tenant_id, survey_id: sel.id, user_id: profile?.id, action, row_count: shown.length })
+      .insert({ survey_id: sel.id, action, row_count: shown.length })
     if (error) { setBusy(false); setMsg('내려받기 기록을 남기지 못해 파일을 만들지 않았습니다 — ' + dbErrorMsg(error)); return }
     try {
       const mod = await import('./lib/surveyExport')
-      const args = { survey: sel, rows: shown, user: profile?.name || profile?.email || '—', raw: true }
+      /* ★ 출력자는 파일 쪽에서 「약제과」로 고정한다 — 사람 이름·메일을 문서에 남기지 않는다.
+         ★ allRows 는 **필터 전 회차 전체** 응답이다. 비고의 「이름 중복」을 필터와 무관하게
+           판정하려면 전체가 필요하다(필터로 1건만 보여도 중복이면 표시해야 한다). */
+      const args = { survey: sel, rows: shown, allRows: rows, raw: true }
       if (kind === 'pdf') await mod.exportPdf(args); else await mod.exportXlsx(args)
       setMsg(`${kind === 'pdf' ? 'PDF' : '엑셀'} ${shown.length}행을 내려받았습니다 (기록 남김)`)
     } catch (e) {
