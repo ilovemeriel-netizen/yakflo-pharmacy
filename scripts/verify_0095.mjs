@@ -93,8 +93,9 @@ try {
     (select count(*)::int from pg_policies where schemaname='public') pol,
     (select count(*)::int from public.vaccine_survey_audit) audit_rows,
     (select count(*)::int from public.vaccine_surveys) surveys,
-    (select count(*)::int from public.vaccine_survey_responses) responses`)
-  console.log(`\n기준선 — 정책 ${before.pol} · 회차 ${before.surveys} · 응답 ${before.responses} · 기록 ${before.audit_rows}행`)
+    (select count(*)::int from public.vaccine_survey_responses) responses,
+    (select count(*)::int from public.vaccine_events) events`)
+  console.log(`\n기준선 — 정책 ${before.pol} · 회차 ${before.surveys} · 응답 ${before.responses} · 기록 ${before.audit_rows}행 · 접종 ${before.events}행`)
   if (before.pol !== BASE_POLICIES) {
     console.error(`\n★ 중단 — 정책 수 ${before.pol} (기대 ${BASE_POLICIES})`); process.exit(1)
   }
@@ -239,7 +240,10 @@ try {
       (select count(*)::int from pg_policies where schemaname='public') pol,
       (select status from public.vaccine_surveys where id=$1) st`, [sv.id])
     gate('기록 행 수 불변(시험은 전부 되돌렸다)', a.audit_rows === before.audit_rows, a.audit_rows + '행')
-    gate('vaccine_events 불변', a.events === 43, a.events + '행')
+    /* ★ 고정 숫자로 비교하지 않는다 — 운영에서 접종을 1건 넣으면 바로 거짓 NG 가 난다.
+       이 시험이 보려는 것은 「이 스크립트가 재고 정본 계통을 건드렸는가」 뿐이므로
+       **시작할 때 읽은 값**과 비교한다(audit_rows·정책 수와 같은 방식). */
+    gate('vaccine_events 불변', a.events === before.events, a.events + '행 (기준선 ' + before.events + '행)')
     gate('정책 수 불변', a.pol === BASE_POLICIES, a.pol + '개')
     gate('운영 회차 상태 불변', a.st === 'open', a.st)
   }
