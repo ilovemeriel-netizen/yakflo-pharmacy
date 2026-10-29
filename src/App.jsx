@@ -5,9 +5,9 @@ import { passesDrugFilters } from './lib/drugFilter'
 import { planReorder } from './lib/locOrder'
 import { RX_TOGGLE, RX_MORE, autoMap } from './lib/drugRules'
 import { classifyDrugRows, applyDrugRows } from './lib/drugBulk'
-import { saveWithFallback, partialText, partialBulkText, PARTIAL_BG, PARTIAL_FG, PARTIAL_LINE } from './lib/saveWithFallback'
+import { saveWithFallback, partialText, partialBulkText, blockedText, PARTIAL_BG, PARTIAL_FG, PARTIAL_LINE } from './lib/saveWithFallback'
 import { decomposeAtc } from './lib/atcMap'
-import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT } from './lib/txTypes'
+import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLabel, TX_NEVER_DROP } from './lib/txTypes'
 import { vaccineTabFromHash } from './lib/vaccineRoute'
 import { handleScan as scanHandle, decodeGs1 as scanDecode, scanCountQty, scanAddItem, saveScanMapping, deactivateBarcode, listBarcodes, gtinCheckOk, ownCodeLooksLikeGs1, OWN_CODE_WARN } from './lib/scan'
 import { dbErrorMsg, noRowMsg, bulkFailKind } from './lib/dbError'
@@ -938,25 +938,34 @@ function DrugDeleteConfirm({ drug: dr, onClose, onDeleted }) {
 }
 
 /* ═══ 재고 보정 모달 — 거래기록 없이 수량만 보정, 보정이력은 drugs 테이블에 기록 ═══ */
-function AdjustModal({ drug: dr, onClose, onSaved }) {
+/* ★ 시험에서 진짜 컴포넌트로 렌더하려고 내보낸다(ColMenu 와 같은 이유). 컴포넌트라 react-refresh 규칙에 걸리지 않는다. */
+export function AdjustModal({ drug: dr, onClose, onSaved }) {
   const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const { t } = useTheme(); const [qty, setQty] = useState(dr.current_qty || 0); const [reason, setReason] = useState('실사 결과 반영'); const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null); const diff = qty - (dr.current_qty || 0)
+  /* 저장은 됐지만 폴백이 버린 칸들 — 비어 있지 않으면 성공 대신 「일부 미반영」을 띄우고 닫지 않는다 */
+  const [dropped, setDropped] = useState([])
   async function save() { if (!reason.trim()) { setMsg('사유 필수'); return }; setSaving(true)
     const d = Math.round((Number(qty) - (dr.current_qty || 0)) * 100) / 100
     if (d === 0) { setSaving(false); setMsg('변동 없음'); setTimeout(() => { onSaved?.(); onClose() }, 500); return }
     /* 실사 조정도 거래로 일원화: transactions type='조정'(quantity=목표−현재) → 0009 트리거가 drugs+inventory 동기. 직접 update 제거. */
     const tx = { drug_code: dr.drug_code, type: TX_ADJUST, quantity: d, total_amount: Math.round(d * (Number(dr.purchase_price) || 0)), reason: `${reason} (${d > 0 ? '+' : ''}${d})`, transaction_date: todayYmd() }
-    let res = await supabase.from('transactions').insert([tx])
-    for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
+    /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) — lib/saveWithFallback.js 단일 출처.
+       ★ 재고는 여전히 trg_apply_tx_to_inventory 가 한다 — 이 경로는 INSERT 만 바뀌었다. */
+    const res = await saveWithFallback(tx, p => supabase.from('transactions').insert([p]), { retries: 3, label: 'transactions insert', neverDrop: TX_NEVER_DROP })
     setSaving(false)
+    /* ★ 금액·거래단가·일자가 거절되면 재시도를 보내지 않았다 — 거래가 기록되지 않았으므로 오류로 끝낸다 */
+    if(res.blocked.length){setMsg(blockedText(res.blocked,txColLabel));return}
     if(res.error){setMsg(res.error.message);return}
+    /* ★ 버린 칸이 있으면 자동으로 닫지 않는다 — 사용자가 읽고 닫는다 */
+    if(res.dropped.length){setDropped(res.dropped);onSaved?.();return}
     setMsg('OK'); setTimeout(() => { onSaved?.(); onClose() }, 500) }
   const ip = { width: '100%', padding: '9px 12px', border: `1px solid ${t.border}`, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }
   return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
     <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }} onClick={e => e.stopPropagation()}>
       <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: `1px solid ${t.border}` }}><div style={{ fontSize: 15, fontWeight: 700, color: t.amber }}>재고 보정</div><div style={{ fontSize: 12, color: t.textM, marginTop: 2 }}>{dr.drug_name}</div></div>
       <div style={{ padding: '16px 20px' }}>
-        {msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '보정 완료' : msg}</div>}
+        {dropped.length > 0 && <div style={{ background: PARTIAL_BG, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: PARTIAL_FG, fontSize: 12, fontWeight: 600 }}>{partialText(dropped, txColLabel)}</div>}
+        {dropped.length === 0 && msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '보정 완료' : msg}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
           <div style={{ background: t.bg, borderRadius: 10, padding: '12px', textAlign: 'center', border: `1px solid ${t.border}` }}><div style={{ fontSize: 10, color: t.textM }}>서류재고</div><div style={{ fontSize: 22, fontWeight: 700, color: t.text, marginTop: 4 }}>{(dr.current_qty || 0).toLocaleString()}</div></div>
           <div style={{ background: t.bg, borderRadius: 10, padding: '12px', textAlign: 'center', border: `1px solid ${diff !== 0 ? t.amber : t.border}` }}><div style={{ fontSize: 10, color: t.textM }}>실재고</div><input type="number" value={qty} onChange={e => setQty(Number(e.target.value))} style={{ width: '100%', textAlign: 'center', fontSize: 22, fontWeight: 700, border: 'none', background: 'transparent', color: t.text, outline: 'none', marginTop: 4 }} /></div>
@@ -972,7 +981,8 @@ function AdjustModal({ drug: dr, onClose, onSaved }) {
 }
 
 /* ═══ 폐기·반품 처리 모달 — 유효기한 화면 전용. transactions INSERT→0009 트리거로 재고 차감(TxForm 저장방식 재사용) ═══ */
-function DisposalModal({ drug: dr, onClose, onSaved }) {
+/* ★ 시험에서 진짜 컴포넌트로 렌더하려고 내보낸다(ColMenu 와 같은 이유). 컴포넌트라 react-refresh 규칙에 걸리지 않는다. */
+export function DisposalModal({ drug: dr, onClose, onSaved }) {
   const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const { t } = useTheme()
   const pp = dr.purchase_price || 0, cur = dr.current_qty || 0
@@ -983,6 +993,8 @@ function DisposalModal({ drug: dr, onClose, onSaved }) {
   const [amtRaw, setAmtRaw] = useState(''); const [amtTouched, setAmtTouched] = useState(false)
   const [confirm, setConfirm] = useState(false)
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null)
+  /* 저장은 됐지만 폴백이 버린 칸들 — 비어 있지 않으면 성공 대신 「일부 미반영」을 띄우고 닫지 않는다 */
+  const [dropped, setDropped] = useState([])
   const q = Number(qty)
   const autoAmt = Math.round((Number(qty) || 0) * pp)
   const amt = amtTouched ? Math.round(Number(amtRaw) || 0) : autoAmt
@@ -995,10 +1007,15 @@ function DisposalModal({ drug: dr, onClose, onSaved }) {
     setConfirm(false); setSaving(true); setMsg(null)
     /* 저장 로직은 TxForm과 동일 규약: unit_price=purchase_price, total_amount=사용자 확정 금액(정수), 재고는 0009 트리거가 차감. 컬럼 재시도 루프 포함. */
     const tx = { drug_code: dr.drug_code, type: txType, quantity: q, unit_price: pp, total_amount: amt, lot_no: lot || null, reason: reason || null, supplier: txType === TX_RETURN ? (supplier || null) : null, transaction_date: today, expiry_date: expDate || null, handler: handler || null, approver: approver || null, memo: memo || null, process_status: procStatus || null }
-    let res = await supabase.from('transactions').insert([tx])
-    for (let r = 0; r < 3 && res.error && res.error.message?.includes('column'); r++) { const m = res.error.message.match(/'([^']+)' column/); if (!m) break; console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]]; res = await supabase.from('transactions').insert([tx]) }
+    /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) — lib/saveWithFallback.js 단일 출처.
+       ★ 재고는 여전히 trg_apply_tx_to_inventory 가 차감한다 — 이 경로는 INSERT 만 바뀌었다. */
+    const res = await saveWithFallback(tx, p => supabase.from('transactions').insert([p]), { retries: 3, label: 'transactions insert', neverDrop: TX_NEVER_DROP })
     setSaving(false)
+    /* ★ 금액·거래단가·일자가 거절되면 재시도를 보내지 않았다 — 거래가 기록되지 않았으므로 오류로 끝낸다 */
+    if (res.blocked.length) { setMsg(blockedText(res.blocked, txColLabel)); return }
     if (res.error) { setMsg(dbErrorMsg(res.error)); return }  // 트리거 한글 메시지(마감월·재고 부족)는 dbErrorMsg가 원문 그대로 노출
+    /* ★ 버린 칸이 있으면 자동으로 닫지 않는다 — 사용자가 읽고 닫는다 */
+    if (res.dropped.length) { setDropped(res.dropped); onSaved?.(); return }
     setMsg('OK'); setTimeout(() => { onSaved?.(); onClose() }, 500)
   }
   const ip = { width: '100%', padding: '9px 12px', border: `1px solid ${t.border}`, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }
@@ -1007,7 +1024,8 @@ function DisposalModal({ drug: dr, onClose, onSaved }) {
     <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: `1px solid ${t.border}`, boxShadow: t.shadowH, maxHeight: '92vh', overflowY: 'auto', transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }} onClick={e => e.stopPropagation()}>
       <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: `1px solid ${t.border}` }}><div style={{ fontSize: 15, fontWeight: 700, color: t.amber }}>폐기 · 반품 처리</div><div style={{ fontSize: 12, color: t.textM, marginTop: 2 }}>{dr.drug_name}</div></div>
       <div style={{ padding: '16px 20px' }}>
-        {msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '처리 완료' : msg}</div>}
+        {dropped.length > 0 && <div style={{ background: PARTIAL_BG, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: PARTIAL_FG, fontSize: 12, fontWeight: 600 }}>{partialText(dropped, txColLabel)}</div>}
+        {dropped.length === 0 && msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '처리 완료' : msg}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
           <div style={{ background: t.bg, borderRadius: 10, padding: '12px', textAlign: 'center', border: `1px solid ${t.border}` }}><div style={{ fontSize: 10, color: t.textM }}>현재고</div><div style={{ fontSize: 22, fontWeight: 700, color: t.text, marginTop: 4 }}>{cur.toLocaleString()}</div></div>
           <div style={{ background: t.bg, borderRadius: 10, padding: '12px', textAlign: 'center', border: `1px solid ${t.border}` }}><div style={{ fontSize: 10, color: t.textM }}>유효기한</div><div style={{ fontSize: 15, fontWeight: 700, color: t.text, marginTop: 8 }}>{dr.expiry_date || '-'}</div></div>
@@ -3032,12 +3050,15 @@ const txValidQty = v => {
   if (!/^\d+(\.\d{1,2})?$/.test(String(v))) return false      // 숫자·소수점 2자리까지 · 음수 거부
   return Number(v) > 0                                        // 상한 없음
 }
-function TransactionForm({drugs,onReload,navFilter}){
+/* ★ 시험에서 진짜 컴포넌트로 렌더하려고 내보낸다(ColMenu 와 같은 이유). 컴포넌트라 react-refresh 규칙에 걸리지 않는다. */
+export function TransactionForm({drugs,onReload,navFilter}){
   const{t,memberRole,profile}=useTheme();const canDel=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
   const[tab,setTab]=useState(subFromHash()||'입고')
   const[search,setSearch]=useState('');const[selDrug,setSelDrug]=useState(null)
   const[form,setForm]=useState({qty:'',purchase_price:'',edi_price:'',sub_type:'',note:'',supplier:'',lot_no:'',expiry_date:'',reason:'',handler:'이정화',approver:'',process_status:'처리완료',transaction_date:todayYmd()})
   const[saving,setSaving]=useState(false);const[msg,setMsg]=useState(null);const[ppConfirm,setPpConfirm]=useState(null);const[outlierConfirm,setOutlierConfirm]=useState(null)
+  /* 저장은 됐지만 폴백이 버린 칸들 — 단건 저장과 엑셀 일괄에 각각 쓴다 */
+  const[dropped,setDropped]=useState([]);const[bulkPartial,setBulkPartial]=useState(null)
   const[txns,setTxns]=useState([]);const[txPage,setTxPage]=useState(1);const[selIds,setSelIds]=useState([]);const[closedM,setClosedM]=useState(null);const[selDelStage,setSelDelStage]=useState(0);const[selDelBusy,setSelDelBusy]=useState(false);const[selDelMsg,setSelDelMsg]=useState(null);const[txSearch,setTxSearch]=useState('')
   const[bulkData,setBulkData]=useState([]);const[bulkMsg,setBulkMsg]=useState(null);const[bulkLd,setBulkLd]=useState(false)
   const[bulkRepl,setBulkRepl]=useState(null);const[delAllOpen,setDelAllOpen]=useState(false);const[delAllStage,setDelAllStage]=useState(1);const[delAllMsg,setDelAllMsg]=useState(null);const[delAllBusy,setDelAllBusy]=useState(false)
@@ -3103,14 +3124,18 @@ function TransactionForm({drugs,onReload,navFilter}){
     /* ★ 폐기만 소수 허용 — 다른 탭은 기존 parseInt 동작 유지(마감 중 회귀 방지) */
     const q=Math.round(Number(form.qty)*100)/100;const amt=Math.round(q*(pp||0))
     const tx={drug_code:selDrug.drug_code,type:tab,quantity:q,unit_price:pp||0,total_amount:amt,memo:form.note||null,transaction_date:form.transaction_date||todayYmd(),reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
-    let res=await supabase.from('transactions').insert([tx])
-    for(let r=0;r<3&&res.error&&res.error.message?.includes('column');r++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
+    /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) — lib/saveWithFallback.js 단일 출처 */
+    const res=await saveWithFallback(tx,p=>supabase.from('transactions').insert([p]),{retries:3,label:'transactions insert',neverDrop:TX_NEVER_DROP})
+    /* ★ 금액·거래단가·일자가 거절되면 재시도를 보내지 않았다 — 거래가 기록되지 않았으므로 오류로 끝낸다 */
+    if(res.blocked.length){setMsg(blockedText(res.blocked,txColLabel));setSaving(false);return}
     if(res.error){setMsg(dbErrorMsg(res.error));setSaving(false);return}
     /* 재고는 0009 트리거가 단일 기록(drugs+inventory 동기). 클라 직접 update·음수 절삭 제거 — 부족 시 트리거 RAISE가 위 res.error로 차단. */
     let _mMsg=''
     if(updateMaster){const _mr=await supabase.from('drugs').update({purchase_price:pp}).eq('drug_code',selDrug.drug_code);if(_mr.error){_mMsg=' · 단, 마스터 단가 변경 실패('+dbErrorMsg(_mr.error)+')'}else{_mMsg=' · 마스터 단가 갱신'}}
     setMsg(`${tab} 완료! ${selDrug.drug_name} ${q}개`+_mMsg);setSelDrug(null);setSearch('');setForm(p=>({...p,qty:'',purchase_price:'',edi_price:'',note:'',lot_no:'',expiry_date:'',reason:'',supplier:''}));setSaving(false);onReload?.();loadTxns()
-    setTimeout(()=>setMsg(null),3000)
+    /* ★ 버린 칸이 있으면 연보라로 알리고 자동으로 지우지 않는다(사용자가 읽는다) */
+    if(res.dropped.length){setDropped(res.dropped);return}
+    setDropped([]);setTimeout(()=>setMsg(null),3000)
   }
   async function _delTx(tx){
     setDelMsg(null)
@@ -3175,12 +3200,16 @@ function TransactionForm({drugs,onReload,navFilter}){
        마감 차단·재고 부족·RLS·컬럼 오류는 사용자 조치가 각각 달라 카운트만으로는 손을 쓸 수 없다.
        okIdx 는 성공 행만 목록에서 빼기 위한 것이다(결함 35). */
     let ok=0,fail=0; const okIdx=new Set(); const failMap=new Map()
+    /* ★ 폴백이 버린 칸 — 성공·실패 건수는 그대로 두고 「n건은 일부 항목 미반영」만 덧붙인다 */
+    let partialCount=0; const partialCols=[]
     for(const r of valid){
       const tx={drug_code:r.drug_code,type:tab,quantity:r.quantity,unit_price:r.unit_price,total_amount:r.total_amount,memo:r.note||null,transaction_date:r.transaction_date,reason:r.reason||null,handler:r.handler||null,approver:r.approver||null,process_status:r.process_status||null,supplier:r.supplier||null,lot_no:r.lot_no||null,expiry_date:r.expiry_date||null}
-      let res=await supabase.from('transactions').insert([tx])
-      for(let rt=0;rt<3&&res.error&&res.error.message?.includes('column');rt++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[transactions insert] 스키마에 없는 컬럼 자동 제거(페이로드 점검 필요):',m[1]);delete tx[m[1]];res=await supabase.from('transactions').insert([tx])}
-      if(!res.error){ ok++; okIdx.add(r.idx) /* 재고는 0009 트리거 단일기록. 음수는 트리거 RAISE로 차단(해당 행 fail). */ }
-      else { fail++; failMap.set(r.idx,{...bulkFailKind(res.error),raw:dbErrorMsg(res.error)}) }
+      /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) — lib/saveWithFallback.js 단일 출처 */
+      const res=await saveWithFallback(tx,q=>supabase.from('transactions').insert([q]),{retries:3,label:'transactions insert',neverDrop:TX_NEVER_DROP})
+      if(!res.error){ ok++; okIdx.add(r.idx) /* 재고는 0009 트리거 단일기록. 음수는 트리거 RAISE로 차단(해당 행 fail). */
+        if(res.dropped.length){partialCount++;for(const c of res.dropped)if(!partialCols.includes(c))partialCols.push(c)} }
+      /* ★ 금액·거래단가·일자가 거절된 행은 아무것도 기록되지 않았다 — 실패로 세고 같은 문구를 사유에 적는다 */
+      else { fail++; failMap.set(r.idx,{...bulkFailKind(res.error),raw:res.blocked.length?blockedText(res.blocked,txColLabel):dbErrorMsg(res.error)}) }
     }
     setBulkLd(false);setBulkRepl(null);setBulkMsg(`완료! ${ok}건 등록${replaced?` · 기존 ${replaced}건 교체`:''}${fail?` · ${fail}건 실패`:''}`)
     /* ★ 성공 행만 목록에서 뺀다(결함 35). 실패 행에는 사유를 붙이고, 미매칭·수량오류 행은
@@ -3188,7 +3217,9 @@ function TransactionForm({drugs,onReload,navFilter}){
     setBulkData(prev=>prev.filter(r=>!okIdx.has(r.idx)).map(r=>failMap.has(r.idx)?{...r,_fail:failMap.get(r.idx)}:r))
     onReload?.();loadTxns()
     /* ★ 실패가 있으면 자동 소멸시키지 않는다(결함 36) — 4초는 사유를 읽기에 짧다. 닫기 버튼으로 지운다. */
-    if(!fail) setTimeout(()=>setBulkMsg(null),4000)
+    setBulkPartial(partialCount?{n:partialCount,cols:partialCols}:null)
+    /* ★ 일부 미반영이 있으면 실패와 같은 이유로 자동 소멸시키지 않는다 */
+    if(!fail&&!partialCount) setTimeout(()=>setBulkMsg(null),4000)
   }
   function dlHist(){
     const rows=sorted.map(tx=>{const o={};cols.forEach(([k,h])=>{o[h]=(k==='total_amount'&&!tx[k]&&tx.type==='조정')?(Number(tx.quantity)||0)*((drugs.find(dd=>dd.drug_code===tx.drug_code)||{}).purchase_price||0):(tx[k]??'')});return o})
@@ -3243,7 +3274,8 @@ function TransactionForm({drugs,onReload,navFilter}){
           <select value={form.process_status} onChange={e=>sf('process_status',e.target.value)} style={{...ip,marginBottom:6}}>{TX_STATUS.map(s=><option key={s}>{s}</option>)}</select>
         </>}
         <input value={form.note} onChange={e=>sf('note',e.target.value)} placeholder="비고" style={{...ip,marginBottom:10}}/>
-        {msg&&<div style={{background:msg.includes('완료')?t.greenL:t.redL,borderRadius:6,padding:'6px 10px',marginBottom:6,color:msg.includes('완료')?t.green:t.red,fontSize:11}}>{msg}</div>}
+        {dropped.length>0&&<div style={{background:PARTIAL_BG,borderRadius:6,padding:'6px 10px',marginBottom:6,color:PARTIAL_FG,fontSize:11,fontWeight:600}}>{partialText(dropped,txColLabel)}</div>}
+        {dropped.length===0&&msg&&<div style={{background:msg.includes('완료')?t.greenL:t.redL,borderRadius:6,padding:'6px 10px',marginBottom:6,color:msg.includes('완료')?t.green:t.red,fontSize:11}}>{msg}</div>}
         <button onClick={()=>submit()} disabled={saving||_selClosed} style={{width:'100%',padding:10,borderRadius:8,border:'none',background:(saving||_selClosed)?t.textL:tc[tab]?.c,color:'#fff',cursor:(saving||_selClosed)?'not-allowed':'pointer',fontSize:13,fontWeight:700}}>{_selClosed?'마감된 월 (읽기 전용)':saving?'처리 중...':tab+' 등록'}</button>
         {/* 대량등록 */}
         <div style={{borderTop:`1px solid ${t.border}`,marginTop:14,paddingTop:12}}>
@@ -3253,6 +3285,7 @@ function TransactionForm({drugs,onReload,navFilter}){
             <button onClick={()=>fileRef.current.click()} disabled={_selClosed} style={{flex:1,padding:'6px',borderRadius:6,border:`1px solid ${_selClosed?t.border:tc[tab]?.c}`,background:_selClosed?t.bg:tc[tab]?.bg,color:_selClosed?t.textL:tc[tab]?.c,cursor:_selClosed?'not-allowed':'pointer',fontSize:10,fontWeight:600}}>업로드</button>
           </div>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={xlUpload} style={{display:'none'}}/>
+          {bulkPartial&&<div style={{marginTop:6,background:PARTIAL_BG,borderRadius:6,padding:'5px 9px',fontSize:10,fontWeight:600,color:PARTIAL_FG}}>{partialBulkText(bulkPartial.n,bulkPartial.cols,txColLabel)}</div>}
           {bulkMsg&&<div style={{marginTop:6,fontSize:10,color:bulkMsg.includes('완료')?t.green:bulkMsg.includes('오류')?t.red:t.blue,fontWeight:600}}>{bulkMsg}{bulkData.some(r=>r._fail)?<button onClick={()=>setBulkMsg(null)} style={{marginLeft:6,padding:'1px 6px',borderRadius:4,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>닫기</button>:null}</div>}
           {bulkData.some(r=>!r.found)?<div style={{marginTop:8}}><div style={{color:t.amber,fontWeight:600,fontSize:11,marginBottom:4}}>매칭실패 {bulkData.filter(r=>!r.found).length}건 — 코드 정정 후 재매핑</div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:10}}><thead><tr>{['업로드코드','약품명','수량','단가',''].map((h,hi)=><th key={hi} style={{textAlign:(hi>=2&&hi<=3)?'right':'left',padding:'4px 6px',color:t.textM,borderBottom:'1px solid '+t.border}}>{h}</th>)}</tr></thead><tbody>{bulkData.filter(r=>!r.found).map(r=><tr key={r.idx} style={{borderBottom:'1px solid '+t.border}}><td style={{padding:'3px 6px'}}><input value={r.drug_code} onChange={e=>setBulkCode(r.idx,e.target.value)} style={{padding:'2px 6px',border:'1px solid '+(r._err?t.red:t.border),borderRadius:5,fontSize:10,background:t.bg,color:t.text,width:100}}/>{r._err?<span style={{marginLeft:4,color:t.red,fontSize:9}}>{r._err}</span>:null}</td><td style={{padding:'3px 6px',color:t.textM}}>{r.drug_name||'-'}</td><td style={{padding:'3px 6px',textAlign:'right',color:t.textM}}>{r.quantity}</td><td style={{padding:'3px 6px',textAlign:'right',color:t.textM}}>{r.unit_price}</td><td style={{padding:'3px 6px',whiteSpace:'nowrap'}}><button onClick={()=>remapBulk(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:600,marginRight:3}}>재매핑</button><button onClick={()=>cancelBulk(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>취소</button></td></tr>)}</tbody></table></div></div>:null}
           {bulkData.some(r=>r.found&&!(r.quantity>0))?<div style={{marginTop:8}}><div style={{color:t.red,fontWeight:600,fontSize:11,marginBottom:4}}>수량 오류 {bulkData.filter(r=>r.found&&!(r.quantity>0)).length}건 — 수량 수정 후 재검증 또는 취소</div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:10}}><thead><tr>{['코드','약품명','수량(수정)','사유',''].map((h,hi)=><th key={hi} style={{textAlign:hi===2?'right':'left',padding:'4px 6px',color:t.textM,borderBottom:'1px solid '+t.border}}>{h}</th>)}</tr></thead><tbody>{bulkData.filter(r=>r.found&&!(r.quantity>0)).map(r=><tr key={r.idx} style={{borderBottom:'1px solid '+t.border}}><td style={{padding:'3px 6px',color:t.text}}>{r.drug_code}</td><td style={{padding:'3px 6px',color:t.textM}}>{r.drug_name||'-'}</td><td style={{padding:'3px 6px',textAlign:'right'}}><input value={r.quantity} onChange={e=>setBulkQty(r.idx,e.target.value)} style={{padding:'2px 6px',border:'1px solid '+(r._qerr?t.red:t.border),borderRadius:5,fontSize:10,background:t.bg,color:t.text,width:64,textAlign:'right'}}/></td><td style={{padding:'3px 6px',color:t.red,fontSize:9}}>수량 0 이하/비숫자{r._qerr?' · '+r._qerr:''}</td><td style={{padding:'3px 6px',whiteSpace:'nowrap'}}><button onClick={()=>revalidateBulkQty(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:600,marginRight:3}}>재검증</button><button onClick={()=>cancelBulk(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>취소</button></td></tr>)}</tbody></table></div></div>:null}

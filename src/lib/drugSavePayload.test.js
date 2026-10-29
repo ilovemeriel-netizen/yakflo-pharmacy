@@ -206,14 +206,14 @@ describe('대량 등록 경로 6곳 — drugRules.normalizeDrugRow 가 만드는
 
 describe('폴백 재시도 루프 개수 — 줄면 좋고, 늘면 멈춰 세운다', () => {
   /* ★ 이 숫자는 「재시도 조건이 몇 군데 흩어져 있나」다.
-       2026-10-29 2단계에서 drugs 12경로의 루프를 lib/saveWithFallback.js **한 곳**으로 모았다.
-       그래서 조건(`includes('column')`)은 도우미에 1개만 남고, 호출부에는 없다.
-       App.jsx 에 남은 4개는 **transactions** 경로다 — 이번 범위 밖이라 그대로 두었다.
-       루프를 더 없앴으면 숫자를 줄이고, 새 저장 경로를 만들었으면
-       그 경로를 APP_SITES 에 올린 뒤 숫자를 늘릴 것. 모르고 늘지 않게 못을 박는다. */
+       · 2026-10-29 2단계: drugs 12경로의 루프를 lib/saveWithFallback.js **한 곳**으로 모았다.
+       · 2026-10-29 3단계: transactions 4경로도 같은 도우미로 옮겼다
+         → App.jsx 는 **4 → 0**. 이제 조건·횟수·정규식은 도우미에만 있다.
+       루프를 더 없앨 곳은 없다. 새 저장 경로를 만들었으면 그 경로를 APP_SITES 에
+       올린 뒤 숫자를 늘릴 것. 모르고 늘지 않게 못을 박는다. */
   const EXPECT = [
     ['src/lib/saveWithFallback.js', 1],  /* 단일 출처 — 조건·횟수·정규식이 여기에만 있다 */
-    ['src/App.jsx', 4],                  /* transactions 4곳만 남았다(drugs 0곳) */
+    ['src/App.jsx', 0],                  /* drugs 6 + transactions 4 전부 도우미로 이관 */
     ['src/BulkUploadModal.jsx', 0],      /* insertOne · insertChunk · updateOne → 도우미로 이관 */
     ['src/lib/drugBulk.js', 0],          /* 같은 3종 → 도우미로 이관 */
   ]
@@ -224,18 +224,18 @@ describe('폴백 재시도 루프 개수 — 줄면 좋고, 늘면 멈춰 세운
     })
   }
 
-  it('★ drugs 12경로가 모두 도우미를 거친다 — 호출 12곳', () => {
+  it('★ 저장 16경로가 모두 도우미를 거친다 — 호출 16곳', () => {
     const calls = f => (rd(f).match(/saveWithFallback\(/g) || []).length
-    expect(calls('src/App.jsx'), 'App.jsx drugs 6경로').toBe(6)
+    /* App.jsx = drugs 6 + transactions 4 */
+    expect(calls('src/App.jsx'), 'App.jsx drugs 6 + transactions 4').toBe(10)
     expect(calls('src/BulkUploadModal.jsx')).toBe(3)
     expect(calls('src/lib/drugBulk.js')).toBe(3)
   })
 
-  it('★ 호출부에 drugs 직접 재시도가 남아 있지 않다', () => {
-    /* `'<col>' column` 정규식을 직접 쓰는 곳 — App.jsx 의 4개는 transactions 경로다(범위 밖).
-       대량 두 파일은 0 이어야 한다. drugs 경로가 다시 직접 재시도를 하면 위 루프 개수 검사에서 걸린다. */
+  it('★ 호출부에 직접 재시도가 한 곳도 남아 있지 않다', () => {
+    /* `'<col>' column` 정규식을 직접 쓰는 곳 — 도우미 1곳뿐이어야 한다. */
     const re = f => (rd(f).match(/match\(\/'\(\[\^'\]\+\)' column\//g) || []).length
-    expect(re('src/App.jsx'), 'App.jsx — transactions 4곳만 남아야 한다').toBe(4)
+    expect(re('src/App.jsx'), 'App.jsx — transactions 까지 이관됐다').toBe(0)
     expect(re('src/BulkUploadModal.jsx')).toBe(0)
     expect(re('src/lib/drugBulk.js')).toBe(0)
     expect(re('src/lib/saveWithFallback.js'), '도우미에 정규식이 정확히 한 번 — 단일 출처').toBe(1)

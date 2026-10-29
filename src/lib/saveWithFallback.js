@@ -36,15 +36,35 @@ export function colLabel(col) {
   return COL_LABEL[col] || String(col)
 }
 
-/* 모달·인라인 칸에 띄우는 문구 */
-export function partialText(dropped) {
-  return '저장했지만 반영되지 않은 항목이 있습니다: ' + (dropped || []).map(colLabel).join(', ')
+/* 모달·인라인 칸에 띄우는 문구.
+   ★ labelOf 를 받는 이유 — transactions 의 칸은 FIELD_DEFS(drugs 사전)에 거의 없다.
+     그대로 두면 「금액」이 `total_amount` 로 뜬다. 입출고 경로는 txColLabel 을 넘긴다.
+     기본값은 drugs 라벨이라 기존 호출부는 한 글자도 바뀌지 않는다. */
+export function partialText(dropped, labelOf = colLabel) {
+  return '저장했지만 반영되지 않은 항목이 있습니다: ' + (dropped || []).map(labelOf).join(', ')
 }
 
 /* 엑셀 일괄 결과 요약에 한 줄 */
-export function partialBulkText(count, dropped) {
-  const names = (dropped || []).map(colLabel)
+export function partialBulkText(count, dropped, labelOf = colLabel) {
+  const names = (dropped || []).map(labelOf)
   return `${count}건은 일부 항목 미반영(${names[0] || '-'} 등)`
+}
+
+/* 받침이 있으면 '이', 없으면 '가' — 「금액이」 · 「거래단가가」 · 「일자가」.
+   ★ 문장을 고정으로 「이」로 쓰면 「거래단가이」가 된다. */
+function subjP(word) {
+  const s = String(word || '')
+  const last = s.charCodeAt(s.length - 1)
+  if (!(last >= 0xac00 && last <= 0xd7a3)) return '이'   /* 한글이 아니면 보수적으로 '이' */
+  return (last - 0xac00) % 28 !== 0 ? '이' : '가'
+}
+
+/* ★ 버리면 안 되는 칸이 거절돼 **아무것도 기록하지 않은** 경우의 안내.
+   거래는 저장되지 않았다 — 「일부 미반영」(연보라)이 아니라 오류(빨강)다. */
+export function blockedText(blocked, labelOf = colLabel) {
+  const names = (blocked || []).map(labelOf)
+  const n = names.join(', ')
+  return `${n}${subjP(names[names.length - 1])} 저장되지 않아 거래를 기록하지 않았습니다. 약제과 관리자에게 알려 주세요`
 }
 
 /* 오류에서 버릴 컬럼 이름을 뽑는다. 못 뽑으면 null — 호출부는 그대로 오류로 끝낸다. */
@@ -69,18 +89,35 @@ function omit(payload, col) {
 /* ── 저장 1회 + 폴백 재시도 ───────────────────────────────────────────────
    payload : 보낼 객체(또는 객체 배열)
    send(p) : 그 payload 로 요청을 보내고 { error } 를 돌려주는 함수
-   opts    : { retries = 3, label = 'drugs' }
-   반환    : { error, dropped: ['efficacy_class', …], payload: 마지막으로 보낸 것 } */
+   opts    : { retries = 3, label = 'drugs', neverDrop = [] }
+
+   ★ neverDrop — 「버리고 재시도하면 안 되는 칸」. 거기 적힌 칸이 거절되면
+     **그 칸을 뺀 요청을 아예 보내지 않고** blocked 에 담아 끝낸다.
+     입출고(transactions)의 금액·거래단가·일자가 그렇다 — 보내는 순간
+     trg_apply_tx_to_inventory 가 재고를 반영해 버리므로, 보낸 뒤에 알리면 늦다.
+     drugs 경로는 이 옵션을 쓰지 않아 지금까지와 똑같이 동작한다.
+
+   반환 : { error, dropped: ['lot_no', …], blocked: ['total_amount', …],
+            payload: 마지막으로 보낸 것 }
+          blocked 가 비어 있지 않으면 **아무것도 기록되지 않았다**(error 도 함께 찬다). */
 export async function saveWithFallback(payload, send, opts = {}) {
   const retries = opts.retries == null ? 3 : opts.retries
   const label = opts.label || 'drugs'
+  const neverDrop = opts.neverDrop || []
   const dropped = []
+  const blocked = []
   let cur = payload
   let res = await send(cur)
 
   for (let r = 0; r < retries && res && res.error; r++) {
     const col = droppedColumnOf(res.error)
     if (!col) break
+    if (neverDrop.indexOf(col) !== -1) {
+      /* ★ 재시도를 보내지 않는다 — 보내면 그 거래가 재고에 반영된 채 값만 빠진다 */
+      console.warn(`[${label}] ★ 버리면 안 되는 칸이라 재시도하지 않는다:`, col, '/ 원인:', res.error.message)
+      blocked.push(col)
+      break
+    }
     /* ★ 어느 경로에서든 흔적을 남긴다 — 예전에 warn 조차 없던 3곳(유효기한·사용점검) 포함 */
     console.warn(`[${label}] 미존재 컬럼 자동 제거:`, col, '/ 원인:', res.error.message)
     dropped.push(col)
@@ -88,5 +125,5 @@ export async function saveWithFallback(payload, send, opts = {}) {
     res = await send(cur)
   }
 
-  return { error: (res && res.error) || null, dropped, payload: cur }
+  return { error: (res && res.error) || null, dropped, blocked, payload: cur }
 }
