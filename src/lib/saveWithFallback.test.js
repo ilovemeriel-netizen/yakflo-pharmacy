@@ -6,7 +6,7 @@
      PostgreSQL 42703 · NOT NULL 23502 · 형식 42804 · RLS · GRANT · 트리거 거절은
      재시도 없이 그대로 오류가 돼야 한다. 그렇지 않으면 엉뚱한 컬럼이 조용히 사라진다. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { saveWithFallback, droppedColumnOf, colLabel, partialText, partialBulkText, PARTIAL_BG, PARTIAL_FG, PARTIAL_LINE } from './saveWithFallback'
+import { saveWithFallback, droppedColumnOf, colLabel, partialText, partialBulkText, blockedText, PARTIAL_BG, PARTIAL_FG, PARTIAL_LINE } from './saveWithFallback'
 
 /* PostgREST 가 실제로 내려주는 문구 */
 const pgrst = col => ({ message: `Could not find the '${col}' column of 'drugs' in the schema cache`, code: 'PGRST204' })
@@ -124,6 +124,74 @@ describe('saveWithFallback', () => {
     expect(String(args[0])).toContain('미존재 컬럼 자동 제거')
     expect(args[1]).toBe('recommended_action')
     expect(String(args[3])).toContain('schema cache')
+  })
+})
+
+describe('neverDrop — 버리면 안 되는 칸', () => {
+  it('★ 그 칸이 거절되면 재시도를 보내지 않는다 — send 1회', async () => {
+    const s = sender([pgrst('total_amount')])
+    const r = await saveWithFallback({ drug_code: 'A', total_amount: 1980, quantity: 10 }, s.send,
+      { neverDrop: ['total_amount', 'unit_price', 'transaction_date'] })
+    expect(s.calls(), '재시도를 보내면 안 된다').toBe(1)
+    expect(r.blocked).toEqual(['total_amount'])
+    expect(r.dropped).toEqual([])
+    expect(r.error, '아무것도 기록되지 않았으므로 error 도 함께 찬다').toBeTruthy()
+    /* 보낸 페이로드는 원본 그대로 — 칸을 빼지 않았다 */
+    expect(s.seen[0].total_amount).toBe(1980)
+  })
+
+  it('★ 목록에 없는 칸은 지금까지와 같이 버리고 재시도한다', async () => {
+    const s = sender([pgrst('lot_no')])
+    const r = await saveWithFallback({ drug_code: 'A', lot_no: 'L1' }, s.send,
+      { neverDrop: ['total_amount', 'unit_price', 'transaction_date'] })
+    expect(s.calls()).toBe(2)
+    expect(r.dropped).toEqual(['lot_no'])
+    expect(r.blocked).toEqual([])
+    expect(r.error).toBeNull()
+  })
+
+  it('안전한 칸을 먼저 버린 뒤 보호 칸이 거절되면 거기서 멈춘다', async () => {
+    const s = sender([pgrst('lot_no'), pgrst('unit_price')])
+    const r = await saveWithFallback({ drug_code: 'A', lot_no: 'L1', unit_price: 198 }, s.send,
+      { neverDrop: ['unit_price'] })
+    expect(s.calls(), '첫 요청 + lot_no 재시도까지 2회에서 멈춘다').toBe(2)
+    expect(r.dropped).toEqual(['lot_no'])
+    expect(r.blocked).toEqual(['unit_price'])
+    expect(r.error).toBeTruthy()
+  })
+
+  it('★ drugs 경로는 옵션을 쓰지 않아 지금과 똑같다 — blocked 는 늘 빈 배열', async () => {
+    const s = sender([pgrst('purchase_price')])
+    const r = await saveWithFallback({ drug_code: 'A', purchase_price: 198 }, s.send)
+    expect(s.calls()).toBe(2)
+    expect(r.dropped).toEqual(['purchase_price'])
+    expect(r.blocked).toEqual([])
+    expect(r.error).toBeNull()
+  })
+
+  it('warn 에 「재시도하지 않는다」가 남는다', async () => {
+    const s = sender([pgrst('transaction_date')])
+    await saveWithFallback({ transaction_date: '2026-10-01' }, s.send,
+      { neverDrop: ['transaction_date'], label: 'transactions insert' })
+    expect(String(warn.mock.calls[0][0])).toContain('버리면 안 되는 칸이라 재시도하지 않는다')
+    expect(warn.mock.calls[0][1]).toBe('transaction_date')
+  })
+})
+
+describe('blockedText — 거래를 기록하지 않았다는 안내', () => {
+  it('★ 승인된 문장', () => {
+    expect(blockedText(['total_amount'], c => ({ total_amount: '금액' })[c] || c))
+      .toBe('금액이 저장되지 않아 거래를 기록하지 않았습니다. 약제과 관리자에게 알려 주세요')
+  })
+  it('★ 조사가 칸 이름에 따라 바뀐다 — 받침 있으면 이, 없으면 가', () => {
+    const L = { total_amount: '금액', unit_price: '거래단가', transaction_date: '일자' }
+    const lf = c => L[c] || c
+    expect(blockedText(['total_amount'], lf)).toContain('금액이 저장되지 않아')
+    expect(blockedText(['unit_price'], lf)).toContain('거래단가가 저장되지 않아')
+    expect(blockedText(['transaction_date'], lf)).toContain('일자가 저장되지 않아')
+  })
+  it('한글이 아니면 「이」로 둔다', () => {
+    expect(blockedText(['abc'], c => c)).toContain('abc이 저장되지 않아')
   })
 })
 

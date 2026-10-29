@@ -10,8 +10,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { PARTIAL_BG, PARTIAL_FG, partialText, partialBulkText } from './lib/saveWithFallback'
-import { txColLabel } from './lib/txTypes'
+import { PARTIAL_BG, PARTIAL_FG, partialText, partialBulkText, blockedText } from './lib/saveWithFallback'
+import { txColLabel, TX_NEVER_DROP } from './lib/txTypes'
 
 /* PostgREST PGRST204 — 폴백을 발동시키는 유일한 문구 */
 const pgrst = col => ({ message: `Could not find the '${col}' column of 'transactions' in the schema cache`, code: 'PGRST204' })
@@ -87,11 +87,11 @@ describe('재고 보정 모달 — AdjustModal', () => {
     return { onClose, onSaved }
   }
 
-  it('★ 금액이 빠지면 연보라 알림 + 닫지 않는다 · INSERT 2회', async () => {
-    const { onClose, onSaved } = await save([pgrst('total_amount')])
-    const el = noticeOf(['total_amount'])
+  it('★ 사유가 빠지면 연보라 알림 + 닫지 않는다 · INSERT 2회', async () => {
+    const { onClose, onSaved } = await save([pgrst('reason')])
+    const el = noticeOf(['reason'])
     expect(el, '「일부 미반영」 문구가 없다').toBeTruthy()
-    expect(el.textContent).toContain('금액')            /* 날컬럼 이름이 아니라 화면 이름 */
+    expect(el.textContent).toContain('사유')            /* 날컬럼 이름이 아니라 화면 이름 */
     expect(bgOf(el)).toBe(css('background', PARTIAL_BG))
     expect(fgOf(el)).toBe(css('color', PARTIAL_FG))
     expect(onClose, '모달이 자동으로 닫혔다').not.toHaveBeenCalled()
@@ -99,9 +99,30 @@ describe('재고 보정 모달 — AdjustModal', () => {
     expect(screen.queryByText('보정 완료')).toBeNull()
     /* 재고 반영 경로 고정: transactions INSERT 만, 첫 요청 + 재시도 1회 */
     expect(calls).toEqual(['transactions.insert', 'transactions.insert'])
-    expect('total_amount' in txPayloads[1]).toBe(false)
+    expect('reason' in txPayloads[1]).toBe(false)
     expect(txPayloads[1].quantity).toBe(2)             /* 수량은 그대로 */
   })
+
+  /* ★★ 금액·거래단가·일자는 **버리고 재시도하지 않는다**(사용자 승인 2026-10-29).
+     INSERT 가 성공하는 순간 trg_apply_tx_to_inventory 가 재고를 반영하므로,
+     값이 빠진 채 보내고 나서 알리면 늦다. 거래 자체를 기록하지 않는다. */
+  for (const col of TX_NEVER_DROP) {
+    it(`★★ ${txColLabel(col)}이(가) 거절되면 재시도를 보내지 않고 빨간 오류 · INSERT 1회`, async () => {
+      const { onClose, onSaved } = await save([pgrst(col)])
+      /* 재시도를 보내지 않았다 — 이것이 이 시험의 핵심이다 */
+      expect(calls, '재시도 INSERT 를 보냈다 — 재고가 이미 반영됐을 수 있다').toEqual(['transactions.insert'])
+      /* 승인된 문구로 빨간 오류 */
+      const el = screen.getByText(blockedText([col], txColLabel))
+      expect(el).toBeTruthy()
+      expect(bgOf(el), '연보라가 아니라 기존 빨강이어야 한다').toBe(css('background', T.t.redL))
+      /* 연보라 「일부 미반영」으로 넘어가지 않는다 */
+      expect(noticeOf([col])).toBeNull()
+      expect(screen.queryByText('보정 완료')).toBeNull()
+      /* 모달을 닫지 않고, 저장된 것이 없으니 목록도 새로고침하지 않는다 */
+      expect(onClose).not.toHaveBeenCalled()
+      expect(onSaved, '기록된 것이 없으므로 onSaved 를 부르지 않는다').not.toHaveBeenCalled()
+    })
+  }
 
   it('빠짐 없으면 기존 「보정 완료」 그대로 · INSERT 1회', async () => {
     await save([])
@@ -170,6 +191,19 @@ describe('폐기·반품 모달 — DisposalModal', () => {
     expect(screen.queryByText('처리 완료')).toBeNull()
     expect(calls).toEqual(['transactions.insert', 'transactions.insert'])
   })
+
+  for (const col of TX_NEVER_DROP) {
+    it(`★★ ${txColLabel(col)}이(가) 거절되면 재시도를 보내지 않고 빨간 오류 · INSERT 1회`, async () => {
+      const { onClose, onSaved } = await save([pgrst(col)])
+      expect(calls, '재시도 INSERT 를 보냈다 — 재고가 이미 반영됐을 수 있다').toEqual(['transactions.insert'])
+      const el = screen.getByText(blockedText([col], txColLabel))
+      expect(bgOf(el), '연보라가 아니라 기존 빨강이어야 한다').toBe(css('background', T.t.redL))
+      expect(noticeOf([col])).toBeNull()
+      expect(screen.queryByText('처리 완료')).toBeNull()
+      expect(onClose).not.toHaveBeenCalled()
+      expect(onSaved).not.toHaveBeenCalled()
+    })
+  }
 })
 
 /* ══════════════ ③④ 입출고 화면 (TransactionForm) ══════════════
@@ -184,8 +218,13 @@ describe('입출고 화면 — 단건 저장·엑셀 일괄의 배선', () => {
     const i = SRC.indexOf('async function _doSave(pp,updateMaster){')
     expect(i).toBeGreaterThan(0)
     const body = SRC.slice(i, SRC.indexOf('\r\n  }', i))
-    expect(body).toContain("saveWithFallback(tx,p=>supabase.from('transactions').insert([p]),{retries:3,label:'transactions insert'}")
+    expect(body).toContain("saveWithFallback(tx,p=>supabase.from('transactions').insert([p]),{retries:3,label:'transactions insert',neverDrop:TX_NEVER_DROP}")
     expect(body).toContain('if(res.dropped.length){setDropped(res.dropped);return}')
+    /* ★★ 금액·거래단가·일자 차단이 **오류 분기보다 먼저** 와야 한다 — 뒤에 오면 날오류가 뜬다 */
+    const iBlock = body.indexOf('if(res.blocked.length){setMsg(blockedText(res.blocked,txColLabel));setSaving(false);return}')
+    const iErr = body.indexOf('if(res.error){setMsg(dbErrorMsg(res.error));setSaving(false);return}')
+    expect(iBlock, 'blocked 분기가 없다').toBeGreaterThan(0)
+    expect(iBlock, 'blocked 분기가 오류 분기보다 뒤에 있다').toBeLessThan(iErr)
     /* 기존 연결은 한 줄도 바뀌지 않았다 — 마스터 단가 갱신·폼 초기화·재조회 */
     expect(body).toContain("supabase.from('drugs').update({purchase_price:pp})")
     expect(body).toContain('onReload?.();loadTxns()')
@@ -201,8 +240,10 @@ describe('입출고 화면 — 단건 저장·엑셀 일괄의 배선', () => {
     const i = SRC.indexOf('let ok=0,fail=0; const okIdx=new Set(); const failMap=new Map()')
     expect(i).toBeGreaterThan(0)
     const body = SRC.slice(i, SRC.indexOf('setBulkData(prev=>', i))
-    expect(body).toContain("saveWithFallback(tx,q=>supabase.from('transactions').insert([q]),{retries:3,label:'transactions insert'}")
+    expect(body).toContain("saveWithFallback(tx,q=>supabase.from('transactions').insert([q]),{retries:3,label:'transactions insert',neverDrop:TX_NEVER_DROP}")
     expect(body).toContain('if(res.dropped.length){partialCount++;')
+    /* ★★ 차단된 행은 실패로 세고 사유에 같은 문구가 들어간다 */
+    expect(body).toContain('raw:res.blocked.length?blockedText(res.blocked,txColLabel):dbErrorMsg(res.error)')
     /* 성공·실패 건수 문구는 손대지 않았다 */
     expect(body).toContain('setBulkMsg(`완료! ${ok}건 등록${replaced?` · 기존 ${replaced}건 교체`:\'\'}${fail?` · ${fail}건 실패`:\'\'}`)')
     /* 일부 미반영이 있으면 자동 소멸시키지 않는다 */
