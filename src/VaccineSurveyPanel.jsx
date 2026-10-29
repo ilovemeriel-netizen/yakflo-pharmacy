@@ -318,11 +318,14 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     { k: 'emp_no', h: '사번', w: 110, align: 'left', filter: true },
     { k: 'name', h: '성명', w: 110, align: 'left' },
     { k: 'dept', h: '소속', w: 110, align: 'left', filter: true },
-    { k: 'self_dose', h: '본인 접종', w: 78, align: 'center', filter: true },
-    { k: 'family_count', h: '가족 접종 인원', w: 104, align: 'right' },
-    { k: 'dose', h: '신청 수량(도즈)', w: 110, align: 'right' },
-    { k: 'wish_date', h: '접종 희망일', w: 110, align: 'center', filter: true },
-    { k: 'status', h: '신청 상태', w: 86, align: 'center', filter: true },
+    { k: 'self_dose', h: '본인 접종', w: 70, align: 'center', filter: true },
+    /* ★ 긴 머리글만 두 줄로 접는다 — 글자 크기·색·열 순서는 그대로다.
+       공용 ColMenu 의 라벨에는 white-space:nowrap 이 박혀 있어 **<br/> 로** 끊는다
+       (그 컴포넌트를 고치면 쓰는 화면이 전부 영향을 받는다). */
+    { k: 'family_count', h: '가족 접종', h2: '인원', w: 76, align: 'right' },
+    { k: 'dose', h: '신청 수량', h2: '(도즈)', w: 80, align: 'right' },
+    { k: 'wish_date', h: '접종 희망일', w: 100, align: 'center', filter: true },
+    { k: 'status', h: '신청 상태', w: 80, align: 'center', filter: true },
     { k: 'done', h: '접종 완료', w: 110, align: 'center' },
     { k: 'memo', h: '확인 사항', w: 150, align: 'left' },
   ]
@@ -521,10 +524,12 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
                     {COLS.map(c => <th key={c.k} style={{
                       padding: '8px 10px', textAlign: c.align, whiteSpace: 'nowrap',
                       borderBottom: '1px solid ' + t.border, fontSize: 11, color: t.textM, fontWeight: 700,
+                      lineHeight: 1.3, verticalAlign: 'bottom',
                     }}>
                       {/* ★ 공용 ColMenu 가 읽는 모양 그대로 — items·value·on.
                           고르는 값은 **원문 기준**이다(가려진 값으로 모으면 * 끼리 묶인다). */}
-                      <ColMenu colKey={c.k} label={c.h} sk={sk} sd={sd} setSort={sort.setSort}
+                      <ColMenu colKey={c.k} label={c.h2 ? <>{c.h}<br />{c.h2}</> : c.h}
+                        sk={sk} sd={sd} setSort={sort.setSort}
                         filter={c.filter ? {
                           items: [...new Set(view.map(r => (
                             c.k === 'self_dose' ? r._self : c.k === 'status' ? r._status : String(r[c.k] ?? '')) || '—'))]

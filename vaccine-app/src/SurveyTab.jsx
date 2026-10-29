@@ -352,7 +352,9 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
     <button type="button" disabled={busy || (dupLocked ? false : (dupPick === 'mine' ? dupPin.length !== 4 : !dept))}
       onClick={() => (dupPick === 'mine' && !dupLocked) ? claim() : (dupLocked ? setDupPick('other') : submit(true))}
       style={{ ...btnMain(!busy && (dupLocked ? true : (dupPick === 'mine' ? dupPin.length === 4 : !!dept))), marginTop: 16 }}>
-      {busy ? '처리 중...' : (dupPick === 'mine' && !dupLocked) ? '확인' : '본인의 신청 내역이 아닙니다.'}
+      {/* ★ 01 화면의 진행 버튼은 **「확인」 하나**다 — 선택지 문장을 버튼에 넣지 않는다.
+          03(입력 제한)에서만 다음 할 일을 버튼 글자로 적는다(사용자 확정 2026-10-30). */}
+      {busy ? '처리 중...' : dupLocked ? '본인의 신청 내역이 아닙니다.' : '확인'}
     </button>
     <button type="button" onClick={() => { setMsg(null); setView('form') }}
       style={{ ...btnGhost, marginTop: 10 }}>처음 화면으로</button>

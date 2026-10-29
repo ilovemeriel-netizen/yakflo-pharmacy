@@ -296,10 +296,23 @@ describe('관리 화면 문구', () => {
       expect(PANEL.includes('label="' + c + '"'), c).toBe(true)
     }
   })
-  it('★ 열 머리글', () => {
-    for (const h of ['본인 접종', '가족 접종 인원', '신청 수량(도즈)', '접종 희망일', '신청 상태', '확인 사항']) {
+  it('★ 열 머리글 — 긴 것은 두 줄로 접는다', () => {
+    for (const h of ['본인 접종', '접종 희망일', '신청 상태', '확인 사항']) {
       expect(PANEL.includes("h: '" + h + "'"), h).toBe(true)
     }
+    /* 두 줄짜리 — 접은 자리까지 고정한다 */
+    expect(PANEL).toContain("h: '가족 접종', h2: '인원'")
+    expect(PANEL).toContain("h: '신청 수량', h2: '(도즈)'")
+    expect(PANEL, '공용 ColMenu 의 nowrap 때문에 <br/> 로 끊는다').toContain('{c.h2 ? <>{c.h}<br />{c.h2}</> : c.h}')
+  })
+  it('★ 표 폭이 화면(#root 1126px) 안에 들어간다', () => {
+    const sum = [...PANEL.matchAll(/\{ k: '[a-z_]+', h: '[^']+'(?:, h2: '[^']+')?, w: (\d+)/g)]
+      .reduce((a, m) => a + Number(m[1]), 0)
+    expect(sum, '열 폭 합계가 화면보다 넓다').toBeLessThanOrEqual(1126)
+    expect(sum, '열이 빠졌다').toBeGreaterThan(900)
+  })
+  it('★ 01 진행 버튼은 「확인」 하나다 — 선택지 문장을 버튼에 넣지 않는다', () => {
+    expect(UI).toContain("{busy ? '처리 중...' : dupLocked ? '본인의 신청 내역이 아닙니다.' : '확인'}")
   })
   it('★ 확인 사항 표기 — 확인 전에는 「동명이인」으로 단정하지 않는다', () => {
     expect(CALC).toContain("out.push('사번 미입력')")
