@@ -26,6 +26,8 @@ import PinBoxes from './PinBoxes'
 import SurveyTab from './SurveyTab'
 import { seasonLabel } from './lib/surveyText'
 import { tabFromHash, writeTabHash, clearTabHash, setTabIcon, TAB_DEFAULT } from './lib/tabRoute'
+import { isStale, STALE_HEAD, STALE_TAIL } from './lib/stale'
+import { noteServerDate, serverNow } from './lib/serverClock'
 
 const TOKEN_KEY = 'vaccine_public_token'
 const REFRESH_MS = 60_000
@@ -115,6 +117,9 @@ export default function App() {
     if (!tok) return
     try {
       const r = await fetch('/api/vaccine/stock', { headers: { Authorization: 'Bearer ' + tok } })
+      /* ★ 「지금」을 기기 시계에 묻지 않기 위해 서버가 찍은 Date 헤더를 받아 둔다.
+         서버 코드는 고치지 않는다 — 모든 응답에 이미 붙어 있다. */
+      noteServerDate(r.headers?.get?.('date'))
       if (r.status === 401) { lock(); return }
       const j = await r.json().catch(() => null)
       if (!r.ok || !j) { setErr('잠시 후 다시 시도해 주세요'); return }
@@ -230,6 +235,7 @@ function Login({ onDone }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pw }),
       })
+      noteServerDate(r.headers?.get?.('date'))
       const j = await r.json().catch(() => null)
       setBusy(false)
       /* initial 은 없을 수도 있다(서버에서 첫 조회가 실패한 경우) — 그러면 화면이 stock 으로 채운다 */
@@ -328,6 +334,20 @@ function Ft() {
   </p>
 }
 
+/* ═══ 안내 띠 — 라벤더 ═══════════════════════════════════════════════════
+   ★ 색은 이 앱에 **이미 있는 값**만 쓴다 — 라벤더 45% 는 「주의」 배지가 쓰는 그 값이고,
+     막대와 글자도 기존 토큰이다. 새 hex 를 만들지 않는다.
+   ★ 모양은 이 앱의 기존 띠(SurveyTab 의 Alert)와 같은 치수다 — 같은 앱 안에서
+     띠가 두 가지 모양으로 보이지 않게 한다.
+   ★ role="status" — 오류가 아니라 상태 알림이다(읽어 주는 순서를 가로채지 않는다). */
+function Notice({ children, wide }) {
+  return <div role="status" style={{
+    margin: wide ? '16px 28px 0' : '12px 16px 0', padding: '11px 13px', borderRadius: 10,
+    background: 'rgba(191, 166, 217, 0.45)', borderLeft: '3px solid var(--v-lav)',
+    fontSize: 13, color: 'var(--v-navy)', lineHeight: 1.6,
+  }}>{children}</div>
+}
+
 /* ═══ 시안 ⓐ-2(휴대폰) · ⓐ-3(PC·태블릿) ═══════════════════════════════════
    1024px 이상에서 왼쪽 합계 + 오른쪽 카드 3열, 그 아래는 세로 한 줄.
    CSS 미디어쿼리 대신 matchMedia 로 분기한다 — 인라인 스타일만 쓰기 위해서다. */
@@ -376,16 +396,16 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
     }}>잠그기</button>
   </header>
 
+  /* ★ 하단에는 문의만 남는다.
+       · 마지막 입력 → 전체 잔량 카드 안으로 옮겼다.
+       · 절기 → 머리말에 이미 있어 뺐다(같은 화면에 두 번 나왔다).
+     ★ 저작권 줄(Ft)은 세 화면이 함께 쓰므로 **건드리지 않는다** — 이 줄은 그 바로 위에
+       따로 서고, 잔량 탭에만 있다(수요조사 탭·로그인 화면은 지금 그대로). */
   const foot = <p style={{
-    margin: wide ? '22px 28px 30px' : '18px 16px 26px',
-    fontSize: 11, color: 'var(--v-ink-dim)', lineHeight: 1.7, textAlign: wide ? 'left' : 'center',
+    margin: '18px 16px 0', fontSize: 13, color: 'var(--v-ink-dim)',
+    lineHeight: 1.7, textAlign: 'center',
   }}>
-    {/* ★ "입력 기록이 없습니다" 는 응답을 받은 뒤에만 — 응답 전에는 불러오는 중이라고 적는다 */}
-    {state === 'loading' ? LOADING
-      : when ? <>마지막 입력 <span className="num">{when}</span></>
-        : '입력 기록이 없습니다'}
-    {data?.season ? <> · <span className="num">{data.season}</span> 절기</> : null}
-    <br />문의 {TEL}
+    문의 <span style={{ fontWeight: 700, color: 'var(--v-navy)' }}>{TEL}</span>
   </p>
 
   /* 안내 상자 — 빈 목록과 불러오는 중이 같은 자리·같은 모양을 쓴다(새 레이아웃을 만들지 않는다) */
@@ -399,6 +419,12 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
   /* 카드 자리에 들어가는 불러오는 중 — 합계 상자와 나란히 서므로 margin 을 두지 않는다 */
   const pending = <div style={boxStyle}>{LOADING}</div>
 
+  /* ★ 오래됨 안내 — 영업일 기준 24시간을 넘겼을 때만. 판정은 lib/stale.js 에 있다.
+       「지금」은 서버 시각이라 기기 시계가 틀려도 흔들리지 않는다. */
+  const stale = when && isStale(data?.updated_at, serverNow())
+    ? <Notice wide={wide}>{STALE_HEAD}<span className="num">{when}</span>{STALE_TAIL}</Notice>
+    : null
+
   const alert = err && <div role="alert" style={{
     margin: wide ? '16px 28px 0' : '12px 16px 0', padding: '10px 12px', borderRadius: 10,
     background: 'rgba(128, 74, 135, 0.08)', borderLeft: '3px solid var(--v-purple)',
@@ -411,6 +437,7 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
     background: 'var(--v-card)', border: '1px solid var(--v-line)', borderRadius: 16,
     padding: wide ? '26px 22px' : '16px 18px',
     display: wide ? 'block' : 'flex', alignItems: 'center', gap: 12,
+    flexWrap: wide ? undefined : 'wrap',
     textAlign: wide ? 'center' : 'left',
   }}>
     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-ink-dim)' }}>전체 잔량</div>
@@ -429,6 +456,17 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
     {/* 종 수도 응답 전에는 비워 둔다 — "0종" 이 사실과 다르게 보이지 않게 */}
     {state === 'loading' ? null : <div style={{ fontSize: 12, color: 'var(--v-ink-dim)', marginTop: wide ? 4 : 0 }}>
       <span className="num">{items.length}</span>종
+    </div>}
+    {/* ★ 마지막 입력 — 숫자 바로 곁으로 옮겼다(하단까지 내려가 눈에 띄지 않았다).
+        휴대폰에서는 이 카드가 가로 한 줄이라 flexBasis 100% 로 이 줄만 아래로 뺀다. */}
+    {state === 'loading' ? null : <div style={{
+      marginTop: wide ? 14 : 10, paddingTop: wide ? 12 : 10,
+      borderTop: '1px solid var(--v-line)',
+      fontSize: 13, color: 'var(--v-ink-dim)', lineHeight: 1.5,
+      textAlign: wide ? 'center' : 'left',
+      flexBasis: wide ? undefined : '100%',
+    }}>
+      {when ? <>마지막 입력 <span className="num">{when}</span></> : '입력 기록이 없습니다'}
     </div>}
   </div>
 
@@ -470,6 +508,7 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
     {head}
     {tabs}
     {alert}
+    {stale}
     {/* ★ 'loading' 도 'list' 와 같은 배치를 쓴다 — 데이터가 도착할 때 자리가 밀리지 않는다 */}
     {state === 'empty' ? empty
       : wide
