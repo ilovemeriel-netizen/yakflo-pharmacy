@@ -263,7 +263,7 @@ function Login({ onDone }) {
       <p style={{
         margin: '10px 0 22px', textAlign: 'center',
         fontSize: 15, color: 'rgba(46, 74, 98, 0.8)', lineHeight: 1.6,
-      }}>직원 공용 비밀번호 {PW_LEN}자리를<br />입력해 주세요</p>
+      }}>직원 공용 비밀번호 {PW_LEN}자리를<br />입력해 주시기 바랍니다.</p>
 
       {/* 흰 카드 */}
       <div style={{
@@ -272,19 +272,19 @@ function Login({ onDone }) {
       }}>
         <label htmlFor="pw" style={{
           display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--v-navy)', marginBottom: 10,
-        }}>비밀번호</label>
+        }}>공용 비밀번호(숫자 {PW_LEN}자리)</label>
 
         {/* 네 상자 + 그 위에 덮인 투명 input — 2026-10-28 에 PinBoxes 로 떼어 냈다.
             수요조사 확인번호가 같은 것을 쓴다. 모양·동작은 전과 같다. */}
         <PinBoxes id="pw" value={pw} onChange={setPw} len={PW_LEN}
-          label={`비밀번호 ${PW_LEN}자리`} autoFocus focusKey={refocus} />
+          label={`공용 비밀번호(숫자 ${PW_LEN}자리)`} autoFocus focusKey={refocus} />
 
         <button type="submit" disabled={!ready || busy} style={{
           width: '100%', height: 52, marginTop: 16, borderRadius: 12, border: 'none',
           background: ready && !busy ? 'var(--v-purple)' : 'rgba(128, 74, 135, 0.3)',
           color: '#FFFFFF', fontSize: 16, fontWeight: 700,
           cursor: ready && !busy ? 'pointer' : 'not-allowed',
-        }}>{busy ? '확인 중...' : '확인'}</button>
+        }}>{busy ? '확인 중...' : '조회하기'}</button>
 
         {/* 오류 문구(틀림·잠금·NOT_SET·NO_IP) — 아래 안내 자리 바로 위 */}
         {msg && <div role="alert" style={{
@@ -296,14 +296,14 @@ function Login({ onDone }) {
         <p style={{
           margin: '14px 0 0', textAlign: 'center',
           fontSize: 13, color: 'rgba(46, 74, 98, 0.8)', lineHeight: 1.6,
-        }}>확인하면 오늘 하루 동안 다시 묻지 않습니다.</p>
+        }}>인증 완료 시 당일에는 비밀번호를 다시 입력하지 않아도 됩니다.</p>
       </div>
 
       <p style={{
         margin: '22px 0 0', textAlign: 'center',
         fontSize: 13, color: 'rgba(46, 74, 98, 0.8)', lineHeight: 1.8,
       }}>
-        비밀번호를 모르면 약제과로 문의해 주세요
+        비밀번호 확인이 필요한 경우 약제과로 문의해 주시기 바랍니다.
         <br /><span style={{ fontWeight: 700, color: 'var(--v-navy)' }}>{TEL}</span>
       </p>
       <Ft />
