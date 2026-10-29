@@ -2014,7 +2014,11 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload,onDispose}){
   const isUnused=d=>{const days=unusedDays(d);return days!==null&&days>=365}
   /* 알림상태 수식: <=0 만료, <=30 긴급, <=60 주의, <=90 확인, 그외 정상 */
   const alertSt=days=>{if(days===null)return{text:'',c:t.textL,bg:''};if(days<=0)return{text:'★만료★',c:'#fff',bg:t.red};if(days<=30)return{text:'▲긴급▲',c:'#fff',bg:'#E65100'};if(days<=60)return{text:'◆주의◆',c:'#333',bg:'#FFD600'};if(days<=90)return{text:'●확인●',c:'#fff',bg:t.blue};return{text:'정상',c:t.green,bg:''}}
-  const g={urgent:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=30&&(d.current_qty||0)>0}),warning:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>30&&x<=90&&(d.current_qty||0)>0}),notice:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>90&&x<=180&&(d.current_qty||0)>0}),narcotic:drugs.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180&&isN(d)&&cats.includes(d.category)}),unused:fd.filter(d=>isUnused(d)&&(d.current_qty||0)>0)}
+  /* ★ 다섯 카드 모두 fd(위쪽 구분·상태 칩을 거친 배열)에서 만든다 — 카드 숫자·목록·엑셀이 한 배열을 쓴다.
+     2026-10-29 전까지 narcotic 만 원본 drugs 를 써서, 상태 「사용」만 골라도 중지 향정이 계속 보였다.
+     ★ 향정 카드에는 current_qty>0 을 넣지 않는다(사용자 결정) — 재고 0 향정도 칩 조건에 맞으면 보여야 한다.
+       다른 네 카드는 「재고가 있는 것의 유효기한」을 보는 자리라 기존 조건을 그대로 둔다. */
+  const g={urgent:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=30&&(d.current_qty||0)>0}),warning:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>30&&x<=90&&(d.current_qty||0)>0}),notice:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>90&&x<=180&&(d.current_qty||0)>0}),narcotic:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180&&isN(d)}),unused:fd.filter(d=>isUnused(d)&&(d.current_qty||0)>0)}
   useEffect(()=>{if(focusLevel)setALv(focusLevel)},[focusLevel])
   /* fb[key] = {k:'ok'|'err'|'partial', m?:안내문구}. ★ 'partial' 은 자동으로 2500ms 를 받는다(ok 만 1500). */
   function flash(key,kind,m){setFb(p=>({...p,[key]:{k:kind,m}}));setTimeout(()=>setFb(p=>{const c={...p};delete c[key];return c}),kind==='ok'?1500:2500)}
@@ -2158,8 +2162,12 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
   const[uMsg,setUMsg]=useState(null);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});const[uBusy,setUBusy]=useState(false)
   useEffect(()=>{if(nf?.filter){setFilter(nf.filter);setPage(1)}},[nf])
   const im={};inv.forEach(i=>{im[i.drug_code]=i});const merged=drugs.filter(d=>stats.includes(d.status)).map(d=>{const iv=im[d.drug_code]||{};const q=d.current_qty||0,sf=d.safety_stock||0,mx=iv.max_stock||d.max_stock||0;let st=stockStat(d);if(st==='정상'&&mx>0&&q>mx)st='과잉';return{...d,safety_stock:sf,max_stock:mx,monthly_avg:iv.monthly_avg||d.monthly_avg||0,stockStatus:st}})
-  const sg={전체:merged.length,긴급:merged.filter(d=>d.stockStatus==='긴급').length,주문필요:merged.filter(d=>d.stockStatus==='주문필요').length,재고없음:merged.filter(d=>d.stockStatus==='재고없음').length,정상:merged.filter(d=>d.stockStatus==='정상').length,과잉:merged.filter(d=>d.stockStatus==='과잉').length,기준미설정:merged.filter(d=>d.stockStatus==='기준미설정').length}
-  const filtered=so(merged.filter(d=>{if(filter!=='전체'&&d.stockStatus!==filter)return false;if(!cats.includes(d.category))return false;if(search.trim()){const q=search.trim().toLowerCase();return d.drug_name?.toLowerCase().includes(q)||d.drug_code?.toLowerCase().includes(q)};return true}));const tp=Math.ceil(filtered.length/PP),paged=filtered.slice((page-1)*PP,page*PP)
+  /* ★ 카드 숫자는 목록과 같은 기준에서 센다 — 구분·검색까지 적용한 _sb 가 기준이다.
+     카드 자기 자신의 선택(filter)만 빼서, 「카드 숫자 = 그 카드를 눌렀을 때 목록 줄 수」가 된다.
+     2026-10-29 전까지 merged(상태만 적용)에서 세어 구분·검색을 바꿔도 숫자가 그대로였다. */
+  const _sb=merged.filter(d=>{if(!cats.includes(d.category))return false;if(search.trim()){const q=search.trim().toLowerCase();return d.drug_name?.toLowerCase().includes(q)||d.drug_code?.toLowerCase().includes(q)};return true})
+  const sg={전체:_sb.length,긴급:_sb.filter(d=>d.stockStatus==='긴급').length,주문필요:_sb.filter(d=>d.stockStatus==='주문필요').length,재고없음:_sb.filter(d=>d.stockStatus==='재고없음').length,정상:_sb.filter(d=>d.stockStatus==='정상').length,과잉:_sb.filter(d=>d.stockStatus==='과잉').length,기준미설정:_sb.filter(d=>d.stockStatus==='기준미설정').length}
+  const filtered=so(_sb.filter(d=>filter==='전체'||d.stockStatus===filter));const tp=Math.ceil(filtered.length/PP),paged=filtered.slice((page-1)*PP,page*PP)
   const sc=s=>s==='재고없음'?t.red:s==='긴급'?t.red:s==='주문필요'?t.amber:s==='과잉'?t.blue:s==='기준미설정'?t.textL:t.green
   const _dCard=filter!=='전체',_dCat=cats.length!==CATS.length,_dStat=!(stats.length===MAIN_STATS.length&&MAIN_STATS.every(s=>stats.includes(s))),_dSearch=search.trim()!=='',_dSort=!(sk==='drug_name'&&sd==='asc');
   const _fcount=(_dCard?1:0)+(_dCat?1:0)+(_dStat?1:0)+(_dSearch?1:0)+(_dSort?1:0);const _showReset=_fcount>0;
@@ -2359,9 +2367,20 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
   const base=drugs.filter(d=>isN(d)); /* isN: 한외마약 제외(getNT→'일반') */
   const narcs=base.filter(d=>stats.includes(d.status));
   const used=base.filter(d=>d.status==='사용');
-  const byType={향정:narcs.filter(d=>getNT(d)==='향정'),마약:narcs.filter(d=>getNT(d)==='마약')};
-  const expiring=narcs.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180});
-  const cards=[{k:'전체',v:narcs.length,c:t.purple},{k:'향정',v:byType['향정'].length,c:t.purple},{k:'마약',v:byType['마약'].length,c:t.red},{k:'유효기한 주의',v:expiring.length,c:t.amber}];
+  /* ★ 카드 숫자의 기준 — 머리글·도넛·검색까지 적용하고 **카드 선택(cardF)만 뺀다**.
+     그래야 「카드 숫자 = 그 카드를 누르면 나오는 줄 수」가 되고, 카드끼리 서로의 숫자를 보여 준다.
+     2026-10-29 전까지 narcs(상태만 적용)에서 세어 검색어를 넣어도 숫자가 그대로였다.
+     ★ passBase 는 아래 pass 가 그대로 다시 쓴다 — 조건을 두 벌로 적지 않는다. */
+  const passBase=d=>{
+    for(const k in hfV){const fv=hfV[k];if(fv==null)continue;const hv=k==='narcotic_type'?getNT(d):(d[k]==null?'':String(d[k]).trim());if(hv!==fv)return false}
+    if(donutF){const dv=donutF.level==='narcotic_type'?getNT(d):(d[donutF.level]==null?'':String(d[donutF.level]).trim());if(dv!==donutF.value)return false}
+    if(search.trim()){const q=search.trim().toLowerCase();if(!((d.drug_name||'').toLowerCase().includes(q)||(d.drug_code||'').toLowerCase().includes(q)||(d.ingredient_kr||'').toLowerCase().includes(q)||(d.manufacturer||'').toLowerCase().includes(q)))return false}
+    return true
+  };
+  const _cb=narcs.filter(passBase);
+  const byType={향정:_cb.filter(d=>getNT(d)==='향정'),마약:_cb.filter(d=>getNT(d)==='마약')};
+  const expiring=_cb.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180});
+  const cards=[{k:'전체',v:_cb.length,c:t.purple},{k:'향정',v:byType['향정'].length,c:t.purple},{k:'마약',v:byType['마약'].length,c:t.red},{k:'유효기한 주의',v:expiring.length,c:t.amber}];
   const _u=arr=>[...new Set(arr.filter(v=>v!=null&&String(v).trim()!==''))].sort();
   const setHF=(k,v)=>{setHfV(p=>{const n={...p};if(v==null)delete n[k];else n[k]=v;return n});setPage(1)};
   const hf={
@@ -2376,13 +2395,12 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
     storage_method:{items:_u(base.map(d=>d.storage_method)),value:hfV.storage_method??null,on:v=>setHF('storage_method',v)},
     status:{items:_u(base.map(d=>d.status)),value:hfV.status??null,on:v=>setHF('status',v)},
   };
+  /* 목록 = passBase(위에서 카드 숫자를 셀 때 쓴 그 조건) + 카드 선택 */
   const pass=d=>{
-    for(const k in hfV){const fv=hfV[k];if(fv==null)continue;const hv=k==='narcotic_type'?getNT(d):(d[k]==null?'':String(d[k]).trim());if(hv!==fv)return false}
-    if(donutF){const dv=donutF.level==='narcotic_type'?getNT(d):(d[donutF.level]==null?'':String(d[donutF.level]).trim());if(dv!==donutF.value)return false}
+    if(!passBase(d))return false;
     if(cardF==='향정'&&getNT(d)!=='향정')return false;
     if(cardF==='마약'&&getNT(d)!=='마약')return false;
     if(cardF==='유효기한 주의'){const x=exD(d.expiry_date);if(!(x!==null&&x<=180))return false}
-    if(search.trim()){const q=search.trim().toLowerCase();if(!((d.drug_name||'').toLowerCase().includes(q)||(d.drug_code||'').toLowerCase().includes(q)||(d.ingredient_kr||'').toLowerCase().includes(q)||(d.manufacturer||'').toLowerCase().includes(q)))return false}
     return true
   };
   const filtered=so(narcs.filter(pass));const tp=Math.ceil(filtered.length/PP),paged=filtered.slice((page-1)*PP,page*PP);
