@@ -7754,6 +7754,13 @@ function AtcView({ drugs, onReload }) {
 }
 export default function App() {
   const [dark, setDark] = useState(false)
+  /* ★ 안내 띠 색을 테마에 맞추기 위한 표시 — 안내가 11곳이고 일부는 테마에
+     접근조차 하지 않는다. 화면마다 분기를 넣는 대신 CSS 변수 하나로 모두 따라오게
+     한다(index.css). <html> 에 걸어야 모달 포털(document.body)도 탄다.
+     ※ state 를 바꾸지 않는다 — DOM 표시만 한다. */
+  useEffect(() => {
+    document.documentElement.dataset.ypTheme = dark ? 'dark' : 'light'
+  }, [dark])
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [memberRole, setMemberRole] = useState(null)

@@ -26,7 +26,7 @@ import { kstInputValue, kstInputToIso, kstDateOnly } from './lib/kstDatetime'
 import { markBusy, formDirty } from './lib/pwaUpdate'
 import { useBusy } from './lib/useBusy.js'
 import {
-  nextNotice, visibleNotice, noticeText, NOTICE_BG, NOTICE_FG, NOTICE_LINE,
+  nextNotice, visibleNotice, noticeText, NOTICE_BG, NOTICE_FG, NOTICE_LINE, NOTICE_BTN,
 } from './lib/surveyCancelNotice.js'
 
 /* 수정 거절 메시지 — DB 가 돌려준 코드를 사용자 말로 바꾼다.
@@ -399,8 +399,8 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     }}>
       <span style={{ fontWeight: 700 }}>{noticeText(_notice.code)}</span>
       <button onClick={undoCancel} disabled={busy} style={{
-        padding: '3px 10px', borderRadius: 7, border: '1px solid ' + NOTICE_FG,
-        background: 'transparent', color: NOTICE_FG, fontSize: 11, fontWeight: 700,
+        padding: '3px 10px', borderRadius: 7, border: '1px solid ' + NOTICE_BTN,
+        background: 'transparent', color: NOTICE_BTN, fontSize: 11, fontWeight: 700,
         cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.5 : 1,
       }}>되돌리기</button>
       <div style={{ flex: 1 }} />

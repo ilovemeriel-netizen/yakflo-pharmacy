@@ -20,13 +20,32 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 import { FIELD_DEFS } from './drugRules'
 
-/* ── 「일부 미반영」 표시 값 ───────────────────────────────────────────────
-   ★ 새 색이 아니다 — `#BFA6D9` 는 기존 토큰 `t.lavender`(라이트·다크 동일),
-     `#2E4A62` 는 라이트 `t.nav` 와 같은 값이다. 글자색은 리터럴로 둔다 —
-     `t.nav` 는 다크에서 `#1A2332` 로 바뀌어 연보라 위에서 읽기 어렵다. */
-export const PARTIAL_BG = 'rgba(191,166,217,0.45)'
-export const PARTIAL_FG = '#2E4A62'
-export const PARTIAL_LINE = '#BFA6D9'
+/* ── 「일부 미반영」·「취소했습니다」 안내 색 ──────────────────────────────
+   ★ 새 색이 아니다 — 전부 기존 토큰 값이다.
+     `#BFA6D9` = `t.lavender`(라이트·다크 동일) = 다크 `t.accent`
+     `#2E4A62` = 라이트 `t.text`,  `#E8E6E1` = 다크 `t.text`
+     `#804A87` = 라이트 `t.accent`
+     `rgba(191,166,217,0.12)` = 다크 `t.accentL`
+
+   ★ 왜 CSS 변수인가 (2026-10-30 실측)
+     다크에서 라벤더 45% 는 카드 배경과 섞여 `rgb(100,94,125)` 가 되고,
+     그 위의 `#2E4A62` 글자는 **1.51:1** 로 거의 읽히지 않는다.
+     그런데 이 안내는 **11곳**에서 쓰이고, 그중 일부(DrugRegister·BulkUploadModal)는
+     테마에 접근조차 하지 않는다. 화면마다 분기를 넣으면 한 곳을 빠뜨린다.
+     그래서 값만 테마별로 바꾸고 **부르는 쪽은 한 글자도 고치지 않는다.**
+     변수는 index.css 가 `<html data-yp-theme>` 기준으로 정한다(모달 포털도 탄다).
+   ★ 괄호 안은 변수가 없을 때의 기본값 = 라이트. 라이트 모양은 그대로다. */
+export const PARTIAL_LIGHT = {
+  bg: 'rgba(191,166,217,0.45)', fg: '#2E4A62', line: '#BFA6D9', btn: '#804A87',
+}
+export const PARTIAL_DARK = {
+  bg: 'rgba(191,166,217,0.12)', fg: '#E8E6E1', line: '#BFA6D9', btn: '#BFA6D9',
+}
+export const PARTIAL_BG = 'var(--yp-partial-bg, ' + PARTIAL_LIGHT.bg + ')'
+export const PARTIAL_FG = 'var(--yp-partial-fg, ' + PARTIAL_LIGHT.fg + ')'
+export const PARTIAL_LINE = 'var(--yp-partial-line, ' + PARTIAL_LIGHT.line + ')'
+/* 안내 안의 버튼(예: [되돌리기]) — 강조 토큰을 쓴다 */
+export const PARTIAL_BTN = 'var(--yp-partial-btn, ' + PARTIAL_LIGHT.btn + ')'
 
 /* 컬럼 이름 → 화면 이름. FIELD_DEFS 가 단일 출처이고, 거기 없으면 컬럼 이름 그대로. */
 const COL_LABEL = {}

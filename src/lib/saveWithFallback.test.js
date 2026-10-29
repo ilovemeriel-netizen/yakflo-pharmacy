@@ -6,7 +6,12 @@
      PostgreSQL 42703 · NOT NULL 23502 · 형식 42804 · RLS · GRANT · 트리거 거절은
      재시도 없이 그대로 오류가 돼야 한다. 그렇지 않으면 엉뚱한 컬럼이 조용히 사라진다. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { saveWithFallback, droppedColumnOf, colLabel, partialText, partialBulkText, blockedText, PARTIAL_BG, PARTIAL_FG, PARTIAL_LINE } from './saveWithFallback'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import {
+  saveWithFallback, droppedColumnOf, colLabel, partialText, partialBulkText, blockedText,
+  PARTIAL_BG, PARTIAL_FG, PARTIAL_LINE, PARTIAL_BTN, PARTIAL_LIGHT, PARTIAL_DARK,
+} from './saveWithFallback'
 
 /* PostgREST 가 실제로 내려주는 문구 */
 const pgrst = col => ({ message: `Could not find the '${col}' column of 'drugs' in the schema cache`, code: 'PGRST204' })
@@ -221,9 +226,35 @@ describe('문구', () => {
 })
 
 describe('표시 값 — 새 색을 쓰지 않는다', () => {
-  it('승인받은 값 그대로', () => {
-    expect(PARTIAL_BG).toBe('rgba(191,166,217,0.45)')
-    expect(PARTIAL_FG).toBe('#2E4A62')
-    expect(PARTIAL_LINE).toBe('#BFA6D9')
+  /* 값은 테마별로 index.css 가 정하고, 상수는 그 변수를 부른다.
+     괄호 안 기본값 = 라이트라서 라이트 모양은 그대로다. */
+  it('★ 상수는 CSS 변수 + 라이트 기본값이다', () => {
+    expect(PARTIAL_BG).toBe('var(--yp-partial-bg, rgba(191,166,217,0.45))')
+    expect(PARTIAL_FG).toBe('var(--yp-partial-fg, #2E4A62)')
+    expect(PARTIAL_LINE).toBe('var(--yp-partial-line, #BFA6D9)')
+    expect(PARTIAL_BTN).toBe('var(--yp-partial-btn, #804A87)')
+  })
+  it('★ 라이트 값은 예전 그대로 — 모양이 바뀌지 않았다', () => {
+    expect(PARTIAL_LIGHT).toEqual({
+      bg: 'rgba(191,166,217,0.45)', fg: '#2E4A62', line: '#BFA6D9', btn: '#804A87',
+    })
+  })
+  it('★ 다크 값도 전부 기존 토큰 — 새 색이 없다', () => {
+    /* accentL(다크) · t.text(다크) · lavender · accent(다크) */
+    expect(PARTIAL_DARK).toEqual({
+      bg: 'rgba(191,166,217,0.12)', fg: '#E8E6E1', line: '#BFA6D9', btn: '#BFA6D9',
+    })
+  })
+  it('★ index.css 가 두 테마를 모두 정의한다', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
+    for (const v of ['--yp-partial-bg', '--yp-partial-fg', '--yp-partial-line', '--yp-partial-btn']) {
+      expect((css.match(new RegExp(v + ':', 'g')) || []).length, v + ' 가 두 번(라이트·다크) 있어야 한다').toBe(2)
+    }
+    expect(css).toContain("[data-yp-theme='dark']")
+    expect(css).toContain('rgba(191, 166, 217, 0.12)')
+  })
+  it('★ 화면이 그 표시를 <html> 에 건다 — 모달 포털도 타야 한다', () => {
+    const app = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8')
+    expect(app).toContain("document.documentElement.dataset.ypTheme = dark ? 'dark' : 'light'")
   })
 })

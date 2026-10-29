@@ -13,7 +13,10 @@
      회차 id 를 함께 담아 두고 **그릴 때 비교**한다(파생값으로 푼다). */
 
 /* 색은 「일부 미반영」 안내와 같은 라벤더를 쓴다 — 새 색을 만들지 않는다. */
-export { PARTIAL_BG as NOTICE_BG, PARTIAL_FG as NOTICE_FG, PARTIAL_LINE as NOTICE_LINE } from './saveWithFallback.js'
+export {
+  PARTIAL_BG as NOTICE_BG, PARTIAL_FG as NOTICE_FG,
+  PARTIAL_LINE as NOTICE_LINE, PARTIAL_BTN as NOTICE_BTN,
+} from './saveWithFallback.js'
 
 export function noticeText(code) {
   return String(code || '') + ' 취소했습니다'

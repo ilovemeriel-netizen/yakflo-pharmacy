@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
-  nextNotice, visibleNotice, noticeText, NOTICE_BG, NOTICE_FG, NOTICE_LINE,
+  nextNotice, visibleNotice, noticeText, NOTICE_BG, NOTICE_FG, NOTICE_LINE, NOTICE_BTN,
 } from './surveyCancelNotice.js'
 
 const read = f => readFileSync(resolve(process.cwd(), f), 'utf8')
@@ -67,10 +67,15 @@ describe('문구·색', () => {
     expect(noticeText('VGK9PA')).toBe('VGK9PA 취소했습니다')
     expect(noticeText(null)).toBe(' 취소했습니다')
   })
-  it('★ 새 색을 만들지 않는다 — 「일부 미반영」 안내와 같은 라벤더', () => {
-    expect(NOTICE_BG).toBe('rgba(191,166,217,0.45)')
-    expect(NOTICE_FG).toBe('#2E4A62')
-    expect(NOTICE_LINE).toBe('#BFA6D9')
+  it('★ 새 색을 만들지 않는다 — 「일부 미반영」 안내와 같은 값을 쓴다', () => {
+    expect(NOTICE_BG).toBe('var(--yp-partial-bg, rgba(191,166,217,0.45))')
+    expect(NOTICE_FG).toBe('var(--yp-partial-fg, #2E4A62)')
+    expect(NOTICE_LINE).toBe('var(--yp-partial-line, #BFA6D9)')
+  })
+  it('★ [되돌리기] 는 강조 토큰을 쓴다 — 다크에서 읽히게', () => {
+    expect(NOTICE_BTN).toBe('var(--yp-partial-btn, #804A87)')
+    expect(PANEL).toContain("border: '1px solid ' + NOTICE_BTN")
+    expect(PANEL).toContain('color: NOTICE_BTN')
   })
   it('★ 패널에 색 리터럴을 직접 쓰지 않는다 — 토큰·상수만', () => {
     expect(PANEL.match(/#[0-9A-Fa-f]{6}/g)).toBe(null)
