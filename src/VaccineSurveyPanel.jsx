@@ -21,6 +21,17 @@ import {
   maskEmpNo, maskName, doseOf, doneOf, cumulativeDemand, firstShortDate, shortDate,
   alertLine, needsPurge, canPurge, defaultCategoryIds,
 } from './lib/surveyCalc'
+import { validateEdit, familyOf } from './lib/surveyRules'
+
+/* 수정 거절 메시지 — DB 가 돌려준 코드를 사용자 말로 바꾼다.
+   ★ restrict_violation(2F000/23001)은 「접종 완료보다 적게」 한 가지뿐이다(0096). */
+function editErrMsg(error, r) {
+  const code = error?.code || ''
+  if (code === '2F000' || code === '23001') {
+    return `접종 완료 ${Number(r?.done_family || 0)}명보다 적게 바꿀 수 없습니다. 접종 완료를 먼저 고쳐 주세요.`
+  }
+  return dbErrorMsg(error)
+}
 
 const CHUNK = 500
 const PURGE_WORD = '파기'
@@ -170,12 +181,45 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     })
   }
 
-  /* ── 명단 체크 ────────────────────────────────────────────────────────── */
+  /* ── 명단 체크(접종 완료) ─────────────────────────────────────────────
+     ★ done_self·done_family 는 기록 대상이 아니다 — 체크만 하는 값이라 열 GRANT 로
+       그대로 둔다(0096 에서도 이 3열은 회수하지 않았다). */
   async function patchRow(r, patch) {
     const { error } = await supabase.from('vaccine_survey_responses')
       .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', r.id)
     if (error) { setMsg(dbErrorMsg(error)); return }
     setRows(rs => rs.map(x => x.id === r.id ? { ...x, ...patch } : x))
+    await loadDetail(sel.id)
+  }
+
+  /* ── 수량·희망일 수정 ─────────────────────────────────────────────────
+     ★ 직접 UPDATE 하지 않는다 — 0096 의 함수가 **같은 트랜잭션에서** audit('edit')
+       을 남긴다. 화면이 UPDATE 와 기록을 따로 보내면 하나만 성공할 수 있다.
+     ★ 보내기 전에 surveyRules 로 한 번 거른다. 거절 사유를 사용자 말로 바로 띄우려는
+       것이고, 최종 판정은 DB 가 한다(같은 규칙을 양쪽에 둔 이유는 그 파일 머리말 참고). */
+  async function editRow(r, patch) {
+    const bad = validateEdit(r, patch, sel)
+    if (bad) { setMsg(bad); return false }
+    const { error } = await supabase.rpc('edit_vaccine_survey_response', {
+      p_id: r.id,
+      p_self_dose: 'self_dose' in patch ? !!patch.self_dose : null,
+      p_family_count: 'family_count' in patch ? familyOf(patch.family_count) : null,
+      p_wish_date: 'wish_date' in patch ? patch.wish_date : null,
+    })
+    if (error) { setMsg(editErrMsg(error, r)); return false }
+    setRows(rs => rs.map(x => x.id === r.id ? { ...x, ...patch } : x))
+    await loadDetail(sel.id)
+    return true
+  }
+
+  /* ── 상태 변경(취소 / 되살리기) ───────────────────────────────────────
+     ★ 이것도 함수로 보낸다 — 0096 이 status 열의 UPDATE 권한을 회수했다.
+       예전에는 기록 없이 상태가 바뀌고 있었다. */
+  async function setRowStatus(r, status) {
+    if (r.status === status) return
+    const { error } = await supabase.rpc('set_vaccine_survey_status', { p_id: r.id, p_status: status })
+    if (error) { setMsg(dbErrorMsg(error)); return }
+    setRows(rs => rs.map(x => x.id === r.id ? { ...x, status } : x))
     await loadDetail(sel.id)
   }
 
@@ -426,12 +470,42 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
                             background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 10, fontWeight: 700,
                           }}>{open ? '가리기' : '원문 보기'}</button>
                         </td>
-                        <td style={td(t, 'center')}>{r._self}</td>
-                        <td style={td(t, 'right')}><span className="num">{r.family_count}</span></td>
-                        <td style={{ ...td(t, 'right'), fontWeight: 700 }}><span className="num">{r.dose}</span></td>
-                        <td style={td(t, 'center')}><span className="num">{r.wish_date}</span></td>
+                        {/* ★ 본인 — 「접종 완료」 칸의 체크박스와 같은 모양. 누르면 바로 저장한다. */}
                         <td style={td(t, 'center')}>
-                          <select value={r.status} onChange={e => patchRow(r, { status: e.target.value })}
+                          <input type="checkbox" checked={!!r.self_dose}
+                            onChange={e => editRow(r, { self_dose: e.target.checked })}
+                            title="본인 접종 여부" style={{ accentColor: t.accent }} />
+                        </td>
+                        {/* ★ 가족 수 — 「접종 완료」의 숫자칸과 같은 모양(width 46).
+                            칸을 벗어날 때 저장하고, 실패하면 값을 되돌린다. */}
+                        <td style={td(t, 'right')}>
+                          <input type="number" min={0} max={20} defaultValue={r.family_count}
+                            key={'fam-' + r.id + '-' + r.family_count}
+                            onBlur={async e => {
+                              const v = Number(e.target.value)
+                              if (v === r.family_count) return
+                              const ok = await editRow(r, { family_count: v })
+                              if (!ok) e.target.value = r.family_count
+                            }}
+                            style={{ width: 46, padding: '2px 4px', border: '1px solid ' + t.border, borderRadius: 6, fontSize: 11, background: t.bg, color: t.text, textAlign: 'right' }} />
+                        </td>
+                        <td style={{ ...td(t, 'right'), fontWeight: 700 }}><span className="num">{r.dose}</span></td>
+                        {/* ★ 희망일 — 상태 select 와 같은 모양의 날짜 입력 */}
+                        <td style={td(t, 'center')}>
+                          <input type="date" defaultValue={r.wish_date}
+                            key={'wish-' + r.id + '-' + r.wish_date}
+                            min={sel?.vax_start ? String(sel.vax_start).slice(0, 10) : undefined}
+                            max={sel?.vax_end ? String(sel.vax_end).slice(0, 10) : undefined}
+                            onBlur={async e => {
+                              const v = e.target.value
+                              if (!v || v === r.wish_date) return
+                              const ok = await editRow(r, { wish_date: v })
+                              if (!ok) e.target.value = r.wish_date
+                            }}
+                            style={{ padding: '2px 6px', border: '1px solid ' + t.border, borderRadius: 7, fontSize: 11, background: t.bg, color: t.text }} />
+                        </td>
+                        <td style={td(t, 'center')}>
+                          <select value={r.status} onChange={e => setRowStatus(r, e.target.value)}
                             style={{ padding: '2px 6px', border: '1px solid ' + t.border, borderRadius: 7, fontSize: 11, background: t.bg, color: t.text }}>
                             <option value="applied">신청</option>
                             <option value="cancelled">취소</option>
