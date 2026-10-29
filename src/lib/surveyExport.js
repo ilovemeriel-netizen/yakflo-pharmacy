@@ -355,7 +355,9 @@ export async function pdfLayout(args) {
   for (let i = 0; i < kinds.length - 1; i++) {
     if (kinds[i] === 'sep' && pageOf[i + 1] > pageOf[i]) orphans.push(i)
   }
-  return { pages, kinds, pageOf, boxes, breaks, orphans, bodyLen: body.length }
+  /* ★ body 를 그대로 돌려준다 — 「머리글 칸 수 = 행 값 수」를 시험이 직접 셀 수 있게.
+     2026-10-30 에 화면 쪽에서 이 어긋남이 실제로 났다(소속 열 누락). */
+  return { pages, kinds, pageOf, boxes, breaks, orphans, bodyLen: body.length, body, head: HEAD_PDF }
 }
 
 export async function exportPdf(args) {

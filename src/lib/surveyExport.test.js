@@ -445,3 +445,74 @@ describe('PDF 확인 칸 — 네모를 선으로 그린다', () => {
     expect(c).not.toMatch(/9\.921[\d]* -?9\.921[\d]* re\s*\nf/)
   })
 })
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   머리글 칸 수 = 행 값 수 — 2026-10-30 화면 결함의 짝 시험
+
+   화면에서 「소속」 열을 머리글에만 더하고 행에는 칸을 넣지 않아 내용이 한 칸씩
+   밀렸다(VaccineSurveyColumns.test.jsx 가 화면 쪽을 본다). 엑셀·PDF 는 그때
+   멀쩡했지만, **열을 더할 때 네 곳(머리글·화면 행·엑셀·PDF)을 함께 바꾸라**는
+   규칙을 지키게 여기서도 같은 성질을 고정한다.
+   ═══════════════════════════════════════════════════════════════════════════ */
+describe('★ 머리글 칸 수 = 행 값 수 (엑셀·PDF)', () => {
+  const fontB64 = readFileSync(
+    resolve(process.cwd(), 'public/fonts/NotoSansKR-Regular-subset.ttf')).toString('base64')
+  /* 소속이 있는 줄·없는 줄·취소된 줄을 섞는다 */
+  const mixed = [
+    { ...rows[0], dept: '약제과' },
+    { ...rows[1], dept: null },
+    { ...rows[2], dept: '간호부' },
+    { ...rows[3], dept: '원무과' },
+  ]
+
+  it('엑셀 — 머리글 11칸이고, 모든 자료 줄이 같은 칸 수다', async () => {
+    const XLSX = await import('xlsx')
+    const wb = await buildWorkbook({ survey, rows: mixed, user })
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets['명단'], { header: 1, blankrows: true })
+    const hi = aoa.findIndex(r => r[0] === '신청번호')
+    expect(hi, '머리글 줄을 찾지 못했다').toBeGreaterThan(-1)
+    const head = aoa[hi]
+    expect(head).toHaveLength(11)
+    expect(head[3], '성명 다음이 소속이다').toBe('소속')
+
+    /* 머리글 아래 자료 줄 — 신청번호가 있는 줄만(맨 아래 SUM 띠는 뺀다) */
+    const body = aoa.slice(hi + 1).filter(r => mixed.some(m => r[0] === m.receipt_code))
+    expect(body).toHaveLength(mixed.length)
+    for (const r of body) {
+      expect(r, '행 ' + r[0] + ' 의 값 수가 머리글과 다르다').toHaveLength(head.length)
+    }
+    /* 소속 칸의 내용 — 없으면 「—」 */
+    expect(body.map(r => r[3])).toEqual(['약제과', '—', '간호부', '원무과'])
+  })
+
+  it('PDF — 머리글 12칸(확인 포함)이고, 자료 줄이 모두 같은 칸 수다', async () => {
+    const L = await pdfLayout({ survey, rows: mixed, fontB64 })
+    expect(L.head).toHaveLength(12)
+    expect(L.head[3]).toBe('소속')
+    expect(L.head[11], '맨 오른쪽은 손 체크용 빈 칸이다').toBe('확인')
+
+    const data = L.body.filter((_, i) => L.kinds[i] === null)
+    expect(data).toHaveLength(mixed.length)
+    for (const r of data) {
+      expect(r, '행 ' + r[0] + ' 의 값 수가 머리글과 다르다').toHaveLength(L.head.length)
+    }
+    expect(data.map(r => r[3])).toEqual(['약제과', '—', '간호부', '원무과'])
+
+    /* 띠 행(구분·소계·합계)은 한 칸으로 표 전체를 덮는다 */
+    const bands = L.body.filter((_, i) => L.kinds[i] !== null)
+    expect(bands.length).toBeGreaterThan(0)
+    for (const b of bands) {
+      expect(b).toHaveLength(1)
+      expect(b[0].colSpan, '띠 행이 표 전체를 덮지 않는다').toBe(L.head.length)
+    }
+  })
+
+  it('★ 엑셀과 PDF 가 같은 열 순서를 쓴다 — PDF 만 「확인」이 하나 더 붙는다', async () => {
+    const XLSX = await import('xlsx')
+    const wb = await buildWorkbook({ survey, rows: mixed, user })
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets['명단'], { header: 1, blankrows: true })
+    const xhead = aoa[aoa.findIndex(r => r[0] === '신청번호')]
+    const L = await pdfLayout({ survey, rows: mixed, fontB64 })
+    expect(L.head.slice(0, 11)).toEqual(xhead)
+  })
+})
