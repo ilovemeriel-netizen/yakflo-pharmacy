@@ -13,6 +13,8 @@
    ★ 이 패널의 작은 표는 표준 표 사양 13항목 적용 제외(승인됨) — ColMenu·정렬·필터를 붙이지 않는다.
    ═══════════════════════════════════════════════════════════════════════════ */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { anyFilled } from './lib/pwaUpdate'
+import { useBusy } from './lib/useBusy.js'
 import { supabase } from './lib/supabase'
 import { useTheme } from './lib/theme'
 import { dbErrorMsg } from './lib/dbError'
@@ -106,6 +108,8 @@ export default function VaccinePublicPanel({ accounts, season, drugNames, onRelo
   const [tick, setTick] = useState(0)
   const [modal, setModal] = useState(false)
   const [done, setDone] = useState(false)
+  /* ★ 이름표를 고쳐 두었거나 비밀번호 모달이 열려 있으면 미룬다 */
+  useBusy('vaxpub-labels', anyFilled(draft) || modal)
 
   useEffect(() => {
     let on = true

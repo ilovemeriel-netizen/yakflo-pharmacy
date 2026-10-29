@@ -17,6 +17,7 @@
  *   DB 가드(trg_vaccine_events_append_only)가 UPDATE·DELETE 를 막는다.
  */
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useBusy } from './lib/useBusy.js'
 import { supabase } from './lib/supabase'
 import { useTheme } from './lib/theme'
 import { dbErrorMsg } from './lib/dbError'
@@ -119,6 +120,8 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
     if (typeof window !== 'undefined') window.history.replaceState({ ykMenu: 'vaccine', ykSub: k }, '', vaccineHash(k))
   }
   const [me, setMe] = useState(null)        // { tenant_id, user_id, role }
+  /* ★ 계정·행사·분류·보정 모달이 열려 있으면 미룬다(모달 판정과 별개의 이중 보호) */
+  useBusy('vaccine-modal', modal != null)
   const isSurveyAdmin = me?.role === 'owner' || me?.role === 'admin'
 
   const flash = (text, kind) => { setMsg({ text, kind }); setTimeout(() => setMsg(null), kind === 'err' ? 3600 : 2000) }
@@ -1201,6 +1204,8 @@ function FixList({ t, btn, ip, badge, evts, cats, onFix }) {
   const [target, setTarget] = useState(null)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
+  /* ★ 보정 대상을 고르거나 사유를 입력해 두었으면 미룬다 */
+  useBusy('vaccine-fix', target != null || reason !== '')
   const catName = id => (cats.find(c => c.id === id) || {}).label || ''
   const td = { padding: '7px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border, color: t.text }
   return <>

@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { useTheme } from './lib/theme'
+import { useBusy } from './lib/useBusy.js'
 
 const PURPLE = '#804A87', GREEN = '#019748', LAV = '#BFA6D9', NAVY = '#2E4A62'
 const MM = 3.7795275591 /* mm→px @96dpi (미리보기 스케일 계산용) */
@@ -45,6 +46,10 @@ export default function EmergencyDispense() {
   const [printed, setPrinted] = useState(false)
   const [powder, setPowder] = useState(false)   /* 파우더 환자: 파우치 환자명 앞 ● */
   const wrapRef = useRef(null); const [scale, setScale] = useState(1)
+  /* ★ 환자 정보나 약품 줄에 값을 넣었으면 새 배포 자동 적용을 미룬다.
+     약품 줄은 기본값이 비어 있지 않으니(수량 '1' 등) 약품을 고른 줄만 센다. */
+  useBusy('emerg-form', patient !== '' || room !== '' || patientNo !== ''
+    || rows.some(r => r.name !== '' || r.code !== ''))
   const patientRef = useRef(null), roomRef = useRef(null), patientNoRef = useRef(null), firstDrugRef = useRef(null)
   const onEnterFocus = (e, next) => { if (e.key === 'Enter') { e.preventDefault(); next.current && next.current.focus() } }   /* Tab 순서 불변, Enter만 추가 */
 

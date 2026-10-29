@@ -188,11 +188,14 @@ describe('배선 — 되돌아가지 않게', () => {
     expect(MAIN).toContain('onNeedReload()')
   })
 
-  it('★ 미저장 상태 3곳이 등록대에 연결돼 있다', () => {
-    for (const k of ['stock-drafts', 'tx-bulk', 'plan-drafts']) {
-      expect(APP.includes("markBusy('" + k + "'"), k).toBe(true)
-    }
-    expect(APP).toContain("import { markBusy } from './lib/pwaUpdate'")
+  it('★ 미저장 상태가 등록대에 연결돼 있다 — 어느 화면인지는 busyScreens 시험이 센다', () => {
+    expect(APP).toContain("import { useBusy } from './lib/useBusy.js'")
+    const n = (APP.match(/useBusy\('/g) || []).length
+    expect(n, '등록된 화면이 줄었다').toBeGreaterThanOrEqual(29)
+    /* 훅이 조건을 그대로 켜고, 화면이 사라질 때 반드시 끈다 */
+    const hook = readFileSync(resolve(process.cwd(), 'src/lib/useBusy.js'), 'utf8')
+    expect(hook).toContain('markBusy(key, flag)')
+    expect(hook).toContain('return () => markBusy(key, false)')
   })
   it('★ 화면에 그리는 것이 없다 — 알림 띠는 2단계', () => {
     /* main.jsx 는 JSX 를 Root 렌더 말고는 쓰지 않는다 */

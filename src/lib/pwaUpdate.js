@@ -46,6 +46,45 @@ export function clearBusyKeys() {
   busyKeys.clear()
 }
 
+/* ── 폼이 「손댄 상태」인가 (순수) ──────────────────────────────────────────
+   값이 하나라도 초기값과 다르면 입력 중으로 본다.
+   ★ 초기값은 화면이 준다 — 폼을 처음 띄울 때의 값(모달은 props 에서 만든 값).
+     저장 뒤 폼을 초기값으로 되돌리면 저절로 거짓이 되어 등록이 풀린다.
+   ★ 느슨하게 비교한다 — 숫자 0 과 '0', null 과 '' 를 같게 본다.
+     화면의 입력칸은 문자열을 주고 초기값은 숫자일 수 있어서다. */
+function norm(v) {
+  if (v == null) return ''
+  if (typeof v === 'boolean') return v ? '1' : ''
+  return String(v)
+}
+
+export function formDirty(now, init) {
+  if (!now || typeof now !== 'object') return false
+  const base = init && typeof init === 'object' ? init : {}
+  for (const k of Object.keys(now)) {
+    const x = now[k]
+    const y = base[k]
+    if (Array.isArray(x) || Array.isArray(y)) {
+      const lx = Array.isArray(x) ? x.length : 0
+      const ly = Array.isArray(y) ? y.length : 0
+      if (lx !== ly) return true
+      continue
+    }
+    if (norm(x) !== norm(y)) return true
+  }
+  return false
+}
+
+/* 값이 하나라도 채워져 있는가 — 초기값이 「전부 빈 칸」인 폼·메모 모음에 쓴다 */
+export function anyFilled(obj) {
+  if (!obj || typeof obj !== 'object') return false
+  return Object.keys(obj).some(k => {
+    const v = obj[k]
+    if (Array.isArray(v)) return v.length > 0
+    return norm(v) !== ''
+  })
+}
+
 /* ── 판단(순수) ───────────────────────────────────────────────────────────
    activeTag  : 지금 포커스된 요소의 태그(소문자) 또는 ''
    modalCount : 열려 있는 모달 수
