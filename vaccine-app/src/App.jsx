@@ -284,7 +284,7 @@ function Login({ onDone }) {
           background: ready && !busy ? 'var(--v-purple)' : 'rgba(128, 74, 135, 0.3)',
           color: '#FFFFFF', fontSize: 16, fontWeight: 700,
           cursor: ready && !busy ? 'pointer' : 'not-allowed',
-        }}>{busy ? '확인 중...' : '조회하기'}</button>
+        }}>{busy ? '조회 중...' : '조회하기'}</button>
 
         {/* 오류 문구(틀림·잠금·NOT_SET·NO_IP) — 아래 안내 자리 바로 위 */}
         {msg && <div role="alert" style={{
