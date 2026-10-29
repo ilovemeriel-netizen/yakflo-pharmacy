@@ -19,10 +19,11 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 import { useEffect, useState } from 'react'
 import PinBoxes from './PinBoxes'
+import { DEPTS } from './lib/depts.js'
 import { kstToday, fmtDotDate, fmtCloseLong } from './lib/surveyDate'
 import { seasonLabel, shortVaccineName } from './lib/surveyText'
 
-const TEL = '약제과 내선 217'
+const TEL = '약제과(내선 217)'
 const MAX_FAMILY = 20
 /* ★ 렌더 중에 시계를 읽지 않는다(react-hooks/purity) — 모듈 로드 시각을 기준으로 쓰고,
    화면으로 돌아올 때만 effect 에서 갱신한다. 자정을 넘겨 탭을 열어 둔 경우를 위한 것이다. */
@@ -85,6 +86,13 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
   const [edit, setEdit] = useState(null)      /* publicView 결과 */
   const [copied, setCopied] = useState(false)
 
+  /* 동일 성명 안내 카드 — 「본인이 신청한 내역입니다」(mine) / 「본인의 신청 내역이 아닙니다」(other) */
+  const [dupPick, setDupPick] = useState('mine')
+  const [dupPin, setDupPin] = useState('')
+  const [dept, setDept] = useState('')
+  const [dupLeft, setDupLeft] = useState(null)   /* 남은 횟수 · null 이면 아직 틀린 적 없음 */
+  const [dupLocked, setDupLocked] = useState(null)
+
   /* 기준 시각 — 화면으로 돌아올 때만 갱신한다(렌더 중 시계 금지) */
   const [now, setNow] = useState(BOOT_NOW)
   useEffect(() => {
@@ -126,14 +134,35 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
     const res = await call({
       action: 'submit', consent, emp_no: empNo.trim() || null, name: name.trim(),
       self_dose: selfDose, family_count: Number(family || 0), wish_date: wish, pin,
-      confirmDup: !!confirmDup,
+      confirmDup: !!confirmDup, dept: confirmDup ? dept : null,
     })
     if (!res) return
     const { j } = res
-    if (j?.warning === 'name_dup') { setView('dup'); return }
+    if (j?.warning === 'name_dup') {
+      setDupPick('mine'); setDupPin(''); setDept(''); setDupLeft(null); setDupLocked(null)
+      setMsg(null); setView('dup'); return
+    }
+    if (j?.code === 'EMP_DUP') { setMsg(null); setView('empdup'); return }
     if (!j?.ok) { setMsg(j?.message || '신청하지 못했습니다'); setView('form'); return }
     setDone({ receipt_code: j.receipt_code, wish_date: j.wish_date, dose: j.dose })
     setPin(''); setView('done')
+  }
+
+  /* 「본인이 신청한 내역입니다」 — 이름+확인번호로 내 신청을 찾아 수정 화면으로 간다.
+     ★ 새 수정 경로를 만들지 않는다 — 신청번호를 받아 기존 lookup 을 그대로 탄다. */
+  async function claim() {
+    const res = await call({ action: 'claim', name: name.trim(), pin: dupPin })
+    if (!res) return
+    const j = res.j
+    if (j?.code === 'LOCKED') { setDupLocked(j.message); return }
+    if (!j?.ok) { setDupLeft(typeof j?.left === 'number' ? j.left : null); return }
+    const r2 = await call({ action: 'lookup', key: j.receipt_code, pin: dupPin })
+    if (!r2) return
+    if (!r2.j?.ok) { setMsg(r2.j?.message || '찾지 못했습니다'); return }
+    const r = r2.j.response
+    setEdit(r); setFindKey(j.receipt_code); setFindPin(dupPin)
+    setSelfDose(!!r.self_dose); setFamily(Number(r.family_count || 0)); setWish(r.wish_date)
+    setDupPin(''); setMsg(null); setView('edit')
   }
 
   async function find() {
@@ -269,15 +298,79 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
   </div>
 
   /* ═══ 이름 중복 경고 ═══ */
+  /* ═══ 같은 이름 안내 ═══
+     ★ 「있어요」를 단정하지 않는다 — 카드가 뜨는 것만으로도 신호가 되므로
+       문구는 「여러 분일 수 있어 한 번만 확인할게요」로 둔다.
+     ★ 확인번호가 맞을 때만 신청 내용을 보여 준다. 틀리면 남은 횟수만 알린다. */
+  const pick = (key, title, sub) => <label key={key} onClick={() => { setDupPick(key); setMsg(null) }}
+    style={{
+      display: 'flex', gap: 10, alignItems: 'flex-start', padding: 12, borderRadius: 12,
+      border: '1.5px solid ' + (dupPick === key ? 'var(--v-purple)' : 'var(--v-line)'),
+      background: dupPick === key ? 'rgba(128, 74, 135, 0.08)' : 'transparent',
+      marginTop: 10, cursor: 'pointer',
+    }}>
+    <input type="radio" name="dup-pick" checked={dupPick === key} onChange={() => setDupPick(key)}
+      style={{ marginTop: 3, accentColor: 'var(--v-purple)' }} />
+    <span>
+      <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--v-navy)' }}>{title}</span>
+      <span style={{ display: 'block', fontSize: 12.5, color: 'var(--v-ink-dim)', marginTop: 3 }}>{sub}</span>
+    </span>
+  </label>
+
   const dupCard = <div style={card}>
-    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--v-navy)' }}>같은 이름의 신청이 있어요</div>
-    <div style={{ ...noteSt, marginTop: 10 }}>
-      같은 이름의 신청이 이미 있어요. 본인 신청이면 수정을 이용하고, 다른 분이면 그대로 신청하세요
+    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--v-navy)' }}>
+      {dupLocked ? '확인번호 입력이 일시적으로 제한되었습니다.' : '동일한 이름의 신청 내역이 있습니다.'}
     </div>
-    <button type="button" onClick={() => submit(true)} disabled={busy}
-      style={{ ...btnMain(!busy), marginTop: 16 }}>{busy ? '보내는 중...' : '그래도 신청'}</button>
-    <button type="button" onClick={() => { setMsg(null); setView('find') }}
-      style={{ ...btnGhost, marginTop: 10 }}>수정하러 가기</button>
+    {dupLocked
+      ? <Alert>{dupLocked}</Alert>
+      : <div style={{ ...noteSt, marginTop: 10 }}>
+        동일한 이름으로 접수된 신청 내역이 있습니다. 본인의 신청 여부를 확인해 주시기 바랍니다.
+      </div>}
+
+    {dupLocked ? null : pick('mine', '본인이 신청한 내역입니다.',
+      dupLeft != null
+        ? '신청 내역을 확인하려면 확인번호 4자리를 입력해 주시기 바랍니다.'
+        : '확인번호 4자리를 입력하면 신청 내역을 조회·수정할 수 있습니다.')}
+    {dupPick === 'mine' && !dupLocked ? <>
+      <div style={{ marginTop: 12 }}>
+        <PinBoxes value={dupPin} onChange={v => { setDupPin(v); setDupLeft(null) }} label="확인번호" />
+      </div>
+      {dupLeft != null ? <Alert>확인번호가 일치하지 않습니다. 확인번호를 확인한 후 다시 입력해 주시기 바랍니다. 남은 시도 횟수: {dupLeft}회</Alert> : null}
+    </> : null}
+
+    {pick('other', '본인의 신청 내역이 아닙니다.', '소속을 선택하면 신규 신청을 진행할 수 있습니다.')}
+    {dupPick === 'other' ? <>
+      <label style={{ ...labelSt, marginTop: 14 }}>소속<span style={{ color: 'var(--v-purple)' }}>(필수)</span></label>
+      <select value={dept} onChange={e => setDept(e.target.value)} style={inputSt}>
+        <option value="">소속을 선택해 주시기 바랍니다.</option>
+        {DEPTS.map(d => <option key={d} value={d}>{d}</option>)}
+      </select>
+    </> : null}
+
+    {/* ★ 제한 중에도 이 버튼은 **눌러야** 한다 — 눌러서 소속 선택으로 넘어간다.
+        눌리는데 흐리게 보이면 못 누르는 줄 안다(실제 캡처로 잡았다). */}
+    <button type="button" disabled={busy || (dupLocked ? false : (dupPick === 'mine' ? dupPin.length !== 4 : !dept))}
+      onClick={() => (dupPick === 'mine' && !dupLocked) ? claim() : (dupLocked ? setDupPick('other') : submit(true))}
+      style={{ ...btnMain(!busy && (dupLocked ? true : (dupPick === 'mine' ? dupPin.length === 4 : !!dept))), marginTop: 16 }}>
+      {/* ★ 01 화면의 진행 버튼은 **「확인」 하나**다 — 선택지 문장을 버튼에 넣지 않는다.
+          03(입력 제한)에서만 다음 할 일을 버튼 글자로 적는다(사용자 확정 2026-10-30). */}
+      {busy ? '처리 중...' : dupLocked ? '본인의 신청 내역이 아닙니다.' : '확인'}
+    </button>
+    <button type="button" onClick={() => { setMsg(null); setView('form') }}
+      style={{ ...btnGhost, marginTop: 10 }}>처음 화면으로</button>
+  </div>
+
+  /* ═══ 사번 중복 ═══ */
+  const empDupCard = <div style={card}>
+    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--v-navy)' }}>해당 사번으로 접수된 신청 내역이 있습니다.</div>
+    <div style={{ ...noteSt, marginTop: 10 }}>
+      동일한 사번으로 중복 신청할 수 없습니다.
+      신청번호를 모르는 경우 사번과 확인번호로 기존 신청 내역을 조회할 수 있습니다.
+    </div>
+    <button type="button" onClick={() => { setMsg(null); setFindKey(empNo.trim()); setView('find') }}
+      style={{ ...btnMain(!busy), marginTop: 16 }}>기존 신청 조회·수정</button>
+    <button type="button" onClick={() => { setMsg(null); setView('form') }}
+      style={{ ...btnGhost, marginTop: 10 }}>처음 화면으로</button>
   </div>
 
   /* ═══ 완료 ═══ */
@@ -303,7 +396,7 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
       희망일 <span className="num">{done.wish_date}</span><br />
       신청 도즈 <span className="num">{done.dose}</span>회분
     </div>
-    <button type="button" onClick={resetForm} style={{ ...btnGhost, marginTop: 14 }}>처음으로</button>
+    <button type="button" onClick={resetForm} style={{ ...btnGhost, marginTop: 14 }}>처음 화면으로</button>
   </div> : null
 
   /* ═══ 찾기 ═══ */
@@ -371,7 +464,7 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
     {edit.status !== 'cancelled'
       ? <button type="button" onClick={cancelApply} disabled={busy} style={{ ...btnGhost, marginTop: 10 }}>신청 취소</button>
       : null}
-    <button type="button" onClick={resetForm} style={{ ...btnGhost, marginTop: 10, border: '1.5px solid var(--v-line)', color: 'var(--v-ink-dim)' }}>처음으로</button>
+    <button type="button" onClick={resetForm} style={{ ...btnGhost, marginTop: 10, border: '1.5px solid var(--v-line)', color: 'var(--v-ink-dim)' }}>처음 화면으로</button>
   </div> : null
 
   return <main style={{ padding: pad, textAlign: 'left', maxWidth: 560, margin: '0 auto' }}>
@@ -379,6 +472,7 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
       {infoCard}
       {view === 'form' ? <>{consentCard}{formCard}</> : null}
       {view === 'dup' ? dupCard : null}
+      {view === 'empdup' ? empDupCard : null}
       {view === 'done' ? doneCard : null}
       {view === 'find' ? findCard : null}
       {view === 'edit' ? editCard : null}

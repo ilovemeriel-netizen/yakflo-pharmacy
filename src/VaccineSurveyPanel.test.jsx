@@ -213,7 +213,7 @@ describe('헤더 필터 — 눌러도 터지지 않고 실제로 걸린다', () 
   it('★ 사번·본인·희망일·상태 머리글을 눌러도 오류가 없다', async () => {
     render(<VaccineSurveyPanel {...props} />)
     await screen.findByText('김*화')
-    for (const h of ['사번', '본인', '희망일', '상태']) {
+    for (const h of ['사번', '본인 접종', '접종 희망일', '신청 상태']) {
       expect(() => fireEvent.click(head(h)), h + ' 머리글').not.toThrow()
       expect(screen.getByRole('button', { name: /전체/ }), h + ' 메뉴가 열려야 한다').toBeTruthy()
       fireEvent.click(head(h))        /* 닫기 */
@@ -225,11 +225,11 @@ describe('헤더 필터 — 눌러도 터지지 않고 실제로 걸린다', () 
     await screen.findByText('김*화')
     expect(screen.getByText('1건')).toBeTruthy()          /* 기본: 신청 1건 */
 
-    fireEvent.click(head('상태'))
+    fireEvent.click(head('신청 상태'))
     fireEvent.click(screen.getByRole('button', { name: /^전체/ }))   /* 상태 필터 해제 */
     expect(await screen.findByText('2건')).toBeTruthy()   /* 취소 줄까지 2건 */
 
-    fireEvent.click(head('희망일'))
+    fireEvent.click(head('접종 희망일'))
     fireEvent.click(screen.getByRole('button', { name: /2026-11-04/ }))
     expect(await screen.findByText('1건')).toBeTruthy()   /* 11-04 는 취소 줄 하나 */
     expect(screen.getByText('한*람')).toBeTruthy()
@@ -251,7 +251,7 @@ describe('취소된 줄 기본 숨김', () => {
     /* 기본 상태 — 버튼이 없다 */
     expect(screen.queryByRole('button', { name: /필터 초기화/ })).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: '상태' }))
+    fireEvent.click(screen.getByRole('button', { name: '신청 상태' }))
     fireEvent.click(screen.getByRole('button', { name: /^전체/ }))
     expect(await screen.findByText('한*람')).toBeTruthy()
     const reset = screen.getByRole('button', { name: /필터 초기화/ })

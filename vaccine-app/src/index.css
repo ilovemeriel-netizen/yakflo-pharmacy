@@ -15,7 +15,7 @@
   --v-card: #FFFFFF;
   --v-line: rgba(46, 74, 98, 0.14);   /* navy 14% */
   --v-ink: var(--v-navy);
-  --v-ink-dim: rgba(46, 74, 98, 0.62);
+  --v-ink-dim: rgba(46, 74, 98, 0.78);   /* ★ 0.62 는 흰 바탕에서 3.34:1 로 AA 미달이었다 → 0.78 = 5.00:1 */
 
   color-scheme: light;
   font-family: Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;

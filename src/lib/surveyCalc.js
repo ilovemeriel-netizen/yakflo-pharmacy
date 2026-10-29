@@ -152,8 +152,8 @@ export function dupNameKeys(allRows) {
 /* 한 행의 비고 문자열. dupKeys 는 dupNameKeys() 결과(Set). */
 export function rowNote(r, dupKeys) {
   const out = []
-  if (!String(r?.emp_no ?? '').trim()) out.push('사번 없음')
-  if (dupKeys && dupKeys.has(nameKeyOf(r))) out.push('이름 중복')
+  if (!String(r?.emp_no ?? '').trim()) out.push('사번 미입력')
+  if (dupKeys && dupKeys.has(nameKeyOf(r))) out.push('동일 성명 확인 필요')
   return out.join(' · ')
 }
 

@@ -30,7 +30,7 @@ import { tabFromHash, writeTabHash, clearTabHash, TAB_DEFAULT } from './lib/tabR
 const TOKEN_KEY = 'vaccine_public_token'
 const REFRESH_MS = 60_000
 const PW_LEN = 4
-const TEL = '약제과 내선 217'
+const TEL = '약제과(내선 217)'
 /* 불러오는 동안 숫자 자리에 들어가는 문구 — 한 곳에만 둔다 */
 const LOADING = '불러오는 중...'
 

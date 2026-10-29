@@ -46,7 +46,8 @@ function stamp() {
 
 /* 명단 열 — 엑셀·PDF 가 같은 순서를 쓴다.
    ★ PDF 에만 맨 오른쪽 「확인」 열을 하나 더 붙인다(손 체크용 빈칸). 엑셀에는 넣지 않는다. */
-const HEAD = ['신청번호', '사번', '성명', '본인', '가족 수', '도즈', '희망일', '상태', '접종 완료', '비고']
+const HEAD = ['신청번호', '사번', '성명', '소속', '본인 접종', '가족 접종 인원',
+  '신청 수량(도즈)', '접종 희망일', '신청 상태', '접종 완료', '확인 사항']
 const HEAD_PDF = [...HEAD, '확인']
 const NCOL_PDF = HEAD_PDF.length
 const CHECK_COL = NCOL_PDF - 1   /* 맨 오른쪽 「확인」 열 */
@@ -59,6 +60,7 @@ function rowOf(r, raw, note) {
     String(r.receipt_code || ''),
     raw ? (r.emp_no || '—') : maskEmpNo(r.emp_no),
     raw ? (r.name || '—') : maskName(r.name),
+    r.dept || '—',
     r.self_dose ? 'O' : '—',
     Number(r.family_count || 0),
     doseOf(r),
@@ -131,7 +133,8 @@ export async function buildWorkbook({ survey, rows, allRows, user = ISSUER, raw 
       if (cell) { cell.t = 's'; cell.v = String(cell.v ?? '') }
     }
   }
-  ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 6 }, { wch: 8 },
+  /* ★ 소속이 성명 다음에 들어가 열이 10 → 11 로 늘었다 — 폭도 함께 늘린다 */
+  ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 6 }, { wch: 8 },
     { wch: 7 }, { wch: 13 }, { wch: 7 }, { wch: 10 }, { wch: 16 }]
   XLSX.utils.book_append_sheet(wb, ws, '명단')
 
@@ -231,7 +234,8 @@ async function composePdf({ survey, rows, allRows, user = ISSUER, raw = true, fo
     /* 비고는 내용에 맞게(22), 확인은 좁게(12) — 확인 칸의 **글자는 빈 문자열**이다.
        ※ 글꼴 부분집합에 ☐(U+2610)·□(U+25A1)가 없다(cmap 확인). 글자로 넣으면 네모로 깨지므로
          글꼴을 건드리지 않고 didDrawCell 에서 네모를 **선으로 그린다**. */
-    columnStyles: { 9: { cellWidth: 22 }, 10: { cellWidth: 12, halign: 'center' } },
+    /* ★ 소속이 끼면서 비고·확인 열 번호가 하나씩 밀렸다(9·10 → 10·11) */
+    columnStyles: { 10: { cellWidth: 22 }, 11: { cellWidth: 12, halign: 'center' } },
     head: [HEAD_PDF],
     margin: { left: 14, right: 14, top: 23, bottom: 18 },
     showHead: 'everyPage',      /* 표 머리를 매 쪽 반복 — 기본값이지만 뜻을 적어 둔다 */
