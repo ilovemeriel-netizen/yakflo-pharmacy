@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>수요조사</title>
+  <rect width="64" height="64" rx="14" fill="#804A87"/>
+  <rect x="14" y="13" width="34" height="42" rx="6" fill="#FFFFFF"/>
+  <rect x="23" y="8" width="16" height="10" rx="3" fill="#BFA6D9"/>
+  <rect x="27.5" y="22" width="7" height="20" rx="1.5" fill="#804A87"/>
+  <rect x="21" y="28.5" width="20" height="7" rx="1.5" fill="#804A87"/>
+  <circle cx="47" cy="48" r="11" fill="#019748" stroke="#804A87" stroke-width="3"/>
+  <path d="M41.5 48.2 L45.4 52 L52.5 44.6" fill="none" stroke="#FFFFFF" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

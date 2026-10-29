@@ -37,6 +37,26 @@ export function writeTabHash(tab, win) {
   const h = tabHash(tab)
   const base = (w.location.pathname || '/') + (w.location.search || '')
   try { w.history.replaceState(null, '', h ? base + h : base) } catch { /* 주소를 못 바꿔도 화면은 동작한다 */ }
+  setTabIcon(tab, w.document)
+}
+
+/* ── 탭에 따라 파비콘을 바꾼다 ──────────────────────────────────────────
+   잔량 = 바이알(vial) · 수요조사 = 클립보드(survey).
+   ★ index.html 의 `data-tab-icon` 이 붙은 <link> 만 바꾼다 —
+     apple-touch-icon(홈 화면 아이콘)은 그대로 둔다.
+   ★ 파일 이름 규칙만 바꿔 끼운다: /vial.svg ↔ /survey.svg · /vial-32.png ↔ /survey-32.png.
+   ★ 새로고침으로 #survey 에 바로 들어와도 보이게, 화면이 처음 뜰 때도 한 번 부른다. */
+export const ICON_BY_TAB = { stock: 'vial', survey: 'survey' }
+
+export function setTabIcon(tab, doc) {
+  const d = doc || (typeof document !== 'undefined' ? document : null)
+  if (!d || !d.querySelectorAll) return
+  const name = ICON_BY_TAB[tab] || ICON_BY_TAB[TAB_DEFAULT]
+  for (const el of d.querySelectorAll('link[data-tab-icon]')) {
+    const href = el.getAttribute('href') || ''
+    const next = href.replace(/\/(vial|survey)/, '/' + name)
+    if (next !== href) el.setAttribute('href', next)
+  }
 }
 
 /* 해시를 지운다 — 열린 회차가 없어 수요조사 탭 자체가 없을 때 */

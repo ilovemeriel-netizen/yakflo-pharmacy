@@ -25,7 +25,7 @@ import { pwReady } from './lib/pwInput'
 import PinBoxes from './PinBoxes'
 import SurveyTab from './SurveyTab'
 import { seasonLabel } from './lib/surveyText'
-import { tabFromHash, writeTabHash, clearTabHash, TAB_DEFAULT } from './lib/tabRoute'
+import { tabFromHash, writeTabHash, clearTabHash, setTabIcon, TAB_DEFAULT } from './lib/tabRoute'
 
 const TOKEN_KEY = 'vaccine_public_token'
 const REFRESH_MS = 60_000
@@ -92,6 +92,9 @@ export default function App() {
   /* ★ 탭을 주소에서 읽는다 — 새로고침해도 보던 탭이 유지된다(#survey = 수요조사).
      입력 중인 값은 담지 않는다 — 해시에 들어가는 것은 탭 이름 하나뿐이다. */
   const [tab, setTab] = useState(tabFromHash)
+  /* ★ 새로고침으로 #survey 에 바로 들어와도 아이콘이 맞게 뜬다.
+     state 를 바꾸지 않는다 — <link> 의 href 만 손댄다. */
+  useEffect(() => { setTabIcon(tab) }, [tab])
   /* 회차 답(있다/없다)을 받았는지 — 받기 전에 해시를 지우면 #survey 로 들어온 사람이 튕긴다 */
   const surveyKnown = useRef(false)
   /* 로그인 응답으로 회차를 이미 받았는지 — true 면 info 호출을 건너뛴다(왕복 1회 절약) */
