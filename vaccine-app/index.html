@@ -8,7 +8,12 @@
     <title>백신 잔량 조회</title>
     <!-- 파비콘 — 브랜드 보라 배경. 색은 리터럴 hex 고정(파비콘은 테마를 상속하지 못한다).
          ※ 이 파일은 vaccine-app 전용이다. 관리 화면·병동신청앱과 공유하지 않는다. -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- ★ data-tab-icon 이 붙은 것만 탭에 따라 바뀐다(lib/tabRoute.js setTabIcon).
+         잔량 = 바이알 · 수요조사 = 클립보드. apple-touch-icon 은 홈 화면 아이콘이라 바꾸지 않는다. -->
+    <link rel="icon" href="/vial.ico" sizes="any" data-tab-icon />
+    <link rel="icon" type="image/svg+xml" href="/vial.svg" data-tab-icon />
+    <link rel="icon" type="image/png" sizes="32x32" href="/vial-32.png" data-tab-icon />
+    <link rel="apple-touch-icon" href="/vial-180.png" />
     <!-- ※ manifest.webmanifest 는 두지 않는다 — 병동신청앱과 같은 방침(설치 프롬프트가 혼란을 준다). -->
     <link rel="preconnect" href="https://cdn.jsdelivr.net" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
