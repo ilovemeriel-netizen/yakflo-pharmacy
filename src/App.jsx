@@ -5,6 +5,7 @@ import { passesDrugFilters } from './lib/drugFilter'
 import { planReorder } from './lib/locOrder'
 import { RX_TOGGLE, RX_MORE, autoMap } from './lib/drugRules'
 import { classifyDrugRows, applyDrugRows } from './lib/drugBulk'
+import { saveWithFallback, partialText, partialBulkText, PARTIAL_BG, PARTIAL_FG, PARTIAL_LINE } from './lib/saveWithFallback'
 import { decomposeAtc } from './lib/atcMap'
 import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT } from './lib/txTypes'
 import { vaccineTabFromHash } from './lib/vaccineRoute'
@@ -462,13 +463,16 @@ function LocVocabDatalist({ id }) {
 }
 
 /* ═══ 약품 수정 모달 (드래그 가능) ═══ */
-function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
+/* ★ 시험에서 진짜 컴포넌트로 렌더하려고 내보낸다(ColMenu 와 같은 이유). 컴포넌트라 react-refresh 규칙에 걸리지 않는다. */
+export function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   const { t, profile, memberRole } = useTheme(); const oc = dr.drug_code || ''
   const canDelete = profile?.role === 'admin' || memberRole === 'owner' || memberRole === 'admin'
   const isNew = !!dr.__register
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [f, sF] = useState({ drug_code: oc, drug_name: dr.drug_name || '', category: dr.category || '', ingredient_en: dr.ingredient_en || '', ingredient_kr: dr.ingredient_kr || '', efficacy_class: dr.efficacy_class || '', efficacy: dr.efficacy || '', manufacturer: dr.manufacturer || '', specification: dr.specification || '', unit: dr.unit || '', packaging: dr.packaging || dr.unit || '', total_qty: dr.total_qty ?? '', price_unit: dr.price_unit || 0, insurance_price: dr.insurance_price || 0, purchase_price: dr.purchase_price ?? '', edi_price: dr.edi_price ?? '', insurance_code: dr.insurance_code || '', current_qty: dr.current_qty || 0, expiry_date: dr.expiry_date || '', status: dr.status || '사용', narcotic_type: (dr.narcotic_type === '한외마약' ? '한외마약' : getNT(dr)), safety_stock: dr.safety_stock || 0, max_stock: dr.max_stock || 0, lot_no: dr.lot_no || '', insurance_type: dr.insurance_type || '급여', unit_mgmt: dr.unit_mgmt || '', prescription_type: dr.prescription_type || '', atc_code: dr.atc_code || '', storage_method: dr.storage_method || '실온', storage_location: dr.storage_location || '', memo: dr.memo || '', standard_code: dr.standard_code || '', additive: dr.additive || '', compound_type: dr.compound_type || '단일제', supplier_id: dr.supplier_id || '', is_high_alert: !!dr.is_high_alert, is_public_supply: !!dr.is_public_supply })
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null); const [apiLd, setApiLd] = useState(false)
+  /* 저장은 됐지만 폴백이 버린 컬럼들 — 비어 있지 않으면 성공 배너 대신 「일부 미반영」을 띄우고 모달을 닫지 않는다 */
+  const [dropped, setDropped] = useState([])
   const [apiResults, setApiResults] = useState([])
   const [lookupInfo, setLookupInfo] = useState(null)
   const [pos, setPos] = useState({ x: 0, y: 0 }); const [dragging, setDragging] = useState(false); const dragRef = useRef(null); const _eBox = useRef(null); const [edSuppliers, setEdSuppliers] = useState([]); useEffect(() => { let on = true; supabase.from('suppliers').select('*').order('sort_order', { nullsFirst: false }).then(({ data }) => { if (on) setEdSuppliers(data || []) }); return () => { on = false } }, [])
@@ -686,14 +690,12 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     const _initQty = Number(f.current_qty) || 0; const _atc = decomposeAtc(f.atc_code); const row = { drug_code: code, drug_name: f.drug_name.trim(), category: f.category, ingredient_en: f.ingredient_en || null, ingredient_kr: f.ingredient_kr || null, efficacy_class: f.efficacy_class || null, efficacy: f.efficacy || null, manufacturer: f.manufacturer || null, specification: f.specification || null, unit: f.packaging || null, packaging: f.packaging || null, total_qty: (f.total_qty === '' || f.total_qty == null) ? null : Number(f.total_qty), purchase_price: (f.purchase_price === '' || f.purchase_price == null) ? null : Number(f.purchase_price), edi_price: Number(f.insurance_price) || 0, insurance_type: f.insurance_type, insurance_code: f.insurance_code || null, standard_code: f.standard_code || null, compound_type: f.compound_type || '단일제', additive: f.additive || null, current_qty: 0, safety_stock: Number(f.safety_stock) || 0, max_stock: Number(f.max_stock) || 0, expiry_date: f.expiry_date || null, lot_no: f.lot_no || null, storage_method: f.storage_method || null, storage_location: f.storage_location || null, status: f.status, memo: f.memo || null, is_narcotic: f.narcotic_type === '향정' || f.narcotic_type === '마약', narcotic_type: f.narcotic_type === '일반' ? null : f.narcotic_type, prescription_type: f.prescription_type || null, atc_code: f.atc_code ? f.atc_code.trim().toUpperCase() : null, atc_l1: _atc.atc_l1 || null, atc_l2: _atc.atc_l2 || null, atc_l3: _atc.atc_l3 || null, supplier_id: f.supplier_id || null }
     if (memberRole === 'owner') row.is_high_alert = !!f.is_high_alert
     if (memberRole === 'owner') row.is_public_supply = !!f.is_public_supply
-    let res = await supabase.from('drugs').insert([row])
-    for (let retry = 0; retry < 3 && res.error && res.error.message.includes('column'); retry++) {
-      const m = res.error.message.match(/'([^']+)' column/); if (!m) break; console.warn('[drugs INSERT] 미존재 컬럼 자동 제거:', m[1], '/ 원인:', res.error.message); delete row[m[1]]
-      res = await supabase.from('drugs').insert([row])
-    }
+    const res = await saveWithFallback(row, p => supabase.from('drugs').insert([p]), { retries: 3, label: 'drugs INSERT' })
     setSaving(false)
     if (res.error) { setMsg(res.error.message.includes('duplicate') || res.error.message.includes('unique') ? '이미 존재하는 약품코드입니다.' : res.error.message); return } if (_initQty > 0) { const { data: _a, error: _ae } = await supabase.rpc('bulk_stock_adjust', { p_items: [{ drug_code: code, target_qty: _initQty }], p_date: todayYmd(), p_reason: '초기재고 등록' }); if (_ae) { setMsg('등록됨 · 초기재고 반영 실패: ' + _ae.message); return } if (_a && _a.ok === false) { setMsg('등록됨 · 초기재고 실패: ' + (((_a.failed||[])[0]||{}).reason || '')); return } }
-    setMsg('OK'); setTimeout(() => { onSaved?.(); onClose() }, 500)
+    /* ★ 버린 컬럼이 있으면 자동으로 닫지 않는다 — 사용자가 읽고 닫는다. 목록 새로고침은 그대로 한다. */
+    if (res.dropped.length) { setDropped(res.dropped); onSaved?.(); return }
+    setMsg('SAVED'); setTimeout(() => { onSaved?.(); onClose() }, 500)
   }
   async function save() {
     if (isNew) return saveNew()
@@ -716,15 +718,12 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     if (_has(f.compound_type)) ud.compound_type = f.compound_type
     if (memberRole === 'owner') ud.is_high_alert = !!f.is_high_alert  /* boolean: false도 저장(해제 가능)·owner 한정 */
     if (memberRole === 'owner') ud.is_public_supply = !!f.is_public_supply  /* boolean: false도 저장(해제 가능)·owner 한정 */
-    let res = dr.id ? await supabase.from('drugs').update(ud).eq('id', dr.id) : await supabase.from('drugs').update(ud).eq('drug_code', oc)
-    /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) */
-    for(let retry=0;retry<3&&res.error&&res.error.message.includes('column');retry++){
-      const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[drugs UPDATE] 미존재 컬럼 자동 제거:', m[1], '/ 원인:', res.error.message);delete ud[m[1]]
-      res=dr.id?await supabase.from('drugs').update(ud).eq('id',dr.id):await supabase.from('drugs').update(ud).eq('drug_code',oc)
-    }
+    /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) — lib/saveWithFallback.js 단일 출처 */
+    const res = await saveWithFallback(ud, p => dr.id ? supabase.from('drugs').update(p).eq('id', dr.id) : supabase.from('drugs').update(p).eq('drug_code', oc), { retries: 3, label: 'drugs UPDATE' })
     setSaving(false)
     if (res.error) { setMsg(res.error.message); return }
-    setMsg('OK'); setTimeout(() => { onSaved?.(); onClose() }, 500)
+    if (res.dropped.length) { setDropped(res.dropped); onSaved?.(); return }
+    setMsg('SAVED'); setTimeout(() => { onSaved?.(); onClose() }, 500)
   }
 
   const ip = { width: '100%', padding: '9px 12px', border: `1px solid ${t.border}`, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }
@@ -737,7 +736,9 @@ function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><button onClick={() => lookupApi()} disabled={apiLd} style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${t.green}`, background: t.greenL, color: t.green, cursor: apiLd ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 700 }}>{apiLd ? '조회중...' : '🔍 API 조회'}</button><button onClick={() => fillMaster()} style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${t.green}`, background: 'transparent', color: t.green, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>📋 마스터 조회</button><button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${t.border}`, background: 'transparent', cursor: 'pointer', fontSize: 16, color: t.textM }}>✕</button></div>
       </div>
       <div style={{ padding: '16px 24px 20px' }}>
-        {msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '10px', marginBottom: 12, color: msg === 'OK' ? t.green : t.red, fontSize: 13, fontWeight: 600 }}>{msg === 'OK' ? '✅ API 조회 완료!' : msg}</div>}
+        {/* ★ 저장 성공('SAVED')과 API 조회 성공('OK')을 분리한다 — 예전엔 둘 다 'OK' 라서 저장해도 「API 조회 완료!」가 떴다 */}
+        {dropped.length > 0 && <div style={{ background: PARTIAL_BG, borderRadius: 8, padding: '10px', marginBottom: 12, color: PARTIAL_FG, fontSize: 13, fontWeight: 600 }}>{partialText(dropped)}</div>}
+        {dropped.length === 0 && msg && <div style={{ background: (msg === 'OK' || msg === 'SAVED') ? t.greenL : t.redL, borderRadius: 8, padding: '10px', marginBottom: 12, color: (msg === 'OK' || msg === 'SAVED') ? t.green : t.red, fontSize: 13, fontWeight: 600 }}>{msg === 'SAVED' ? '✅ 저장 완료' : msg === 'OK' ? '✅ API 조회 완료!' : msg}</div>}
         {apiResults.length>0&&<div style={{background:t.bg,borderRadius:10,border:`1px solid ${t.green}40`,marginBottom:12,overflow:'hidden'}}>
           <div style={{padding:'8px 14px',borderBottom:`1px solid ${t.border}`,fontSize:11,color:t.green,fontWeight:600}}>{apiResults.length}개 결과 · 다른 약품을 선택하려면 클릭하세요</div>
           <div style={{maxHeight:140,overflowY:'auto'}}>{apiResults.map((item,i)=><div key={i} onClick={()=>selectApiResult(item)} style={{padding:'8px 14px',borderBottom:`1px solid ${t.border}`,cursor:'pointer',fontSize:12}} onMouseEnter={e=>e.currentTarget.style.background=t.greenL} onMouseLeave={e=>e.currentTarget.style.background=''}><div style={{fontWeight:600,color:t.text}}>{item.name||'-'}</div><div style={{fontSize:10,color:t.textL,marginTop:1}}>{item.manufacturer||''}{item.ingredient?` · ${item.ingredient}`:''}</div></div>)}</div>
@@ -1948,7 +1949,8 @@ function DateCell({ value, onChange }) {
   </span>;
 }
 /* 유효기한 표 — ExpiryAlert에서 모듈 추출(component-in-render 리마운트 제거 → 편집 시 가로 스크롤 보존). 렌더/동작 동일. */
-function ET({ items, color, label, sub, editRow, editField, startEdit, saveField, closeEdit, saveNote, onEdit, unusedDays, isUnused, alertSt, ip2, fb, onDispose, canDispose }) { const { t } = useTheme(); const{so,TS,sk,sd,setSort}=useSort('expiry_date');const[hfV,setHfV]=useState({})
+/* ★ 시험에서 진짜 컴포넌트로 렌더하려고 내보낸다(ColMenu 와 같은 이유). 컴포넌트라 react-refresh 규칙에 걸리지 않는다. */
+export function ET({ items, color, label, sub, editRow, editField, startEdit, saveField, closeEdit, saveNote, onEdit, unusedDays, isUnused, alertSt, ip2, fb, onDispose, canDispose }) { const { t } = useTheme(); const{so,TS,sk,sd,setSort}=useSort('expiry_date');const[hfV,setHfV]=useState({})
     /* 남은일수·미사용기간 사전 계산 → 정렬 가능 */
     const withCalc=items.map(d=>{const rd=exD(d.expiry_date);const ud=unusedDays(d);return{...d,_remainDays:rd,_unusedDays:ud,_alertStatus:alertSt(rd).text}})
     const sorted=so(withCalc)
@@ -1961,7 +1963,9 @@ function ET({ items, color, label, sub, editRow, editField, startEdit, saveField
     /* 섹션별 필터 초기화: 자기 섹션 hfV·정렬만 초기화(다른 섹션 미영향). 편집 중(editRow)엔 숨김(미저장 데이터 보존). */
     const _fc=Object.values(hfV).filter(Boolean).length+((sk!=='expiry_date'||sd!=='asc')?1:0);const _showR=_fc>0&&editRow==null;const _resetSec=()=>{setHfV({});setSort('expiry_date','asc')}
     const _rbtn=()=><button className="no-print" onClick={_resetSec} title="이 섹션 필터·정렬 초기화" style={{padding:'3px 9px',borderRadius:7,border:`1px solid ${t.accent}`,background:t.accent+'12',color:t.accent,cursor:'pointer',fontSize:10,fontWeight:700,whiteSpace:'nowrap'}}>필터 초기화{_fc>0?' ('+_fc+')':''}</button>
-    const _fbSt=k=>{const v=fb&&fb[k];return{transition:'background .45s',...(v?{background:v==='ok'?'#01974826':t.redL}:{})}}
+    /* ★ 기법은 그대로 배경 틴트다(테두리로 바꾸면 칸 크기가 흔들린다). 'partial' 만 연보라를 쓴다. */
+    const _fbSt=k=>{const v=fb&&fb[k];return{transition:'background .45s',...(v?{background:v.k==='ok'?'#01974826':v.k==='partial'?PARTIAL_BG:t.redL}:{})}}
+    const _fbTi=k=>{const v=fb&&fb[k];return v&&v.m?v.m:undefined}
     return<><div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,display:'flex',alignItems:'center',gap:8,background:color+'08'}}><span style={{fontWeight:700,fontSize:13,color}}>{label}</span><span style={{fontSize:11,color:t.textM}}>{sub}</span><span style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:8}}>{_showR?_rbtn():null}<span style={{background:color,color:'#fff',borderRadius:8,padding:'2px 12px',fontSize:11,fontWeight:700}}>{items.length}</span></span></div>
     {!sorted.length?<div style={{padding:16,textAlign:'center',color:t.textL,fontSize:12}}>해당 없음</div>:
     <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={setSort} hf={hf} hscroll={{noLabel:true,ends:true}} fontSize={11} layout="fixed" minWidth={1340} colWidths={[96,200,70,70,90,72,78,100,104,104,80,100,100,76]} cols={cols.map(([k,h])=>({k,h,th:{whiteSpace:'nowrap'}}))}>
@@ -1974,11 +1978,11 @@ function ET({ items, color, label, sub, editRow, editField, startEdit, saveField
         <td style={{padding:'5px 8px',color,fontWeight:600,fontSize:10}}>{d.expiry_date}</td>
         <td style={{padding:'5px 8px',textAlign:'right',fontWeight:700,fontSize:11,color}}>{days}</td>
         <td style={{padding:'5px 4px',textAlign:'center'}}>{a.text&&<span style={{background:a.bg||'transparent',color:a.c,fontWeight:700,padding:'2px 6px',borderRadius:4,fontSize:9,whiteSpace:'nowrap'}}>{a.text}</span>}</td>
-        <td style={{padding:'5px 6px',fontSize:10,..._fbSt(d.drug_code+':last_used_dept')}}>{isEd&&editField==='last_used_dept'?<select defaultValue={d.last_used_dept||''} onChange={e=>saveField(d,'last_used_dept',e.target.value)} onBlur={closeEdit} style={{...ip2,width:85}}><option value="">선택</option><option>가정의학과</option><option>재활의학과1</option><option>신경과</option><option>기타</option></select>:<span style={{color:t.textM,cursor:'pointer'}} onClick={()=>startEdit(d,'last_used_dept')}>{d.last_used_dept?<span style={{background:t.accentL,color:t.accent,padding:'1px 6px',borderRadius:4,fontSize:9,fontWeight:600}}>{d.last_used_dept}</span>:<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
-        <td style={{padding:'5px 6px',fontSize:10,textAlign:'center',width:100,..._fbSt(d.drug_code+':last_used_date')}}>{isEd&&editField==='last_used_date'?<DateCell key={d.drug_code} value={d.last_used_date||''} onChange={v=>saveField(d,'last_used_date',v)}/>:<span style={{color:t.textM,cursor:'pointer',fontSize:10}} onClick={()=>startEdit(d,'last_used_date')}>{d.last_used_date||<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
+        <td title={_fbTi(d.drug_code+':last_used_dept')} style={{padding:'5px 6px',fontSize:10,..._fbSt(d.drug_code+':last_used_dept')}}>{isEd&&editField==='last_used_dept'?<select defaultValue={d.last_used_dept||''} onChange={e=>saveField(d,'last_used_dept',e.target.value)} onBlur={closeEdit} style={{...ip2,width:85}}><option value="">선택</option><option>가정의학과</option><option>재활의학과1</option><option>신경과</option><option>기타</option></select>:<span style={{color:t.textM,cursor:'pointer'}} onClick={()=>startEdit(d,'last_used_dept')}>{d.last_used_dept?<span style={{background:t.accentL,color:t.accent,padding:'1px 6px',borderRadius:4,fontSize:9,fontWeight:600}}>{d.last_used_dept}</span>:<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
+        <td title={_fbTi(d.drug_code+':last_used_date')} style={{padding:'5px 6px',fontSize:10,textAlign:'center',width:100,..._fbSt(d.drug_code+':last_used_date')}}>{isEd&&editField==='last_used_date'?<DateCell key={d.drug_code} value={d.last_used_date||''} onChange={v=>saveField(d,'last_used_date',v)}/>:<span style={{color:t.textM,cursor:'pointer',fontSize:10}} onClick={()=>startEdit(d,'last_used_date')}>{d.last_used_date||<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
         <td style={{padding:'5px 8px',textAlign:'right',fontSize:10,color:t.textM}}>{uDays!==null?uDays:''}</td>
         <td style={{padding:'5px 4px',textAlign:'center'}}>{uDays!==null&&uDays>365?<span style={{background:t.red,color:'#fff',padding:'2px 6px',borderRadius:4,fontSize:9,fontWeight:700,whiteSpace:'nowrap'}}>■미사용■</span>:''}</td>
-        <td style={{padding:'5px 6px',fontSize:10,..._fbSt(d.drug_code+':recommended_action')}}>{isEd&&editField==='recommended_action'?<select defaultValue={d.recommended_action||''} onChange={e=>saveField(d,'recommended_action',e.target.value)} onBlur={closeEdit} style={{...ip2,width:80}}>{REC_ACTIONS.map(a=><option key={a} value={a}>{a||'선택'}</option>)}</select>:<span style={{cursor:'pointer',fontSize:10}} onClick={()=>startEdit(d,'recommended_action')}>{d.recommended_action?<span style={{background:t.amberL,color:t.amber,padding:'1px 6px',borderRadius:4,fontSize:9,fontWeight:600}}>{d.recommended_action}</span>:<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
+        <td title={_fbTi(d.drug_code+':recommended_action')} style={{padding:'5px 6px',fontSize:10,..._fbSt(d.drug_code+':recommended_action')}}>{isEd&&editField==='recommended_action'?<select defaultValue={d.recommended_action||''} onChange={e=>saveField(d,'recommended_action',e.target.value)} onBlur={closeEdit} style={{...ip2,width:80}}>{REC_ACTIONS.map(a=><option key={a} value={a}>{a||'선택'}</option>)}</select>:<span style={{cursor:'pointer',fontSize:10}} onClick={()=>startEdit(d,'recommended_action')}>{d.recommended_action?<span style={{background:t.amberL,color:t.amber,padding:'1px 6px',borderRadius:4,fontSize:9,fontWeight:600}}>{d.recommended_action}</span>:<span style={{color:t.textL,fontSize:9}}>클릭</span>}</span>}</td>
         <td style={{padding:'5px 6px',..._fbSt(d.drug_code+':expiry_notes')}}><input defaultValue={d.expiry_notes||''} onBlur={e=>saveNote(d,e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.target.blur()}} placeholder="입력" style={{...ip2,width:80,fontSize:9}}/></td>
         <td style={{padding:'5px 6px'}}><SB s={d.status}/></td>
       </tr>})}</tbody></StandardTable>}</>}
@@ -1992,7 +1996,8 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload,onDispose}){
   const alertSt=days=>{if(days===null)return{text:'',c:t.textL,bg:''};if(days<=0)return{text:'★만료★',c:'#fff',bg:t.red};if(days<=30)return{text:'▲긴급▲',c:'#fff',bg:'#E65100'};if(days<=60)return{text:'◆주의◆',c:'#333',bg:'#FFD600'};if(days<=90)return{text:'●확인●',c:'#fff',bg:t.blue};return{text:'정상',c:t.green,bg:''}}
   const g={urgent:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=30&&(d.current_qty||0)>0}),warning:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>30&&x<=90&&(d.current_qty||0)>0}),notice:fd.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x>90&&x<=180&&(d.current_qty||0)>0}),narcotic:drugs.filter(d=>{const x=exD(d.expiry_date);return x!==null&&x<=180&&isN(d)&&cats.includes(d.category)}),unused:fd.filter(d=>isUnused(d)&&(d.current_qty||0)>0)}
   useEffect(()=>{if(focusLevel)setALv(focusLevel)},[focusLevel])
-  function flash(key,kind){setFb(p=>({...p,[key]:kind}));setTimeout(()=>setFb(p=>{const c={...p};delete c[key];return c}),kind==='ok'?1500:2500)}
+  /* fb[key] = {k:'ok'|'err'|'partial', m?:안내문구}. ★ 'partial' 은 자동으로 2500ms 를 받는다(ok 만 1500). */
+  function flash(key,kind,m){setFb(p=>({...p,[key]:{k:kind,m}}));setTimeout(()=>setFb(p=>{const c={...p};delete c[key];return c}),kind==='ok'?1500:2500)}
   function closeEdit(){setEditRow(null);setEditField(null)}
   /* 즉시 자동저장: 드롭다운·달력 onChange에서 직접 호출. await 전 setState 없음 → 선택 순간 부모 리렌더 0(가로 스크롤 튐 차단). */
   async function saveField(d,field,value){
@@ -2000,10 +2005,9 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload,onDispose}){
     if(field==='last_used_dept')ud.last_used_dept=value||''
     else if(field==='last_used_date')ud.last_used_date=value||null
     else if(field==='recommended_action')ud.recommended_action=value||null
-    let res=await supabase.from('drugs').update(ud).eq('drug_code',d.drug_code)
-    for(let retry=0;retry<3&&res.error&&res.error.message?.includes('column');retry++){const m=res.error.message.match(/'([^']+)' column/);if(!m)break;delete ud[m[1]];res=await supabase.from('drugs').update(ud).eq('drug_code',d.drug_code)}
+    const res=await saveWithFallback(ud,p=>supabase.from('drugs').update(p).eq('drug_code',d.drug_code),{retries:3,label:'drugs UPDATE 유효기한'})
     setEditRow(null);setEditField(null)
-    flash(d.drug_code+':'+field,res.error?'err':'ok')
+    flash(d.drug_code+':'+field,res.error?'err':res.dropped.length?'partial':'ok',res.dropped.length?partialText(res.dropped):undefined)
     onReload?.()
   }
   function startEdit(d,field){setEditRow(d.drug_code);setEditField(field)}
@@ -2723,12 +2727,8 @@ function DrugRegister({onRefresh, drugs}) {
     }
     if (isOwner) row.is_high_alert = !!form.is_high_alert
     if (isOwner) row.is_public_supply = !!form.is_public_supply
-    /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) */
-    let res=await supabase.from('drugs').insert([row])
-    for(let retry=0;retry<3&&res.error&&res.error.message.includes('column');retry++){
-      const m=res.error.message.match(/'([^']+)' column/);if(!m)break;console.warn('[drugs INSERT] 미존재 컬럼 자동 제거:', m[1], '/ 원인:', res.error.message);delete row[m[1]]
-      res=await supabase.from('drugs').insert([row])
-    }
+    /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) — lib/saveWithFallback.js 단일 출처 */
+    const res=await saveWithFallback(row,p=>supabase.from('drugs').insert([p]),{retries:3,label:'drugs INSERT'})
     const error=res.error
     setSaving(false)
     if(error){
@@ -2736,6 +2736,8 @@ function DrugRegister({onRefresh, drugs}) {
         ?'이미 존재하는 약품코드입니다.':'등록 실패: '+error.message
       setMsg({type:'error',text:msg2});return
     }
+    /* ★ 버린 컬럼이 있으면 「일부 미반영」을 띄우고 3초 자동 지움을 하지 않는다(사용자가 읽는다) */
+    if(res.dropped.length){setMsg({type:'partial',text:partialText(res.dropped)});setForm(initForm);onRefresh();return}
     setMsg({type:'success',text:`${form.drug_name} 등록 완료!`})
     { const _iq = Number(form.current_qty)||0; if (_iq>0) { const { data:_a, error:_ae } = await supabase.rpc('bulk_stock_adjust',{p_items:[{drug_code:row.drug_code,target_qty:_iq}],p_date:todayYmd(),p_reason:'초기재고 등록'}); if(_ae||(_a&&_a.ok===false)){setMsg({type:'error',text:'약품 등록됨 · 초기재고 반영 실패: '+(_ae?_ae.message:(((_a.failed||[])[0]||{}).reason||''))});return} } }
     setForm(initForm);onRefresh()
@@ -2779,7 +2781,10 @@ function DrugRegister({onRefresh, drugs}) {
     setBulkLoading(true)
     const res=await applyDrugRows(bulk)
     setBulkLoading(false)
-    if(res.fail.length){setBulkMsg({type:'error',text:`${res.success}건 반영 · 실패 ${res.fail.length}건 (${res.fail.slice(0,3).map(f=>f.code||'-').join(', ')}${res.fail.length>3?'…':''})`})}
+    /* ★ 기존 성공·실패 건수 표시는 그대로 두고, 「일부 미반영」만 한 줄 덧붙인다 */
+    const _pt=res.partialCount?' · '+partialBulkText(res.partialCount,res.partialCols):''
+    if(res.fail.length){setBulkMsg({type:'error',text:`${res.success}건 반영 · 실패 ${res.fail.length}건 (${res.fail.slice(0,3).map(f=>f.code||'-').join(', ')}${res.fail.length>3?'…':''})`+_pt})}
+    else if(res.partialCount)setBulkMsg({type:'partial',text:`${res.success}건 반영 완료! (신규 ${res.newCount} · 갱신 ${res.updateCount})`+_pt})
     else setBulkMsg({type:'success',text:`${res.success}건 반영 완료! (신규 ${res.newCount} · 갱신 ${res.updateCount})`})
     setBulk([]);onRefresh();setTimeout(()=>setBulkMsg(null),5000)
   }
@@ -2874,7 +2879,7 @@ function DrugRegister({onRefresh, drugs}) {
             </div>}
             {priceInfo?.notFound&&<div style={{marginTop:8,padding:'8px 14px',background:C.grayL,borderRadius:8,fontSize:11,color:'#888'}}>약가기준정보: 해당 약품의 약가 데이터를 찾을 수 없습니다</div>}
 
-            {msg&&<div style={{background:msg.type==='success'?C.greenL:C.coralL,border:`1px solid ${msg.type==='success'?C.greenB:C.coralB}`,borderRadius:8,padding:'10px 14px',marginBottom:14,color:msg.type==='success'?C.greenD:C.coral,fontSize:13}}>{msg.text}</div>}
+            {msg&&<div style={{background:msg.type==='partial'?PARTIAL_BG:msg.type==='success'?C.greenL:C.coralL,border:`1px solid ${msg.type==='partial'?PARTIAL_LINE:msg.type==='success'?C.greenB:C.coralB}`,borderRadius:8,padding:'10px 14px',marginBottom:14,color:msg.type==='partial'?PARTIAL_FG:msg.type==='success'?C.greenD:C.coral,fontSize:13}}>{msg.text}</div>}
 
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
               <div><label style={lbl}>약품코드 <span style={{color:C.coral}}>*</span></label><input value={form.drug_code} onChange={e=>set('drug_code',e.target.value.toUpperCase())} placeholder="원내코드 입력" style={inp}/></div>
@@ -2955,7 +2960,7 @@ function DrugRegister({onRefresh, drugs}) {
             <div style={{fontSize:12,color:'#aaa'}}>.xlsx / .xls 파일 지원</div>
             <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={xlUpload} style={{display:'none'}}/>
           </div>
-          {bulkMsg&&<div style={{background:bulkMsg.type==='success'?C.greenL:bulkMsg.type==='error'?C.coralL:C.blueL,border:`1px solid ${bulkMsg.type==='success'?C.greenB:bulkMsg.type==='error'?C.coralB:C.blueB}`,borderRadius:8,padding:'10px 14px',marginBottom:14,color:bulkMsg.type==='success'?C.greenD:bulkMsg.type==='error'?C.coral:C.blue,fontSize:13}}>{bulkMsg.text}</div>}
+          {bulkMsg&&<div style={{background:bulkMsg.type==='partial'?PARTIAL_BG:bulkMsg.type==='success'?C.greenL:bulkMsg.type==='error'?C.coralL:C.blueL,border:`1px solid ${bulkMsg.type==='partial'?PARTIAL_LINE:bulkMsg.type==='success'?C.greenB:bulkMsg.type==='error'?C.coralB:C.blueB}`,borderRadius:8,padding:'10px 14px',marginBottom:14,color:bulkMsg.type==='partial'?PARTIAL_FG:bulkMsg.type==='success'?C.greenD:bulkMsg.type==='error'?C.coral:C.blue,fontSize:13}}>{bulkMsg.text}</div>}
           {bulk.length>0&&(
             <>
               <div style={{overflowX:'auto',marginBottom:14,maxHeight:380,overflowY:'auto',border:`0.5px solid ${C.grayB}`,borderRadius:8}}>
@@ -5350,7 +5355,8 @@ function CountConfirmModal({ t, title, tone, head, meta, strong, body, confirm, 
 const IDLE_BANDS_DEFAULT = [90, 180, 365]
 const IDLE_STATUSES = ['관찰', '중지', '보유유지', '해제']
 function _idleDays(d) { if (!d || !d.last_used_date) return null; return Math.floor((new Date() - new Date(d.last_used_date)) / 864e5) }  // unusedDays(ExpiryAlert:1799) 동일식
-function IdleCheck({ drugs, onReload }) {
+/* ★ 시험에서 진짜 컴포넌트로 렌더하려고 내보낸다(ColMenu 와 같은 이유). 컴포넌트라 react-refresh 규칙에 걸리지 않는다. */
+export function IdleCheck({ drugs, onReload }) {
   const { t, profile, user } = useTheme()
   const { so, TS, sk, sd, setSort } = useSort('idle_days', 'desc')
   const [reviews, setReviews] = useState([]); const [ld, setLd] = useState(true)
@@ -5366,15 +5372,18 @@ function IdleCheck({ drugs, onReload }) {
   async function loadReviews() { setLd(true); const { data } = await supabase.from('drug_idle_reviews').select('*'); setReviews(data || []); setLd(false) }
   const latestByCode = {}  // drug_code별 최신 1행 (reviewed_at desc, created_at desc) — 화면 계산(유효기한 g 패턴)
   for (const r of reviews) { const p = latestByCode[r.drug_code]; if (!p || r.reviewed_at > p.reviewed_at || (r.reviewed_at === p.reviewed_at && (r.created_at || '') > (p.created_at || ''))) latestByCode[r.drug_code] = r }
-  const flash = (key, kind) => { setFb(p => ({ ...p, [key]: kind })); setTimeout(() => setFb(p => { const c = { ...p }; delete c[key]; return c }), kind === 'ok' ? 1500 : 2500) }
-  const _fbSt = key => fb[key] === 'ok' ? { boxShadow: 'inset 0 0 0 2px ' + t.green } : fb[key] === 'err' ? { boxShadow: 'inset 0 0 0 2px ' + t.red } : {}
+  /* fb[key] = {k:'ok'|'err'|'partial', m?:안내문구}. ★ 'partial' 은 자동으로 2500ms 를 받는다(ok 만 1500). */
+  const flash = (key, kind, m) => { setFb(p => ({ ...p, [key]: { k: kind, m } })); setTimeout(() => setFb(p => { const c = { ...p }; delete c[key]; return c }), kind === 'ok' ? 1500 : 2500) }
+  const _fbSt = key => { const v = fb[key]; return v ? { boxShadow: 'inset 0 0 0 2px ' + (v.k === 'ok' ? t.green : v.k === 'partial' ? PARTIAL_LINE : t.red) } : {} }
+  const _fbTi = key => { const v = fb[key]; return v && v.m ? v.m : undefined }
   async function saveDrugField(d, field, value) {  // saveField(1808) 패턴: 로컬 ud·단일 필드 direct UPDATE·current_qty 미포함(0055)
     const ud = {}
     if (field === 'last_used_date') ud.last_used_date = value || null
     else if (field === 'last_used_dept') ud.last_used_dept = value || ''
-    let res = await supabase.from('drugs').update(ud).eq('drug_code', d.drug_code)
-    for (let r = 0; r < 3 && res.error && res.error.message?.includes('column'); r++) { const m = res.error.message.match(/'([^']+)' column/); if (!m) break; delete ud[m[1]]; res = await supabase.from('drugs').update(ud).eq('drug_code', d.drug_code) }
-    setEditRow(null); setEditField(null); flash(d.drug_code + ':' + field, res.error ? 'err' : 'ok'); onReload?.()
+    const res = await saveWithFallback(ud, p => supabase.from('drugs').update(p).eq('drug_code', d.drug_code), { retries: 3, label: 'drugs UPDATE 사용점검' })
+    setEditRow(null); setEditField(null)
+    flash(d.drug_code + ':' + field, res.error ? 'err' : res.dropped.length ? 'partial' : 'ok', res.dropped.length ? partialText(res.dropped) : undefined)
+    onReload?.()
   }
   async function insertReview(code, status, memo) { const { error } = await supabase.from('drug_idle_reviews').insert([{ drug_code: code, status, memo: memo || null }]); flash(code + ':status', error ? 'err' : 'ok'); if (!error) loadReviews() }  // 이력 누적(INSERT·UPDATE 아님)
   function changeStatus(code, status, name) { const cur = latestByCode[code]; setRsn({ code, name, status, memo: cur?.memo || '' }) }  // 즉시 INSERT 아님 → 사유 모달에서 status+memo를 한 행으로 저장(중복 이력 방지). 취소 시 미저장·상태 미변경(controlled select 복원)
@@ -5411,9 +5420,9 @@ function IdleCheck({ drugs, onReload }) {
             <td style={{ padding: '6px 8px', fontSize: 11, fontWeight: 600, color: t.text, textAlign: 'left', position: 'sticky', left: CODE_W, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border, minWidth: NAME_W, maxWidth: NAME_W, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.drug_name}</td>
             <td style={{ padding: '6px 8px', fontSize: 10, color: t.textM, textAlign: 'left' }}>{r.category || '-'}</td>
             <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right', fontWeight: 600 }}>{r.current_qty.toLocaleString()}</td>
-            <td style={{ padding: '5px 6px', fontSize: 11, textAlign: 'center', ..._fbSt(r.drug_code + ':last_used_date') }}>{isEd && editField === 'last_used_date' ? <input type="date" defaultValue={r.last_used_date || ''} onChange={e => saveDrugField(r._drug, 'last_used_date', e.target.value)} onBlur={() => { setEditRow(null); setEditField(null) }} style={ip2} /> : <span style={{ cursor: 'pointer', color: t.textM }} onClick={() => { setEditRow(r.drug_code); setEditField('last_used_date') }}>{r.last_used_date || <span style={{ color: t.textL, fontSize: 9 }}>클릭</span>}</span>}</td>
+            <td title={_fbTi(r.drug_code + ':last_used_date')} style={{ padding: '5px 6px', fontSize: 11, textAlign: 'center', ..._fbSt(r.drug_code + ':last_used_date') }}>{isEd && editField === 'last_used_date' ? <input type="date" defaultValue={r.last_used_date || ''} onChange={e => saveDrugField(r._drug, 'last_used_date', e.target.value)} onBlur={() => { setEditRow(null); setEditField(null) }} style={ip2} /> : <span style={{ cursor: 'pointer', color: t.textM }} onClick={() => { setEditRow(r.drug_code); setEditField('last_used_date') }}>{r.last_used_date || <span style={{ color: t.textL, fontSize: 9 }}>클릭</span>}</span>}</td>
             <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right', fontWeight: 700, color: r.idle_days != null && r.idle_days >= b3 ? t.red : t.text }}>{r.idle_days != null ? r.idle_days.toLocaleString() + '일' : '-'}</td>
-            <td style={{ padding: '5px 6px', fontSize: 10, textAlign: 'left', ..._fbSt(r.drug_code + ':last_used_dept') }}>{isEd && editField === 'last_used_dept' ? <input list="idle-depts" defaultValue={r.last_used_dept || ''} onChange={e => saveDrugField(r._drug, 'last_used_dept', e.target.value)} onBlur={() => { setEditRow(null); setEditField(null) }} placeholder="선택/입력" style={ip2} /> : <span style={{ cursor: 'pointer' }} onClick={() => { setEditRow(r.drug_code); setEditField('last_used_dept') }}>{r.last_used_dept ? <Bd bg={t.accentL} color={t.accent}>{r.last_used_dept}</Bd> : <span style={{ color: t.textL, fontSize: 9 }}>클릭</span>}</span>}</td>
+            <td title={_fbTi(r.drug_code + ':last_used_dept')} style={{ padding: '5px 6px', fontSize: 10, textAlign: 'left', ..._fbSt(r.drug_code + ':last_used_dept') }}>{isEd && editField === 'last_used_dept' ? <input list="idle-depts" defaultValue={r.last_used_dept || ''} onChange={e => saveDrugField(r._drug, 'last_used_dept', e.target.value)} onBlur={() => { setEditRow(null); setEditField(null) }} placeholder="선택/입력" style={ip2} /> : <span style={{ cursor: 'pointer' }} onClick={() => { setEditRow(r.drug_code); setEditField('last_used_dept') }}>{r.last_used_dept ? <Bd bg={t.accentL} color={t.accent}>{r.last_used_dept}</Bd> : <span style={{ color: t.textL, fontSize: 9 }}>클릭</span>}</span>}</td>
             <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'center', ...exS(r.expiry_date, t) }}>{r.expiry_date ? r.expiry_date + (eDays != null ? ' (' + (eDays <= 0 ? 'D' + eDays : 'D-' + eDays) + ')' : '') : '-'}</td>
             <td style={{ padding: '5px 6px', textAlign: 'center' }}><select value={r.status || ''} onChange={e => { if (e.target.value && e.target.value !== r.status) changeStatus(r.drug_code, e.target.value, r.drug_name) }} style={{ ...ip2, width: 'auto', background: stBg[r.status] || t.bg, color: stFg[r.status] || t.textL, fontWeight: 600 }}><option value="">미판단</option>{IDLE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select></td>
             <td style={{ padding: '6px 8px', fontSize: 10, color: t.textM, textAlign: 'center' }}>{r.reviewed_at || '-'}</td>
@@ -5457,12 +5466,15 @@ function IdleReasonModal({ t, row, onClose, onSave }) {
     </div>
   </div>
 }
-function IdleRegisterModal({ drugs, onClose, onSaved }) {
+/* ★ 시험에서 진짜 컴포넌트로 렌더하려고 내보낸다(ColMenu 와 같은 이유). 컴포넌트라 react-refresh 규칙에 걸리지 않는다. */
+export function IdleRegisterModal({ drugs, onClose, onSaved }) {
   const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos)
   const { t } = useTheme()
   const [search, setSearch] = useState(''); const [selCode, setSelCode] = useState('')
   const [f, setF] = useState({ last_used_date: '', last_used_dept: '', status: '관찰', memo: '' })
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null)
+  /* 저장은 됐지만 폴백이 버린 컬럼들 — 비어 있지 않으면 성공 대신 「일부 미반영」을 띄우고 닫지 않는다 */
+  const [dropped, setDropped] = useState([])
   const sel = drugs.find(d => d.drug_code === selCode); const sf = (k, v) => setF(p => ({ ...p, [k]: v }))
   const filtered = drugs.filter(d => !d.last_used_date && search.trim() && (d.drug_name?.toLowerCase().includes(search.toLowerCase()) || d.drug_code?.toLowerCase().includes(search.toLowerCase()))).slice(0, 8)
   const canSave = !!selCode && !!f.last_used_date && !saving
@@ -5470,12 +5482,13 @@ function IdleRegisterModal({ drugs, onClose, onSaved }) {
     if (!canSave) { setMsg('약품과 마지막 사용일을 입력하세요'); return }
     setSaving(true); setMsg(null)
     const ud = { last_used_date: f.last_used_date || null, last_used_dept: f.last_used_dept || '' }  // current_qty 미포함(0055)
-    let r1 = await supabase.from('drugs').update(ud).eq('drug_code', selCode)
-    for (let r = 0; r < 3 && r1.error && r1.error.message?.includes('column'); r++) { const m = r1.error.message.match(/'([^']+)' column/); if (!m) break; delete ud[m[1]]; r1 = await supabase.from('drugs').update(ud).eq('drug_code', selCode) }
+    const r1 = await saveWithFallback(ud, p => supabase.from('drugs').update(p).eq('drug_code', selCode), { retries: 3, label: 'drugs UPDATE 사용점검 등록' })
     if (r1.error) { setSaving(false); setMsg('drugs 저장 오류: ' + r1.error.message); return }
     const r2 = await supabase.from('drug_idle_reviews').insert([{ drug_code: selCode, status: f.status, memo: f.memo || null }])
     setSaving(false)
     if (r2.error) { setMsg('이력 저장 오류: ' + r2.error.message); return }
+    /* ★ 버린 컬럼이 있으면 자동으로 닫지 않는다 — 사용자가 읽고 닫는다 */
+    if (r1.dropped.length) { setDropped(r1.dropped); onSaved?.(); return }
     setMsg('OK'); setTimeout(() => { onSaved?.(); onClose() }, 400)
   }
   const ip = { width: '100%', padding: '9px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }
@@ -5484,7 +5497,8 @@ function IdleRegisterModal({ drugs, onClose, onSaved }) {
     <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: '1px solid ' + t.border, boxShadow: t.shadowH, maxHeight: '92vh', overflowY: 'auto', transform: 'translate(' + _dmPos.x + 'px, ' + _dmPos.y + 'px)' }} onClick={e => e.stopPropagation()}>
       <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: '1px solid ' + t.border }}><div style={{ fontSize: 15, fontWeight: 700, color: t.accent }}>사용 점검 등록</div></div>
       <div style={{ padding: '16px 20px' }}>
-        {msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '저장 완료' : msg}</div>}
+        {dropped.length > 0 && <div style={{ background: PARTIAL_BG, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: PARTIAL_FG, fontSize: 12, fontWeight: 600 }}>{partialText(dropped)}</div>}
+        {dropped.length === 0 && msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '저장 완료' : msg}</div>}
         <div style={{ marginBottom: 10 }}><label style={lb}>약품 * <span style={{ color: t.textL, fontWeight: 400 }}>· 마지막사용일 없는 약품만</span></label>
           {sel ? <div style={{ background: t.bg, borderRadius: 8, padding: '8px 10px', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span><strong>{sel.drug_name}</strong> <span style={{ color: t.textL, fontSize: 10 }}>({sel.drug_code})</span></span><button onClick={() => { setSelCode(''); setSearch('') }} style={{ border: 'none', background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11 }}>변경</button></div>
             : <><input value={search} onChange={e => setSearch(e.target.value)} placeholder="약품 검색 (코드/이름)" style={ip} />{search.trim() && filtered.length > 0 && <div style={{ border: '1px solid ' + t.border, borderRadius: 6, maxHeight: 140, overflowY: 'auto', marginTop: 4 }}>{filtered.map(d => <div key={d.drug_code} onClick={() => { setSelCode(d.drug_code); setSearch('') }} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 11, borderBottom: '1px solid ' + t.border }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>{d.drug_name} <span style={{ color: t.textL, fontSize: 9 }}>({d.drug_code})</span></div>)}</div>}{search.trim() && filtered.length === 0 && <div style={{ fontSize: 10, color: t.textL, marginTop: 4 }}>후보 없음 (이미 사용일 있는 약품은 표에서 편집)</div>}</>}
