@@ -25,6 +25,9 @@ import { validateEdit, familyOf } from './lib/surveyRules'
 import { kstInputValue, kstInputToIso, kstDateOnly } from './lib/kstDatetime'
 import { markBusy, formDirty } from './lib/pwaUpdate'
 import { useBusy } from './lib/useBusy.js'
+import {
+  nextNotice, visibleNotice, noticeText, NOTICE_BG, NOTICE_FG, NOTICE_LINE,
+} from './lib/surveyCancelNotice.js'
 
 /* 수정 거절 메시지 — DB 가 돌려준 코드를 사용자 말로 바꾼다.
    ★ restrict_violation(2F000/23001)은 「접종 완료보다 적게」 한 가지뿐이다(0096). */
@@ -66,6 +69,10 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
   const [busy, setBusy] = useState(false)
   const [modal, setModal] = useState(null)      /* { kind:'round'|'purge', ... } */
   const [revealed, setRevealed] = useState({})  /* id → true (「원문 보기」로 공개) */
+  /* 취소 안내 띠 — { id, code, selId } 또는 null.
+     ★ 취소하면 기본 필터(status='신청')에 걸려 그 줄이 사라지고 되살리기 칸도 같이
+       사라진다. 그래서 띠에서 되돌릴 수 있게 한다(판단은 lib/surveyCancelNotice.js). */
+  const [notice, setNotice] = useState(null)
   /* ── 표 헤더 필터 ────────────────────────────────────────────────────────
      ★ 값은 **스칼라 또는 없음**이다 — 공용 ColMenu 가 `on(v)` 로 값 하나(또는 null)를
        돌려주기 때문이다. 예전에는 배열로 담고 prop 이름도 달라(values·sel·onSel)
@@ -239,7 +246,21 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     const { error } = await supabase.rpc('set_vaccine_survey_status', { p_id: r.id, p_status: status })
     if (error) { setMsg(dbErrorMsg(error)); return }
     setRows(rs => rs.map(x => x.id === r.id ? { ...x, status } : x))
+    setNotice(n => nextNotice(n, status === 'cancelled'
+      ? { type: 'cancelled', id: r.id, code: r.receipt_code, selId: sel.id }
+      : { type: 'restored', id: r.id }))
     await loadDetail(sel.id)
+  }
+
+  /* ── 띠의 [되돌리기] ──────────────────────────────────────────────────────
+     ★ 새 경로를 만들지 않는다 — 표의 상태 칸이 쓰는 setRowStatus 를 그대로 부른다.
+       그래야 restore 기록도 같은 함수(set_vaccine_survey_status)가 남긴다. */
+  async function undoCancel() {
+    const n = visibleNotice(notice, sel?.id)
+    if (!n) return
+    const row = rows.find(x => x.id === n.id)
+    if (!row) { setMsg('그 신청을 목록에서 찾을 수 없습니다 — 회차를 다시 선택해 주세요'); return }
+    await setRowStatus(row, 'applied')
   }
 
   /* ── 내려받기 — audit 먼저, 성공해야 파일 ─────────────────────────────── */
@@ -328,6 +349,8 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     () => cumulativeDemand(rows, demand?.balance_qty, today), [rows, demand, today])
   const shortAt = firstShortDate(series)
   const band = alertLine(demand)
+  /* 지금 회차에서 보여 줄 띠 — 회차를 옮기면 저절로 사라진다(파생값) */
+  const _notice = visibleNotice(notice, sel?.id)
   const purgeNeeded = needsPurge(sel, today)
   const purgeOk = canPurge(sel, today)
 
@@ -368,6 +391,24 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
       background: t.card, border: '1px solid ' + t.border, borderLeft: '3px solid ' + t.accent,
       borderRadius: 10, padding: '10px 14px', fontSize: 12, color: t.text, marginBottom: 12, lineHeight: 1.6,
     }}>{msg}</div> : null}
+
+    {_notice ? <div style={{
+      background: NOTICE_BG, border: '1px solid ' + NOTICE_LINE,
+      borderRadius: 10, padding: '10px 14px', fontSize: 12, color: NOTICE_FG, marginBottom: 12,
+      display: 'flex', alignItems: 'center', gap: 10,
+    }}>
+      <span style={{ fontWeight: 700 }}>{noticeText(_notice.code)}</span>
+      <button onClick={undoCancel} disabled={busy} style={{
+        padding: '3px 10px', borderRadius: 7, border: '1px solid ' + NOTICE_FG,
+        background: 'transparent', color: NOTICE_FG, fontSize: 11, fontWeight: 700,
+        cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.5 : 1,
+      }}>되돌리기</button>
+      <div style={{ flex: 1 }} />
+      <button onClick={() => setNotice(n => nextNotice(n, { type: 'closed' }))} title="닫기" style={{
+        padding: '1px 7px', borderRadius: 6, border: '1px solid ' + NOTICE_LINE,
+        background: 'transparent', color: NOTICE_FG, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+      }}>×</button>
+    </div> : null}
 
     {purgeNeeded ? <div style={{
       background: t.amberL, border: '1px solid ' + t.amber, borderRadius: 10,
