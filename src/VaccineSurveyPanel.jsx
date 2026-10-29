@@ -22,6 +22,7 @@ import {
   alertLine, needsPurge, canPurge, defaultCategoryIds,
 } from './lib/surveyCalc'
 import { validateEdit, familyOf } from './lib/surveyRules'
+import { kstInputValue, kstInputToIso } from './lib/kstDatetime'
 
 /* 수정 거절 메시지 — DB 가 돌려준 코드를 사용자 말로 바꾼다.
    ★ restrict_violation(2F000/23001)은 「접종 완료보다 적게」 한 가지뿐이다(0096). */
@@ -662,7 +663,10 @@ function formOf(s) {
   return {
     id: s.id, title: s.title, season: s.season, account_id: s.account_id,
     category_ids: [...(s.category_ids || [])],
-    close_at: s.close_at ? String(s.close_at).slice(0, 16) : '',
+    /* ★ timestamptz → datetime-local 은 반드시 KST 로 바꿔 넣는다.
+       String(iso).slice(0,16) 으로 넣으면 UTC 벽시계가 그대로 들어가, 화면이
+       KST 18:00 을 09:00 으로 보여 주고 그대로 저장하면 9시간 당겨진다(2026-10-29). */
+    close_at: kstInputValue(s.close_at),
     vax_start: s.vax_start || '', vax_end: s.vax_end || '',
     safety_ratio: Number(s.safety_ratio), safety_min: Number(s.safety_min), order_unit: Number(s.order_unit),
   }
@@ -682,7 +686,8 @@ function RoundModal({ t, accs, cats, form: init, editing, onClose, onSaved, onEr
     const payload = {
       title: f.title.trim(), season: f.season.trim(), account_id: f.account_id,
       category_ids: f.category_ids,
-      close_at: f.close_at ? new Date(f.close_at).toISOString() : null,
+      /* ★ 폼 값은 KST 벽시계다 — new Date(문자열)로 읽으면 브라우저 시간대로 해석된다 */
+      close_at: kstInputToIso(f.close_at),
       vax_start: f.vax_start, vax_end: f.vax_end,
       safety_ratio: Number(f.safety_ratio), safety_min: Number(f.safety_min), order_unit: Number(f.order_unit),
       updated_at: new Date().toISOString(),
