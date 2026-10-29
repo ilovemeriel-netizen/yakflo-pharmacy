@@ -7,6 +7,7 @@ import { RX_TOGGLE, RX_MORE, autoMap } from './lib/drugRules'
 import { classifyDrugRows, applyDrugRows } from './lib/drugBulk'
 import { saveWithFallback, partialText, partialBulkText, blockedText, PARTIAL_BG, PARTIAL_FG, PARTIAL_LINE } from './lib/saveWithFallback'
 import { ErrorBoundary } from './lib/errorBoundary.jsx'
+import { markBusy } from './lib/pwaUpdate'
 import { screenLabel } from './lib/errorText.js'
 import { decomposeAtc } from './lib/atcMap'
 import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLabel, TX_NEVER_DROP } from './lib/txTypes'
@@ -2160,6 +2161,9 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
   const{t,memberRole,profile}=useTheme();const canDispose=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
   const[uMsg,setUMsg]=useState(null);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});const[uBusy,setUBusy]=useState(false)
+  /* ★ 아직 저장 안 한 값이 있으면 새 배포 자동 적용을 미룬다(화면에 그리는 것은 없다) */
+  const _draftN=Object.keys(drafts).length
+  useEffect(()=>{markBusy('stock-drafts',_draftN>0);return()=>markBusy('stock-drafts',false)},[_draftN])
   useEffect(()=>{if(nf?.filter){setFilter(nf.filter);setPage(1)}},[nf])
   const im={};inv.forEach(i=>{im[i.drug_code]=i});const merged=drugs.filter(d=>stats.includes(d.status)).map(d=>{const iv=im[d.drug_code]||{};const q=d.current_qty||0,sf=d.safety_stock||0,mx=iv.max_stock||d.max_stock||0;let st=stockStat(d);if(st==='정상'&&mx>0&&q>mx)st='과잉';return{...d,safety_stock:sf,max_stock:mx,monthly_avg:iv.monthly_avg||d.monthly_avg||0,stockStatus:st}})
   /* ★ 카드 숫자는 목록과 같은 기준에서 센다 — 구분·검색까지 적용한 _sb 가 기준이다.
@@ -3081,6 +3085,8 @@ export function TransactionForm({drugs,onReload,navFilter}){
   const[dropped,setDropped]=useState([]);const[bulkPartial,setBulkPartial]=useState(null)
   const[txns,setTxns]=useState([]);const[txPage,setTxPage]=useState(1);const[selIds,setSelIds]=useState([]);const[closedM,setClosedM]=useState(null);const[selDelStage,setSelDelStage]=useState(0);const[selDelBusy,setSelDelBusy]=useState(false);const[selDelMsg,setSelDelMsg]=useState(null);const[txSearch,setTxSearch]=useState('')
   const[bulkData,setBulkData]=useState([]);const[bulkMsg,setBulkMsg]=useState(null);const[bulkLd,setBulkLd]=useState(false)
+  /* ★ 올려 두고 아직 반영 안 한 엑셀 행이 있으면 새 배포 자동 적용을 미룬다 */
+  useEffect(()=>{markBusy('tx-bulk',bulkData.length>0);return()=>markBusy('tx-bulk',false)},[bulkData.length])
   const[bulkRepl,setBulkRepl]=useState(null);const[delAllOpen,setDelAllOpen]=useState(false);const[delAllStage,setDelAllStage]=useState(1);const[delAllMsg,setDelAllMsg]=useState(null);const[delAllBusy,setDelAllBusy]=useState(false)
   const fileRef=useRef()
   const _iym=ymFromHash();const[myYear,setMyYear]=useState(_iym[0]);const[myMonth,setMyMonth]=useState(_iym[1]) // myMonth: 1~12 또는 '' (전체)
@@ -3493,6 +3499,9 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
   const [plans, setPlans] = useState([]); const [snap, setSnap] = useState({}); const [ld, setLd] = useState(true)
   const [filter, setFilter] = useState(() => { const f = navFilter?.changeStatus; return (typeof f === 'string' && ['전체', '예정', '완료', '보류', '모니터링', '생산중단', '일시품절'].includes(f)) ? f : '전체' }); const [editP, setEditP] = useState(null); const [delP, setDelP] = useState(null) // 기본 '전체'(등록 전 건 노출), 딥링크 changeStatus 지정 시 우선
   const [drafts, setDrafts] = useState({}); const [uMsg, setUMsg] = useState(null)
+  /* ★ 아직 저장 안 한 값이 있으면 새 배포 자동 적용을 미룬다 */
+  const _planDraftN = Object.keys(drafts).length
+  useEffect(() => { markBusy('plan-drafts', _planDraftN > 0); return () => markBusy('plan-drafts', false) }, [_planDraftN])
   const [selCols, setSelCols] = useState(() => { const s = profile?.settings?.changeCols; return Array.isArray(s) && s.length ? s : CHANGE_DEFAULT_COLS })
   const dmap = {}; (drugs || []).forEach(d => { dmap[d.drug_code] = d })
   /* ── 재고보정(약품변경 전용) ────────────────────────────────────────────────
