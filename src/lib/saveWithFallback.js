@@ -36,14 +36,17 @@ export function colLabel(col) {
   return COL_LABEL[col] || String(col)
 }
 
-/* 모달·인라인 칸에 띄우는 문구 */
-export function partialText(dropped) {
-  return '저장했지만 반영되지 않은 항목이 있습니다: ' + (dropped || []).map(colLabel).join(', ')
+/* 모달·인라인 칸에 띄우는 문구.
+   ★ labelOf 를 받는 이유 — transactions 의 칸은 FIELD_DEFS(drugs 사전)에 거의 없다.
+     그대로 두면 「금액」이 `total_amount` 로 뜬다. 입출고 경로는 txColLabel 을 넘긴다.
+     기본값은 drugs 라벨이라 기존 호출부는 한 글자도 바뀌지 않는다. */
+export function partialText(dropped, labelOf = colLabel) {
+  return '저장했지만 반영되지 않은 항목이 있습니다: ' + (dropped || []).map(labelOf).join(', ')
 }
 
 /* 엑셀 일괄 결과 요약에 한 줄 */
-export function partialBulkText(count, dropped) {
-  const names = (dropped || []).map(colLabel)
+export function partialBulkText(count, dropped, labelOf = colLabel) {
+  const names = (dropped || []).map(labelOf)
   return `${count}건은 일부 항목 미반영(${names[0] || '-'} 등)`
 }
 

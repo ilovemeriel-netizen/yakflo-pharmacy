@@ -14,3 +14,32 @@ export const TX_TYPES = [TX_IN, TX_OUT, TX_RETURN, TX_DISPOSE, TX_ADJUST]
 
 /* 입출고관리(TxForm) 4탭 — '조정'은 재고 보정(AdjustModal) 전용이라 탭에서 제외 */
 export const TX_TAB_TYPES = [TX_IN, TX_OUT, TX_RETURN, TX_DISPOSE]
+
+/* ── transactions 컬럼 → 화면 이름 ────────────────────────────────────────
+   ★ 저장 폴백이 컬럼을 버렸을 때 사용자에게 **화면에서 쓰는 이름**으로 알리기 위한 것이다.
+     값은 입출고 화면의 표 머리글(TxForm 의 cols 배열)과 같게 적었고,
+     txColLabel.test.js 가 **그 cols 와 어긋나면** 걸린다(머리글만 바꾸고 여기를 잊는 것 방지).
+   ★ drugs 쪽 라벨(FIELD_DEFS)과 따로 두는 이유 — transactions 의 칸 대부분이
+     FIELD_DEFS 에 없다(unit_price·total_amount·supplier·handler·approver·
+     process_status·transaction_date). 그대로 쓰면 가장 중요한 「금액」이
+     `total_amount` 라는 날컬럼 이름으로 뜬다. */
+export const TX_COL_LABEL = {
+  transaction_date: '일자',
+  drug_code: '약품코드',
+  type: '처리구분',
+  quantity: '수량',
+  unit_price: '거래단가',
+  total_amount: '금액',
+  supplier: '공급업체',
+  lot_no: 'LOT',
+  expiry_date: '유효기한',
+  reason: '사유',
+  handler: '처리자',
+  approver: '승인자',
+  process_status: '처리상태',
+  memo: '비고',
+}
+
+export function txColLabel(col) {
+  return TX_COL_LABEL[col] || String(col)
+}
