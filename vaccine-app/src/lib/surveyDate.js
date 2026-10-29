@@ -20,3 +20,32 @@ export function pickRange(vaxStart, vaxEnd, now = Date.now()) {
   if (from > vaxEnd) return null
   return { from, to: vaxEnd }
 }
+
+/* ── 표시용 날짜 ───────────────────────────────────────────────────────────
+   ★ 화면에 보이는 날짜는 전부 이 모양이다 — '2026. 9. 21.' (0 을 붙이지 않는다). */
+export function fmtDotDate(ymd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ymd ?? ''))
+  if (!m) return ''
+  return `${Number(m[1])}. ${Number(m[2])}. ${Number(m[3])}.`
+}
+
+const DOW = ['일', '월', '화', '수', '목', '금', '토']
+
+/* KST 기준 요일 한 글자 — 'YYYY-MM-DD' 또는 ISO 시각을 받는다 */
+export function kstDow(value) {
+  const s = String(value ?? '')
+  const ymd = /^\d{4}-\d{2}-\d{2}$/.test(s) ? s + 'T00:00:00+09:00' : s
+  const ms = Date.parse(ymd)
+  if (Number.isNaN(ms)) return ''
+  return DOW[new Date(ms + KST_OFFSET_MS).getUTCDay()]
+}
+
+/* 마감 시각 — '2026. 10. 31.(토) 18:00' (KST) */
+export function fmtCloseLong(iso) {
+  const ms = Date.parse(String(iso ?? ''))
+  if (Number.isNaN(ms)) return ''
+  const d = new Date(ms + KST_OFFSET_MS)
+  const p = n => String(n).padStart(2, '0')
+  const ymd = `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`
+  return `${fmtDotDate(ymd)}(${DOW[d.getUTCDay()]}) ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`
+}
