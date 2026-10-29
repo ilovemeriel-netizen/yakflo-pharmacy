@@ -177,6 +177,17 @@ describe('배선 — 되돌아가지 않게', () => {
   it('★ 입력이 끝나면 미뤘던 것을 다시 본다', () => {
     expect(MAIN).toContain("for (const ev of ['focusout', 'blur', 'click', 'keyup'])")
   })
+  it('★ onNeedReload 를 넘긴다 — 이게 없으면 플러그인이 입력 중에도 무조건 새로고침한다', () => {
+    /* 2026-10-29 미리보기 실측으로 드러난 함정. vite-plugin-pwa 의 virtual:pwa-register 는
+       autoUpdate 모드에서 `onNeedReload ? onNeedReload() : location.reload()` 를 한다.
+       옵션을 비워 두면 우리 판단(입력 중이면 미룬다)을 건너뛰고 바로 새로고침된다. */
+    const i = MAIN.indexOf('registerSW({')
+    expect(i, 'registerSW 호출이 없다').toBeGreaterThan(-1)
+    const head = MAIN.slice(i, MAIN.indexOf('onRegisteredSW', i))
+    expect(head, 'registerSW 의 첫 옵션들 안에 onNeedReload 가 있어야 한다').toContain('onNeedReload')
+    expect(MAIN).toContain('onNeedReload()')
+  })
+
   it('★ 미저장 상태 3곳이 등록대에 연결돼 있다', () => {
     for (const k of ['stock-drafts', 'tx-bulk', 'plan-drafts']) {
       expect(APP.includes("markBusy('" + k + "'"), k).toBe(true)

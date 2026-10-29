@@ -42,6 +42,15 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
 
   const updateSW = registerSW({
     immediate: true,
+    /* ★ 이 자리를 비워 두면 vite-plugin-pwa 가 **스스로 무조건** reload 한다.
+         번들 실물: activated 에서 `onNeedReload ? onNeedReload() : location.reload()`
+         2026-10-29 미리보기 실측 — 입력칸에 포커스를 둔 탭도 그냥 새로고침됐고,
+         우리 쪽 표식(pwa_reload_at)은 비어 있었다. 즉 아래 판단을 건너뛴 것이다.
+       여기서 받아 두면 reload 여부는 tryReload 가 정한다(= 입력 중이면 미룬다). */
+    onNeedReload() {
+      pending = true
+      tryReload()
+    },
     onRegisteredSW(_url, r) {
       if (!r) return
       /* 탭으로 돌아올 때마다 + 30분마다 확인한다.
@@ -53,7 +62,8 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       setInterval(check, UPDATE_EVERY_MS)
     },
   })
-  /* autoUpdate 라 vite-plugin-pwa 가 알아서 부르지만, 명시적으로 한 번 더 둔다 */
+  /* autoUpdate 모드에서는 updateSW() 가 할 일이 없다(sw.js 가 이미 skipWaiting 한다).
+     반환값을 버리지 않고 묶어 두어 lint 가 미사용으로 보지 않게만 한다. */
   void updateSW
 }
 
