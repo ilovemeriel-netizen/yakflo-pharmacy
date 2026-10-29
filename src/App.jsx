@@ -5,9 +5,9 @@ import { passesDrugFilters } from './lib/drugFilter'
 import { planReorder } from './lib/locOrder'
 import { RX_TOGGLE, RX_MORE, autoMap } from './lib/drugRules'
 import { classifyDrugRows, applyDrugRows } from './lib/drugBulk'
-import { saveWithFallback, partialText, partialBulkText, PARTIAL_BG, PARTIAL_FG, PARTIAL_LINE } from './lib/saveWithFallback'
+import { saveWithFallback, partialText, partialBulkText, blockedText, PARTIAL_BG, PARTIAL_FG, PARTIAL_LINE } from './lib/saveWithFallback'
 import { decomposeAtc } from './lib/atcMap'
-import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLabel } from './lib/txTypes'
+import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLabel, TX_NEVER_DROP } from './lib/txTypes'
 import { vaccineTabFromHash } from './lib/vaccineRoute'
 import { handleScan as scanHandle, decodeGs1 as scanDecode, scanCountQty, scanAddItem, saveScanMapping, deactivateBarcode, listBarcodes, gtinCheckOk, ownCodeLooksLikeGs1, OWN_CODE_WARN } from './lib/scan'
 import { dbErrorMsg, noRowMsg, bulkFailKind } from './lib/dbError'
@@ -951,8 +951,10 @@ export function AdjustModal({ drug: dr, onClose, onSaved }) {
     const tx = { drug_code: dr.drug_code, type: TX_ADJUST, quantity: d, total_amount: Math.round(d * (Number(dr.purchase_price) || 0)), reason: `${reason} (${d > 0 ? '+' : ''}${d})`, transaction_date: todayYmd() }
     /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) — lib/saveWithFallback.js 단일 출처.
        ★ 재고는 여전히 trg_apply_tx_to_inventory 가 한다 — 이 경로는 INSERT 만 바뀌었다. */
-    const res = await saveWithFallback(tx, p => supabase.from('transactions').insert([p]), { retries: 3, label: 'transactions insert' })
+    const res = await saveWithFallback(tx, p => supabase.from('transactions').insert([p]), { retries: 3, label: 'transactions insert', neverDrop: TX_NEVER_DROP })
     setSaving(false)
+    /* ★ 금액·거래단가·일자가 거절되면 재시도를 보내지 않았다 — 거래가 기록되지 않았으므로 오류로 끝낸다 */
+    if(res.blocked.length){setMsg(blockedText(res.blocked,txColLabel));return}
     if(res.error){setMsg(res.error.message);return}
     /* ★ 버린 칸이 있으면 자동으로 닫지 않는다 — 사용자가 읽고 닫는다 */
     if(res.dropped.length){setDropped(res.dropped);onSaved?.();return}
@@ -1007,8 +1009,10 @@ export function DisposalModal({ drug: dr, onClose, onSaved }) {
     const tx = { drug_code: dr.drug_code, type: txType, quantity: q, unit_price: pp, total_amount: amt, lot_no: lot || null, reason: reason || null, supplier: txType === TX_RETURN ? (supplier || null) : null, transaction_date: today, expiry_date: expDate || null, handler: handler || null, approver: approver || null, memo: memo || null, process_status: procStatus || null }
     /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) — lib/saveWithFallback.js 단일 출처.
        ★ 재고는 여전히 trg_apply_tx_to_inventory 가 차감한다 — 이 경로는 INSERT 만 바뀌었다. */
-    const res = await saveWithFallback(tx, p => supabase.from('transactions').insert([p]), { retries: 3, label: 'transactions insert' })
+    const res = await saveWithFallback(tx, p => supabase.from('transactions').insert([p]), { retries: 3, label: 'transactions insert', neverDrop: TX_NEVER_DROP })
     setSaving(false)
+    /* ★ 금액·거래단가·일자가 거절되면 재시도를 보내지 않았다 — 거래가 기록되지 않았으므로 오류로 끝낸다 */
+    if (res.blocked.length) { setMsg(blockedText(res.blocked, txColLabel)); return }
     if (res.error) { setMsg(dbErrorMsg(res.error)); return }  // 트리거 한글 메시지(마감월·재고 부족)는 dbErrorMsg가 원문 그대로 노출
     /* ★ 버린 칸이 있으면 자동으로 닫지 않는다 — 사용자가 읽고 닫는다 */
     if (res.dropped.length) { setDropped(res.dropped); onSaved?.(); return }
@@ -3121,7 +3125,9 @@ export function TransactionForm({drugs,onReload,navFilter}){
     const q=Math.round(Number(form.qty)*100)/100;const amt=Math.round(q*(pp||0))
     const tx={drug_code:selDrug.drug_code,type:tab,quantity:q,unit_price:pp||0,total_amount:amt,memo:form.note||null,transaction_date:form.transaction_date||todayYmd(),reason:form.reason||null,handler:form.handler||null,approver:form.approver||null,process_status:form.process_status||null,supplier:form.supplier||null,lot_no:form.lot_no||null,expiry_date:form.expiry_date||null}
     /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) — lib/saveWithFallback.js 단일 출처 */
-    const res=await saveWithFallback(tx,p=>supabase.from('transactions').insert([p]),{retries:3,label:'transactions insert'})
+    const res=await saveWithFallback(tx,p=>supabase.from('transactions').insert([p]),{retries:3,label:'transactions insert',neverDrop:TX_NEVER_DROP})
+    /* ★ 금액·거래단가·일자가 거절되면 재시도를 보내지 않았다 — 거래가 기록되지 않았으므로 오류로 끝낸다 */
+    if(res.blocked.length){setMsg(blockedText(res.blocked,txColLabel));setSaving(false);return}
     if(res.error){setMsg(dbErrorMsg(res.error));setSaving(false);return}
     /* 재고는 0009 트리거가 단일 기록(drugs+inventory 동기). 클라 직접 update·음수 절삭 제거 — 부족 시 트리거 RAISE가 위 res.error로 차단. */
     let _mMsg=''
@@ -3199,10 +3205,11 @@ export function TransactionForm({drugs,onReload,navFilter}){
     for(const r of valid){
       const tx={drug_code:r.drug_code,type:tab,quantity:r.quantity,unit_price:r.unit_price,total_amount:r.total_amount,memo:r.note||null,transaction_date:r.transaction_date,reason:r.reason||null,handler:r.handler||null,approver:r.approver||null,process_status:r.process_status||null,supplier:r.supplier||null,lot_no:r.lot_no||null,expiry_date:r.expiry_date||null}
       /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) — lib/saveWithFallback.js 단일 출처 */
-      const res=await saveWithFallback(tx,q=>supabase.from('transactions').insert([q]),{retries:3,label:'transactions insert'})
+      const res=await saveWithFallback(tx,q=>supabase.from('transactions').insert([q]),{retries:3,label:'transactions insert',neverDrop:TX_NEVER_DROP})
       if(!res.error){ ok++; okIdx.add(r.idx) /* 재고는 0009 트리거 단일기록. 음수는 트리거 RAISE로 차단(해당 행 fail). */
         if(res.dropped.length){partialCount++;for(const c of res.dropped)if(!partialCols.includes(c))partialCols.push(c)} }
-      else { fail++; failMap.set(r.idx,{...bulkFailKind(res.error),raw:dbErrorMsg(res.error)}) }
+      /* ★ 금액·거래단가·일자가 거절된 행은 아무것도 기록되지 않았다 — 실패로 세고 같은 문구를 사유에 적는다 */
+      else { fail++; failMap.set(r.idx,{...bulkFailKind(res.error),raw:res.blocked.length?blockedText(res.blocked,txColLabel):dbErrorMsg(res.error)}) }
     }
     setBulkLd(false);setBulkRepl(null);setBulkMsg(`완료! ${ok}건 등록${replaced?` · 기존 ${replaced}건 교체`:''}${fail?` · ${fail}건 실패`:''}`)
     /* ★ 성공 행만 목록에서 뺀다(결함 35). 실패 행에는 사유를 붙이고, 미매칭·수량오류 행은
