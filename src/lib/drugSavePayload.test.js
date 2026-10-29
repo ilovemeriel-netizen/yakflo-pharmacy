@@ -112,27 +112,30 @@ function keysOf(src, site) {
      페이로드에서 칸을 일부러 더하거나 뺐다면 이 숫자도 함께 고칠 것
      (인쇄 표식 개수 불변 검사와 같은 취지). */
 const APP_SITES = [
+  /* ★ drugs 6경로의 to 닻은 2026-10-29 바뀌었다 — 재시도 루프를 lib/saveWithFallback.js 로
+       모았으므로 페이로드 끝이 더는 `supabase.from('drugs')…` 가 아니라 `saveWithFallback(…)` 이다.
+       페이로드 리터럴 자체는 그대로이므로 키 개수는 변하지 않았다. */
   { n: 'drugs INSERT · 약품 등록 모달 (DrugEditModal.saveNew)', table: 'drugs', count: 38, v: 'row',
     from: "const _initQty = Number(f.current_qty) || 0; const _atc = decomposeAtc(f.atc_code); const row = {",
-    to: "let res = await supabase.from('drugs').insert([row])" },
+    to: "await saveWithFallback(row, p => supabase.from('drugs').insert([p])" },
   { n: 'drugs UPDATE · 약품 정보 수정 모달 (DrugEditModal.save)', table: 'drugs', count: 38, v: 'ud',
     from: "const ud = { status: f.status, is_narcotic:",
-    to: "let res = dr.id ? await supabase.from('drugs').update(ud).eq('id', dr.id)" },
+    to: "await saveWithFallback(ud, p => dr.id ?" },
   { n: 'drugs UPDATE · 유효기한 표 인라인 (ExpiryTable.saveField)', table: 'drugs', count: 3, v: 'ud',
     from: "async function saveField(d,field,value){",
-    to: "let res=await supabase.from('drugs').update(ud).eq('drug_code',d.drug_code)" },
+    to: "await saveWithFallback(ud,p=>supabase.from('drugs').update(p)" },
   { n: 'drugs UPDATE · 유효기한 비고 (ExpiryTable.saveNote)', table: 'drugs', count: 1, v: null,
     from: "async function saveNote(d,val){",
     to: "flash(d.drug_code+':expiry_notes'" },
   { n: 'drugs INSERT · 약품 등록 화면 (#register submit)', table: 'drugs', count: 35, v: 'row',
     from: "const _atc=decomposeAtc(form.atc_code); const row={",
-    to: "let res=await supabase.from('drugs').insert([row])" },
+    to: "await saveWithFallback(row,p=>supabase.from('drugs').insert([p])" },
   { n: 'drugs UPDATE · 사용점검 표 인라인 (IdleTable.saveDrugField)', table: 'drugs', count: 2, v: 'ud',
     from: "async function saveDrugField(d, field, value) {",
-    to: "let res = await supabase.from('drugs').update(ud).eq('drug_code', d.drug_code)" },
+    to: "await saveWithFallback(ud, p => supabase.from('drugs').update(p).eq('drug_code', d.drug_code)" },
   { n: 'drugs UPDATE · 사용점검 등록 모달 (IdleRegisterModal.save)', table: 'drugs', count: 2, v: 'ud',
     from: "const ud = { last_used_date: f.last_used_date || null, last_used_dept: f.last_used_dept || '' }",
-    to: "let r1 = await supabase.from('drugs').update(ud).eq('drug_code', selCode)" },
+    to: "await saveWithFallback(ud, p => supabase.from('drugs').update(p).eq('drug_code', selCode)" },
 
   /* transactions — 같은 폴백이 4곳에 더 있다. 검사만 하고 코드는 고치지 않는다. */
   { n: 'transactions INSERT · 재고 조정', table: 'transactions', count: 6, v: null,
@@ -202,13 +205,17 @@ describe('대량 등록 경로 6곳 — drugRules.normalizeDrugRow 가 만드는
 })
 
 describe('폴백 재시도 루프 개수 — 줄면 좋고, 늘면 멈춰 세운다', () => {
-  /* ★ 이 숫자는 「저장 경로가 몇 곳에서 조용히 컬럼을 버릴 수 있나」다.
-       루프를 하나 없앴으면 숫자를 줄이고, 새 저장 경로를 만들었으면
+  /* ★ 이 숫자는 「재시도 조건이 몇 군데 흩어져 있나」다.
+       2026-10-29 2단계에서 drugs 12경로의 루프를 lib/saveWithFallback.js **한 곳**으로 모았다.
+       그래서 조건(`includes('column')`)은 도우미에 1개만 남고, 호출부에는 없다.
+       App.jsx 에 남은 4개는 **transactions** 경로다 — 이번 범위 밖이라 그대로 두었다.
+       루프를 더 없앴으면 숫자를 줄이고, 새 저장 경로를 만들었으면
        그 경로를 APP_SITES 에 올린 뒤 숫자를 늘릴 것. 모르고 늘지 않게 못을 박는다. */
   const EXPECT = [
-    ['src/App.jsx', 10],              /* drugs 6 + transactions 4 — saveNote 는 2026-10-29 제거 */
-    ['src/BulkUploadModal.jsx', 3],   /* insertOne · insertChunk · updateOne */
-    ['src/lib/drugBulk.js', 3],       /* 같은 3종 */
+    ['src/lib/saveWithFallback.js', 1],  /* 단일 출처 — 조건·횟수·정규식이 여기에만 있다 */
+    ['src/App.jsx', 4],                  /* transactions 4곳만 남았다(drugs 0곳) */
+    ['src/BulkUploadModal.jsx', 0],      /* insertOne · insertChunk · updateOne → 도우미로 이관 */
+    ['src/lib/drugBulk.js', 0],          /* 같은 3종 → 도우미로 이관 */
   ]
   for (const [file, n] of EXPECT) {
     it(`${file} 의 재시도 루프 ${n}곳`, () => {
@@ -216,6 +223,23 @@ describe('폴백 재시도 루프 개수 — 줄면 좋고, 늘면 멈춰 세운
       expect(hits.length).toBe(n)
     })
   }
+
+  it('★ drugs 12경로가 모두 도우미를 거친다 — 호출 12곳', () => {
+    const calls = f => (rd(f).match(/saveWithFallback\(/g) || []).length
+    expect(calls('src/App.jsx'), 'App.jsx drugs 6경로').toBe(6)
+    expect(calls('src/BulkUploadModal.jsx')).toBe(3)
+    expect(calls('src/lib/drugBulk.js')).toBe(3)
+  })
+
+  it('★ 호출부에 drugs 직접 재시도가 남아 있지 않다', () => {
+    /* `'<col>' column` 정규식을 직접 쓰는 곳 — App.jsx 의 4개는 transactions 경로다(범위 밖).
+       대량 두 파일은 0 이어야 한다. drugs 경로가 다시 직접 재시도를 하면 위 루프 개수 검사에서 걸린다. */
+    const re = f => (rd(f).match(/match\(\/'\(\[\^'\]\+\)' column\//g) || []).length
+    expect(re('src/App.jsx'), 'App.jsx — transactions 4곳만 남아야 한다').toBe(4)
+    expect(re('src/BulkUploadModal.jsx')).toBe(0)
+    expect(re('src/lib/drugBulk.js')).toBe(0)
+    expect(re('src/lib/saveWithFallback.js'), '도우미에 정규식이 정확히 한 번 — 단일 출처').toBe(1)
+  })
 
   it("★ saveNote 는 빈 객체로 재시도하지 않는다 — 비고가 확정 미저장인데 성공 표시가 떴다", () => {
     const SRC = rd('src/App.jsx')
