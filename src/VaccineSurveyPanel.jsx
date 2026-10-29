@@ -23,6 +23,8 @@ import {
 } from './lib/surveyCalc'
 import { validateEdit, familyOf } from './lib/surveyRules'
 import { kstInputValue, kstInputToIso, kstDateOnly } from './lib/kstDatetime'
+import { markBusy, formDirty } from './lib/pwaUpdate'
+import { useBusy } from './lib/useBusy.js'
 
 /* 수정 거절 메시지 — DB 가 돌려준 코드를 사용자 말로 바꾼다.
    ★ restrict_violation(2F000/23001)은 「접종 완료보다 적게」 한 가지뿐이다(0096). */
@@ -74,6 +76,8 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
        (약품목록·비보험·아카이브가 쓰는 방식과 같다). */
   const HF_DEFAULT = { status: '신청' }
   const [hfV, setHfV] = useState(HF_DEFAULT)
+  /* ★ 회차 설정·정리 모달이 열려 있으면 새 배포 자동 적용을 미룬다 */
+  useBusy('survey-modal', modal != null)
   const sort = useSort('wish_date', 'asc')
 
   const sel = useMemo(() => surveys.find(s => s.id === selId) || null, [surveys, selId])
@@ -185,7 +189,13 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
   /* ── 명단 체크(접종 완료) ─────────────────────────────────────────────
      ★ done_self·done_family 는 기록 대상이 아니다 — 체크만 하는 값이라 열 GRANT 로
        그대로 둔다(0096 에서도 이 3열은 회수하지 않았다). */
+  /* ★ 저장이 끝날 때까지 새 배포 자동 적용을 미룬다 — 수량 칸은 칸을 벗어나는 순간
+     저장하므로, 그 사이에 새로고침이 걸리면 고친 값이 사라진다. 행마다 열쇠를 따로 쓴다. */
   async function patchRow(r, patch) {
+    markBusy('survey-save-' + r.id, true)
+    try { return await _patchRow(r, patch) } finally { markBusy('survey-save-' + r.id, false) }
+  }
+  async function _patchRow(r, patch) {
     const { error } = await supabase.from('vaccine_survey_responses')
       .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', r.id)
     if (error) { setMsg(dbErrorMsg(error)); return }
@@ -199,6 +209,10 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
      ★ 보내기 전에 surveyRules 로 한 번 거른다. 거절 사유를 사용자 말로 바로 띄우려는
        것이고, 최종 판정은 DB 가 한다(같은 규칙을 양쪽에 둔 이유는 그 파일 머리말 참고). */
   async function editRow(r, patch) {
+    markBusy('survey-save-' + r.id, true)
+    try { return await _editRow(r, patch) } finally { markBusy('survey-save-' + r.id, false) }
+  }
+  async function _editRow(r, patch) {
     const bad = validateEdit(r, patch, sel)
     if (bad) { setMsg(bad); return false }
     const { error } = await supabase.rpc('edit_vaccine_survey_response', {
@@ -217,6 +231,10 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
      ★ 이것도 함수로 보낸다 — 0096 이 status 열의 UPDATE 권한을 회수했다.
        예전에는 기록 없이 상태가 바뀌고 있었다. */
   async function setRowStatus(r, status) {
+    markBusy('survey-save-' + r.id, true)
+    try { return await _setRowStatus(r, status) } finally { markBusy('survey-save-' + r.id, false) }
+  }
+  async function _setRowStatus(r, status) {
     if (r.status === status) return
     const { error } = await supabase.rpc('set_vaccine_survey_status', { p_id: r.id, p_status: status })
     if (error) { setMsg(dbErrorMsg(error)); return }
@@ -675,6 +693,9 @@ function formOf(s) {
 function RoundModal({ t, accs, cats, form: init, editing, onClose, onSaved, onErr }) {
   const [f, setF] = useState(init)
   const [busy, setBusy] = useState(false)
+  /* ★ 회차 설정(마감 일시 포함)에 손댄 값이 있으면 미룬다.
+     init 은 이 모달이 열릴 때 만들어진 값이라 모달이 사는 동안 바뀌지 않는다. */
+  useBusy('survey-round', formDirty(f, init))
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
   const own = (cats || []).filter(c => c.account_id === f.account_id)
   const ready = f.title.trim() && f.season.trim() && f.account_id && f.category_ids.length

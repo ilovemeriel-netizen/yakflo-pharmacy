@@ -7,6 +7,8 @@ import { RX_TOGGLE, RX_MORE, autoMap } from './lib/drugRules'
 import { classifyDrugRows, applyDrugRows } from './lib/drugBulk'
 import { saveWithFallback, partialText, partialBulkText, blockedText, PARTIAL_BG, PARTIAL_FG, PARTIAL_LINE } from './lib/saveWithFallback'
 import { ErrorBoundary } from './lib/errorBoundary.jsx'
+import { formDirty, anyFilled } from './lib/pwaUpdate'
+import { useBusy } from './lib/useBusy.js'
 import { screenLabel } from './lib/errorText.js'
 import { decomposeAtc } from './lib/atcMap'
 import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLabel, TX_NEVER_DROP } from './lib/txTypes'
@@ -481,6 +483,9 @@ export function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   function set(k, v) { sF(p => ({ ...p, [k]: v })) }
   const [detailOpen, setDetailOpen] = useState(false)
   const [dupCode, setDupCode] = useState(false); const [chkCode, setChkCode] = useState(false)
+  /* ★ 약품 수정 모달에 손댄 값이 있으면 미룬다 — 모달 판정(DOM 추정)과 별개의 이중 보호 */
+  const [_edInit] = useState(f)   /* 첫 렌더의 폼 — 비교 기준 */
+  useBusy('drug-edit-form', formDirty(f, _edInit))
   /* 등록 모드 전용: 약품코드 중복 실시간 확인(디바운스 400ms) */
   useEffect(() => {
     if (!isNew) return
@@ -1334,6 +1339,9 @@ function Ordering({ drugs, onAdjust }) {
   const [supAssign, setSupAssign] = useState({});
   const [qtyOverride, setQtyOverride] = useState({}); const [delOrderStage, setDelOrderStage] = useState(0);
   const [createdKeys, setCreatedKeys] = useState({});
+  /* ★ 거래처를 등록·수정하는 중이거나, 발주 수량을 손으로 고쳐 두었으면 미룬다 */
+  useBusy('order-supplier', editSupId != null || anyFilled(supForm))
+  useBusy('order-qty', anyFilled(qtyOverride))
   const { hs, so, SI, sk } = useSort('', 'asc'); const { hs: mhs, SI: MSI, sk: msk, sd: msd } = useSort('drug_name'); const [riskFilter, setRiskFilter] = useState(null); const [supFilter, setSupFilter] = useState(null); const [addOpen, setAddOpen] = useState(false); const [addSearch, setAddSearch] = useState('');
   const [selDrugs, setSelDrugs] = useState([]); const [selSupplier, setSelSupplier] = useState('');
   const [detailOrder, setDetailOrder] = useState(null); const [detailItems, setDetailItems] = useState([]); const [detailLoading, setDetailLoading] = useState(false);
@@ -2009,6 +2017,8 @@ export function ET({ items, color, label, sub, editRow, editField, startEdit, sa
 function ExpiryAlert({drugs,onEdit,focusLevel,onReload,onDispose}){
   const{t,memberRole,profile}=useTheme();const canDispose=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
   const[editRow,setEditRow]=useState(null);const[editField,setEditField]=useState(null);const[resetKey,setResetKey]=useState(0);const[fb,setFb]=useState({})
+  /* ★ 표의 칸을 고치는 중이면 미룬다 */
+  useBusy('expiry-edit', editRow != null)
   const fd=drugs.filter(d=>cats.includes(d.category)&&stats.includes(d.status))
   const unusedDays=d=>{if(!d.last_used_date)return null;return Math.floor((new Date()-new Date(d.last_used_date))/864e5)}
   const isUnused=d=>{const days=unusedDays(d);return days!==null&&days>=365}
@@ -2160,6 +2170,8 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
   const{t,memberRole,profile}=useTheme();const canDispose=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
   const[uMsg,setUMsg]=useState(null);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});const[uBusy,setUBusy]=useState(false)
+  /* ★ 아직 저장 안 한 값이 있으면 새 배포 자동 적용을 미룬다(화면에 그리는 것은 없다) */
+  useBusy('stock-drafts', Object.keys(drafts).length > 0)
   useEffect(()=>{if(nf?.filter){setFilter(nf.filter);setPage(1)}},[nf])
   const im={};inv.forEach(i=>{im[i.drug_code]=i});const merged=drugs.filter(d=>stats.includes(d.status)).map(d=>{const iv=im[d.drug_code]||{};const q=d.current_qty||0,sf=d.safety_stock||0,mx=iv.max_stock||d.max_stock||0;let st=stockStat(d);if(st==='정상'&&mx>0&&q>mx)st='과잉';return{...d,safety_stock:sf,max_stock:mx,monthly_avg:iv.monthly_avg||d.monthly_avg||0,stockStatus:st}})
   /* ★ 카드 숫자는 목록과 같은 기준에서 센다 — 구분·검색까지 적용한 _sb 가 기준이다.
@@ -2521,6 +2533,8 @@ function DrugRegister({onRefresh, drugs}) {
   const[apiMsg,setApiMsg]=useState(null)
   const[priceInfo,setPriceInfo]=useState(null)
   const[priceLoading,setPriceLoading]=useState(false)
+  /* ★ 등록 폼에 값을 넣었거나 엑셀을 올려 두었으면 미룬다 */
+  useBusy('drug-register', formDirty(form, initForm) || bulk.length > 0)
 
   /* API 5종 조회 — 1차:e약은요 → 2차:허가정보+낱알식별 → 보조:약가+성분약효 */
   async function fetchDrugPrice(drugName, ingredientFromSearch){
@@ -3081,6 +3095,11 @@ export function TransactionForm({drugs,onReload,navFilter}){
   const[dropped,setDropped]=useState([]);const[bulkPartial,setBulkPartial]=useState(null)
   const[txns,setTxns]=useState([]);const[txPage,setTxPage]=useState(1);const[selIds,setSelIds]=useState([]);const[closedM,setClosedM]=useState(null);const[selDelStage,setSelDelStage]=useState(0);const[selDelBusy,setSelDelBusy]=useState(false);const[selDelMsg,setSelDelMsg]=useState(null);const[txSearch,setTxSearch]=useState('')
   const[bulkData,setBulkData]=useState([]);const[bulkMsg,setBulkMsg]=useState(null);const[bulkLd,setBulkLd]=useState(false)
+  /* ★ 입력칸에 값을 넣었거나, 올려 두고 아직 반영 안 한 엑셀 행이 있으면 미룬다.
+     _txInit 은 이 화면을 처음 띄울 때의 폼이다 — 저장 뒤 폼을 되돌리면 저절로 풀린다. */
+  const [_txInit] = useState(form)
+  useBusy('tx-form', formDirty(form, _txInit))
+  useBusy('tx-bulk', bulkData.length > 0)
   const[bulkRepl,setBulkRepl]=useState(null);const[delAllOpen,setDelAllOpen]=useState(false);const[delAllStage,setDelAllStage]=useState(1);const[delAllMsg,setDelAllMsg]=useState(null);const[delAllBusy,setDelAllBusy]=useState(false)
   const fileRef=useRef()
   const _iym=ymFromHash();const[myYear,setMyYear]=useState(_iym[0]);const[myMonth,setMyMonth]=useState(_iym[1]) // myMonth: 1~12 또는 '' (전체)
@@ -3411,6 +3430,9 @@ function ChangePlanModal({ plan, drugs, onClose, onSaved }) {
   const pub = (!toSel && _toKw.length >= 2) ? mmRows.slice(0, 8) : []
   const showToDrop = !toSel && _toKw.length >= 2 && (inHouse.length > 0 || pub.length > 0)
   const [autoAvg, setAutoAvg] = useState(null); const [autoMonths, setAutoMonths] = useState('')
+  /* ★ 변경 계획 모달에 손댄 값이 있으면 미룬다 */
+  const [_cpInit] = useState(f)
+  useBusy('plan-modal', formDirty(f, _cpInit))
   useEffect(() => { if (!selCode) { setAutoAvg(null); setAutoMonths(''); return } let on = true; (async () => { const { data } = await supabase.from('monthly_snapshots').select('snap_year,snap_month,total_out_qty').eq('drug_code', selCode); const rws = (data || []).sort((a, b) => (b.snap_year - a.snap_year) || (b.snap_month - a.snap_month)); let cnd = rws; if (f.base_date) { const bd = new Date(f.base_date), by = bd.getFullYear(), bm = bd.getMonth() + 1; cnd = rws.filter(s => s.snap_year < by || (s.snap_year === by && s.snap_month < bm)) } const vld = cnd.filter(s => Number(s.total_out_qty || 0) > 0).slice(0, 3); const avg = vld.length ? vld.reduce((a, s) => a + Number(s.total_out_qty || 0), 0) / vld.length : null; if (on) { setAutoAvg(avg); setAutoMonths(vld.map(s => s.snap_month).sort((a, b) => a - b).join('·')) } })(); return () => { on = false } }, [selCode, f.base_date])
   const dsum = (Number(f.usage_dept1) || 0) + (Number(f.usage_dept2) || 0) + (Number(f.usage_dept3) || 0); const hasDept = f.usage_dept1 !== '' || f.usage_dept2 !== '' || f.usage_dept3 !== ''
   const filtered = drugs.filter(d => d.status === '사용' && search.trim() && (d.drug_name?.toLowerCase().includes(search.toLowerCase()) || d.drug_code?.toLowerCase().includes(search.toLowerCase()))).slice(0, 8)
@@ -3493,6 +3515,8 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
   const [plans, setPlans] = useState([]); const [snap, setSnap] = useState({}); const [ld, setLd] = useState(true)
   const [filter, setFilter] = useState(() => { const f = navFilter?.changeStatus; return (typeof f === 'string' && ['전체', '예정', '완료', '보류', '모니터링', '생산중단', '일시품절'].includes(f)) ? f : '전체' }); const [editP, setEditP] = useState(null); const [delP, setDelP] = useState(null) // 기본 '전체'(등록 전 건 노출), 딥링크 changeStatus 지정 시 우선
   const [drafts, setDrafts] = useState({}); const [uMsg, setUMsg] = useState(null)
+  /* ★ 아직 저장 안 한 값이 있으면 새 배포 자동 적용을 미룬다 */
+  useBusy('plan-drafts', Object.keys(drafts).length > 0)
   const [selCols, setSelCols] = useState(() => { const s = profile?.settings?.changeCols; return Array.isArray(s) && s.length ? s : CHANGE_DEFAULT_COLS })
   const dmap = {}; (drugs || []).forEach(d => { dmap[d.drug_code] = d })
   /* ── 재고보정(약품변경 전용) ────────────────────────────────────────────────
@@ -3514,6 +3538,8 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
   const [cntBusy, setCntBusy] = useState(false)
   const [applyAsk, setApplyAsk] = useState(null)  // 일괄 반영 확인 { rows:[{code,name,counted,book,diff}] }
   const [cntMsg, setCntMsg] = useState(null)
+  /* ★ [실사] 모달이 열려 있거나 체크해 둔 약품이 있으면 미룬다 */
+  useBusy('plan-count', cntT != null || cntSel.length > 0)
   const cntFlash = (text, kind) => { setCntMsg({ text, kind }); setTimeout(() => setCntMsg(null), kind === 'err' ? 3600 : 2400) }
 
   async function loadCnt() {
@@ -4047,6 +4073,10 @@ function WardAdmin() {
   /* ★ 중복 약품 합산 확인 — { reqId, row, add }. 모달을 띄우지 않고 검색창 아래 한 줄로 묻는다. */
   const [dupAsk, setDupAsk] = useState(null)
   const [addOpen, setAddOpen] = useState(false)          // 「약품 추가」 접기·펴기(기본 접힘)
+  /* ★ 회차 설정(마감 일시 포함)·수량 수정·비밀번호 입력 중이면 미룬다 */
+  const [_wardNfInit] = useState(nf)
+  useBusy('ward-window', regOpen || formDirty(nf, _wardNfInit))
+  useBusy('ward-edit', edit != null || aQty !== '' || pwNew !== '')
   /* 상세를 열고 닫거나 다른 신청으로 옮길 때 추가 영역을 초기 상태로 되돌린다 */
   const resetAdd = () => { setAddOpen(false); setAq(''); setAFound([]); setASearched(false); setAQty('') }
   const aTimer = useRef(null)
@@ -4728,6 +4758,9 @@ function InventoryCount({ drugs, onReload }) {
   const [scanRes, setScanRes] = useState(null)      // 스캔 결과(3분기)
   const [sealed, setSealed] = useState(''); const [loose, setLoose] = useState('')
   const [scanBusy, setScanBusy] = useState(false)
+  /* ★ 실사 수량·사유·스캔 수량을 입력해 둔 상태면 미룬다 */
+  useBusy('count-input', titleEdit != null || aQty !== '' || aLot !== '' || aExp !== '' || rReason !== '')
+  useBusy('count-scan', sealed !== '' || loose !== '')
   const flash = (text, kind) => { setMsg({ text, kind }); setTimeout(() => setMsg(null), kind === 'err' ? 3200 : 1800) }
   /* ★ RLS 에 막히면 오류 없이 0행이 돌아온다 — 행 수로 성공을 판정한다(WardAdmin 과 같은 규약) */
   const cntDelOutcome = ({ data, error }, what) => error ? '삭제 실패: ' + error.message
@@ -5417,6 +5450,8 @@ export function IdleCheck({ drugs, onReload }) {
   const [editRow, setEditRow] = useState(null); const [editField, setEditField] = useState(null)
   const [regOpen, setRegOpen] = useState(false); const [fb, setFb] = useState({}); const [hfV, setHfV] = useState({})
   const [rsn, setRsn] = useState(null)  // 사유 입력 모달 대상 {code,name,status,memo} · null=닫힘
+  /* ★ 표의 칸을 고치는 중이거나 등록·사유 모달이 열려 있으면 미룬다 */
+  useBusy('idle-edit', editRow != null || regOpen || rsn != null)
   const bands = (Array.isArray(profile?.settings?.idleBands) && profile.settings.idleBands.length === 3) ? profile.settings.idleBands : IDLE_BANDS_DEFAULT
   const [b1, b2, b3] = bands
   const lvs = [{ k: 'lv1', l: '3개월 미만', sub: '< ' + b1 + '일', c: t.blue }, { k: 'lv2', l: '3~6개월', sub: b1 + '~' + b2 + '일', c: t.amber }, { k: 'lv3', l: '6~12개월', sub: b2 + '~' + b3 + '일', c: t.red }, { k: 'lv4', l: '1년 이상', sub: '≥ ' + b3 + '일', c: t.purple }]
@@ -5497,6 +5532,8 @@ export function IdleCheck({ drugs, onReload }) {
 function IdleReasonModal({ t, row, onClose, onSave }) {
   const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos)  // 훅A(함정 #13: 신규 모달은 훅A)
   const [memo, setMemo] = useState(row.memo || ''); const [saving, setSaving] = useState(false)
+  /* ★ 사유를 입력해 둔 상태면 미룬다 */
+  useBusy('idle-reason', memo !== (row.memo || ''))
   const stBg = { '관찰': t.accentL, '중지': t.redL, '보유유지': t.greenL, '해제': t.bg }; const stFg = { '관찰': t.accent, '중지': t.red, '보유유지': t.green, '해제': t.textM }
   const ta = { width: '100%', minHeight: 84, padding: '9px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text, resize: 'vertical', fontFamily: 'inherit' }
   const lb = { fontSize: 10, color: t.textM, display: 'block', marginBottom: 4 }
@@ -5528,6 +5565,8 @@ export function IdleRegisterModal({ drugs, onClose, onSaved }) {
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null)
   /* 저장은 됐지만 폴백이 버린 컬럼들 — 비어 있지 않으면 성공 대신 「일부 미반영」을 띄우고 닫지 않는다 */
   const [dropped, setDropped] = useState([])
+  /* ★ 사용점검 등록 모달에 손댄 값이 있으면 미룬다 */
+  useBusy('idle-register', selCode !== '' || formDirty(f, { last_used_date: '', last_used_dept: '', status: '관찰', memo: '' }))
   const sel = drugs.find(d => d.drug_code === selCode); const sf = (k, v) => setF(p => ({ ...p, [k]: v }))
   const filtered = drugs.filter(d => !d.last_used_date && search.trim() && (d.drug_name?.toLowerCase().includes(search.toLowerCase()) || d.drug_code?.toLowerCase().includes(search.toLowerCase()))).slice(0, 8)
   const canSave = !!selCode && !!f.last_used_date && !saving
@@ -6118,6 +6157,12 @@ function MyPage({ profile, onProfileUpdated }) {
   const [newPw2, setNewPw2] = useState('')
   const [pwSaving, setPwSaving] = useState(false)
   const [pwMsg, setPwMsg] = useState(null)
+  /* ★ 내 정보나 새 비밀번호를 입력해 둔 상태면 미룬다.
+     초기값은 profile 에서 만든다 — 아래 useEffect 가 폼을 채우는 값과 같다. */
+  useBusy('mypage-form', newPw !== '' || newPw2 !== '' || formDirty(form, {
+    full_name: profile?.full_name || '', phone: profile?.phone || '',
+    dept: profile?.dept || '', position: profile?.position || '',
+  }))
   const isEmailUser = (user?.app_metadata?.provider || 'email') === 'email'
 
   useEffect(() => {
@@ -6347,6 +6392,8 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
   const [sel, setSel] = useState(() => new Set())        /* 일괄 이동 선택 — 모달 로컬, 닫으면 사라진다 */
   const [dest, setDest] = useState(''); const [destOpts, setDestOpts] = useState([]); const [moveAsk, setMoveAsk] = useState(false)
   const [q, setQ] = useState('')                         /* 약품코드·약품명 검색 — 선택은 유지된다 */
+  /* ★ 위치 안 약품의 값을 고치는 중이거나 옮길 곳을 골라 두었으면 미룬다 */
+  useBusy('locdrugs-edit', editId != null || editVal !== '' || dest !== '')
   const rid = d => d.id || d.drug_code
   /* ★ 편집 키에 loc 을 섞는다. 모달이 열린 채 다른 위치의 건수를 클릭하면 loc 만 바뀌는데,
      그때 effect 안에서 setEditId(null) 로 지우면 set-state-in-effect 규칙에 걸린다(이 파일의 기존 주의사항).
@@ -6610,6 +6657,8 @@ function LocationVocab() {
   const [renId, setRenId] = useState(null); const [renVal, setRenVal] = useState('')
   const [delAsk, setDelAsk] = useState(null); const [openMiss, setOpenMiss] = useState(false)
   const [descId, setDescId] = useState(null); const [descVal, setDescVal] = useState('')
+  /* ★ 새 위치 이름·이름 바꾸기·설명을 입력하는 중이면 미룬다 */
+  useBusy('locvocab-edit', newLabel !== '' || renId != null || descId != null)
   /* ★ 건수 클릭 시 열리는 약품 목록 모달 — { loc, desc }. 미등록 값은 desc 가 빈 문자열이다. */
   const [locView, setLocView] = useState(null)
   /* ★ 구역별 인쇄 — 같은 화면 오버레이. printRows 는 사용+휴면만 담는다(중지 제외). */
@@ -6950,6 +6999,8 @@ function AdminUsers() {
   const [errMsg, setErrMsg] = useState(null)
   const [editRow, setEditRow] = useState(null) /* 수정 모달용 — null이면 닫힘 */
   const [toast, setToast] = useState(null)
+  /* ★ 사용자 수정 모달이 열려 있으면 미룬다 */
+  useBusy('adminuser-edit', editRow != null)
   const { hs, so, SI, TS } = useSort('created_at', 'desc')
 
   async function load() {
@@ -7230,6 +7281,8 @@ function Schedule({ drugs, onNav }) {
   const [closed, setClosed] = useState(new Set());
   const [dayDetail, setDayDetail] = useState(null);
   const [editEv, setEditEv] = useState(null);
+  /* ★ 일정을 고치는 중이면 미룬다 */
+  useBusy('schedule-edit', editEv != null)
   const [msg, setMsg] = useState(null);
   const dragDay = useDragModal(); const dragEdit = useDragModal(); // 일자 상세·일정 등록 모달 드래그(useDragModal 재사용)
   const [holidays, setHolidays] = useState([]); const [hidBusy, setHidBusy] = useState(false); const [hidMsg, setHidMsg] = useState(null); const _hidTried = useRef({}); // 공휴일(공유 레퍼런스, 읽기 전용)
@@ -7447,6 +7500,8 @@ function AtcView({ drugs, onReload }) {
   const [excludeSel, setExcludeSel] = useState(null);
   const [excludeReason, setExcludeReason] = useState('습기 취약');
   const [excludeEtc, setExcludeEtc] = useState('');
+  /* ★ 배치 편집 중이거나 제외 사유를 입력하는 중이면 미룬다 */
+  useBusy('atc-edit', editMode || pending != null || excludeModal || excludeEtc !== '')
   const EX_REASONS = ['습기 취약', '분할 불가', '수기 조제', '기타'];
   const candDesc = [...(drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d))].sort((a, b) => usageScore(b) - usageScore(a));
   const usageRank = new Map(); candDesc.forEach((d, i) => usageRank.set(d.drug_code, i));
@@ -7715,6 +7770,13 @@ export default function App() {
   const [lotDrug, setLotDrug] = useState(null)
   const [d360, setD360] = useState(null)
   const [d360Pos, setD360Pos] = useState({ x: 0, y: 0 }) // 360° 모달 위치(세션 내 유지, 새로고침 시 중앙 복귀)
+  /* ★ 모달이 열려 있으면 미룬다 — 모달 판정(DOM 추정)과 **별개의** 이중 보호다.
+     DOM 추정이 틀려도(class 가 없어 쓰이는 값으로 가린다) 이쪽이 잡는다. */
+  useBusy('modal-edit-drug', !!editDrug)
+  useBusy('modal-adjust', !!adjustDrug)
+  useBusy('modal-dispose', !!disposeDrug)
+  useBusy('modal-lot', !!lotDrug)
+  useBusy('modal-360', !!d360)
   const [searchOpen, setSearchOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const isPopRef = useRef(false); const isFirstRef = useRef(true)

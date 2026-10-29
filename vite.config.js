@@ -124,6 +124,10 @@ export default defineConfig(({ mode }) => {
       netlifyFunctionsDev(),
       VitePWA({
         registerType: 'autoUpdate',
+        /* ★ 자동 주입되는 registerSW.js 는 등록 한 줄뿐이라 **갱신 확인도 reload 도 없다.**
+           SPA 안에서는 탐색이 없어 열린 탭이 며칠이고 옛 번들을 실행했다
+           (회차 마감이 두 번 9시간 밀린 사고의 원인). src/main.jsx 에서 직접 등록한다. */
+        injectRegister: null,
         includeAssets: ['favicon.ico', 'favicon.svg', 'icons/*.png', 'offline.html'],
         manifest: {
           name: '약플로 · Yakflo',
