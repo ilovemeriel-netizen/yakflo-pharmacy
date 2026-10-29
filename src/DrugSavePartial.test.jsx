@@ -186,9 +186,9 @@ describe('표 인라인 칸 — 사용점검(IdleCheck) 색 값', () => {
     /* 두 칸에 title 이 달려 있다 */
     expect((src.match(/_fbTi\(r\.drug_code \+ ':/g) || []).length).toBe(2)
   })
-  it('승인받은 색 값만 쓴다', () => {
-    expect(PARTIAL_LINE).toBe('#BFA6D9')
-    expect(PARTIAL_BG).toBe('rgba(191,166,217,0.45)')
-    expect(PARTIAL_FG).toBe('#2E4A62')
+  it('승인받은 색 값만 쓴다 — 상수는 CSS 변수, 기본값은 라이트', () => {
+    expect(PARTIAL_LINE).toBe('var(--yp-partial-line, #BFA6D9)')
+    expect(PARTIAL_BG).toBe('var(--yp-partial-bg, rgba(191,166,217,0.45))')
+    expect(PARTIAL_FG).toBe('var(--yp-partial-fg, #2E4A62)')
   })
 })

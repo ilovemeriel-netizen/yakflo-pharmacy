@@ -116,3 +116,22 @@ code {
   #root { min-height: 0; }
   .cnc-app-root { min-height: 0 !important; }
 }
+
+/* ── 안내 띠 색(「일부 미반영」·「취소했습니다」) ───────────────────────────
+   ★ 새 색이 아니다 — 전부 기존 토큰 값이다(값의 출처는 lib/saveWithFallback.js 주석).
+   ★ 다크에서 라벤더 45% 위의 #2E4A62 는 실측 1.51:1 로 읽히지 않는다.
+     안내가 11곳이고 일부는 테마에 접근조차 하지 않아, 화면을 고치는 대신
+     여기서 값만 바꾼다. 부르는 쪽은 한 글자도 바뀌지 않는다.
+   ★ <html> 에 걸어 두면 모달 포털(document.body)도 함께 따라온다. */
+:root {
+  --yp-partial-bg: rgba(191, 166, 217, 0.45);
+  --yp-partial-fg: #2e4a62;
+  --yp-partial-line: #bfa6d9;
+  --yp-partial-btn: #804a87;
+}
+[data-yp-theme='dark'] {
+  --yp-partial-bg: rgba(191, 166, 217, 0.12);
+  --yp-partial-fg: #e8e6e1;
+  --yp-partial-line: #bfa6d9;
+  --yp-partial-btn: #bfa6d9;
+}
