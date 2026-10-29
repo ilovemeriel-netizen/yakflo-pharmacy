@@ -562,6 +562,11 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
                             background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 10, fontWeight: 700,
                           }}>{open ? '가리기' : '원문 보기'}</button>
                         </td>
+                        {/* ★ 소속 — 사번 칸과 같은 모양. 값이 없으면 「—」(옛 신청은 소속을 받지 않았다).
+                            ★ 이 칸을 빠뜨리면 **머리글은 11칸인데 행은 10칸**이 되어
+                              성명 다음부터 내용이 한 칸씩 왼쪽으로 밀린다(실제로 그랬다).
+                              열을 더할 때는 머리글·행·엑셀·PDF **네 곳**을 함께 본다. */}
+                        <td style={td(t, 'left')}>{r.dept || '—'}</td>
                         {/* ★ 본인 — 「접종 완료」 칸의 체크박스와 같은 모양. 누르면 바로 저장한다. */}
                         <td style={td(t, 'center')}>
                           <input type="checkbox" checked={!!r.self_dose}
