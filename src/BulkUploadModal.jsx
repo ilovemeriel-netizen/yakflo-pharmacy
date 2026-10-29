@@ -9,6 +9,7 @@ import { useState, useMemo, useRef } from 'react'
 import { useDraggableModal } from './useDraggableModal'
 import { supabase } from './lib/supabase'
 import { FIELD_DEFS, autoMap, normalizeDrugRow } from './lib/drugRules'
+import { saveWithFallback, partialBulkText, PARTIAL_BG, PARTIAL_FG, PARTIAL_LINE } from './lib/saveWithFallback'
 
 const CHUNK = 500
 const ALERT = '#D9342B'
@@ -88,26 +89,32 @@ export default function BulkUploadModal({ t, isOwner, drugs, onClose, onReload }
     /* drugs 유니크 인덱스는 (tenant_id, drug_code) 복합 → onConflict:'drug_code' upsert 불가.
        앱 기존 패턴대로 신규=insert(청크), 갱신=id 기준 update(제공 컬럼만 SET=빈셀 미덮어씀).
        누락 컬럼은 자동 제거 후 재시도. 청크/행 단위로 실패 행만 정확히 분리한다. */
+    /* ★ 폴백이 버린 컬럼 — 결과 요약에 「n건은 일부 항목 미반영」으로 올린다(조용한 실패 방지).
+       partialCount 는 **행 수**다(청크 단위로 버리면 그 청크의 전 행이 해당된다). */
+    let partialCount = 0
+    const partialCols = []
+    const notePartial = (rows, dropped) => {
+      if (!dropped.length) return
+      partialCount += rows
+      for (const c of dropped) if (!partialCols.includes(c)) partialCols.push(c)
+    }
+
     async function insertOne(obj) {
-      let o = { ...obj }; let e = (await supabase.from('drugs').insert([o])).error
-      for (let rt = 0; rt < 4 && e && e.message && e.message.includes('column'); rt++) { const m = e.message.match(/'([^']+)' column/); if (!m) break; console.warn('[BulkUpload INSERT] 미존재 컬럼 자동 제거:', m[1], '/ 원인:', e.message); delete o[m[1]]; e = (await supabase.from('drugs').insert([o])).error }
-      return e || null
+      const r = await saveWithFallback({ ...obj }, p => supabase.from('drugs').insert([p]), { retries: 4, label: 'BulkUpload INSERT' })
+      if (!r.error) notePartial(1, r.dropped)
+      return r.error || null
     }
     async function insertChunk(chunk, rows) {
-      let c = chunk.map(o => ({ ...o }))
-      let res = await supabase.from('drugs').insert(c)
-      for (let rt = 0; rt < 4 && res.error && res.error.message && res.error.message.includes('column'); rt++) {
-        const m = res.error.message.match(/'([^']+)' column/); if (!m) break; console.warn('[BulkUpload INSERT chunk] 미존재 컬럼 자동 제거:', m[1], '/ 원인:', res.error.message)
-        c = c.map(o => { const x = { ...o }; delete x[m[1]]; return x }); res = await supabase.from('drugs').insert(c)
-      }
-      if (res.error) { for (let k = 0; k < c.length; k++) { const e = await insertOne(c[k]); if (e) fail.push({ i: rows[k].i, code: c[k].drug_code, reason: e.message }) } }
+      const r = await saveWithFallback(chunk.map(o => ({ ...o })), p => supabase.from('drugs').insert(p), { retries: 4, label: 'BulkUpload INSERT chunk' })
+      if (r.error) { for (let k = 0; k < r.payload.length; k++) { const e = await insertOne(r.payload[k]); if (e) fail.push({ i: rows[k].i, code: r.payload[k].drug_code, reason: e.message }) } }
+      else notePartial(r.payload.length, r.dropped)
     }
     async function updateOne(r) {
-      let patch = { ...r.fields }; delete patch.drug_code; delete patch.current_qty
+      const patch = { ...r.fields }; delete patch.drug_code; delete patch.current_qty
       if (Object.keys(patch).length === 0) return null                 // 변경 없음
-      let e = (await supabase.from('drugs').update(patch).eq('id', r.ex.id)).error
-      for (let rt = 0; rt < 4 && e && e.message && e.message.includes('column'); rt++) { const m = e.message.match(/'([^']+)' column/); if (!m) break; console.warn('[BulkUpload UPDATE] 미존재 컬럼 자동 제거:', m[1], '/ 원인:', e.message); delete patch[m[1]]; e = (await supabase.from('drugs').update(patch).eq('id', r.ex.id)).error }
-      return e || null
+      const out = await saveWithFallback(patch, p => supabase.from('drugs').update(p).eq('id', r.ex.id), { retries: 4, label: 'BulkUpload UPDATE' })
+      if (!out.error) notePartial(1, out.dropped)
+      return out.error || null
     }
 
     for (let s = 0; s < news.length; s += CHUNK) { const rows = news.slice(s, s + CHUNK); const chunk = rows.map(r => ({ ...r.fields, current_qty: 0 })); await insertChunk(chunk, rows); done += chunk.length; setProgress(done) }
@@ -128,7 +135,7 @@ export default function BulkUploadModal({ t, isOwner, drugs, onClose, onReload }
       else if (_adjRes && _adjRes.ok === false) (_adjRes.failed || []).forEach(f => fail.push({ i: -1, code: f.drug_code, reason: '재고조정: ' + f.reason }))
       else if (_adjRes) _adjusted = _adjRes.adjusted || 0
     }
-    setResult({ success: total - fail.length, adjusted: _adjusted, fail, errorRows: classified.filter(r => r.status === 'error') })
+    setResult({ success: total - fail.length, adjusted: _adjusted, fail, errorRows: classified.filter(r => r.status === 'error'), partialCount, partialCols })
     setApplying(false); setStep(4)
     onReload && onReload()
   }
@@ -232,6 +239,8 @@ export default function BulkUploadModal({ t, isOwner, drugs, onClose, onReload }
               <div style={{ flex: 1, padding: '14px 16px', borderRadius: 10, background: ALERT + '12', border: `1px solid ${ALERT}33` }}><div style={{ fontSize: 11, color: t.textM, fontWeight: 600 }}>실패/제외</div><div style={{ fontSize: 24, fontWeight: 800, color: ALERT }}>{result.fail.length + result.errorRows.length}</div></div>
             </div>
             {result.adjusted != null && <div style={{ fontSize: 12, color: t.textM, marginBottom: 12 }}>조정 거래 {result.adjusted}건 생성</div>}
+            {/* ★ 폴백이 컬럼을 버린 행 — 기존 성공·실패 건수는 그대로 두고 한 줄 덧붙인다 */}
+            {result.partialCount > 0 && <div style={{ background: PARTIAL_BG, border: `1px solid ${PARTIAL_LINE}`, borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, fontWeight: 600, color: PARTIAL_FG }}>{partialBulkText(result.partialCount, result.partialCols)}</div>}
             {(result.fail.length + result.errorRows.length) > 0 ? <>
               <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, maxHeight: 240, overflowY: 'auto', marginBottom: 12 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
