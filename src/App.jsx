@@ -6,6 +6,8 @@ import { planReorder } from './lib/locOrder'
 import { RX_TOGGLE, RX_MORE, autoMap } from './lib/drugRules'
 import { classifyDrugRows, applyDrugRows } from './lib/drugBulk'
 import { saveWithFallback, partialText, partialBulkText, blockedText, PARTIAL_BG, PARTIAL_FG, PARTIAL_LINE } from './lib/saveWithFallback'
+import { ErrorBoundary } from './lib/errorBoundary.jsx'
+import { screenLabel } from './lib/errorText.js'
 import { decomposeAtc } from './lib/atcMap'
 import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLabel, TX_NEVER_DROP } from './lib/txTypes'
 import { vaccineTabFromHash } from './lib/vaccineRoute'
@@ -7894,31 +7896,35 @@ export default function App() {
       `}</style>
       <div className="cnc-app-root" style={{ minHeight: '100vh', background: t.bg }}>
         <Header menu={menu} setMenu={setMenu} onRegister={() => setMenu('register')} />
-        {menu === 'dashboard' && <Dashboard drugs={drugs} inv={inv} txns={txns} onNav={handleNav} onEdit={setEditDrug} />}
-        {/* ★ 푸터가 빠져 있던 6화면 — 화면 컴포넌트는 손대지 않고 라우팅에서 붙인다(2026-10-27).
-            인쇄에는 나오지 않아야 하므로 반드시 no-print 로 감싼다. */}
-        {menu === 'alerts' && <><AlertCenter drugs={drugs} onNav={handleNav} /><div className="no-print"><Ft /></div></>}
-        {menu === 'ordering' && <><Ordering drugs={drugs} onAdjust={setAdjustDrug} /><div className="no-print"><Ft /></div></>}
-        {menu === 'druglist' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} />}
-        {menu === 'nonins' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} nonins />}
-        {menu === 'change' && <DrugChangePlans drugs={drugs} onReload={load} navFilter={nf} />}
-        {menu === 'archive' && <DrugList drugs={drugs} navFilter={{ status: ['중지'], archive: true }} onEdit={setEditDrug} onReload={load} />}
-        {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} onDispose={setDisposeDrug} />}
-        {menu === 'idle' && <IdleCheck drugs={drugs} onReload={load} />}
-        {menu === 'ward' && <WardAdmin />}
-        {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
-        {menu === 'count' && <InventoryCount drugs={drugs} onReload={load} />}
-        {menu === 'vaccine' && <><Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: t.textL, fontSize: 12 }}>불러오는 중...</div>}><VaccineManage ColMenu={ColMenu} useSort={useSort} ymd={ymd} todayYmd={todayYmd} /></Suspense><div className="no-print"><Ft /></div></>}
-        {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
-        {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
-        {menu === 'report' && <Report drugs={drugs} onNav={handleNav} />}
-        {menu === 'emergency' && <><EmergencyDispense /><div className="no-print"><Ft /></div></>}
-        {menu === 'atc' && <><AtcView drugs={drugs} onReload={load} /><div className="no-print"><Ft /></div></>}
-        {menu === 'schedule' && <><Schedule drugs={drugs} onNav={handleNav} /><div className="no-print"><Ft /></div></>}
-        {menu === 'register' && <DrugRegister onRefresh={load} drugs={drugs} />}
-        {menu === 'mypage' && <MyPage profile={profile} onProfileUpdated={loadProfile} />}
-        {menu === 'locvocab' && <LocationVocab />}
-        {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
+        {/* ★ 화면 내용만 감싼다 — 메뉴(Header)는 남는다. key={menu} 라서
+            화면을 옮기면 경계가 새로 만들어져 오류 상태가 저절로 풀린다. */}
+        <ErrorBoundary key={menu} t={t} screen={screenLabel(menu)} onHome={() => handleNav({ menu: 'dashboard' })}>
+          {menu === 'dashboard' && <Dashboard drugs={drugs} inv={inv} txns={txns} onNav={handleNav} onEdit={setEditDrug} />}
+          {/* ★ 푸터가 빠져 있던 6화면 — 화면 컴포넌트는 손대지 않고 라우팅에서 붙인다(2026-10-27).
+              인쇄에는 나오지 않아야 하므로 반드시 no-print 로 감싼다. */}
+          {menu === 'alerts' && <><AlertCenter drugs={drugs} onNav={handleNav} /><div className="no-print"><Ft /></div></>}
+          {menu === 'ordering' && <><Ordering drugs={drugs} onAdjust={setAdjustDrug} /><div className="no-print"><Ft /></div></>}
+          {menu === 'druglist' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} />}
+          {menu === 'nonins' && <DrugList drugs={drugs} navFilter={nf} onEdit={setEditDrug} onReload={load} nonins />}
+          {menu === 'change' && <DrugChangePlans drugs={drugs} onReload={load} navFilter={nf} />}
+          {menu === 'archive' && <DrugList drugs={drugs} navFilter={{ status: ['중지'], archive: true }} onEdit={setEditDrug} onReload={load} />}
+          {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} onDispose={setDisposeDrug} />}
+          {menu === 'idle' && <IdleCheck drugs={drugs} onReload={load} />}
+          {menu === 'ward' && <WardAdmin />}
+          {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
+          {menu === 'count' && <InventoryCount drugs={drugs} onReload={load} />}
+          {menu === 'vaccine' && <><Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: t.textL, fontSize: 12 }}>불러오는 중...</div>}><VaccineManage ColMenu={ColMenu} useSort={useSort} ymd={ymd} todayYmd={todayYmd} /></Suspense><div className="no-print"><Ft /></div></>}
+          {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
+          {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
+          {menu === 'report' && <Report drugs={drugs} onNav={handleNav} />}
+          {menu === 'emergency' && <><EmergencyDispense /><div className="no-print"><Ft /></div></>}
+          {menu === 'atc' && <><AtcView drugs={drugs} onReload={load} /><div className="no-print"><Ft /></div></>}
+          {menu === 'schedule' && <><Schedule drugs={drugs} onNav={handleNav} /><div className="no-print"><Ft /></div></>}
+          {menu === 'register' && <DrugRegister onRefresh={load} drugs={drugs} />}
+          {menu === 'mypage' && <MyPage profile={profile} onProfileUpdated={loadProfile} />}
+          {menu === 'locvocab' && <LocationVocab />}
+          {menu === 'admin' && (profile?.role === 'admin' ? <AdminUsers /> : <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자 권한이 필요한 페이지입니다.</div>)}
+        </ErrorBoundary>
 
         {editDrug && <DrugEditModal drug={editDrug} onClose={() => setEditDrug(null)} onSaved={() => { setEditDrug(null); load() }} onLotManage={d => { setEditDrug(null); setLotDrug(d) }} />}
         {d360 && <Drug360Modal key={d360.drug_code} drug={d360} pos={d360Pos} setPos={setD360Pos} onClose={() => setD360(null)} onSaved={u => setDrugs(ds => ds.map(d => d.drug_code === u.drug_code ? { ...d, ...u } : d))} />}

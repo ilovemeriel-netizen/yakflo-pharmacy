@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
+import { ErrorBoundary } from './ErrorBoundary.jsx'
 
 /* 전역 기본 스타일 — 브랜드 팔레트 4색 외 신규 색상값 없음(그 외는 white 키워드·rgba 파생) */
 const base = document.createElement('style')
@@ -56,8 +57,11 @@ base.textContent = `
 `
 document.head.appendChild(base)
 
+/* ★ 앱 전체를 감싸는 경계 하나 — 한 군데가 터져도 하얀 화면이 되지 않는다 */
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>
 )
