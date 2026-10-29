@@ -45,7 +45,7 @@ describe('엑셀', () => {
     const wb = await buildWorkbook({ survey, rows, user })
     const ws = wb.Sheets['명단']
     expect(String(ws.A5.v)).toBe('신청번호')
-    expect(String(ws.K5.v)).toBe('비고')
+    expect(String(ws.K5.v)).toBe('확인 사항')
   })
 
   it('★ 신청번호·사번·희망일은 문자열 셀이다 — 앞자리 0 이 살아야 한다', async () => {
@@ -245,7 +245,7 @@ describe('PDF — 한 목록 · 쪽마다 머리말·바닥글', () => {
     const pt = await pageTexts(doc)
     for (const parts of pt) {
       expect(parts).toContain('신청번호')
-      expect(parts).toContain('비고')
+      expect(parts).toContain('확인 사항')
       expect(parts).toContain('확인')
     }
   })
@@ -315,9 +315,9 @@ describe('출력자 · 비고 · 확인 열 — 엑셀과 PDF 가 같아야 한�
       { receipt_code: 'GH2345', emp_no: '999999', name: '최윤서', name_key: '최윤서', self_dose: true, family_count: 0, wish_date: '2026-11-03', status: 'applied' },
     ]
     const ws = (await buildWorkbook({ survey, rows: dupRows })).Sheets['명단']
-    expect(ws.K6.v).toBe('이름 중복')
-    expect(ws.K7.v).toBe('사번 없음 · 이름 중복')
-    expect(ws.K8.v).toBe('사번 없음')
+    expect(ws.K6.v).toBe('동일 성명 확인 필요')
+    expect(ws.K7.v).toBe('사번 미입력 · 동일 성명 확인 필요')
+    expect(ws.K8.v).toBe('사번 미입력')
     expect(ws.K9?.v ?? '').toBe('')
   })
 
@@ -327,7 +327,7 @@ describe('출력자 · 비고 · 확인 열 — 엑셀과 PDF 가 같아야 한�
       { receipt_code: 'CD2345', emp_no: '2', name: '김정화', name_key: '김정화', self_dose: true, family_count: 0, wish_date: '2026-11-04', status: 'applied' },
     ]
     const ws = (await buildWorkbook({ survey, rows: [all[0]], allRows: all })).Sheets['명단']
-    expect(ws.K6.v).toBe('이름 중복')
+    expect(ws.K6.v).toBe('동일 성명 확인 필요')
     /* allRows 를 주지 않으면 보이는 1건만 보므로 중복이 아니다 — 호출부가 꼭 넘겨야 한다 */
     const ws2 = (await buildWorkbook({ survey, rows: [all[0]] })).Sheets['명단']
     expect(ws2.K6.v).toBe('')
@@ -335,7 +335,7 @@ describe('출력자 · 비고 · 확인 열 — 엑셀과 PDF 가 같아야 한�
 
   it('★ 확인 열은 PDF 에만 있다 — 엑셀은 11열 그대로', async () => {
     const ws = (await buildWorkbook({ survey, rows })).Sheets['명단']
-    expect(String(ws.K5.v)).toBe('비고')
+    expect(String(ws.K5.v)).toBe('확인 사항')
     expect(ws.L5).toBeUndefined()
     expect(ws['!cols']).toHaveLength(11)
   })

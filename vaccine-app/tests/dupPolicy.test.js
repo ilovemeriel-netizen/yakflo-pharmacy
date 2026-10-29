@@ -120,8 +120,8 @@ describe('존재 여부를 흘리지 않는다', () => {
   it('★ 「없음」과 「틀림」이 같은 문구다', () => {
     const i = FN.indexOf('const CLAIM_BAD_MSG')
     const line = FN.slice(i, FN.indexOf('\n', FN.indexOf('left > 0', i)))
-    expect(line).toContain('확인번호가 맞지 않습니다')
-    expect(line, '「그런 이름 없음」 같은 말을 쓰지 않는다').not.toMatch(/없습니다|없어요|찾을 수 없/)
+    expect(line).toContain('확인번호가 일치하지 않습니다.')
+    expect(line, '「그런 이름 없음」 같은 말을 쓰지 않는다').not.toMatch(/신청 내역이 없|찾을 수 없|등록되지/)
   })
   it('★ 후보가 없어도 해시 비용을 치른다 — 응답 시간으로 새지 않게', () => {
     const i = FN.indexOf("action === 'claim'")
@@ -134,8 +134,14 @@ describe('존재 여부를 흘리지 않는다', () => {
     expect(body).toContain("json({ ok: true, receipt_code: hit.receipt_code }")
     expect(body, 'name 을 응답에 싣지 않는다').not.toMatch(/name:\s*hit\./)
   })
-  it('잠금 안내에 내선 217 이 있다', () => {
-    expect(FN).toContain('문의 약제과 내선 217')
+  it('잠금 안내에 문의처가 있다', () => {
+    expect(FN).toContain('문의: 약제과(내선 217)')
+  })
+  it('★ 잠금 안내가 「다른 사람을 고르라」고 시키지 않는다(사용자 확정 2026-10-30)', () => {
+    const i = FN.indexOf('const CLAIM_LOCK_MSG')
+    const block = FN.slice(i, FN.indexOf('const DEPT_MSG', i))
+    expect(block).toContain('제한 시간이 지난 후 다시 시도해 주시기 바랍니다.')
+    expect(block).not.toMatch(/저는 다른 사람|소속을 적어/)
   })
 })
 
@@ -229,5 +235,119 @@ describe('이름 비교 — 공백 제거', () => {
   it('공백·대소문자를 무시한다', () => {
     expect(nameKey(' 홍 길 동 ')).toBe('홍길동')
     expect(nameKey('Hong Gildong')).toBe('honggildong')
+  })
+})
+
+describe('문구 원문 고정 — 사용자 확정본(2026-10-30)', () => {
+  /* ★ 문구는 사용자가 정한 것이다. 바뀌면 바로 걸리게 **원문 그대로** 박아 둔다. */
+  const PUB = [
+    ['01 제목', '동일한 이름의 신청 내역이 있습니다.'],
+    ['01 본문', '동일한 이름으로 접수된 신청 내역이 있습니다. 본인의 신청 여부를 확인해 주시기 바랍니다.'],
+    ['01 선택지1', '본인이 신청한 내역입니다.'],
+    ['01 선택지1 설명', '확인번호 4자리를 입력하면 신청 내역을 조회·수정할 수 있습니다.'],
+    ['01 선택지2', '본인의 신청 내역이 아닙니다.'],
+    ['01 선택지2 설명', '소속을 선택하면 신규 신청을 진행할 수 있습니다.'],
+    ['01 소속 라벨', '(필수)'],
+    ['01 소속 빈 선택', '소속을 선택해 주시기 바랍니다.'],
+    ['02 선택지1 설명(오류 뒤)', '신청 내역을 확인하려면 확인번호 4자리를 입력해 주시기 바랍니다.'],
+    ['02 오류', '확인번호가 일치하지 않습니다. 확인번호를 확인한 후 다시 입력해 주시기 바랍니다. 남은 시도 횟수:'],
+    ['03 제목', '확인번호 입력이 일시적으로 제한되었습니다.'],
+    ['04 제목', '해당 사번으로 접수된 신청 내역이 있습니다.'],
+    ['04 본문', '동일한 사번으로 중복 신청할 수 없습니다.'],
+    ['04 본문2', '신청번호를 모르는 경우 사번과 확인번호로 기존 신청 내역을 조회할 수 있습니다.'],
+    ['04 버튼', '기존 신청 조회·수정'],
+    ['공통 버튼', '처음 화면으로'],
+  ]
+  for (const [what, text] of PUB) {
+    it('공개 ' + what, () => { expect(UI.includes(text), text).toBe(true) })
+  }
+
+  const SRV = [
+    ['03 본문 앞', '확인번호 입력 오류가 반복되어 약 '],
+    ['03 본문 뒤', '제한 시간이 지난 후 다시 시도해 주시기 바랍니다. 문의: 약제과(내선 217)'],
+    ['소속 안내', '소속을 선택해 주시기 바랍니다.'],
+    ['사번 중복', '동일한 사번으로 중복 신청할 수 없습니다.'],
+    ['조회 실패', '신청번호 또는 확인번호가 일치하지 않습니다.'],
+  ]
+  for (const [what, text] of SRV) {
+    it('서버 ' + what, () => { expect(FN.includes(text), text).toBe(true) })
+  }
+
+  it('★ 옛 말투가 남아 있지 않다', () => {
+    for (const old of ['같은 이름으로 접수된 신청이 있어요', '제가 신청한 게 맞아요',
+      '저는 다른 사람이에요', '이 사번으로 접수된 신청이 있어요', '신청 내용 고치기',
+      '확인번호가 맞지 않습니다']) {
+      expect(UI.includes(old), '옛 문구가 남아 있다: ' + old).toBe(false)
+      expect(FN.includes(old), '옛 문구가 남아 있다(서버): ' + old).toBe(false)
+    }
+  })
+
+  it('★ 「처음으로」 를 쓰지 않는다 — 「처음 화면으로」 로 통일', () => {
+    expect(UI).not.toMatch(/처음으로</)
+  })
+})
+
+describe('관리 화면 문구', () => {
+  const PANEL = rd('src/VaccineSurveyPanel.jsx')
+  const CALC = rd('src/lib/surveyCalc.js')
+  it('★ 화면 제목', () => { expect(PANEL).toContain('독감 예방접종 신청 현황') })
+  it('★ 칩 4개', () => {
+    for (const c of ['전체 신청', '사번 미입력', '동일 성명 확인 대상', '동명이인 여부 확인 필요']) {
+      expect(PANEL.includes('label="' + c + '"'), c).toBe(true)
+    }
+  })
+  it('★ 열 머리글', () => {
+    for (const h of ['본인 접종', '가족 접종 인원', '신청 수량(도즈)', '접종 희망일', '신청 상태', '확인 사항']) {
+      expect(PANEL.includes("h: '" + h + "'"), h).toBe(true)
+    }
+  })
+  it('★ 확인 사항 표기 — 확인 전에는 「동명이인」으로 단정하지 않는다', () => {
+    expect(CALC).toContain("out.push('사번 미입력')")
+    expect(CALC).toContain("out.push('동일 성명 확인 필요')")
+    expect(CALC, '확인 전에 단정하면 안 된다').not.toContain("out.push('동명이인')")
+  })
+  it('★ 엑셀·PDF 머리글도 같은 이름이다', () => {
+    const ex = rd('src/lib/surveyExport.js')
+    for (const h of ['본인 접종', '가족 접종 인원', '신청 수량(도즈)', '접종 희망일', '신청 상태', '확인 사항']) {
+      expect(ex.includes("'" + h + "'"), h).toBe(true)
+    }
+  })
+})
+
+describe('우회 점검 — 입력 제한 중 접수', () => {
+  const PANEL = rd('src/VaccineSurveyPanel.jsx')
+  const M102 = rd('supabase/migrations/0102_vaccine_survey_locked_bypass.sql')
+  it('★ 칸은 기본 거짓이라 기존 행이 안 바뀐다', () => {
+    expect(M102).toContain('add column if not exists locked_bypass boolean not null default false')
+    expect(M102).toContain("notify pgrst, 'reload schema'")
+  })
+  it('★ 접수를 막지 않고 표시만 남긴다', () => {
+    const i = FN.indexOf('locked_bypass')
+    expect(i).toBeGreaterThan(-1)
+    const near = FN.slice(Math.max(0, FN.indexOf('bypass = (lockRows') - 500), FN.indexOf('bypass = (lockRows') + 80)
+    expect(near, '잠금이면 돌려보내면 안 된다').not.toMatch(/return json\(\{ ok: false[^}]*LOCK/)
+    expect(FN).toContain('locked_bypass: bypass,')
+  })
+  it('★ 관리 화면 확인 사항에 뜬다', () => {
+    expect(PANEL).toContain('입력 제한 중 접수')
+    expect(PANEL).toContain('locked_bypass')
+  })
+  it('★ 동일 성명 확인 대상에 저절로 들어간다 — 같은 이름·사번 없음·신청 중', () => {
+    /* name_dup_cnt 는 applied + emp_no is null 중 같은 name_key 가 2건 이상인 묶음을 센다.
+       우회 접수 건은 같은 이름으로 들어오므로 그 묶음에 자동으로 포함된다. */
+    const m93 = rd('supabase/migrations/0093_vaccine_survey.sql')
+    const i = m93.indexOf('name_dup_cnt')
+    const block = m93.slice(i, i + 400)
+    expect(block).toContain("status = 'applied' and emp_no is null")
+  })
+})
+
+describe('집계 기준 — 칩과 표가 어긋나지 않게', () => {
+  const PANEL = rd('src/VaccineSurveyPanel.jsx')
+  it('★ dupNeed 도 뷰와 같은 기준(applied) 으로 센다', () => {
+    expect(PANEL).toContain("rows.filter(r => r.status === 'applied' && r.dup_declared && !r.dup_checked_at)")
+  })
+  it('★ 전체 신청도 같은 기준이다', () => {
+    expect(PANEL).toContain("const appliedCnt = rows.filter(r => r.status === 'applied').length")
   })
 })

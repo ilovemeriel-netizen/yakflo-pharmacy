@@ -76,7 +76,7 @@ describe('머리글 글자를 누르면 필터 드롭다운이 열린다', () =>
     await screen.findByText('김*화')
     expect(menu(), '누르기 전에는 닫혀 있어야 한다').toBeNull()
 
-    fireEvent.click(headText('상태'))
+    fireEvent.click(headText('신청 상태'))
     expect(menu(), '★ 드롭다운이 열리지 않았다').toBeTruthy()
     expect(screen.getByRole('button', { name: /^신청/ })).toBeTruthy()
     expect(screen.getByRole('button', { name: /^취소/ })).toBeTruthy()
@@ -85,7 +85,7 @@ describe('머리글 글자를 누르면 필터 드롭다운이 열린다', () =>
   it('★ 사번·희망일 머리글도 열린다 (값이 1~2개뿐인 열 포함)', async () => {
     renderPanel()
     await screen.findByText('김*화')
-    for (const h of ['사번', '희망일', '본인']) {
+    for (const h of ['사번', '접종 희망일', '본인 접종']) {
       fireEvent.click(headText(h))
       expect(menu(), h + ' 머리글에서 드롭다운이 열리지 않았다').toBeTruthy()
       fireEvent.click(screen.getByRole('button', { name: /^전체/ }))   /* 닫기 */
@@ -97,7 +97,7 @@ describe('머리글 글자를 누르면 필터 드롭다운이 열린다', () =>
     await screen.findByText('김*화')
     expect(screen.getByText('2건')).toBeTruthy()        /* 기본 신청만 → 2건 */
 
-    fireEvent.click(headText('희망일'))
+    fireEvent.click(headText('접종 희망일'))
     fireEvent.click(screen.getByRole('button', { name: '2026-11-04' }))
     expect(await screen.findByText('1건')).toBeTruthy()
     expect(screen.getByText('박*수')).toBeTruthy()
@@ -108,7 +108,7 @@ describe('머리글 글자를 누르면 필터 드롭다운이 열린다', () =>
     await screen.findByText('김*화')
     expect(screen.queryByRole('button', { name: /필터 초기화/ })).toBeNull()
 
-    fireEvent.click(headText('상태'))
+    fireEvent.click(headText('신청 상태'))
     fireEvent.click(screen.getByRole('button', { name: /^전체/ }))
     expect(await screen.findByText('3건')).toBeTruthy()
     const reset = screen.getByRole('button', { name: /필터 초기화/ })

@@ -15,7 +15,7 @@
    ★ 함수 로그에 성명·사번·확인번호를 남기지 않는다. 응답 id 와 사유 이름만 남긴다.
 
    ★ 존재 여부를 흘리지 않는다 — 조회·수정·취소 실패는 **항상 같은 문구** 하나로 돌려준다.
-     「신청번호(사번) 또는 확인번호가 맞지 않습니다」
+     「신청번호 또는 확인번호가 일치하지 않습니다.」
 
    ★ 반환 필드 최소화 — 다른 사람의 성명·사번은 **어떤 응답에도 싣지 않는다**.
      name_dup 경고는 「있다/없다」 boolean 뿐이다.
@@ -59,18 +59,18 @@ async function verifyPin(pw, salt, expectHex) {
 }
 
 /* 실패 문구는 하나로 통일한다 — 신청번호가 있는지 없는지를 알려 주지 않는다 */
-const NOT_FOUND_MSG = '신청번호(사번) 또는 확인번호가 맞지 않습니다'
-const NO_IP_MSG = '접속 정보를 확인할 수 없습니다 · 문의 약제과 내선 217'
+const NOT_FOUND_MSG = '신청번호 또는 확인번호가 일치하지 않습니다.'
+const NO_IP_MSG = '접속 정보를 확인할 수 없습니다. 문의: 약제과(내선 217)'
 const PIN_MSG = `확인번호는 숫자 ${PW_LEN}자리로 입력해 주세요`
-const EMP_DUP_MSG = '이미 신청된 사번입니다. 사번과 확인번호로 수정할 수 있어요'
+const EMP_DUP_MSG = '동일한 사번으로 중복 신청할 수 없습니다. 사번과 확인번호로 기존 신청 내역을 조회할 수 있습니다.'
 const TEMP_MSG = '일시적인 오류입니다'
 const RATE_MSG = '잠시 후 다시 시도해 주세요'
 /* ★ 「없음」과 「틀림」을 구별해 주지 않는다 — 남은 횟수만 덧붙인다. */
-const CLAIM_BAD_MSG = left => '확인번호가 맞지 않습니다. 다시 넣어 주세요'
-  + (left > 0 ? ` (남은 횟수 ${left}회)` : '')
-const CLAIM_LOCK_MSG = mins => `확인번호를 여러 번 잘못 넣어 약 ${mins}분 동안 확인을 멈췄어요. `
-  + '지금 신청하시려면 「저는 다른 사람이에요」를 골라 소속을 적어 주세요 · 문의 약제과 내선 217'
-const DEPT_MSG = '소속을 골라 주세요'
+const CLAIM_BAD_MSG = left => '확인번호가 일치하지 않습니다. 확인번호를 확인한 후 다시 입력해 주시기 바랍니다.'
+  + (left > 0 ? ` 남은 시도 횟수: ${left}회` : '')
+const CLAIM_LOCK_MSG = mins => `확인번호 입력 오류가 반복되어 약 ${mins}분간 확인이 제한됩니다. `
+  + '제한 시간이 지난 후 다시 시도해 주시기 바랍니다. 문의: 약제과(내선 217)'
+const DEPT_MSG = '소속을 선택해 주시기 바랍니다.'
 
 /* 신청번호 충돌 재시도 횟수 — 31^6 ≈ 8.9억이라 현실적으로 1회에 끝난다 */
 const CODE_TRIES = 8
@@ -152,6 +152,7 @@ export default async (req) => {
 
       const name = String(body.name).trim()
       const nk = nameKey(name)
+      let bypass = false   /* 입력 제한 중에 들어온 신규 접수인가(0102) */
       const emp = body.emp_no != null && String(body.emp_no).trim() !== '' ? String(body.emp_no).trim() : null
 
       /* 사번 중복 → 409. 사번 없는 동명이인 → 경고만(결정 2·3) */
@@ -165,8 +166,18 @@ export default async (req) => {
         if (error) { console.error('[vaccine-survey] 사번 중복 조회 실패:', error.message); return json({ ok: false, message: TEMP_MSG }, 500) }
         if ((dup || []).length) return json({ ok: false, code: 'EMP_DUP', message: EMP_DUP_MSG }, 409)
       } else if (body.confirmDup) {
-        /* 「저는 다른 사람이에요」 — 소속이 있어야 접수한다(사용자 확정 2026-10-30) */
+        /* 「본인의 신청 내역이 아닙니다」 — 소속이 있어야 접수한다(사용자 확정 2026-10-30) */
         if (!validDept(body.dept)) return json({ ok: false, code: 'DEPT', message: DEPT_MSG }, 400)
+        /* ★ 확인번호 입력이 제한된 상태에서 들어온 신규 접수는 **막지 않고 표시만** 남긴다.
+           막으면 진짜 다른 사람이 신청을 못 한다. 표시가 없으면 우회 시도와
+           정상 동명이인이 구별되지 않는다(0102 locked_bypass). */
+        const nameHashB = createHmac('sha256', secret).update(s.id + '|' + nk).digest('hex')
+        const { data: lockRows } = await admin.from('vaccine_survey_claim_attempts')
+          .select('scope, locked_until')
+          .eq('tenant_id', tenantId)
+          .in('scope', ['ip', 'name'])
+          .in('key_hash', [ih, nameHashB])
+        bypass = (lockRows || []).some(x => claimLockState(x, Date.now()).locked)
       } else {
         const { data: dup, error } = await admin
           .from('vaccine_survey_responses').select('id')
@@ -200,6 +211,7 @@ export default async (req) => {
           /* 동명이인이라고 **스스로 밝힌** 건만 참이다 — 소속 유무로 추정하지 않는다 */
           dept: (!emp && body.confirmDup && validDept(body.dept)) ? body.dept : null,
           dup_declared: !!(!emp && body.confirmDup),
+          locked_bypass: bypass,
         }).select('id, receipt_code, wish_date, self_dose, family_count').limit(1)
         if (!error) { saved = (data || [])[0]; break }
         lastErr = error
@@ -232,7 +244,7 @@ export default async (req) => {
       }, 200)
     }
 
-    /* ══════════ claim — 「제가 신청한 게 맞아요」 ══════════
+    /* ══════════ claim — 「본인이 신청한 내역입니다」 ══════════
        이름 + 확인번호로 **내 신청 1건**을 찾아 신청번호만 돌려준다.
        그 뒤 화면은 기존 lookup/update 경로를 그대로 쓴다(새 수정 경로를 만들지 않는다).
 

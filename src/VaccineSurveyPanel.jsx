@@ -131,7 +131,7 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     for (let from = 0; ; from += CHUNK) {
       const { data, error } = await supabase
         .from('vaccine_survey_responses')
-        .select('id, receipt_code, emp_no, name, name_key, self_dose, family_count, wish_date, status, done_self, done_family, created_at, dept, dup_declared, dup_checked_at')
+        .select('id, receipt_code, emp_no, name, name_key, self_dose, family_count, wish_date, status, done_self, done_family, created_at, dept, dup_declared, dup_checked_at, locked_bypass')
         .eq('survey_id', id)
         .order('wish_date', { ascending: true })
         .order('created_at', { ascending: true })
@@ -318,13 +318,13 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     { k: 'emp_no', h: '사번', w: 110, align: 'left', filter: true },
     { k: 'name', h: '성명', w: 110, align: 'left' },
     { k: 'dept', h: '소속', w: 110, align: 'left', filter: true },
-    { k: 'self_dose', h: '본인', w: 62, align: 'center', filter: true },
-    { k: 'family_count', h: '가족 수', w: 76, align: 'right' },
-    { k: 'dose', h: '도즈', w: 70, align: 'right' },
-    { k: 'wish_date', h: '희망일', w: 110, align: 'center', filter: true },
-    { k: 'status', h: '상태', w: 80, align: 'center', filter: true },
+    { k: 'self_dose', h: '본인 접종', w: 78, align: 'center', filter: true },
+    { k: 'family_count', h: '가족 접종 인원', w: 104, align: 'right' },
+    { k: 'dose', h: '신청 수량(도즈)', w: 110, align: 'right' },
+    { k: 'wish_date', h: '접종 희망일', w: 110, align: 'center', filter: true },
+    { k: 'status', h: '신청 상태', w: 86, align: 'center', filter: true },
     { k: 'done', h: '접종 완료', w: 110, align: 'center' },
-    { k: 'memo', h: '비고', w: 120, align: 'left' },
+    { k: 'memo', h: '확인 사항', w: 150, align: 'left' },
   ]
 
   /* 필터·정렬 — 가려진 값이 아니라 **원문 기준**으로 건다(눈에 보이는 값으로 걸면 * 끼리 묶인다) */
@@ -369,7 +369,11 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
   /* 지금 회차에서 보여 줄 띠 — 회차를 옮기면 저절로 사라진다(파생값) */
   const _notice = visibleNotice(notice, sel?.id)
   /* 「동명이인 확인 필요」 — 선언됐고 아직 확인하지 않은 건(파생값) */
-  const dupNeed = rows.filter(r => r.dup_declared && !r.dup_checked_at).length
+  /* ★ 칩은 **필터와 무관하게 회차 전체**를 센다(뷰가 그렇게 센다).
+     dupNeed 도 같은 기준으로 맞춘다 — 뷰는 applied 만 세는데 여기만 취소분까지
+     세면 「칩 2건인데 표에 3행」 같은 어긋남이 생긴다. */
+  const appliedCnt = rows.filter(r => r.status === 'applied').length
+  const dupNeed = rows.filter(r => r.status === 'applied' && r.dup_declared && !r.dup_checked_at).length
   const purgeNeeded = needsPurge(sel, today)
   const purgeOk = canPurge(sel, today)
 
@@ -391,7 +395,7 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
   return <div style={{ padding: '20px 24px', textAlign: 'left' }}>
     {/* ── 머리줄 ── */}
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-      <span style={{ fontSize: 15, fontWeight: 800, color: t.text }}>수요 현황</span>
+      <span style={{ fontSize: 15, fontWeight: 800, color: t.text }}>독감 예방접종 신청 현황</span>
       <select value={selId} onChange={e => { setSelId(e.target.value); setRevealed({}) }}
         style={{ padding: '7px 10px', border: '1px solid ' + t.border, borderRadius: 9, fontSize: 12, background: t.bg, color: t.text }}>
         {!surveys.length ? <option value="">회차 없음</option> : null}
@@ -470,11 +474,12 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
 
           {/* ── 보조 지표 ── */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
-            <Chip t={t} label="사번 없음" v={demand?.no_emp_cnt} unit="건" />
-            <Chip t={t} label="이름 중복 의심" v={demand?.name_dup_cnt} unit="건" />
+            <Chip t={t} label="전체 신청" v={appliedCnt} unit="건" />
+            <Chip t={t} label="사번 미입력" v={demand?.no_emp_cnt} unit="건" />
+            <Chip t={t} label="동일 성명 확인 대상" v={demand?.name_dup_cnt} unit="건" />
             {/* ★ 신청자가 스스로 「다른 사람」이라고 밝힌 건 중, 아직 확인하지 않은 수.
                 확인 완료로 처리하면 이 숫자에서 빠진다. */}
-            <Chip t={t} label="동명이인 확인 필요" v={dupNeed} unit="건" />
+            <Chip t={t} label="동명이인 여부 확인 필요" v={dupNeed} unit="건" />
             <Chip t={t} label="명단 체크 합" v={demand?.done_checked} unit="" />
             <Chip t={t} label="수요조사 외 접종" v={demand?.outside_qty} unit="" />
           </div>
@@ -606,6 +611,7 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
                         </td>
                         <td style={{ ...td(t, 'left'), color: t.textL, fontSize: 11 }}>
                           {r.status === 'cancelled' ? '취소됨' : ''}
+                          {r.locked_bypass ? <span style={{ marginLeft: r.status === 'cancelled' ? 6 : 0, color: t.text, fontWeight: 700 }}>입력 제한 중 접수</span> : null}
                           {/* ★ 신청자가 스스로 「다른 사람」이라고 밝힌 건만 여기 뜬다.
                               확인하면 위 칩 숫자에서 빠진다. 되돌릴 수도 있다. */}
                           {r.dup_declared ? (r.dup_checked_at

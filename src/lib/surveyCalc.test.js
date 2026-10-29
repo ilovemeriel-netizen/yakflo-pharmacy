@@ -263,17 +263,17 @@ describe('rowNote — 4가지 경우', () => {
   it('해당 없음 → 빈칸', () => {
     expect(rowNote(R({ emp_no: '123456', name_key: '박영수' }), dup)).toBe('')
   })
-  it('사번 없음', () => {
-    expect(rowNote(R({ emp_no: null, name_key: '박영수' }), dup)).toBe('사번 없음')
-    expect(rowNote(R({ emp_no: '   ', name_key: '박영수' }), dup)).toBe('사번 없음')
+  it('사번 미입력', () => {
+    expect(rowNote(R({ emp_no: null, name_key: '박영수' }), dup)).toBe('사번 미입력')
+    expect(rowNote(R({ emp_no: '   ', name_key: '박영수' }), dup)).toBe('사번 미입력')
   })
-  it('이름 중복', () => {
-    expect(rowNote(R({ emp_no: '123456', name_key: '김정화' }), dup)).toBe('이름 중복')
+  it('동일 성명 확인 필요', () => {
+    expect(rowNote(R({ emp_no: '123456', name_key: '김정화' }), dup)).toBe('동일 성명 확인 필요')
   })
   it('둘 다 → 「사번 없음 · 이름 중복」', () => {
-    expect(rowNote(R({ emp_no: null, name_key: '김정화' }), dup)).toBe('사번 없음 · 이름 중복')
+    expect(rowNote(R({ emp_no: null, name_key: '김정화' }), dup)).toBe('사번 미입력 · 동일 성명 확인 필요')
   })
   it('중복 집합을 안 주면 사번만 본다', () => {
-    expect(rowNote(R({ emp_no: null, name_key: '김정화' }))).toBe('사번 없음')
+    expect(rowNote(R({ emp_no: null, name_key: '김정화' }))).toBe('사번 미입력')
   })
 })
