@@ -250,7 +250,8 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
     <div style={{ ...labelSt, marginTop: 16 }}>확인번호(숫자 4자리)</div>
     <div style={{ ...noteSt, fontSize: 12, marginBottom: 6 }}>숫자 4자리를 입력해 주세요.</div>
     <PinBoxes id="sv-pin" value={pin} onChange={setPin} label="확인번호(숫자 4자리)" />
-    <div style={{ ...noteSt, fontSize: 12, marginTop: 6 }}>
+    {/* ★ keep-all 만 더한다 — 390px 에서 「기 / 억해」로 낱말 중간에서 끊긴다 */}
+    <div style={{ ...noteSt, fontSize: 12, marginTop: 6, wordBreak: 'keep-all' }}>
       ※ 신청 내역 조회·수정·취소 시 필요하므로 확인번호를 기억해 주시기 바랍니다.
     </div>
 
