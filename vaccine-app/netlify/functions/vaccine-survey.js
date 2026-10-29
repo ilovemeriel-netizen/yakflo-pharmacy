@@ -29,6 +29,8 @@ import { checkEnv, CONFIG_CODE, CONFIG_MSG } from './_lib/env.js'
 import {
   makeReceiptCode, nameKey, doseOf, validateSubmit, validWishDate, validFamily, familyOf,
   rateCheck, pinLockState, pinFailNext, publicView, CODE_RE,
+  validDept, claimLockState, claimFailNext,
+  CLAIM_MAX_FAIL, CLAIM_IP_MAX_FAIL,
 } from './_lib/survey.js'
 
 /* ★ scrypt 규격 **다섯 번째 복제본** — 아래 네 파일과 규격을 함께 바꿔야 한다.
@@ -63,6 +65,12 @@ const PIN_MSG = `확인번호는 숫자 ${PW_LEN}자리로 입력해 주세요`
 const EMP_DUP_MSG = '이미 신청된 사번입니다. 사번과 확인번호로 수정할 수 있어요'
 const TEMP_MSG = '일시적인 오류입니다'
 const RATE_MSG = '잠시 후 다시 시도해 주세요'
+/* ★ 「없음」과 「틀림」을 구별해 주지 않는다 — 남은 횟수만 덧붙인다. */
+const CLAIM_BAD_MSG = left => '확인번호가 맞지 않습니다. 다시 넣어 주세요'
+  + (left > 0 ? ` (남은 횟수 ${left}회)` : '')
+const CLAIM_LOCK_MSG = mins => `확인번호를 여러 번 잘못 넣어 약 ${mins}분 동안 확인을 멈췄어요. `
+  + '지금 신청하시려면 「저는 다른 사람이에요」를 골라 소속을 적어 주세요 · 문의 약제과 내선 217'
+const DEPT_MSG = '소속을 골라 주세요'
 
 /* 신청번호 충돌 재시도 횟수 — 31^6 ≈ 8.9억이라 현실적으로 1회에 끝난다 */
 const CODE_TRIES = 8
@@ -148,12 +156,18 @@ export default async (req) => {
 
       /* 사번 중복 → 409. 사번 없는 동명이인 → 경고만(결정 2·3) */
       if (emp) {
+        /* ★ 취소한 신청은 중복으로 보지 않는다(사용자 확정 2026-10-30).
+           DB 쪽 부분 UNIQUE 도 0100 에서 같은 조건으로 바꿨다 — 한쪽만 고치면 어긋난다. */
         const { data: dup, error } = await admin
           .from('vaccine_survey_responses').select('id')
-          .eq('tenant_id', tenantId).eq('survey_id', s.id).eq('emp_no', emp).limit(1)
+          .eq('tenant_id', tenantId).eq('survey_id', s.id).eq('emp_no', emp)
+          .eq('status', 'applied').limit(1)
         if (error) { console.error('[vaccine-survey] 사번 중복 조회 실패:', error.message); return json({ ok: false, message: TEMP_MSG }, 500) }
         if ((dup || []).length) return json({ ok: false, code: 'EMP_DUP', message: EMP_DUP_MSG }, 409)
-      } else if (!body.confirmDup) {
+      } else if (body.confirmDup) {
+        /* 「저는 다른 사람이에요」 — 소속이 있어야 접수한다(사용자 확정 2026-10-30) */
+        if (!validDept(body.dept)) return json({ ok: false, code: 'DEPT', message: DEPT_MSG }, 400)
+      } else {
         const { data: dup, error } = await admin
           .from('vaccine_survey_responses').select('id')
           .eq('tenant_id', tenantId).eq('survey_id', s.id).eq('name_key', nk)
@@ -183,11 +197,14 @@ export default async (req) => {
           pin_hash: pinHash,
           pin_salt: salt,
           consent_at: new Date().toISOString(),
+          /* 동명이인이라고 **스스로 밝힌** 건만 참이다 — 소속 유무로 추정하지 않는다 */
+          dept: (!emp && body.confirmDup && validDept(body.dept)) ? body.dept : null,
+          dup_declared: !!(!emp && body.confirmDup),
         }).select('id, receipt_code, wish_date, self_dose, family_count').limit(1)
         if (!error) { saved = (data || [])[0]; break }
         lastErr = error
         if (!/duplicate key|23505/i.test(error.message)) break
-        if (/emp_uniq/.test(error.message)) return json({ ok: false, code: 'EMP_DUP', message: EMP_DUP_MSG }, 409)
+        if (/emp_applied_uniq|emp_uniq/.test(error.message)) return json({ ok: false, code: 'EMP_DUP', message: EMP_DUP_MSG }, 409)
       }
       if (!saved) {
         console.error('[vaccine-survey] 저장 실패:', lastErr?.message)
@@ -199,6 +216,13 @@ export default async (req) => {
         .upsert({ tenant_id: tenantId, ip_hash: ih, ...rc.next }, { onConflict: 'tenant_id,ip_hash' })
       if (uErr) console.error('[vaccine-survey] 제출 횟수 갱신 실패:', uErr.message)
 
+      /* 오래된 확인번호 시도 기록 청소 — pg_cron 이 없어 여기서 가끔 부른다(1/100).
+         실패해도 신청에는 영향이 없다. */
+      if (randomInt(100) === 0) {
+        const { error: pErr } = await admin.rpc('purge_vaccine_survey_claim_attempts')
+        if (pErr) console.error('[vaccine-survey] 시도 기록 청소 실패:', pErr.message)
+      }
+
       console.log('[vaccine-survey] 신청 저장 id=' + saved.id)   /* ★ 성명·사번·확인번호는 남기지 않는다 */
       return json({
         ok: true,
@@ -206,6 +230,86 @@ export default async (req) => {
         wish_date: saved.wish_date,
         dose: doseOf(saved.self_dose, saved.family_count),
       }, 200)
+    }
+
+    /* ══════════ claim — 「제가 신청한 게 맞아요」 ══════════
+       이름 + 확인번호로 **내 신청 1건**을 찾아 신청번호만 돌려준다.
+       그 뒤 화면은 기존 lookup/update 경로를 그대로 쓴다(새 수정 경로를 만들지 않는다).
+
+       ★ 존재 여부를 흘리지 않는다 — 후보가 없을 때도 해시 비용을 치르고,
+         「없음」과 「틀림」에 **같은 문구·같은 상태코드**를 돌려준다.
+       ★ 잠금은 두 축이다: 같은 이름 기준 ${CLAIM_MAX_FAIL}회, IP 기준 ${CLAIM_IP_MAX_FAIL}회.
+         이름만 세면 한 사람이 이름을 바꿔 가며 찔러 볼 수 있다. */
+    if (action === 'claim') {
+      const s = await openSurvey()
+      if (!s) return json({ ok: false, message: '진행 중인 수요조사가 없습니다' }, 400)
+      const nm = String(body.name ?? '').trim()
+      const pin = String(body.pin ?? '')
+      if (!nm) return json({ ok: false, message: '이름을 입력해 주세요' }, 400)
+      if (!validPin(pin)) return json({ ok: false, message: PIN_MSG }, 400)
+
+      const rawIp = (req.headers.get('x-nf-client-connection-ip') || '').trim()
+      if (!rawIp) return json({ ok: false, code: 'NO_IP', message: NO_IP_MSG }, 400)
+      const ipKey = createHmac('sha256', secret).update(rawIp).digest('hex')
+      const nk = nameKey(nm)
+      const nameHash = createHmac('sha256', secret).update(s.id + '|' + nk).digest('hex')
+
+      const getAtt = async (scope, keyHash) => {
+        const { data } = await admin.from('vaccine_survey_claim_attempts')
+          .select('window_start, fail_count, locked_until')
+          .eq('tenant_id', tenantId).eq('scope', scope).eq('key_hash', keyHash).limit(1)
+        return (data || [])[0] || null
+      }
+      const putAtt = async (scope, keyHash, next) => {
+        const { error } = await admin.from('vaccine_survey_claim_attempts')
+          .upsert({ tenant_id: tenantId, scope, key_hash: keyHash, ...next },
+            { onConflict: 'tenant_id,scope,key_hash' })
+        if (error) console.error('[vaccine-survey] claim 시도 기록 실패:', error.message)
+      }
+
+      const now = Date.now()
+      const ipRow = await getAtt('ip', ipKey)
+      const nameRow = await getAtt('name', nameHash)
+      const ipLock = claimLockState(ipRow, now)
+      const nameLock = claimLockState(nameRow, now)
+      if (ipLock.locked || nameLock.locked) {
+        const mins = Math.max(ipLock.mins, nameLock.mins)
+        return json({ ok: false, code: 'LOCKED', message: CLAIM_LOCK_MSG(mins) }, 429)
+      }
+
+      /* 후보 — 같은 이름·사번 없음·신청 중인 건만 */
+      const { data: cand, error: cErr } = await admin
+        .from('vaccine_survey_responses')
+        .select('id, receipt_code, pin_hash, pin_salt')
+        .eq('tenant_id', tenantId).eq('survey_id', s.id)
+        .eq('name_key', nk).eq('status', 'applied').is('emp_no', null)
+      if (cErr) { console.error('[vaccine-survey] claim 후보 조회 실패:', cErr.message); return json({ ok: false, message: TEMP_MSG }, 500) }
+
+      let hit = null
+      for (const row of (cand || [])) {
+        if (!row.pin_hash || !row.pin_salt) continue
+        try { if (await verifyPin(pin, row.pin_salt, row.pin_hash)) { hit = row; break } }
+        catch (e) { console.error('[vaccine-survey] claim 해시 검증 실패:', e.message) }
+      }
+      /* ★ 후보가 하나도 없어도 해시 비용을 치른다 — 응답 시간으로 존재 여부가 새지 않게 */
+      if (!(cand || []).length) { try { await hashPin(pin, makeSalt()) } catch { /* 타이밍 보정용 */ } }
+
+      if (!hit) {
+        const nf = claimFailNext(nameRow, now, CLAIM_MAX_FAIL)
+        const ipf = claimFailNext(ipRow, now, CLAIM_IP_MAX_FAIL)
+        await putAtt('name', nameHash, nf.next)
+        await putAtt('ip', ipKey, ipf.next)
+        if (nf.locked || ipf.locked) {
+          return json({ ok: false, code: 'LOCKED', message: CLAIM_LOCK_MSG(Math.max(nf.mins, ipf.mins)) }, 429)
+        }
+        return json({ ok: false, code: 'CLAIM_BAD', left: nf.left, message: CLAIM_BAD_MSG(nf.left) }, 401)
+      }
+
+      /* 성공 — 두 축의 실패 기록을 지운다 */
+      await putAtt('name', nameHash, { window_start: new Date(now).toISOString(), fail_count: 0, locked_until: null, last_seen: new Date(now).toISOString() })
+      await putAtt('ip', ipKey, { window_start: new Date(now).toISOString(), fail_count: 0, locked_until: null, last_seen: new Date(now).toISOString() })
+      console.log('[vaccine-survey] claim 성공 id=' + hit.id)   /* ★ 성명·확인번호는 남기지 않는다 */
+      return json({ ok: true, receipt_code: hit.receipt_code }, 200)
     }
 
     /* ══════════ lookup · update · cancel — 전부 「key + pin」 ══════════ */

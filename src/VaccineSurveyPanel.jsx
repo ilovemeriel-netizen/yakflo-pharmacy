@@ -131,7 +131,7 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     for (let from = 0; ; from += CHUNK) {
       const { data, error } = await supabase
         .from('vaccine_survey_responses')
-        .select('id, receipt_code, emp_no, name, name_key, self_dose, family_count, wish_date, status, done_self, done_family, created_at')
+        .select('id, receipt_code, emp_no, name, name_key, self_dose, family_count, wish_date, status, done_self, done_family, created_at, dept, dup_declared, dup_checked_at')
         .eq('survey_id', id)
         .order('wish_date', { ascending: true })
         .order('created_at', { ascending: true })
@@ -263,6 +263,21 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     await setRowStatus(row, 'applied')
   }
 
+  /* ── 동명이인 「확인 완료」 ────────────────────────────────────────────
+     ★ 화면이 dup_checked_at 을 직접 쓰지 못한다(0096 이 열 권한을 셋으로 좁혔다).
+       0101 의 함수가 같은 트랜잭션에서 기록까지 남긴다. */
+  async function markDupChecked(r, checked) {
+    markBusy('survey-save-' + r.id, true)
+    try {
+      const { error } = await supabase.rpc('mark_vaccine_survey_dup_checked',
+        { p_id: r.id, p_checked: checked })
+      if (error) { setMsg(dbErrorMsg(error)); return }
+      setRows(rs => rs.map(x => x.id === r.id
+        ? { ...x, dup_checked_at: checked ? new Date().toISOString() : null } : x))
+      await loadDetail(sel.id)
+    } finally { markBusy('survey-save-' + r.id, false) }
+  }
+
   /* ── 내려받기 — audit 먼저, 성공해야 파일 ─────────────────────────────── */
   async function download(kind) {
     if (busy || !sel) return
@@ -302,6 +317,7 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     { k: 'receipt_code', h: '신청번호', w: 110, align: 'left' },
     { k: 'emp_no', h: '사번', w: 110, align: 'left', filter: true },
     { k: 'name', h: '성명', w: 110, align: 'left' },
+    { k: 'dept', h: '소속', w: 110, align: 'left', filter: true },
     { k: 'self_dose', h: '본인', w: 62, align: 'center', filter: true },
     { k: 'family_count', h: '가족 수', w: 76, align: 'right' },
     { k: 'dose', h: '도즈', w: 70, align: 'right' },
@@ -318,6 +334,7 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
     done: doneOf(r),
     _self: r.self_dose ? 'O' : '—',
     _status: r.status === 'cancelled' ? '취소' : '신청',
+    dept: r.dept || '—',
   })), [rows])
 
   /* ★ 정렬은 useSort 가 주는 so() 를 **그대로 호출**한다 — 정렬 규칙을 자체로 만들지 않는다.
@@ -351,6 +368,8 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
   const band = alertLine(demand)
   /* 지금 회차에서 보여 줄 띠 — 회차를 옮기면 저절로 사라진다(파생값) */
   const _notice = visibleNotice(notice, sel?.id)
+  /* 「동명이인 확인 필요」 — 선언됐고 아직 확인하지 않은 건(파생값) */
+  const dupNeed = rows.filter(r => r.dup_declared && !r.dup_checked_at).length
   const purgeNeeded = needsPurge(sel, today)
   const purgeOk = canPurge(sel, today)
 
@@ -453,6 +472,9 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
             <Chip t={t} label="사번 없음" v={demand?.no_emp_cnt} unit="건" />
             <Chip t={t} label="이름 중복 의심" v={demand?.name_dup_cnt} unit="건" />
+            {/* ★ 신청자가 스스로 「다른 사람」이라고 밝힌 건 중, 아직 확인하지 않은 수.
+                확인 완료로 처리하면 이 숫자에서 빠진다. */}
+            <Chip t={t} label="동명이인 확인 필요" v={dupNeed} unit="건" />
             <Chip t={t} label="명단 체크 합" v={demand?.done_checked} unit="" />
             <Chip t={t} label="수요조사 외 접종" v={demand?.outside_qty} unit="" />
           </div>
@@ -584,6 +606,21 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
                         </td>
                         <td style={{ ...td(t, 'left'), color: t.textL, fontSize: 11 }}>
                           {r.status === 'cancelled' ? '취소됨' : ''}
+                          {/* ★ 신청자가 스스로 「다른 사람」이라고 밝힌 건만 여기 뜬다.
+                              확인하면 위 칩 숫자에서 빠진다. 되돌릴 수도 있다. */}
+                          {r.dup_declared ? (r.dup_checked_at
+                            ? <button onClick={() => markDupChecked(r, false)} disabled={busy} title="확인을 되돌린다"
+                              style={{
+                                marginLeft: r.status === 'cancelled' ? 6 : 0, padding: '1px 7px', borderRadius: 6,
+                                border: '1px solid ' + t.border, background: 'transparent', color: t.textL,
+                                fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                              }}>확인됨</button>
+                            : <button onClick={() => markDupChecked(r, true)} disabled={busy}
+                              style={{
+                                marginLeft: r.status === 'cancelled' ? 6 : 0, padding: '1px 7px', borderRadius: 6,
+                                border: '1px solid ' + NOTICE_LINE, background: NOTICE_BG, color: NOTICE_FG,
+                                fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                              }}>확인 완료</button>) : null}
                         </td>
                       </tr>
                     })}

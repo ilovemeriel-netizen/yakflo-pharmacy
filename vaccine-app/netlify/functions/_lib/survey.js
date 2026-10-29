@@ -167,3 +167,63 @@ export function publicView(r) {
     dose: doseOf(r.self_dose, r.family_count),
   }
 }
+
+/* ── 소속(부서) ─────────────────────────────────────────────────────────
+   ★ 순서를 바꾸지 말 것 — 화면 드롭다운이 이 순서 그대로 보여 준다.
+   ★ DB CHECK(vaccine_survey_responses_dept_chk)와 **같은 목록**이다.
+     한쪽만 고치면 저장이 23514 로 막힌다. */
+export const DEPTS = [
+  '진료부', '간호부', '약제과', '재활치료센터', '임상병리실', '영상의학과',
+  '사회사업실', '감염관리실', 'QPS실', '진료협력팀', '영양실', '심사팀',
+  '원무과', '총무과', '전산', '홍보', '고객지원',
+]
+export const validDept = v => typeof v === 'string' && DEPTS.includes(v)
+
+/* ── 확인번호 대조(claim) 잠금 ──────────────────────────────────────────
+   ★ 같은 이름 기준 5회 실패 → 60분. IP 기준도 함께 센다(한 사람이 여러 이름을
+     돌려 가며 찔러 보는 것을 막는다). 둘 다 같은 셈법을 쓴다.
+   ★ 창(window)은 잠금 시간과 같다 — 창이 지나면 실패 횟수를 0 부터 다시 센다. */
+export const CLAIM_MAX_FAIL = 5
+export const CLAIM_IP_MAX_FAIL = 20
+export const CLAIM_LOCK_MIN = 60
+
+/* row = { window_start, fail_count, locked_until } · 없으면 null */
+export function claimLockState(row, now = Date.now()) {
+  const until = row && row.locked_until ? Date.parse(row.locked_until) : NaN
+  if (!Number.isNaN(until) && until > now) {
+    return { locked: true, mins: Math.max(1, Math.ceil((until - now) / 60000)) }
+  }
+  return { locked: false, mins: 0 }
+}
+
+/* 지금까지 센 실패 횟수 — 창이 지났으면 0 부터 */
+export function claimFailCount(row, now = Date.now()) {
+  if (!row) return 0
+  const started = row.window_start ? Date.parse(row.window_start) : NaN
+  if (Number.isNaN(started) || now - started >= CLAIM_LOCK_MIN * 60_000) return 0
+  return Number(row.fail_count || 0)
+}
+
+/* 남은 횟수 — 화면에 보여 준다(사용자 확정 2026-10-30) */
+export function claimLeft(row, now = Date.now(), max = CLAIM_MAX_FAIL) {
+  return Math.max(0, max - claimFailCount(row, now))
+}
+
+/* 실패 1회 누적 결과 → { locked, mins, left, next } · next 는 upsert 할 값 */
+export function claimFailNext(row, now = Date.now(), max = CLAIM_MAX_FAIL) {
+  const fresh = claimFailCount(row, now) === 0 && (!row || claimFailCount(row, now) === 0)
+  const count = claimFailCount(row, now) + 1
+  const locked = count >= max
+  const windowStart = fresh && count === 1 ? new Date(now).toISOString() : (row?.window_start || new Date(now).toISOString())
+  return {
+    locked,
+    mins: locked ? CLAIM_LOCK_MIN : 0,
+    left: Math.max(0, max - count),
+    next: {
+      window_start: windowStart,
+      fail_count: locked ? 0 : count,
+      locked_until: locked ? new Date(now + CLAIM_LOCK_MIN * 60_000).toISOString() : null,
+      last_seen: new Date(now).toISOString(),
+    },
+  }
+}

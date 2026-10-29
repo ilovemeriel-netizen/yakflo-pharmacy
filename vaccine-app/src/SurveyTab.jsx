@@ -19,6 +19,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 import { useEffect, useState } from 'react'
 import PinBoxes from './PinBoxes'
+import { DEPTS } from './lib/depts.js'
 import { kstToday, fmtDotDate, fmtCloseLong } from './lib/surveyDate'
 import { seasonLabel, shortVaccineName } from './lib/surveyText'
 
@@ -85,6 +86,13 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
   const [edit, setEdit] = useState(null)      /* publicView 결과 */
   const [copied, setCopied] = useState(false)
 
+  /* 같은 이름 안내 카드 — 「제가 신청한 게 맞아요」(mine) / 「저는 다른 사람이에요」(other) */
+  const [dupPick, setDupPick] = useState('mine')
+  const [dupPin, setDupPin] = useState('')
+  const [dept, setDept] = useState('')
+  const [dupLeft, setDupLeft] = useState(null)   /* 남은 횟수 · null 이면 아직 틀린 적 없음 */
+  const [dupLocked, setDupLocked] = useState(null)
+
   /* 기준 시각 — 화면으로 돌아올 때만 갱신한다(렌더 중 시계 금지) */
   const [now, setNow] = useState(BOOT_NOW)
   useEffect(() => {
@@ -126,14 +134,35 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
     const res = await call({
       action: 'submit', consent, emp_no: empNo.trim() || null, name: name.trim(),
       self_dose: selfDose, family_count: Number(family || 0), wish_date: wish, pin,
-      confirmDup: !!confirmDup,
+      confirmDup: !!confirmDup, dept: confirmDup ? dept : null,
     })
     if (!res) return
     const { j } = res
-    if (j?.warning === 'name_dup') { setView('dup'); return }
+    if (j?.warning === 'name_dup') {
+      setDupPick('mine'); setDupPin(''); setDept(''); setDupLeft(null); setDupLocked(null)
+      setMsg(null); setView('dup'); return
+    }
+    if (j?.code === 'EMP_DUP') { setMsg(null); setView('empdup'); return }
     if (!j?.ok) { setMsg(j?.message || '신청하지 못했습니다'); setView('form'); return }
     setDone({ receipt_code: j.receipt_code, wish_date: j.wish_date, dose: j.dose })
     setPin(''); setView('done')
+  }
+
+  /* 「제가 신청한 게 맞아요」 — 이름+확인번호로 내 신청을 찾아 수정 화면으로 간다.
+     ★ 새 수정 경로를 만들지 않는다 — 신청번호를 받아 기존 lookup 을 그대로 탄다. */
+  async function claim() {
+    const res = await call({ action: 'claim', name: name.trim(), pin: dupPin })
+    if (!res) return
+    const j = res.j
+    if (j?.code === 'LOCKED') { setDupLocked(j.message); return }
+    if (!j?.ok) { setDupLeft(typeof j?.left === 'number' ? j.left : null); return }
+    const r2 = await call({ action: 'lookup', key: j.receipt_code, pin: dupPin })
+    if (!r2) return
+    if (!r2.j?.ok) { setMsg(r2.j?.message || '찾지 못했습니다'); return }
+    const r = r2.j.response
+    setEdit(r); setFindKey(j.receipt_code); setFindPin(dupPin)
+    setSelfDose(!!r.self_dose); setFamily(Number(r.family_count || 0)); setWish(r.wish_date)
+    setDupPin(''); setMsg(null); setView('edit')
   }
 
   async function find() {
@@ -269,15 +298,73 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
   </div>
 
   /* ═══ 이름 중복 경고 ═══ */
+  /* ═══ 같은 이름 안내 ═══
+     ★ 「있어요」를 단정하지 않는다 — 카드가 뜨는 것만으로도 신호가 되므로
+       문구는 「여러 분일 수 있어 한 번만 확인할게요」로 둔다.
+     ★ 확인번호가 맞을 때만 신청 내용을 보여 준다. 틀리면 남은 횟수만 알린다. */
+  const pick = (key, title, sub) => <label key={key} onClick={() => { setDupPick(key); setMsg(null) }}
+    style={{
+      display: 'flex', gap: 10, alignItems: 'flex-start', padding: 12, borderRadius: 12,
+      border: '1.5px solid ' + (dupPick === key ? 'var(--v-purple)' : 'var(--v-line)'),
+      background: dupPick === key ? 'rgba(128, 74, 135, 0.08)' : 'transparent',
+      marginTop: 10, cursor: 'pointer',
+    }}>
+    <input type="radio" name="dup-pick" checked={dupPick === key} onChange={() => setDupPick(key)}
+      style={{ marginTop: 3, accentColor: 'var(--v-purple)' }} />
+    <span>
+      <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--v-navy)' }}>{title}</span>
+      <span style={{ display: 'block', fontSize: 12.5, color: 'var(--v-ink-dim)', marginTop: 3 }}>{sub}</span>
+    </span>
+  </label>
+
   const dupCard = <div style={card}>
-    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--v-navy)' }}>같은 이름의 신청이 있어요</div>
-    <div style={{ ...noteSt, marginTop: 10 }}>
-      같은 이름의 신청이 이미 있어요. 본인 신청이면 수정을 이용하고, 다른 분이면 그대로 신청하세요
+    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--v-navy)' }}>
+      {dupLocked ? '잠시 후 다시 시도해 주세요' : '같은 이름으로 접수된 신청이 있어요'}
     </div>
-    <button type="button" onClick={() => submit(true)} disabled={busy}
-      style={{ ...btnMain(!busy), marginTop: 16 }}>{busy ? '보내는 중...' : '그래도 신청'}</button>
-    <button type="button" onClick={() => { setMsg(null); setView('find') }}
-      style={{ ...btnGhost, marginTop: 10 }}>수정하러 가기</button>
+    {dupLocked
+      ? <Alert>{dupLocked}</Alert>
+      : <div style={{ ...noteSt, marginTop: 10 }}>
+        같은 이름이 여러 분일 수 있어 한 번만 확인할게요. 아래에서 골라 주세요.
+      </div>}
+
+    {dupLocked ? null : pick('mine', '제가 신청한 게 맞아요', '확인번호 4자리를 넣으면 신청 내용을 고칠 수 있어요')}
+    {dupPick === 'mine' && !dupLocked ? <>
+      <div style={{ marginTop: 12 }}>
+        <PinBoxes value={dupPin} onChange={v => { setDupPin(v); setDupLeft(null) }} label="확인번호" />
+      </div>
+      {dupLeft != null ? <Alert>확인번호가 맞지 않습니다. 다시 넣어 주세요 (남은 횟수 {dupLeft}회)</Alert> : null}
+    </> : null}
+
+    {pick('other', '저는 다른 사람이에요', '소속을 고르면 그대로 접수돼요')}
+    {dupPick === 'other' ? <>
+      <label style={{ ...labelSt, marginTop: 14 }}>소속 <span style={{ color: 'var(--v-purple)' }}>*</span></label>
+      <select value={dept} onChange={e => setDept(e.target.value)} style={inputSt}>
+        <option value="">소속을 골라 주세요</option>
+        {DEPTS.map(d => <option key={d} value={d}>{d}</option>)}
+      </select>
+    </> : null}
+
+    <button type="button" disabled={busy || (dupPick === 'mine' ? (dupLocked ? false : dupPin.length !== 4) : !dept)}
+      onClick={() => (dupPick === 'mine' && !dupLocked) ? claim() : submit(true)}
+      style={{ ...btnMain(!busy && (dupPick === 'mine' ? (dupLocked ? false : dupPin.length === 4) : !!dept)), marginTop: 16 }}>
+      {busy ? '보내는 중...' : (dupPick === 'mine' && !dupLocked) ? '확인' : '이대로 신청'}
+    </button>
+    <button type="button" onClick={() => { setMsg(null); setView('form') }}
+      style={{ ...btnGhost, marginTop: 10 }}>처음으로</button>
+  </div>
+
+  /* ═══ 사번 중복 ═══ */
+  const empDupCard = <div style={card}>
+    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--v-navy)' }}>이 사번으로 접수된 신청이 있어요</div>
+    <div style={{ ...noteSt, marginTop: 10 }}>
+      같은 사번으로는 한 번만 신청할 수 있어요.
+      <b> 신청번호</b> 또는 <b>사번</b>과 확인번호로 신청 내용을 고치거나 취소할 수 있어요.
+    </div>
+    <Alert>신청번호가 기억나지 않으면 사번으로도 찾을 수 있어요.</Alert>
+    <button type="button" onClick={() => { setMsg(null); setFindKey(empNo.trim()); setView('find') }}
+      style={{ ...btnMain(!busy), marginTop: 16 }}>신청 내용 고치기</button>
+    <button type="button" onClick={() => { setMsg(null); setView('form') }}
+      style={{ ...btnGhost, marginTop: 10 }}>처음으로</button>
   </div>
 
   /* ═══ 완료 ═══ */
@@ -379,6 +466,7 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
       {infoCard}
       {view === 'form' ? <>{consentCard}{formCard}</> : null}
       {view === 'dup' ? dupCard : null}
+      {view === 'empdup' ? empDupCard : null}
       {view === 'done' ? doneCard : null}
       {view === 'find' ? findCard : null}
       {view === 'edit' ? editCard : null}

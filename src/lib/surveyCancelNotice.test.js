@@ -93,7 +93,7 @@ describe('배선 — 되돌아가지 않게', () => {
   })
   it('★ RPC 는 기존 3개뿐 — 새 함수를 만들지 않았다', () => {
     const calls = [...PANEL.matchAll(/rpc\('([a-z_]+)'/g)].map(m => m[1]).sort()
-    expect(calls).toEqual(['edit_vaccine_survey_response', 'purge_vaccine_survey', 'set_vaccine_survey_status'])
+    expect(calls).toEqual(['edit_vaccine_survey_response', 'mark_vaccine_survey_dup_checked', 'purge_vaccine_survey', 'set_vaccine_survey_status'])
   })
   it('★ 취소 줄 숨기기 기본값은 그대로', () => {
     expect(PANEL).toContain("const HF_DEFAULT = { status: '신청' }")
