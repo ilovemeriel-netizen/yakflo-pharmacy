@@ -19,7 +19,8 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 import { useEffect, useState } from 'react'
 import PinBoxes from './PinBoxes'
-import { kstToday } from './lib/surveyDate'
+import { kstToday, fmtDotDate, fmtCloseLong } from './lib/surveyDate'
+import { seasonLabel, shortVaccineName } from './lib/surveyText'
 
 const TEL = '약제과 내선 217'
 const MAX_FAMILY = 20
@@ -97,6 +98,8 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
   const maxDate = survey.vax_end
   const closed = !!survey.close_at && Date.parse(survey.close_at) <= now
   const dose = (selfDose ? 1 : 0) + Number(family || 0)
+  /* ★ 수요조사 탭에서만 괄호를 뗀 이름을 쓴다(결정 ②). 잔량 탭 카드는 그대로다. */
+  const vaccineName = shortVaccineName(survey.public_label) || '—'
 
   const formReady = consent && name.trim() && dose >= 1 && wish && pin.length === 4 && !busy && !closed
   const findReady = findKey.trim() && findPin.length === 4 && !busy
@@ -173,27 +176,27 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
   /* ═══ 회차 안내 카드 ═══ */
   const infoCard = <div style={{ ...card, padding: '16px 18px' }}>
     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-purple)' }}>
-      {survey.public_label || '백신'} · {survey.season}
+      {vaccineName} · {seasonLabel(survey.season)}
     </div>
     <div style={{ fontSize: wide ? 19 : 17, fontWeight: 800, color: 'var(--v-navy)', marginTop: 4 }}>
       {survey.title}
     </div>
     <div style={{ ...noteSt, marginTop: 8 }}>
-      접종 기간 <span className="num">{survey.vax_start}</span> ~ <span className="num">{survey.vax_end}</span>
-      {survey.close_at ? <><br />신청 마감 <span className="num">{fmtClose(survey.close_at)}</span></> : null}
-      <br />사번당 1회 신청할 수 있어요
+      접종 기간: <span className="num">{fmtDotDate(survey.vax_start)}</span> ~ <span className="num">{fmtDotDate(survey.vax_end)}</span>
+      {survey.close_at ? <><br />신청 마감: <span className="num">{fmtCloseLong(survey.close_at)}</span></> : null}
+      <br />신청 기준: 직원별 1회 신청 가능
     </div>
     {closed ? <Alert>신청이 마감되었습니다. 문의는 {TEL}로 해 주세요.</Alert> : null}
   </div>
 
   /* ═══ 개인정보 안내와 동의 ═══ */
   const consentCard = <div style={card}>
-    <div style={labelSt}>개인정보 수집·이용 안내</div>
+    <div style={labelSt}>개인정보 수집·이용 동의 안내</div>
     <div style={{ ...noteSt, fontSize: 12.5 }}>
-      · 수집 목적 — 독감 예방접종 수요 파악과 접종 일정 안내<br />
-      · 수집 항목 — 성명, 사번(선택), 직원 본인 접종 여부, 함께 접종할 가족 수, 희망일<br />
-      · 보관 기간 — 이번 접종 기간이 끝나면 파기합니다<br />
-      · 문의 — {TEL}
+      · 수집·이용 목적: 독감 예방접종 수요 파악 및 접종 일정 안내<br />
+      · 수집 항목: 성명, 사번(선택), 직원 본인 접종 여부, 동반 접종 가족 수, 접종 희망일<br />
+      · 보유·이용 기간: 해당 접종 기간 종료 후 파기<br />
+      · 문의: 약제과(내선 217)
     </div>
     <label style={{
       display: 'flex', alignItems: 'center', gap: 10, marginTop: 12,
@@ -201,7 +204,7 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
     }}>
       <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)}
         style={{ width: 22, height: 22, accentColor: 'var(--v-purple)', flexShrink: 0 }} />
-      위 내용에 동의합니다
+      개인정보 수집·이용에 동의합니다.
     </label>
   </div>
 
@@ -209,54 +212,59 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
   const formCard = <div style={card}>
     <label htmlFor="sv-emp" style={labelSt}>사번 <span style={{ fontWeight: 500, color: 'rgba(46, 74, 98, 0.62)' }}>(선택)</span></label>
     <input id="sv-emp" value={empNo} onChange={e => setEmpNo(e.target.value)}
-      inputMode="numeric" autoComplete="off" placeholder="없으면 비워 두세요"
-      style={inputSt} />
+      inputMode="numeric" autoComplete="off" style={inputSt} />
+    <div style={{ ...noteSt, fontSize: 12, marginTop: 6 }}>사번을 모르는 경우 생략 가능합니다.</div>
 
     <label htmlFor="sv-name" style={{ ...labelSt, marginTop: 16 }}>성명</label>
     <input id="sv-name" value={name} onChange={e => setName(e.target.value)}
-      autoComplete="off" style={inputSt} />
+      autoComplete="off" placeholder="성명을 입력해 주세요." style={inputSt} />
 
+    <div style={{ ...labelSt, marginTop: 16 }}>직원 본인 접종(무료)</div>
     <label style={{
-      display: 'flex', alignItems: 'center', gap: 10, marginTop: 16,
+      display: 'flex', alignItems: 'center', gap: 10,
       minHeight: 44, cursor: 'pointer', fontSize: 15, fontWeight: 700, color: 'var(--v-navy)',
     }}>
       <input type="checkbox" checked={selfDose} onChange={e => setSelfDose(e.target.checked)}
         style={{ width: 22, height: 22, accentColor: 'var(--v-purple)', flexShrink: 0 }} />
-      직원 본인 접종 (무료)
+      직원 본인 접종
     </label>
 
-    <div style={{ ...labelSt, marginTop: 16 }}>함께 접종할 가족 수 (유료)</div>
+    <div style={{ ...labelSt, marginTop: 16 }}>동반 접종 가족 수(유료)</div>
     <Stepper value={Number(family || 0)} onChange={setFamily} />
 
-    <div style={{ ...labelSt, marginTop: 16 }}>백신 종류</div>
+    <div style={{ ...labelSt, marginTop: 16 }}>신청 백신</div>
     <div style={{
       ...inputSt, display: 'flex', alignItems: 'center',
       background: 'rgba(191, 166, 217, 0.18)', border: '1.5px solid transparent', fontWeight: 700,
-    }}>{survey.public_label || '—'}</div>
+    }}>{vaccineName}</div>
 
     <label htmlFor="sv-wish" style={{ ...labelSt, marginTop: 16 }}>접종 희망일</label>
+    {/* ★ date 입력은 placeholder 가 보이지 않는다 — 칸 위 보조 글씨로 둔다 */}
+    <div style={{ ...noteSt, fontSize: 12, marginBottom: 6 }}>접종 희망일을 선택해 주세요.</div>
     <input id="sv-wish" type="date" value={wish} min={minDate} max={maxDate}
       onChange={e => setWish(e.target.value)} style={inputSt} />
     <div style={{ ...noteSt, fontSize: 12, marginTop: 6 }}>
-      <span className="num">{minDate}</span> ~ <span className="num">{maxDate}</span> 안에서 골라 주세요
+      <span className="num">{fmtDotDate(minDate)}</span> ~ <span className="num">{fmtDotDate(maxDate)}</span> 중 선택 가능합니다.
     </div>
 
-    <div style={{ ...labelSt, marginTop: 16 }}>확인번호 4자리</div>
-    <PinBoxes id="sv-pin" value={pin} onChange={setPin} label="확인번호 4자리" />
-    <div style={{ ...noteSt, fontSize: 12, marginTop: 6 }}>
-      신청을 수정하거나 취소할 때 필요해요. 잊지 않을 숫자로 정해 주세요
+    <div style={{ ...labelSt, marginTop: 16 }}>확인번호(숫자 4자리)</div>
+    <div style={{ ...noteSt, fontSize: 12, marginBottom: 6 }}>숫자 4자리를 입력해 주세요.</div>
+    <PinBoxes id="sv-pin" value={pin} onChange={setPin} label="확인번호(숫자 4자리)" />
+    {/* ★ keep-all 만 더한다 — 390px 에서 「기 / 억해」로 낱말 중간에서 끊긴다 */}
+    <div style={{ ...noteSt, fontSize: 12, marginTop: 6, wordBreak: 'keep-all' }}>
+      ※ 신청 내역 조회·수정·취소 시 필요하므로 확인번호를 기억해 주시기 바랍니다.
     </div>
 
     <div style={{
       marginTop: 16, padding: '11px 13px', borderRadius: 10,
       background: 'rgba(1, 151, 72, 0.08)', fontSize: 14, fontWeight: 700, color: 'var(--v-navy)',
-    }}>신청 도즈 <span className="num">{dose}</span>회분</div>
+    }}>신청 수량 <span className="num">{dose}</span>도즈(<span className="num">{dose}</span>회분)</div>
 
     {msg ? <Alert>{msg}</Alert> : null}
 
     <button type="button" disabled={!formReady} onClick={() => submit(false)}
       style={{ ...btnMain(formReady), marginTop: 16 }}>
-      {busy ? '보내는 중...' : '신청하기'}
+      {busy ? '보내는 중...' : '접종 신청하기'}
     </button>
   </div>
 
@@ -327,26 +335,32 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
         : null}
     </div>
 
+    <div style={{ ...labelSt, marginTop: 16 }}>직원 본인 접종(무료)</div>
     <label style={{
-      display: 'flex', alignItems: 'center', gap: 10, marginTop: 16,
+      display: 'flex', alignItems: 'center', gap: 10,
       minHeight: 44, cursor: 'pointer', fontSize: 15, fontWeight: 700, color: 'var(--v-navy)',
     }}>
       <input type="checkbox" checked={selfDose} onChange={e => setSelfDose(e.target.checked)}
         style={{ width: 22, height: 22, accentColor: 'var(--v-purple)', flexShrink: 0 }} />
-      직원 본인 접종 (무료)
+      직원 본인 접종
     </label>
 
-    <div style={{ ...labelSt, marginTop: 16 }}>함께 접종할 가족 수 (유료)</div>
+    <div style={{ ...labelSt, marginTop: 16 }}>동반 접종 가족 수(유료)</div>
     <Stepper value={Number(family || 0)} onChange={setFamily} />
 
     <label htmlFor="sv-wish2" style={{ ...labelSt, marginTop: 16 }}>접종 희망일</label>
+    {/* ★ date 입력은 placeholder 가 보이지 않는다 — 칸 위 보조 글씨로 둔다 */}
+    <div style={{ ...noteSt, fontSize: 12, marginBottom: 6 }}>접종 희망일을 선택해 주세요.</div>
     <input id="sv-wish2" type="date" value={wish} min={minDate} max={maxDate}
       onChange={e => setWish(e.target.value)} style={inputSt} />
+    <div style={{ ...noteSt, fontSize: 12, marginTop: 6 }}>
+      <span className="num">{fmtDotDate(minDate)}</span> ~ <span className="num">{fmtDotDate(maxDate)}</span> 중 선택 가능합니다.
+    </div>
 
     <div style={{
       marginTop: 16, padding: '11px 13px', borderRadius: 10,
       background: 'rgba(1, 151, 72, 0.08)', fontSize: 14, fontWeight: 700, color: 'var(--v-navy)',
-    }}>신청 도즈 <span className="num">{dose}</span>회분</div>
+    }}>신청 수량 <span className="num">{dose}</span>도즈(<span className="num">{dose}</span>회분)</div>
 
     {msg ? <Alert kind={/되었습니다/.test(msg) ? 'good' : 'info'}>{msg}</Alert> : null}
 
@@ -372,7 +386,7 @@ export default function SurveyTab({ survey, token, wide, onSurveyGone }) {
       {view === 'form'
         ? <button type="button" onClick={() => { setMsg(null); setView('find') }}
           style={{ ...btnGhost, border: '1.5px solid var(--v-line)', color: 'var(--v-navy)' }}>
-          이미 신청했다면 · 신청번호로 수정
+          기존 신청 조회·수정
         </button>
         : null}
 
@@ -393,21 +407,15 @@ function Stepper({ value, onChange }) {
   })
   const canDown = value > 0, canUp = value < MAX_FAMILY
   return <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-    <button type="button" aria-label="함께 접종할 가족 수 줄이기" disabled={!canDown}
+    <button type="button" aria-label="동반 접종 가족 수 줄이기" disabled={!canDown}
       onClick={() => onChange(Math.max(0, value - 1))} style={btn(canDown)}>−</button>
-    <div className="num" style={{
+    <div style={{
       flex: 1, textAlign: 'center', fontSize: 22, fontWeight: 800, color: 'var(--v-navy)',
-    }}>{value}</div>
-    <button type="button" aria-label="함께 접종할 가족 수 늘리기" disabled={!canUp}
+    }}><span className="num">{value}</span>명</div>
+    <button type="button" aria-label="동반 접종 가족 수 늘리기" disabled={!canUp}
       onClick={() => onChange(Math.min(MAX_FAMILY, value + 1))} style={btn(canUp)}>+</button>
   </div>
 }
 
-/* 마감 시각 — "11월 20일 23:59" (KST) */
-function fmtClose(iso) {
-  const ms = Date.parse(iso)
-  if (Number.isNaN(ms)) return ''
-  const d = new Date(ms + 9 * 60 * 60 * 1000)
-  const p = n => String(n).padStart(2, '0')
-  return (d.getUTCMonth() + 1) + '월 ' + d.getUTCDate() + '일 ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes())
-}
+/* 마감 시각 표시는 lib/surveyDate.js 의 fmtCloseLong 으로 옮겼다
+   — 「2026. 10. 31.(토) 18:00」 (KST). 시험이 그 함수를 고정한다. */

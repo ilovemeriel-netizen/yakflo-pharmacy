@@ -24,6 +24,7 @@ import { itemsOf, viewState, totalOf } from './lib/stockView'
 import { pwReady } from './lib/pwInput'
 import PinBoxes from './PinBoxes'
 import SurveyTab from './SurveyTab'
+import { seasonLabel } from './lib/surveyText'
 
 const TOKEN_KEY = 'vaccine_public_token'
 const REFRESH_MS = 60_000
@@ -336,6 +337,10 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
     <div>
       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--v-purple)' }}>약제과</div>
       <div style={{ fontSize: wide ? 18 : 16, fontWeight: 700, color: 'var(--v-navy)' }}>백신 잔량</div>
+      {/* ★ 절기 — 잔량·수요조사 두 탭 모두에 보인다(결정 ①). 기존 보조 글씨 모양 그대로. */}
+      {seasonLabel(data?.season || survey?.season)
+        ? <div style={{ fontSize: 11, color: 'var(--v-ink-dim)' }}>{seasonLabel(data?.season || survey?.season)}</div>
+        : null}
     </div>
     <div style={{ flex: 1 }} />
     {tab === 'survey' ? null : <button onClick={onReload} style={{
