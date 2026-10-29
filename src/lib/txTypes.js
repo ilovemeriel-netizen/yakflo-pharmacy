@@ -43,3 +43,14 @@ export const TX_COL_LABEL = {
 export function txColLabel(col) {
   return TX_COL_LABEL[col] || String(col)
 }
+
+/* ★ 저장 폴백이 **버리고 재시도하면 안 되는** 칸 (사용자 승인 2026-10-29).
+   세 칸 모두 nullable + DEFAULT 가 있어, 빠진 채로 INSERT 가 성공해 버린다:
+     total_amount(0) · unit_price(0) · transaction_date(CURRENT_DATE)
+   그런데 INSERT 가 성공하는 순간 trg_apply_tx_to_inventory 가 재고를 반영한다.
+   → 보낸 뒤에 「일부 미반영」이라고 알려도 늦다. **거래 자체를 기록하지 않는다.**
+   금액·단가는 CLAUDE.md 금액 철칙과 월마감 금액에 바로 닿고,
+   일자가 기본값으로 밀리면 거래가 다른 달로 들어가 마감월 경계를 넘는다.
+   나머지 nullable 8칸(LOT·공급업체·사유·처리자·승인자·처리상태·비고·유효기한)은
+   저장하고 「일부 미반영」으로 알린다. */
+export const TX_NEVER_DROP = ['total_amount', 'unit_price', 'transaction_date']
