@@ -26,13 +26,26 @@ const d100 = d100raw.replace(/\s+concurrently\b/gi, '')   /* 트랜잭션 안에
 for (const [name, body] of [['0099', d99], ['0100', d100raw]]) {
   const t = body.split(/\r?\n/).filter(l => !/^\s*--/.test(l)).join('\n')
   for (const [re, what] of [[/drop\s+table/i, 'DROP TABLE'], [/drop\s+policy/i, 'DROP POLICY'],
-    [/\b(grant|revoke)\b/i, 'GRANT/REVOKE'], [/delete\s+from/i, 'DELETE'],
     [/append_only/i, 'append-only 가드'], [/truncate/i, 'TRUNCATE'],
     [/update\s+public\./i, '자료 수정']]) {
     if (re.test(t)) { console.error('★ 중단 — ' + name + ' 이 건드리면 안 되는 것: ' + what); process.exit(1) }
   }
 }
-console.log('보내기 전 검사 통과 — 칸 추가·CHECK·PK·인덱스만 다룬다')
+/* GRANT 는 **새로 만든 것에만** 허용한다 — 기존 객체의 권한을 건드리면 멈춘다 */
+for (const [name, body] of [['0099', d99], ['0100', d100raw]]) {
+  for (const line of body.split(/\r?\n/)) {
+    if (/^\s*--/.test(line)) continue
+    const isGrant = /\b(grant|revoke)\b/i.test(line)
+    const isDelete = /delete\s+from/i.test(line)
+    if (!isGrant && !isDelete) continue
+    /* GRANT·DELETE 는 **이번에 새로 만드는 것**에만 허용한다 */
+    if (!/vaccine_survey_claim_attempts/.test(line)) {
+      console.error('★ 중단 — ' + name + ' 이 기존 객체를 건드린다(' + (isGrant ? 'GRANT' : 'DELETE') + '): ' + line.trim().slice(0, 70))
+      process.exit(1)
+    }
+  }
+}
+console.log('보내기 전 검사 통과 — 칸 추가·CHECK·새 표·인덱스만(GRANT 는 새 표에만)')
 
 const checks = []
 const gate = (n, ok, got) => { checks.push([n, ok, got]); console.log(`  ${ok ? 'OK ' : '★NG'}  ${String(n).padEnd(50)} ${got}`) }
@@ -62,19 +75,23 @@ try {
   const cols = await one(`select
     (select count(*)::int from information_schema.columns where table_schema='public'
       and table_name='vaccine_survey_responses' and column_name in ('dept','dup_declared','dup_checked_at','dup_checked_by')) r,
-    (select count(*)::int from information_schema.columns where table_schema='public'
-      and table_name='vaccine_survey_attempts' and column_name in ('kind','last_seen')) a,
+    (select count(*)::int from information_schema.tables where table_schema='public'
+      and table_name='vaccine_survey_claim_attempts') t,
     (select is_nullable from information_schema.columns where table_schema='public'
       and table_name='vaccine_survey_responses' and column_name='dept') dnull`)
   gate('0099 — responses 새 칸 4개', Number(cols.r) === 4, cols.r + '개')
-  gate('0099 — attempts 새 칸 2개', Number(cols.a) === 2, cols.a + '개')
+  gate('0099 — 확인번호 시도 표가 생겼다', Number(cols.t) === 1, cols.t + '개')
   gate('0099 — dept 는 NULL 허용', cols.dnull === 'YES', String(cols.dnull))
+  /* ★ 기존 attempts 는 한 글자도 바뀌면 안 된다 — 배포된 코드가 그 PK 를 쓴다 */
   const pk = await one(`select string_agg(a.attname, ',' order by k.ord) cols
     from pg_constraint ct
     join lateral unnest(ct.conkey) with ordinality k(attnum, ord) on true
     join pg_attribute a on a.attrelid = ct.conrelid and a.attnum = k.attnum
    where ct.conrelid='public.vaccine_survey_attempts'::regclass and ct.contype='p'`)
-  gate('0099 — attempts PK 에 kind 포함', pk.cols === 'tenant_id,ip_hash,kind', String(pk.cols))
+  gate('★ 기존 attempts PK 그대로(배포된 코드 보호)', pk.cols === 'tenant_id,ip_hash', String(pk.cols))
+  const acol = await one(`select count(*)::int n from information_schema.columns
+     where table_schema='public' and table_name='vaccine_survey_attempts'`)
+  gate('★ 기존 attempts 칸 수 그대로', Number(acol.n) === before.acols, before.acols + ' → ' + acol.n)
 
   /* 소속 허용값 */
   const survey = await one(`select id, tenant_id, account_id, vax_start, vax_end from public.vaccine_surveys order by created_at limit 1`)
@@ -97,11 +114,23 @@ try {
   gate('0099 — 허용 밖 소속은 막힌다', !bad.ok && bad.code === '23514', bad.ok ? '들어가 버렸다' : bad.code)
 
   /* attempts 용도별 행 */
-  const a1 = await call(`insert into public.vaccine_survey_attempts (tenant_id, ip_hash, kind, submit_count) values ($1,'dryrun-hash','submit',1)`, [survey.tenant_id])
-  const a2 = await call(`insert into public.vaccine_survey_attempts (tenant_id, ip_hash, kind, submit_count) values ($1,'dryrun-hash','claim_ip',1)`, [survey.tenant_id])
-  gate('0099 — 같은 IP 라도 용도가 다르면 따로 센다', a1.ok && a2.ok, 'submit=' + a1.ok + ' claim_ip=' + a2.ok)
-  const a3 = await call(`insert into public.vaccine_survey_attempts (tenant_id, ip_hash, kind, submit_count) values ($1,'dryrun-hash','nope',1)`, [survey.tenant_id])
-  gate('0099 — 모르는 용도는 막힌다', !a3.ok, a3.ok ? '들어가 버렸다' : a3.code)
+  const a1 = await call(`insert into public.vaccine_survey_claim_attempts (tenant_id, scope, key_hash, fail_count) values ($1,'ip','dryrun-hash',1)`, [survey.tenant_id])
+  const a2 = await call(`insert into public.vaccine_survey_claim_attempts (tenant_id, scope, key_hash, fail_count) values ($1,'name','dryrun-hash',1)`, [survey.tenant_id])
+  gate('0099 — 같은 열쇠라도 범위가 다르면 따로 센다', a1.ok && a2.ok, 'ip=' + a1.ok + ' name=' + a2.ok)
+  const a3 = await call(`insert into public.vaccine_survey_claim_attempts (tenant_id, scope, key_hash) values ($1,'nope','x')`, [survey.tenant_id])
+  gate('0099 — 모르는 범위는 막힌다', !a3.ok, a3.ok ? '들어가 버렸다' : a3.code)
+  const a4 = await call(`insert into public.vaccine_survey_claim_attempts (tenant_id, scope, key_hash, fail_count) values ($1,'ip','dryrun-neg',-1)`, [survey.tenant_id])
+  gate('0099 — 음수 실패 횟수는 막힌다', !a4.ok, a4.ok ? '들어가 버렸다' : a4.code)
+  /* 청소 함수 — 7일 지난 행만 지운다 */
+  await call(`insert into public.vaccine_survey_claim_attempts (tenant_id, scope, key_hash, last_seen) values ($1,'ip','dryrun-old', now() - interval '8 days')`, [survey.tenant_id])
+  const purged = await call(`select public.purge_vaccine_survey_claim_attempts() n`)
+  gate('0099 — 청소 함수가 오래된 행만 지운다', purged.ok && Number(purged.rows[0].n) === 1, purged.ok ? (purged.rows[0].n + '행') : purged.code)
+  const left = await one(`select count(*)::int n from public.vaccine_survey_claim_attempts`)
+  gate('0099 — 최근 행은 남는다', Number(left.n) === 2, left.n + '행')
+  const polNew = await one(`select count(*)::int n from pg_policies where schemaname='public' and tablename='vaccine_survey_claim_attempts'`)
+  gate('0099 — 새 표에 정책 0개(service_role 전용)', Number(polNew.n) === 0, polNew.n + '개')
+  const cron = await one(`select count(*)::int n from pg_extension where extname='pg_cron'`)
+  console.log('     (참고) pg_cron 설치됨? ' + (Number(cron.n) ? 'YES' : 'NO — 접수 때 1/100 확률로 부른다'))
 
   /* ── 0100 확인 ───────────────────────────────────────────────────────── */
   await q(d100)
