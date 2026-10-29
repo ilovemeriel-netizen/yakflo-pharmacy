@@ -113,6 +113,3 @@ export function writeLastReload(win, now) {
 /* 갱신 확인 주기 — 탭 복귀 때마다 + 이 간격마다.
    ★ 바뀐 것이 없으면 ETag 재검증이라 1회 0바이트(헤더 왕복)다. 실측 확인. */
 export const UPDATE_EVERY_MS = 30 * 60 * 1000
-
-/* 미리보기 재현용 표식 — 이 줄 하나로 번들 해시가 바뀐다(2026-10-29 검증) */
-export const PROBE_MARK = 'v2'
