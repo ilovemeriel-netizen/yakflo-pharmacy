@@ -25,6 +25,7 @@ import { pwReady } from './lib/pwInput'
 import PinBoxes from './PinBoxes'
 import SurveyTab from './SurveyTab'
 import { seasonLabel } from './lib/surveyText'
+import { tabFromHash, writeTabHash, clearTabHash, TAB_DEFAULT } from './lib/tabRoute'
 
 const TOKEN_KEY = 'vaccine_public_token'
 const REFRESH_MS = 60_000
@@ -88,12 +89,18 @@ export default function App() {
   /* 열린 수요조사 회차 — null 이면 탭을 **그리지 않는다**(지금 화면과 한 픽셀도 다르지 않다).
      로그인 응답(initial 과 함께 오는 survey)으로 채우고, 재방문 때는 /survey info 로 받는다. */
   const [survey, setSurvey] = useState(null)
-  const [tab, setTab] = useState('stock')
+  /* ★ 탭을 주소에서 읽는다 — 새로고침해도 보던 탭이 유지된다(#survey = 수요조사).
+     입력 중인 값은 담지 않는다 — 해시에 들어가는 것은 탭 이름 하나뿐이다. */
+  const [tab, setTab] = useState(tabFromHash)
+  /* 회차 답(있다/없다)을 받았는지 — 받기 전에 해시를 지우면 #survey 로 들어온 사람이 튕긴다 */
+  const surveyKnown = useRef(false)
   /* 로그인 응답으로 회차를 이미 받았는지 — true 면 info 호출을 건너뛴다(왕복 1회 절약) */
   const seededSurvey = useRef(false)
 
   const lock = useCallback(() => {
-    clearStored(); setToken(null); setData(null); setErr(null); setSurvey(null); setTab('stock')
+    /* ★ 탭은 그대로 둔다 — 다시 로그인하면 보던 탭으로 돌아간다.
+       회차 답은 다시 받아야 하므로 표시만 지운다. */
+    clearStored(); setToken(null); setData(null); setErr(null); setSurvey(null); surveyKnown.current = false
   }, [])
 
   /* ── 잔량 조회 ──
@@ -156,11 +163,24 @@ export default function App() {
           body: JSON.stringify({ action: 'info' }),
         })
         const j = await r.json().catch(() => null)
-        if (alive && r.ok && j?.ok) setSurvey(j.survey || null)
+        if (alive && r.ok && j?.ok) { setSurvey(j.survey || null); surveyKnown.current = true }
       } catch { /* 수요조사 탭이 안 보일 뿐 — 잔량 조회는 그대로 동작한다 */ }
     }, 0)
     return () => { alive = false; clearTimeout(t) }
   }, [token])
+
+  /* ★ 열린 회차가 없는데 #survey 로 들어왔다면 해시를 지운다.
+     보이는 탭은 아래 tab={survey ? tab : TAB_DEFAULT} 가 이미 잔량으로 돌린다 —
+     그래서 여기서 state 를 고치지 않는다(effect 안에서 setState 를 하지 않는다).
+     회차 답을 받기 전에는 아무것도 하지 않는다(surveyKnown) — 받기 전에 지우면
+     #survey 로 들어온 사람이 주소를 잃는다. */
+  useEffect(() => {
+    if (!token || !surveyKnown.current) return
+    if (!survey) clearTabHash()
+  }, [token, survey])
+
+  /* 탭을 누르면 주소도 함께 바꾼다(replaceState — 뒤로 가기 기록을 쌓지 않는다) */
+  const goTab = useCallback(k => { setTab(k); writeTabHash(k) }, [])
 
   async function manualReload() {
     setLoading(true)
@@ -173,12 +193,12 @@ export default function App() {
     /* 로그인 응답에 첫 데이터가 실려 왔으면 그걸로 바로 그린다 — 빈 화면을 거치지 않는다 */
     if (itemsOf(initial)) { setData(initial); seeded.current = true }
     /* survey 는 「없음(null)」도 유효한 답이다 — 키가 왔으면 info 호출을 건너뛴다 */
-    if (sv !== undefined) { setSurvey(sv || null); seededSurvey.current = true }
+    if (sv !== undefined) { setSurvey(sv || null); seededSurvey.current = true; surveyKnown.current = true }
     setToken(tok)
   }} />
   return <Stock
     data={data} loading={loading} err={err} onLock={lock} onReload={manualReload}
-    survey={survey} tab={survey ? tab : 'stock'} onTab={setTab} token={token}
+    survey={survey} tab={survey ? tab : TAB_DEFAULT} onTab={goTab} token={token}
     onSurveyGone={lock} />
 }
 
