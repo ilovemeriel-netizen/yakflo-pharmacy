@@ -27,6 +27,13 @@ export function kstInputValue(iso) {
     + `T${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}`
 }
 
+/* timestamptz(ISO) → 화면에 보여 줄 날짜 'YYYY-MM-DD' (KST 기준).
+   ★ String(iso).slice(0, 10) 을 쓰면 **UTC 날짜**가 나온다 — KST 00:00~08:59 에
+     찍힌 시각은 하루 전으로 보인다(회차를 새벽에 열면 「기준 … 이후 접종」이 어제). */
+export function kstDateOnly(iso) {
+  return kstInputValue(iso).slice(0, 10)
+}
+
 /* datetime-local 값('YYYY-MM-DDTHH:mm', KST 벽시계로 읽는다) → 저장할 ISO(UTC).
    빈 값·모양이 틀린 값은 null — 호출부가 「마감 없음」으로 저장한다. */
 export function kstInputToIso(value) {

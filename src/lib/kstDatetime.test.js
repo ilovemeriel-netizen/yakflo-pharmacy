@@ -8,7 +8,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { kstInputValue, kstInputToIso, KST_OFFSET_MS } from './kstDatetime'
+import { kstInputValue, kstInputToIso, kstDateOnly, KST_OFFSET_MS } from './kstDatetime'
 
 /* 브라우저(프로세스) 시간대를 바꿔 가며 같은 답이 나오는지 본다 */
 const TZ0 = process.env.TZ
@@ -96,6 +96,31 @@ describe('★ 브라우저 시간대와 무관하다', () => {
   })
 })
 
+describe('kstDateOnly — 「기준 … 이후 접종」 날짜', () => {
+  it('★ KST 00:30 에 연 회차는 **그날** 날짜 — slice(0,10) 은 하루 전을 보여 줬다', () => {
+    /* UTC 2026-10-28T15:30Z = KST 2026-10-29 00:30 */
+    const iso = '2026-10-28T15:30:00.000Z'
+    expect(kstDateOnly(iso)).toBe('2026-10-29')
+    expect(String(iso).slice(0, 10), '옛 방식은 하루 전').toBe('2026-10-28')
+  })
+  it('★ KST 08:59 까지가 경계 — 09:00 부터는 UTC 와 같은 날짜', () => {
+    expect(kstDateOnly('2026-10-28T23:59:00.000Z')).toBe('2026-10-29')  /* KST 08:59 */
+    expect(kstDateOnly('2026-10-29T00:00:00.000Z')).toBe('2026-10-29')  /* KST 09:00 */
+  })
+  it('운영 회차의 open_at — 2026-10-28T05:51Z 는 KST 2026-10-28 14:51', () => {
+    expect(kstDateOnly('2026-10-28T05:51:24.736Z')).toBe('2026-10-28')
+  })
+  it('빈 값·이상한 값은 빈 문자열', () => {
+    for (const v of ['', null, undefined, 'abc']) expect(kstDateOnly(v), String(v)).toBe('')
+  })
+  it('시간대를 바꿔도 같은 값', () => {
+    for (const tz of ['UTC', 'Asia/Seoul', 'America/New_York']) {
+      process.env.TZ = tz
+      expect(kstDateOnly('2026-10-28T15:30:00.000Z'), tz).toBe('2026-10-29')
+    }
+  })
+})
+
 describe('회차 폼 배선 — 고친 곳이 되돌아가지 않게', () => {
   const SRC = readFileSync(resolve(process.cwd(), 'src/VaccineSurveyPanel.jsx'), 'utf8')
 
@@ -130,5 +155,10 @@ describe('회차 폼 배선 — 고친 곳이 되돌아가지 않게', () => {
   it('open_at 은 폼 칸이 아니다 — 열 때 서버 시각을 그대로 찍는다', () => {
     expect(SRC).toContain('patch.open_at = new Date().toISOString()')
     expect(SRC, 'open_at 이 폼에 들어왔다면 같은 변환이 필요하다').not.toContain('f.open_at')
+  })
+
+  it('★ open_at 표시가 KST 날짜다 — slice(0,10) 은 UTC 라 새벽에 하루 전이 됐다', () => {
+    expect(SRC).toContain('{kstDateOnly(sel.open_at)}')
+    expect(SRC, '옛 방식이 남아 있다').not.toContain('String(sel.open_at).slice(0, 10)')
   })
 })

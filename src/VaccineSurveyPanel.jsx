@@ -22,7 +22,7 @@ import {
   alertLine, needsPurge, canPurge, defaultCategoryIds,
 } from './lib/surveyCalc'
 import { validateEdit, familyOf } from './lib/surveyRules'
-import { kstInputValue, kstInputToIso } from './lib/kstDatetime'
+import { kstInputValue, kstInputToIso, kstDateOnly } from './lib/kstDatetime'
 
 /* 수정 거절 메시지 — DB 가 돌려준 코드를 사용자 말로 바꾼다.
    ★ restrict_violation(2F000/23001)은 「접종 완료보다 적게」 한 가지뿐이다(0096). */
@@ -374,7 +374,7 @@ export default function VaccineSurveyPanel({ ColMenu, useSort, accs, cats, isAdm
 
           <div style={{ fontSize: 11, color: t.textL, marginBottom: 12, lineHeight: 1.6 }}>
             접종 완료로 세는 분류: {catNames.length ? catNames.join(' · ') : '(없음)'}
-            {sel.open_at ? <> · 기준 {String(sel.open_at).slice(0, 10)} 이후 접종</> : <> · 아직 열지 않아 A = 0</>}
+            {sel.open_at ? <> · 기준 {kstDateOnly(sel.open_at)} 이후 접종</> : <> · 아직 열지 않아 A = 0</>}
           </div>
 
           {band ? <div style={{
