@@ -1,0 +1,865 @@
+{
+ "요약": {
+  "widths": {
+   "A": 3.44,
+   "B": 13.55,
+   "C": 16.33,
+   "D": 9.55,
+   "E": 14.66,
+   "F": 16.78
+  },
+  "heights": {
+   "1": 26.25,
+   "6": 20.25,
+   "7": 20.25,
+   "11": 20.25,
+   "12": 20.25,
+   "13": 20.25,
+   "16": 20.25,
+   "17": 20.25,
+   "18": 20.25,
+   "22": 20.25,
+   "23": 20.25
+  },
+  "merges": [
+   "B15:F15",
+   "B1:F1",
+   "B20:F20",
+   "B2:C2",
+   "B4:F4",
+   "B9:F9",
+   "D2:F2"
+  ],
+  "cells": {
+   "B1": {
+    "value": "씨엔씨재활의학과병원 약품관리 월간보고서",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [],
+    "fill": "FF804A87",
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 18.0
+   },
+   "B2": {
+    "value": "▶ 보고월:",
+    "numFmt": "General",
+    "h": "right",
+    "v": "center",
+    "border": [],
+    "fill": null,
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "D2": {
+    "value": "2026년 9월",
+    "numFmt": "General",
+    "h": "left",
+    "v": "center",
+    "border": [],
+    "fill": null,
+    "fontColor": "FF804A87",
+    "bold": true,
+    "size": 12.0
+   },
+   "B4": {
+    "value": "[재고 현황]",
+    "numFmt": "General",
+    "h": "left",
+    "v": "center",
+    "border": [],
+    "fill": "FF019748",
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 12.0
+   },
+   "B5": {
+    "value": "관리 품목수",
+    "numFmt": "General",
+    "h": "left",
+    "v": "center",
+    "border": [],
+    "fill": null,
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 12.0
+   },
+   "B6": {
+    "value": "관리 품목수",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FF7FD9A8",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "C6": {
+    "value": "531품목",
+    "numFmt": "#,##0\"개\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF804A87",
+    "bold": true,
+    "size": 14.0
+   },
+   "E6": {
+    "value": "전월재고",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FF7FD9A8",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "F6": {
+    "value": "<data>",
+    "numFmt": "#,##0\"원\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF804A87",
+    "bold": true,
+    "size": 14.0
+   },
+   "B7": {
+    "value": "현재고",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FF7FD9A8",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "C7": {
+    "value": "<data>",
+    "numFmt": "#,##0\"원\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF804A87",
+    "bold": true,
+    "size": 14.0
+   },
+   "E7": {
+    "value": "증감",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FF7FD9A8",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "F7": {
+    "value": "<data>",
+    "numFmt": "\\+#,##0\"원\";\\-#,##0\"원\";0\"원\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF019748",
+    "bold": true,
+    "size": 14.0
+   },
+   "B9": {
+    "value": null,
+    "numFmt": "General",
+    "h": "left",
+    "v": "center",
+    "border": [],
+    "fill": "FF019748",
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 12.0
+   },
+   "B10": {
+    "value": "[입출고 현황]",
+    "numFmt": "General",
+    "h": "left",
+    "v": "center",
+    "border": [],
+    "fill": null,
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 12.0
+   },
+   "B11": {
+    "value": "입고",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FFBFA6D9",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "C11": {
+    "value": "<data>",
+    "numFmt": "#,##0\"건\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "E11": {
+    "value": "입고금액",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FFBFA6D9",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "F11": {
+    "value": "<data>",
+    "numFmt": "#,##0\"원\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF804A87",
+    "bold": true,
+    "size": 14.0
+   },
+   "B12": {
+    "value": "출고",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FFE2A6D4",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "C12": {
+    "value": "<data>",
+    "numFmt": "#,##0\"건\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "E12": {
+    "value": "출고금액",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FFE2A6D4",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "F12": {
+    "value": "<data>",
+    "numFmt": "#,##0\"원\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF804A87",
+    "bold": true,
+    "size": 14.0
+   },
+   "B13": {
+    "value": "순입고",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FFD7D7D7",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "C13": {
+    "value": "=C11-C12",
+    "numFmt": "\\+#,##0\"건\";\\-#,##0\"건\";0\"건\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "E13": {
+    "value": "순입고금액",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FFD7D7D7",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "F13": {
+    "value": 9617568,
+    "numFmt": "\\+#,##0\"원\";\\-#,##0\"원\";0\"원\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF019748",
+    "bold": true,
+    "size": 14.0
+   },
+   "B15": {
+    "value": "[폐기·반품 현황]",
+    "numFmt": "General",
+    "h": "left",
+    "v": "center",
+    "border": [],
+    "fill": "FF804A87",
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 12.0
+   },
+   "B16": {
+    "value": "폐기",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FFF39E94",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "C16": {
+    "value": "<data>",
+    "numFmt": "#,##0\"건\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "E16": {
+    "value": "폐기금액",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FFF39E94",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "F16": {
+    "value": "<data>",
+    "numFmt": "#,##0\"원\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF804A87",
+    "bold": true,
+    "size": 14.0
+   },
+   "B17": {
+    "value": "반품",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FFFDF6A3",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "C17": {
+    "value": "<data>",
+    "numFmt": "#,##0\"건\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "E17": {
+    "value": "반품금액",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FFFDF6A3",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "F17": {
+    "value": "<data>",
+    "numFmt": "#,##0\"원\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF804A87",
+    "bold": true,
+    "size": 14.0
+   },
+   "B18": {
+    "value": "합계",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FF804A87",
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 11.0
+   },
+   "C18": {
+    "value": "17건",
+    "numFmt": "#,##0\"건\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FF804A87",
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 11.0
+   },
+   "D18": {
+    "value": null,
+    "numFmt": "General",
+    "h": null,
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FF804A87",
+    "fontColor": null,
+    "bold": false,
+    "size": 12.0
+   },
+   "E18": {
+    "value": null,
+    "numFmt": "General",
+    "h": null,
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FF804A87",
+    "fontColor": null,
+    "bold": false,
+    "size": 12.0
+   },
+   "F18": {
+    "value": "<data>",
+    "numFmt": "#,##0\"원\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FF804A87",
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 14.0
+   },
+   "B20": {
+    "value": "[유효기간 관리]",
+    "numFmt": "General",
+    "h": "left",
+    "v": "center",
+    "border": [],
+    "fill": "FF019748",
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 12.0
+   },
+   "B21": {
+    "value": "긴급(30일)",
+    "numFmt": "General",
+    "h": "left",
+    "v": "center",
+    "border": [],
+    "fill": null,
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 12.0
+   },
+   "B22": {
+    "value": "만료",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FFDC3545",
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 11.0
+   },
+   "C22": {
+    "value": "<data>",
+    "numFmt": "#,##0\"건\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 14.0
+   },
+   "E22": {
+    "value": "주의(60일)",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FFFD7E14",
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 11.0
+   },
+   "F22": {
+    "value": "<data>",
+    "numFmt": "#,##0\"건\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 14.0
+   },
+   "B23": {
+    "value": "긴급(30일)",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FFFFC107",
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 11.0
+   },
+   "C23": {
+    "value": "<data>",
+    "numFmt": "#,##0\"건\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 14.0
+   },
+   "E23": {
+    "value": "확인(90일)",
+    "numFmt": "General",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": "FF016033",
+    "fontColor": "FFFFFFFF",
+    "bold": true,
+    "size": 11.0
+   },
+   "F23": {
+    "value": "<data>",
+    "numFmt": "#,##0\"건\"",
+    "h": "center",
+    "v": "center",
+    "border": [
+     "left",
+     "right",
+     "top",
+     "bottom"
+    ],
+    "fill": null,
+    "fontColor": "FF000000",
+    "bold": true,
+    "size": 14.0
+   },
+   "B25": {
+    "value": "2026-10-13 15:56 작성",
+    "numFmt": "General",
+    "h": null,
+    "v": null,
+    "border": [],
+    "fill": null,
+    "fontColor": null,
+    "bold": false,
+    "size": 12.0
+   },
+   "B26": {
+    "value": "Copyright © 2026 Jeonghwa Lee. All rights reserved.",
+    "numFmt": "General",
+    "h": null,
+    "v": null,
+    "border": [],
+    "fill": null,
+    "fontColor": null,
+    "bold": false,
+    "size": 12.0
+   }
+  }
+ },
+ "약품목록": {
+  "widths": {
+   "A": 14.78,
+   "B": 40.78,
+   "C": 8.78,
+   "D": 11.78,
+   "E": 14.78,
+   "F": 11.78,
+   "G": 14.78,
+   "H": 11.78,
+   "I": 14.78,
+   "J": 9.78,
+   "K": 9.78,
+   "L": 12.78,
+   "M": 14.78,
+   "N": 12.78
+  },
+  "headers": [
+   "약품코드",
+   "약품명",
+   "구분",
+   "전월재고수",
+   "전월재고금액",
+   "입고수량",
+   "입고금액",
+   "출고수량",
+   "출고금액",
+   "폐기수량",
+   "반품수량",
+   "기말재고수",
+   "기말재고금액",
+   "유효기한"
+  ],
+  "numFmt_D_M": "#,##0;\\(#,##0\\)",
+  "freeze": "B1",
+  "autofilter": "A1:N{last}",
+  "sort": "유효기한 오름차순(N열, 문자열 YYYY-MM-DD)",
+  "rows_in_reference": 531
+ },
+ "_source": "2026년 9월 의약품 결산 내역.xlsx (사용자 기준 양식) — openpyxl로 추출, 2026-10-30",
+ "_note": "F13은 원본에서 값이었으나 승인 보정으로 =F11-F12 수식 사용(값 동일)"
+}

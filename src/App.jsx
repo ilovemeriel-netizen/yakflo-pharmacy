@@ -9,12 +9,14 @@ import { saveWithFallback, partialText, partialBulkText, blockedText, PARTIAL_BG
 import { ErrorBoundary } from './lib/errorBoundary.jsx'
 import { formDirty, anyFilled } from './lib/pwaUpdate'
 import { useBusy } from './lib/useBusy.js'
-import { screenLabel } from './lib/errorText.js'
+import { screenLabel, EC_COPY } from './lib/errorText.js'
 import { decomposeAtc } from './lib/atcMap'
 import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLabel, TX_NEVER_DROP } from './lib/txTypes'
 import { vaccineTabFromHash } from './lib/vaccineRoute'
 import { handleScan as scanHandle, decodeGs1 as scanDecode, scanCountQty, scanAddItem, saveScanMapping, deactivateBarcode, listBarcodes, gtinCheckOk, ownCodeLooksLikeGs1, OWN_CODE_WARN } from './lib/scan'
 import { dbErrorMsg, noRowMsg, bulkFailKind } from './lib/dbError'
+import { fetchMonthlyReportSource } from './lib/monthlyReportQuery'
+import { buildMonthlyReportDTO } from './lib/monthlyReportDTO'
 import { ThemeCtx, useTheme } from './lib/theme'
 import EmergencyDispense from './EmergencyDispense'
 /* ★ 지연 로드 — 직접 import 하면 백신 화면이 전 사용자 초기 번들에 실린다. */
@@ -5617,7 +5619,7 @@ const mpTd={border:'1px solid #bbb',padding:'6px 10px'};
 function MSec({title,children}){return <div style={{marginBottom:9}}><div style={{background:'#019748',color:'#fff',fontWeight:800,fontSize:13.5,padding:'5px 10px'}}>{title}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><tbody>{children}</tbody></table></div>}
 function MRow({label,value,bg}){return <tr><td style={{...mpTd,background:bg||'#eee',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',fontWeight:800,color:'#804A87',fontVariantNumeric:'tabular-nums'}}>{value}</td></tr>}
 function MRow2({label,cnt,amt,bg,fg}){return <tr><td style={{...mpTd,background:bg||'#eee',color:fg||'#222',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontVariantNumeric:'tabular-nums'}}>{cnt}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{amt}</td></tr>}
-function Report({drugs,onNav}){
+export function Report({drugs,onNav}){
   const{t,memberRole}=useTheme();
   const isOwner=memberRole==='owner'; // 마감·업로드 권한(고위험 체크박스와 동일 패턴)
   const cy=new Date().getFullYear(),cm=new Date().getMonth()+1;
@@ -5631,6 +5633,7 @@ function Report({drugs,onNav}){
   const[search,setSearch]=useState('');const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(STATS);
   const[page,setPage]=useState(1);const RPP=100; // 상세표 페이지네이션(화면 전용) — 한 페이지 100행
   const[closing,setClosing]=useState(false);const[closeMsg,setCloseMsg]=useState(null);
+  const[mono,setMono]=useState(false);const[dling,setDling]=useState(false); // 결산 엑셀 흑백판 선택 · 내려받는 중(exceljs 동적 로드)
   const[uploadOpen,setUploadOpen]=useState(false);const[dialog,setDialog]=useState(null);const[closeReason,setCloseReason]=useState('단가 정정'); // 스냅샷 업로드 모달 · 앱 내 확인/안내 모달 · 마감 잔차 사유
   const{hs,so,SI,TS,sk,sd}=useSort('drug_code');
 
@@ -5905,6 +5908,35 @@ function Report({drugs,onNav}){
     XLSX.utils.book_append_sheet(wb,ws,'약품목록');XLSX.writeFile(wb,`${sn}.xlsx`)
   }
 
+  /* ── 월간 결산 엑셀(기준 양식 1:1) ──────────────────────────────────────────
+     ★ 화면 필터(cats·stats·검색)를 쓰지 않는다. 거기에 기대면 상태 칩을 한 번 건드려도
+       금액 합이 달라진다 — 기준 양식에서 71,965원이 그렇게 빠져 있었다.
+     ★ 마감월은 사이드카 2종에서만 읽고, 미마감월은 화면이 이미 집계한 live 를 쓴다.
+     ★ exceljs 는 이 함수 안에서만 내려온다(메인 번들 무관). */
+  async function dlFmt(){
+    if(dling)return;
+    setDling(true);
+    try{
+      const src=await fetchMonthlyReportSource(supabase,{year,month});
+      const dto=buildMonthlyReportDTO({
+        closed:src.closed, totals:src.totals,
+        rows:src.closed?src.rows:(live?live.rows:[]),
+        drugs, live:src.closed?null:live,
+        expiry:{expired:expExpired,urgent30:expU30,caution60:expW60,check90:expC90},
+        year, month, stamp:nowStamp(), copyright:EC_COPY,
+      });
+      if(!dto.list.length){setCloseMsg('❌ '+year+'년 '+month+'월은 내려받을 행이 없습니다(거래·잔량 모두 0).');return}
+      const{writeMonthlyReportXlsx,monthlyReportFileName}=await import('./lib/monthlyReportXlsx.js');
+      const blob=await writeMonthlyReportXlsx(dto,{mono});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');a.href=url;a.download=monthlyReportFileName(dto,mono);
+      document.body.appendChild(a);a.click();document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+      setCloseMsg('✅ '+dto.year+'년 '+dto.month+'월 결산 내역을 내려받았습니다 — '+dto.list.length.toLocaleString()+'행'+(mono?' (흑백판)':'')+(dto.closed?' · 마감 사이드카 기준':' · 미마감 실시간 집계'));
+    }catch(e){setCloseMsg('❌ 결산 엑셀 생성 실패: '+(e&&e.message?e.message:String(e)))}
+    finally{setDling(false)}
+  }
+
   const tab=active=>({padding:'8px 20px',borderRadius:8,border:'none',cursor:'pointer',fontSize:13,fontWeight:600,background:active?t.accent:t.bg,color:active?'#fff':t.textM});
 
   return<div style={{padding:'20px 24px'}}>
@@ -5919,7 +5951,13 @@ function Report({drugs,onNav}){
         {Array.from({length:12},(_,i)=><option key={i+1} value={i+1}>{i+1}월</option>)}
       </select>}
       <div style={{flex:1}}/>
-      <button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>
+      {rtype==='monthly'
+        ? <>
+            <button onClick={dlFmt} disabled={dling} title="기준 양식(의약품 결산 내역)과 같은 모양으로 내려받습니다" style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:dling?'not-allowed':'pointer',opacity:dling?0.5:1,fontSize:11,fontWeight:600}}>{dling?'만드는 중...':'엑셀'}</button>
+            {/* 흑백판 선택 — 누르면 채워지고, 다시 누르면 컬러판으로 돌아간다. 기존 버튼 색만 쓴다 */}
+            <button onClick={()=>setMono(v=>!v)} aria-pressed={mono} title={mono?'흑백판으로 내려받습니다 — 다시 누르면 컬러판':'컬러판으로 내려받습니다 — 누르면 흑백판'} style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${t.green}`,background:mono?t.green:'transparent',color:mono?'#fff':t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>흑백</button>
+          </>
+        : <button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>}
       {isOwner&&rtype==='monthly'&&<button onClick={()=>setUploadOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accentL,color:t.accent,cursor:'pointer',fontSize:11,fontWeight:600}}>스냅샷 업로드</button>}
       {isOwner&&rtype==='monthly'&&<button onClick={requestRebuild} disabled={closing} title="선택 월 스냅샷을 집계해 사이드카 총계를 재기록(결재본 보호)" style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.purple}`,background:t.accentL,color:t.purple,cursor:closing?'not-allowed':'pointer',opacity:closing?0.5:1,fontSize:11,fontWeight:600}}>🧮 사이드카 재기록</button>}
       <button onClick={()=>window.print()} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>인쇄</button>

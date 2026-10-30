@@ -50,8 +50,11 @@ describe('저작권이 있어야 하는 자리 — 열한 곳', () => {
 })
 
 describe('옛 문구가 저장소 어디에도 없다 — 전수', () => {
-  /* 글꼴 라이선스는 제3자 문구라 제외. 빌드 산출물·의존성도 제외. */
-  const SKIP_DIR = new Set(['node_modules', 'dist', '.git', 'coverage', '.netlify', 'build'])
+  /* 글꼴 라이선스는 제3자 문구라 제외. 빌드 산출물·의존성도 제외.
+     __fixtures__ 도 제외 — 사용자가 준 기준 양식을 글자 그대로 떠 놓은 대조용 자료다.
+     기준 양식에는 옛 저작권 문구가 들어 있고(그래서 보정 ⑤ 로 바꾼다), 그 파일은 고치면
+     대조 기준이 아니게 되므로 손대지 않는다. */
+  const SKIP_DIR = new Set(['node_modules', 'dist', '.git', 'coverage', '.netlify', 'build', '__fixtures__'])
   const SKIP_FILE = new Set(['NotoSansKR-OFL.txt'])
   const TEXT_EXT = new Set(['.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.json', '.md', '.sql', '.mjs', '.cjs'])
 
