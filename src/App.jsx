@@ -458,8 +458,14 @@ function LocVocabDatalist({ id }) {
   const [opts, setOpts] = useState([])
   useEffect(() => {
     let on = true
-    supabase.from('location_vocab').select('label,code,sort_order,is_active').order('sort_order').order('label')
-      .then(({ data }) => { if (on) setOpts((data || []).filter(x => x.is_active !== false)) })
+    supabase.from('location_vocab').select('label,code,sort_order,is_system,is_active').order('sort_order').order('label')
+      .then(({ data }) => {
+        if (!on) return
+        const live = (data || []).filter(x => x.is_active !== false)
+        /* ★ 시스템 위치(임시보관함)는 맨 위에 못 박는다 — sort_order 0 이라 지금도 첫째지만,
+           나중에 번호가 바뀌어도 제안 목록에서 첫 줄을 지키게 한다. */
+        setOpts([...live.filter(x => x.is_system), ...live.filter(x => !x.is_system)])
+      })
     return () => { on = false }
   }, [])
   return <datalist id={id}>{opts.map(o => { const d = lvDesc(o)
@@ -6361,12 +6367,20 @@ const LV_DUP_MSG = '이미 있는 위치입니다'
 const LV_RENAME_NOTE = n => '이 위치를 쓰는 약품 ' + n + '건의 값은 바뀌지 않습니다. 이름을 바꾸면 그 ' + n + '건은 「미등록 위치」가 되어 위치 필터에 잡히지 않습니다.'
 const LV_DEL_USED = n => '이 위치를 쓰는 약품이 ' + n + '건 있습니다. 삭제해도 약품의 위치 값은 그대로 남아 목록에 나타나지 않게 됩니다. 비활성화를 권합니다.'
 const LV_SORT_LOCK = '정렬을 해제해야 순서를 바꿀 수 있습니다'
+/* ★ 시스템 위치 — 병원 전체에 하나뿐인 임시보관함. location_vocab.is_system 으로 표시한다.
+   이름을 바꾸거나 지우면 그 위치를 쓰던 약품이 전부 「미등록 위치」로 끊기므로 막는다.
+   ★ 「위치 미등록(NULL)」과는 뜻이 다르다 — 미등록은 「아직 정하지 않았다」이고,
+     임시보관은 「치울 곳을 정하는 중이라 여기 모아 두었다」이다. NULL 동작은 바꾸지 않는다. */
+const LV_SYS_LOCK = '시스템 위치는 이름 변경·삭제·순서 변경을 할 수 없습니다'
 /* ★ drugs 는 1,119행이고 PostgREST 기본 상한은 1,000행이다 — 청크로 읽지 않으면 조용히 잘린다.
    ★ SELECT 만 한다. 컴포넌트 state 를 쓰지 않으므로 모듈 레벨에 둔다(effect deps 오염 방지). */
 async function lvUsage() {
   const cnt = {}
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from('drugs').select('storage_location').range(from, from + 999)
+    /* ★ 중지는 세지 않는다 — 표의 「사용 약품」 숫자와 위치 창에 보이는 줄 수가 같아야 한다.
+       구역별 인쇄도 같은 MAIN_STATS 를 쓰므로 화면·인쇄 기준이 하나다(2026-10-30 결정).
+       ★ 위치 값은 지우지 않는다 — 다시 「사용」이 되면 원래 위치에 그대로 나타난다. */
+    const { data, error } = await supabase.from('drugs').select('storage_location').in('status', MAIN_STATS).range(from, from + 999)
     if (error) return { error }
     for (const r of data || []) { const v = (r.storage_location || '').trim(); if (v) cnt[v] = (cnt[v] || 0) + 1 }
     if (!data || data.length < 1000) break
@@ -6377,11 +6391,12 @@ async function lvUsage() {
    ★ drugs 는 SELECT 만 한다. 쓰기 경로가 아니다.
    ★ storage_location 은 FK 가 아니라 문자열이라 값과 완전일치로만 건다 —
      그래서 vocab 에 없는 값(J-2/C-2 등)도 같은 방식으로 조회된다.
-   ★ 한 위치의 최대 건수는 실측 691건(O-1)이라 PostgREST 1,000행 캡 아래지만,
+   ★ 한 위치의 최대 건수는 실측 691건(O-1, 중지 포함)이고 중지를 빼면 315건이라
+     PostgREST 1,000행 캡 아래지만,
      캡에 걸리면 조용히 잘리므로 정확히 1,000이면 알린다.
    ★ 모든 td 에 textAlign 을 명시한다 — index.css 의 #root { text-align:center } 가
      상속되어, 지정하지 않은 셀은 가운데로 렌더된다. */
-function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
+export function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
   const { t } = useTheme()
   const boxRef = useRef(null); const [pos, setPos] = useState({ x: 0, y: 0 })
   const { dragging, onHeaderMouseDown } = useDraggableModal(boxRef, pos, setPos)
@@ -6409,7 +6424,8 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
   }, [onClose, editing])
   useEffect(() => {
     let on = true
-    supabase.from('drugs').select('id,drug_code,drug_name,category,current_qty,status').eq('storage_location', loc).range(0, 999)
+    /* ★ 중지 제외 — lvUsage·구역별 인쇄와 같은 MAIN_STATS 를 쓴다. 머리글 건수 = 보이는 줄 수. */
+    supabase.from('drugs').select('id,drug_code,drug_name,category,current_qty,status').in('status', MAIN_STATS).eq('storage_location', loc).range(0, 999)
       .then(({ data, error }) => {
         if (!on) return
         if (error) { setErr(dbErrorMsg(error)); setRows([]); return }
@@ -6423,8 +6439,13 @@ function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
      LocVocabDatalist 는 수정 금지라 내부 데이터를 빌려올 수 없어 여기서 따로 읽는다(38행, 비용 무시 가능). */
   useEffect(() => {
     let on = true
-    supabase.from('location_vocab').select('label,code,sort_order,is_active').order('sort_order').order('label')
-      .then(({ data }) => { if (on) setDestOpts((data || []).filter(x => x.is_active !== false)) })
+    supabase.from('location_vocab').select('label,code,sort_order,is_system,is_active').order('sort_order').order('label')
+      .then(({ data }) => {
+        if (!on) return
+        const live = (data || []).filter(x => x.is_active !== false)
+        /* ★ 임시보관함을 목적지 맨 위로 — 「일단 여기」가 가장 자주 고르는 값이다 */
+        setDestOpts([...live.filter(x => x.is_system), ...live.filter(x => !x.is_system)])
+      })
     return () => { on = false }
   }, [])
   /* ★ 검색은 이미 받아온 rows 를 거르는 클라이언트 필터다 — 추가 조회를 하지 않는다.
@@ -6648,7 +6669,7 @@ function lpIngNode(d) {
   return <>{fe}{'('}<span className="kor">{fk}</span>{')'}{tail ? <span className="etc">{tail}</span> : null}</>
 }
 
-function LocationVocab() {
+export function LocationVocab() {
   const { t } = useTheme()
   const [rows, setRows] = useState([]); const [usage, setUsage] = useState({})
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false)
@@ -6699,7 +6720,7 @@ function LocationVocab() {
     if (!printOpen) return
     let on = true
     supabase.from('drugs').select('drug_code,drug_name,ingredient_en,ingredient_kr,compound_type,storage_location,narcotic_type,is_narcotic')
-      .in('status', ['사용', '휴면']).range(0, 999)
+      .in('status', MAIN_STATS).range(0, 999)
       .then(({ data, error }) => { if (on) setPrintRows(error ? [] : (data || [])) })
     return () => { on = false }
   }, [printOpen])
@@ -6730,7 +6751,10 @@ function LocationVocab() {
      그래서 정렬용 파생 필드를 붙인 뷰 배열을 만든다. 원본 rows 는 건드리지 않는다
      (rows 는 move 의 인덱스 기준이자 조회 순서 보관처다).
      _used·_act 는 number 라 수치 비교, _desc 는 string 이라 ko localeCompare 로 간다. */
-  const view = so(rows.map(r => ({ ...r, _desc: lvDesc(r), _used: used(r.label), _act: r.is_active ? 1 : 0 })))
+  /* ★ 시스템 위치는 머리글 정렬을 걸어도 맨 위에 남는다 — 「늘 첫 줄」이 약속이다.
+     나머지만 so() 에 넘기므로 기존 정렬 동작은 그대로다. */
+  const _mapped = rows.map(r => ({ ...r, _desc: lvDesc(r), _used: used(r.label), _act: r.is_active ? 1 : 0 }))
+  const view = [..._mapped.filter(r => r.is_system), ...so(_mapped.filter(r => !r.is_system))]
 
   async function addLabel(raw) {
     const v = String(raw || '').trim(); if (!v) { flash('위치 이름을 입력해 주세요', 'err'); return }
@@ -6745,6 +6769,7 @@ function LocationVocab() {
     setNewLabel(''); flash('「' + v + '」를 추가했습니다'); reload()
   }
   async function rename(row) {
+    if (row.is_system) { setRenId(null); flash(LV_SYS_LOCK, 'err'); return }
     const v = renVal.trim()
     if (!v || v === row.label) { setRenId(null); return }
     setBusy(true)
@@ -6770,8 +6795,12 @@ function LocationVocab() {
      sort_order 중복을 남기는데, location_vocab.sort_order 에는 unique 제약이 없어 막아 주지 않는다.
      번호 계산은 planReorder(순수 함수·단위 테스트 있음)에 있고 여기서는 저장만 한다.
      보낼 행이 0개면 요청을 생략한다. 1..N 만 쓰므로 음수가 생기지 않고 기존 번호 구멍도 메워진다. */
+  /* ★ 시스템 위치는 순서에서 빠진다 — 목록 맨 위 고정이라 번호를 다시 매길 대상이 아니다.
+     일반 행만 planReorder 에 넘기면 그 행들만 1..N 이 되고 시스템 행의 번호는 그대로 남는다.
+     ★ 인덱스도 movable 기준이다 — rows 기준으로 넘기면 엉뚱한 행이 움직인다. */
+  const movable = rows.filter(r => !r.is_system)
   async function reorder(fromIdx, toIdx) {
-    const ups = planReorder(rows, fromIdx, toIdx)
+    const ups = planReorder(movable, fromIdx, toIdx)
     if (!ups.length) return
     setBusy(true)
     const { error } = await supabase.from('location_vocab').upsert(ups, { onConflict: 'id' })
@@ -6780,10 +6809,11 @@ function LocationVocab() {
     reload()
   }
   async function move(i, dir) {
-    const j = i + dir; if (j < 0 || j >= rows.length) return
+    const j = i + dir; if (j < 0 || j >= movable.length) return
     await reorder(i, j)
   }
   async function toggle(row) {
+    if (row.is_system) { flash(LV_SYS_LOCK, 'err'); return }
     setBusy(true)
     const { error } = await supabase.from('location_vocab').update({ is_active: !row.is_active }).eq('id', row.id)
     setBusy(false)
@@ -6791,6 +6821,7 @@ function LocationVocab() {
     flash(row.is_active ? '「' + row.label + '」를 중지했습니다' : '「' + row.label + '」를 다시 사용합니다'); reload()
   }
   async function doDelete(row) {
+    if (row.is_system) { flash(LV_SYS_LOCK, 'err'); return }
     setBusy(true)
     const { error } = await supabase.from('location_vocab').delete().eq('id', row.id)
     setBusy(false); setDelAsk(null)
@@ -6891,14 +6922,18 @@ function LocationVocab() {
               {/* ★ 렌더는 정렬된 view 로 하되, 순서 이동은 반드시 rows 기준 인덱스(oi)로 넘긴다.
                   정렬 인덱스를 move 에 넘기면 엉뚱한 두 행의 sort_order 가 교환되어 데이터가 훼손된다.
                   정렬 중 [↑][↓] 비활성은 UI 방어일 뿐이라, 인덱스 자체를 원본 기준으로 잡아 이중으로 막는다. */}
-              <tbody>{view.map(r => { const oi = rows.findIndex(x => x.id === r.id); return <tr key={r.id} style={{ borderTop: '1px solid ' + t.border, opacity: r.is_active ? 1 : 0.55 }}>
+              <tbody>{view.map(r => { const oi = movable.findIndex(x => x.id === r.id); return <tr key={r.id} style={{ borderTop: '1px solid ' + t.border, opacity: r.is_active ? 1 : 0.55 }}>
                 <td style={{ ...tdR, fontSize: 11 }}>{r.sort_order}</td>
                 {/* ★ textAlign 을 명시한다 — #root 의 전역 text-align:center(index.css)가 상속되어
                     미지정 셀은 가운데로 렌더된다. 헤더(thL)는 좌측이라 정렬선이 어긋난다.
                     도매사 표 등 이 파일의 다른 표들이 좌측을 매번 명시하는 것과 같은 이유다. */}
                 <td style={{ padding: '8px 12px', textAlign: 'left' }}>{renId === r.id
                   ? <input autoFocus value={renVal} onChange={e => setRenVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') rename(r) }} style={{ ...ip, fontSize: 12, padding: '5px 9px', width: '100%' }} />
-                  : <span style={{ color: t.text, fontWeight: 600 }}>{r.label}</span>}</td>
+                  : <span style={{ color: t.text, fontWeight: 600 }}>
+                    {/* ★ 기존 「비활성」 배지와 **같은 토큰**이다(purpleL·lavender·purple) — 새 색을 만들지 않는다 */}
+                    {r.is_system ? <span style={{ background: t.purpleL, color: t.purple, border: '1px solid ' + t.lavender, padding: '2px 7px', borderRadius: 8, fontSize: 10, fontWeight: 700, marginRight: 6 }}>시스템</span> : null}
+                    {r.label}
+                  </span>}</td>
                 <td style={{ padding: '8px 12px', textAlign: 'left', color: t.textM, fontSize: 11 }}>{descId === r.id
                   ? <input autoFocus value={descVal} onChange={e => setDescVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveDesc(r) }} placeholder="예: 경구제 조제구역" style={{ ...ip, fontSize: 12, padding: '5px 9px', width: '100%' }} />
                   : (lvDesc(r) || <span style={{ color: t.textL }}>—</span>)}</td>
@@ -6917,12 +6952,12 @@ function LocationVocab() {
                       <button disabled={busy} onClick={() => setDescId(null)} style={{ ...bs(t.textM), marginLeft: 4 }}>취소</button></>
                     : <><button disabled={busy || sorted || oi <= 0} title={sorted ? LV_SORT_LOCK : '맨 위로'} onClick={() => reorder(oi, 0)} style={mvBtn(sorted || oi <= 0)}>⤒</button>
                       <button disabled={busy || sorted || oi <= 0} title={sorted ? LV_SORT_LOCK : '위로'} onClick={() => move(oi, -1)} style={{ ...mvBtn(sorted || oi <= 0), marginLeft: 4 }}>↑</button>
-                      <button disabled={busy || sorted || oi < 0 || oi === rows.length - 1} title={sorted ? LV_SORT_LOCK : '아래로'} onClick={() => move(oi, 1)} style={{ ...mvBtn(sorted || oi < 0 || oi === rows.length - 1), marginLeft: 4 }}>↓</button>
-                      <button disabled={busy || sorted || oi < 0 || oi === rows.length - 1} title={sorted ? LV_SORT_LOCK : '맨 아래로'} onClick={() => reorder(oi, rows.length - 1)} style={{ ...mvBtn(sorted || oi < 0 || oi === rows.length - 1), marginLeft: 4 }}>⤓</button>
-                      <button disabled={busy} onClick={() => { setDescId(null); setRenId(r.id); setRenVal(r.label) }} style={{ ...bs(t.textM), marginLeft: 4 }}>이름 변경</button>
+                      <button disabled={busy || sorted || oi < 0 || oi === movable.length - 1} title={sorted ? LV_SORT_LOCK : '아래로'} onClick={() => move(oi, 1)} style={{ ...mvBtn(sorted || oi < 0 || oi === movable.length - 1), marginLeft: 4 }}>↓</button>
+                      <button disabled={busy || sorted || oi < 0 || oi === movable.length - 1} title={sorted ? LV_SORT_LOCK : '맨 아래로'} onClick={() => reorder(oi, movable.length - 1)} style={{ ...mvBtn(sorted || oi < 0 || oi === movable.length - 1), marginLeft: 4 }}>⤓</button>
+                      <button disabled={busy || r.is_system} title={r.is_system ? LV_SYS_LOCK : ''} onClick={() => { setDescId(null); setRenId(r.id); setRenVal(r.label) }} style={{ ...bs(r.is_system ? t.textL : t.textM), marginLeft: 4 }}>이름 변경</button>
                       <button disabled={busy} onClick={() => { setRenId(null); setDescId(r.id); setDescVal(lvDesc(r)) }} style={{ ...bs(t.textM), marginLeft: 4 }}>설명</button>
-                      <button disabled={busy} onClick={() => toggle(r)} style={{ ...bs(r.is_active ? t.textL : t.green), marginLeft: 4 }}>{r.is_active ? '중지' : '다시 사용'}</button>
-                      <button disabled={busy} onClick={() => setDelAsk(r)} style={{ ...bs(t.textM), marginLeft: 4 }}>삭제</button></>}
+                      <button disabled={busy || r.is_system} title={r.is_system ? LV_SYS_LOCK : ''} onClick={() => toggle(r)} style={{ ...bs(r.is_active ? t.textL : t.green), marginLeft: 4 }}>{r.is_active ? '중지' : '다시 사용'}</button>
+                      <button disabled={busy || r.is_system} title={r.is_system ? LV_SYS_LOCK : ''} onClick={() => setDelAsk(r)} style={{ ...bs(r.is_system ? t.textL : t.textM), marginLeft: 4 }}>삭제</button></>}
                 </td>
               </tr> })}</tbody>
             </table>
