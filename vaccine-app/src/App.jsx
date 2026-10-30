@@ -330,7 +330,7 @@ function Ft() {
     margin: '10px 16px 26px', fontSize: 11, color: 'var(--v-ink-dim)',
     lineHeight: 1.7, textAlign: 'center',
   }}>
-    Copyright © 2026 JEONGHWALEE. All rights reserved. 무단 전재 및 재배포 금지.
+    © 2026 JEONGHWALEE. All rights reserved. 무단 복제 및 재배포를 금지합니다.
   </p>
 }
 

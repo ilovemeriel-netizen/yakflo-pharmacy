@@ -19,7 +19,7 @@ export const EC_CONTACT = '같은 문제가 계속되면 약제과(내선 217)�
 export const EC_RELOAD = '새로고침'
 export const EC_HOME = '대시보드로'
 export const EC_WHEN = '발생 시각'
-export const EC_COPY = 'Copyright © 2026 JEONGHWALEE. All rights reserved. 무단 전재 및 재배포 금지.'
+export const EC_COPY = '© 2026 JEONGHWALEE. All rights reserved. 무단 복제 및 재배포를 금지합니다.'
 
 /* ── 시안 색 — 전부 기존 토큰 값이다. 새 색 0건 ────────────────────────────
    아이콘 바탕 = t.lavender 45%(「일부 미반영」 알림과 같은 값) · 「!」 = t.accent(라이트) */

@@ -90,7 +90,7 @@ describe('③ 문의는 잔량 탭에만 · 공용 저작권 줄은 그대로', 
 
 describe('④ 저작권 — 한 글자도 바꾸지 않았다', () => {
   it('★ 문구 그대로', () => {
-    expect(APP).toContain('Copyright © 2026 JEONGHWALEE. All rights reserved. 무단 전재 및 재배포 금지.')
+    expect(APP).toContain('© 2026 JEONGHWALEE. All rights reserved. 무단 복제 및 재배포를 금지합니다.')
   })
   it('★ 모양도 그대로 (11px · --v-ink-dim · 가운데 · no-print)', () => {
     const ft = slice('function Ft() {', '/* ═══ 안내 띠')

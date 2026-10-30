@@ -23,7 +23,7 @@
 import { doseOf, doneOf, maskEmpNo, maskName, byDateSummary, dupNameKeys, rowNote } from './surveyCalc.js'
 
 const FOOT_NOTE = '업무용 · 사용 후 파기'
-const COPYRIGHT = 'Copyright © 2026 JEONGHWALEE. All rights reserved. 무단 전재 및 재배포 금지.'
+const COPYRIGHT = '© 2026 JEONGHWALEE. All rights reserved. 무단 복제 및 재배포를 금지합니다.'
 const FONT_URL = '/fonts/NotoSansKR-Regular-subset.ttf'
 const FONT_NAME = 'NotoSansKR'
 /* 출력자 — 사람 이름·메일을 넣지 않는다(문서가 밖으로 나갈 수 있다). 부서로 고정한다. */

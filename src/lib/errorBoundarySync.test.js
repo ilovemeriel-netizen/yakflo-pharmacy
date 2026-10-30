@@ -36,7 +36,7 @@ describe('세 사본의 문구가 같다', () => {
   })
 
   it('★ 저작권은 세 앱의 표준 문구와 같다', () => {
-    const STD = 'Copyright © 2026 JEONGHWALEE. All rights reserved. 무단 전재 및 재배포 금지.'
+    const STD = '© 2026 JEONGHWALEE. All rights reserved. 무단 복제 및 재배포를 금지합니다.'
     expect(yak.EC_COPY).toBe(STD)
     /* 실제로 각 앱 Ft() 가 쓰는 문구와도 같아야 한다 */
     for (const f of ['src/App.jsx', 'vaccine-app/src/App.jsx', 'ward-app/src/App.jsx']) {
