@@ -181,7 +181,9 @@ describe('① 약품별 집계 — 약품명', () => {
 describe('② LOT·유효기한 표', () => {
   const lotRows = () => {
     const tables = [...document.querySelectorAll('table')]
-    const lot = tables.find(tb => [...tb.querySelectorAll('th')].some(x => x.textContent.trim() === 'LOT'))
+    /* ★ 머리글에 ColMenu 가 붙어 글자가 「LOT⇅」이 된다 — 정렬 기호를 떼고 찾는다 */
+    const lot = tables.find(tb => [...tb.querySelectorAll('th')]
+      .some(x => x.textContent.replace(/[⇅▲▼✓\s]/g, '') === 'LOT'))
     return lot ? { table: lot, rows: [...lot.querySelectorAll('tbody tr')] } : null
   }
   /* ★ 이 구역은 Collapsible 안이라 접힌 채로 시작한다 — 펼쳐야 표가 생긴다 */
