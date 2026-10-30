@@ -251,12 +251,8 @@ describe('⑧ 시안 캡처', () => {
     mkdirSync(dir, { recursive: true })
     writeFileSync(dir + '/' + name + '.html', html, 'utf8')
   }
-  /* 모달 본체 + 포털로 띄운 메뉴를 함께 담는다 — 메뉴는 document.body 밑에 붙는다 */
-  const frame = () => {
-    const modal = document.querySelector('[style*="position: fixed"]')
-    const menus = [...document.body.children].filter(el => !el.contains(modal) && el !== modal.parentElement)
-    return (modal ? modal.outerHTML : '') + menus.map(m => m.innerHTML).join('')
-  }
+  /* ★ body 를 통째로 뜬다 — ColMenu 메뉴는 포털로 document.body 밑에 따로 붙어서,
+     모달만 떠내면 02(메뉴 열림) 시안에 메뉴가 빠진다. */
 
   it('01~05 를 떠 둔다', async () => {
     open()
