@@ -15,6 +15,7 @@ import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLab
 import { vaccineTabFromHash } from './lib/vaccineRoute'
 import { handleScan as scanHandle, decodeGs1 as scanDecode, scanCountQty, scanAddItem, saveScanMapping, deactivateBarcode, listBarcodes, gtinCheckOk, ownCodeLooksLikeGs1, OWN_CODE_WARN } from './lib/scan'
 import { dbErrorMsg, noRowMsg, bulkFailKind } from './lib/dbError'
+import { SEARCH_LIMIT, DEBOUNCE_MS, canPick, pickBlockedReason, BLOCK_TEXT, summaryText, filterByCategory, toggleCategory, isCategoryOn } from './lib/locPick'
 import { fetchMonthlyReportSource } from './lib/monthlyReportQuery'
 import { buildMonthlyReportDTO } from './lib/monthlyReportDTO'
 import { ThemeCtx, useTheme } from './lib/theme'
@@ -2101,7 +2102,11 @@ export function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
     return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc) };
   }, [open]);
   const active = sk === colKey;
-  const fActive = !!(filter && filter.value);
+  /* ★ 복수 선택(filter.multi)은 덧붙인 길이다 — 단일 선택 쪽 동작은 한 글자도 바뀌지 않는다.
+     복수일 때 value 는 「고른 목록」이고 null 이 전체다. 켜짐 여부는 호출자가 isOn 으로 알려 준다
+     (ColMenu 가 배열을 들여다보면 화면마다 다른 규칙이 이 부품으로 새어 든다). */
+  const fMulti = !!(filter && filter.multi);
+  const fActive = fMulti ? (filter.value != null) : !!(filter && filter.value);
   const item = (onClick, lbl, on) => <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '6px 9px', border: 'none', background: on ? t.accent + '14' : 'transparent', color: on ? t.accent : t.text, cursor: 'pointer', fontSize: 11, fontWeight: on ? 700 : 500, borderRadius: 6, whiteSpace: 'nowrap' }} onMouseEnter={e => { if (!on) e.currentTarget.style.background = t.bg }} onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}>{lbl}{on ? <span style={{ fontSize: 9 }}>✓</span> : null}</button>;
   return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: 700, verticalAlign: 'middle' }}>
     <span ref={txtRef} onClick={filter ? openFilter : undefined} title={filter ? '필터' : undefined} style={{ cursor: filter ? 'pointer' : 'default', whiteSpace: 'nowrap', fontWeight: 700, color: fActive ? t.accent : 'inherit' }}>{label}</span>
@@ -2109,8 +2114,9 @@ export function ColMenu({ colKey, label, sk, sd, setSort, filter }) {
     {open && createPortal(<>
       <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={e => { e.stopPropagation(); setOpen(false) }} />
       <div ref={menuRef} onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, minWidth: 150, maxHeight: 300, overflowY: 'auto', background: t.cardSolid, border: '1px solid ' + t.borderH, borderRadius: 10, boxShadow: '0 12px 32px rgba(46,74,98,0.18)', padding: 6, textAlign: 'left' }}>
-        {filter ? item(() => { filter.on(null); setOpen(false) }, '전체', !filter.value) : null}
-        {filter ? filter.items.map(v => item(() => { filter.on(v); setOpen(false) }, v, filter.value === v)) : null}
+        {filter ? item(() => { filter.on(null); if (!fMulti) setOpen(false) }, '전체', fMulti ? filter.value == null : !filter.value) : null}
+        {/* ★ 복수 선택은 고를 때마다 닫지 않는다 — 두 개를 고르려고 메뉴를 두 번 여는 일이 없게 */}
+        {filter ? filter.items.map(v => item(() => { filter.on(v); if (!fMulti) setOpen(false) }, v, fMulti ? !!filter.isOn?.(v) : filter.value === v)) : null}
       </div>
     </>, document.body)}
   </span>;
@@ -6445,6 +6451,14 @@ export function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
   const [sel, setSel] = useState(() => new Set())        /* 일괄 이동 선택 — 모달 로컬, 닫으면 사라진다 */
   const [dest, setDest] = useState(''); const [destOpts, setDestOpts] = useState([]); const [moveAsk, setMoveAsk] = useState(false)
   const [q, setQ] = useState('')                         /* 약품코드·약품명 검색 — 선택은 유지된다 */
+  /* ★ 검색어가 있으면 **원내 전체**에서 찾아 「이 위치로 가져오기」를 할 수 있다.
+     검색어가 없으면 지금까지처럼 이 위치 약품만 보여 준다(#372 의 중지 숨김 그대로). */
+  const [hits, setHits] = useState(null)                 /* 서버 검색 결과 {term, rows, more} — 검색어를 함께 들고 있다 */
+  const [pickAsk, setPickAsk] = useState(false)          /* 「이 위치로 가져오기」 확인 줄 */
+  const [cats, setCats] = useState(null)                 /* 구분 복수 필터 — null 이 전체 */
+  const [reloadKey, setReloadKey] = useState(0)          /* 가져오기 뒤 이 위치 목록을 다시 읽는다 */
+  const reload = () => setReloadKey(k => k + 1)
+  const { sk, sd, setSort, so } = useSort('drug_name')   /* 기본 정렬: 약품명 가나다순 */
   /* ★ 위치 안 약품의 값을 고치는 중이거나 옮길 곳을 골라 두었으면 미룬다 */
   useBusy('locdrugs-edit', editId != null || editVal !== '' || dest !== '')
   const rid = d => d.id || d.drug_code
@@ -6463,16 +6477,17 @@ export function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
   useEffect(() => {
     let on = true
     /* ★ 중지 제외 — lvUsage·구역별 인쇄와 같은 MAIN_STATS 를 쓴다. 머리글 건수 = 보이는 줄 수. */
-    supabase.from('drugs').select('id,drug_code,drug_name,category,current_qty,status').in('status', MAIN_STATS).eq('storage_location', loc).range(0, 999)
+    supabase.from('drugs').select('id,drug_code,drug_name,category,current_qty,status,storage_location').in('status', MAIN_STATS).eq('storage_location', loc).range(0, 999)
       .then(({ data, error }) => {
         if (!on) return
         if (error) { setErr(dbErrorMsg(error)); setRows([]); return }
         const d = data || []
         setCapped(d.length === 1000)
-        setRows([...d].sort((a, b) => String(a.drug_name || '').localeCompare(String(b.drug_name || ''), 'ko')))
+        /* 정렬은 화면(useSort)이 맡는다 — 기본값이 약품명 가나다순이라 결과는 같다 */
+        setRows(d)
       })
     return () => { on = false }
-  }, [loc])
+  }, [loc, reloadKey])
   /* ★ 목적지 select — 등록 어휘만 고르게 한다(자유 입력은 개별 편집의 datalist 쪽에만 남긴다).
      LocVocabDatalist 는 수정 금지라 내부 데이터를 빌려올 수 없어 여기서 따로 읽는다(38행, 비용 무시 가능). */
   useEffect(() => {
@@ -6486,21 +6501,52 @@ export function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
       })
     return () => { on = false }
   }, [])
-  /* ★ 검색은 이미 받아온 rows 를 거르는 클라이언트 필터다 — 추가 조회를 하지 않는다.
-     ★ selRows 는 검색과 무관하게 누적 선택 전체를 가리킨다. 검색어를 바꿔도 선택이 풀리지 않고,
-       bulkMove 가 이 값을 쓰므로 여러 번 검색해 모은 선택분이 한 번에 옮겨진다. */
-  const qq = q.trim().toLowerCase()
-  const shown = qq
-    ? (rows || []).filter(d => String(d.drug_code || '').toLowerCase().includes(qq) || String(d.drug_name || '').toLowerCase().includes(qq))
-    : (rows || [])
-  const selRows = (rows || []).filter(d => sel.has(rid(d)))
-  const selShown = shown.filter(d => sel.has(rid(d)))
-  const offscr = selRows.length - selShown.length      /* 검색으로 가려진 선택분 */
-  /* ★ 전체 선택·해제는 「지금 보이는 행」만 건드린다 — 앞선 검색에서 모아 둔 선택은 남는다. */
-  const allSel = !!shown.length && selShown.length === shown.length
+  const qq = q.trim()
+  const searchMode = qq.length > 0
+  /* ★ 검색은 **서버**로 간다 — 이 위치의 1,000행 안에서 고르는 게 아니라 원내 전체에서 찾는다.
+     입력이 멈춘 뒤 DEBOUNCE_MS 만 기다렸다가 한 번만 조회한다(글자마다 조회하면 한 단어에 여러 번 나간다).
+     SEARCH_LIMIT+1 을 받아 와 한 줄이 남으면 「더 있다」로 본다 — 1,000행 한계에 닿지 않는다. */
+  useEffect(() => {
+    const term = q.trim()
+    if (!term) return                     /* ★ 여기서 state 를 건드리지 않는다 — 아래 fresh 로 판단한다 */
+    let on = true
+    const timer = setTimeout(() => {
+      if (!on) return
+      const like = '%' + term.replace(/[%_]/g, m => '\\' + m) + '%'
+      supabase.from('drugs').select('id,drug_code,drug_name,category,current_qty,status,storage_location')
+        .or('drug_name.ilike.' + like + ',drug_code.ilike.' + like)
+        .order('drug_name').range(0, SEARCH_LIMIT)
+        .then(({ data, error }) => {
+          if (!on) return
+          if (error) { setErr(dbErrorMsg(error)); setHits({ term, rows: [], more: false }); return }
+          const d = data || []
+          setHits({ term, rows: d.slice(0, SEARCH_LIMIT), more: d.length > SEARCH_LIMIT })
+        })
+    }, DEBOUNCE_MS)
+    return () => { on = false; clearTimeout(timer) }
+  }, [q])
+  /* ★ 검색 결과는 **검색어와 함께** 들고 있는다. 그래서 검색어가 바뀌면 지우지 않아도
+     저절로 「낡은 결과」가 되고, 지난 검색 결과가 잠깐 비쳤다 사라지는 일이 없다. */
+  const fresh = !!(hits && hits.term === qq)
+  const seeking = searchMode && !fresh
+  const more = fresh && hits.more
+  /* 보이는 줄 = (검색 중이면 검색 결과, 아니면 이 위치) → 구분 필터 → 정렬.
+     ★ 머리글 건수도 이 배열의 길이다 — 「건수와 줄 수가 다르다」가 생기지 않는다. */
+  const base = searchMode ? (fresh ? hits.rows : []) : (rows || [])
+  const shown = so(filterByCategory(base, cats))
+  /* ★ selRows 는 지금 모드에서 고를 수 있는 줄만 가리킨다 — 체크해 둔 뒤 모드가 바뀌면
+     옮길 수 없는 줄이 섞이므로, 가져오기·이동이 쓰는 배열을 여기서 한 번만 정한다. */
+  const pickable = searchMode ? base.filter(d => canPick(d, loc)) : base
+  const selRows = pickable.filter(d => sel.has(rid(d)))
+  /* ★ 전체 선택은 **고를 수 있는 줄만** 센다 — 중지·이미 있는 약품이 섞이면
+     「전체 선택했는데 체크가 다 안 들어온다」로 보인다. */
+  const shownPick = shown.filter(d => !searchMode || canPick(d, loc))
+  const selShown = shownPick.filter(d => sel.has(rid(d)))
+  const offscr = selRows.length - selShown.length      /* 필터·검색으로 가려진 선택분 */
+  const allSel = !!shownPick.length && selShown.length === shownPick.length
   const someSel = selShown.length > 0 && !allSel
   function toggleAll() {
-    setSel(p => { const n = new Set(p); const ks = shown.map(rid)
+    setSel(p => { const n = new Set(p); const ks = shownPick.map(rid)
       if (allSel) ks.forEach(k => n.delete(k)); else ks.forEach(k => n.add(k)); return n })
   }
   function toggleOne(d) { setSel(p => { const n = new Set(p); const k = rid(d); if (n.has(k)) n.delete(k); else n.add(k); return n }) }
@@ -6541,28 +6587,46 @@ export function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
     onFlash?.('「' + d.drug_name + '」의 보관위치를 지웠습니다')
     onSaved?.()
   }
-  /* ★ 100건씩 나눠 보낸다. .in() 은 쿼리스트링으로 나가는데 UUID 36자 × 691건(O-1 전체 선택)이면
-     25KB 를 넘겨 Kong 의 URI 한계(8KB)에 걸린다 — 전체 선택이 있는 한 실제로 도달하는 경로다.
-     ★ 청크마다 독립 요청이라 단일 트랜잭션이 아니다. 부분 실패 시 롤백하지 않고
-     성공한 청크만 목록에서 빼고 실패 건수를 알린다. */
-  async function bulkMove() {
-    /* ★ .in() 은 id 로만 건다(실측: drugs 1,120건 전부 id 보유). id 가 없는 행은 보내지 않고
-       실패로 센다 — drug_code 를 id 컬럼에 넣으면 조용히 0건 매칭이 된다. */
-    const targets = selRows.filter(d => d.id)
-    let failed = selRows.length - targets.length
-    if (!selRows.length || !dest) return
+  /* ★ RPC 한 번으로 보낸다(0104 app_move_drug_location).
+     예전에는 100건씩 끊어 .in() 으로 보냈다 — 쿼리스트링이라 UUID 36자 × 691건이면 Kong 의
+     URI 한계(8KB)에 걸리기 때문이다. 그래서 **단일 트랜잭션이 아니었고**, 중간에 실패하면
+     앞 청크만 반영된 채 끝났다. RPC 는 본문으로 보내 길이 한계가 없고, 함수 한 번이 한
+     트랜잭션이라 **중간에 실패하면 전부 취소**된다.
+     ★ 돌려받는 값은 **실제로 바뀐 행수**다 — 이미 그 위치인 행은 세지 않는다. */
+  async function moveTo(target, keys) {
+    const ids = keys.filter(d => d.id).map(d => d.id)
+    const noId = keys.length - ids.length
+    if (!ids.length) { onFlash?.('옮길 수 있는 행이 없습니다', 'err'); return null }
     setSaving(true)
-    const okKeys = []
-    for (let i = 0; i < targets.length; i += 100) {
-      const chunk = targets.slice(i, i + 100)
-      const { error } = await supabase.from('drugs').update({ storage_location: dest }).in('id', chunk.map(d => d.id))
-      if (error) failed += chunk.length; else okKeys.push(...chunk.map(rid))
-    }
-    setSaving(false); setMoveAsk(false)
-    if (okKeys.length) { dropRows(okKeys); onSaved?.() }
-    if (failed) onFlash?.(okKeys.length.toLocaleString() + '건 이동 완료, ' + failed.toLocaleString() + '건 실패했습니다', 'err')
-    else onFlash?.(okKeys.length.toLocaleString() + '건을 「' + dest + '」로 옮겼습니다')
+    const { data, error } = await supabase.rpc('app_move_drug_location', { p_ids: ids, p_dest: target })
+    setSaving(false)
+    if (error) { onFlash?.(dbErrorMsg(error), 'err'); return null }
+    if (noId) onFlash?.(noId.toLocaleString() + '건은 식별자가 없어 건너뛰었습니다', 'err')
+    return Number(data) || 0
   }
+  async function bulkMove() {
+    if (!selRows.length || !dest) return
+    const n = await moveTo(dest, selRows)
+    setMoveAsk(false)
+    if (n === null) return
+    dropRows(selRows.map(rid)); onSaved?.()
+    onFlash?.(n.toLocaleString() + '건을 「' + dest + '」로 옮겼습니다')
+  }
+  /* ★ 원내 전체 검색에서 고른 약품을 이 위치로 가져온다. 목적지는 지금 보고 있는 위치다. */
+  async function bulkPick() {
+    if (!selRows.length) return
+    const n = await moveTo(loc, selRows)
+    setPickAsk(false)
+    if (n === null) return
+    setSel(new Set()); setQ('')
+    onSaved?.()
+    reload()
+    onFlash?.(n.toLocaleString() + '건을 「' + loc + '」로 가져왔습니다')
+  }
+  /* 구분 복수 필터 — ColMenu 의 「전체」가 on(null) 을 부르고, 각 항목은 on(값)으로 토글한다.
+     ★ 켜짐 판단을 ColMenu 에 넘기지 않고 isOn 으로 알려 준다(부품이 화면 규칙을 모르게 둔다). */
+  const catFilter = { items: CATS, multi: true, value: cats, isOn: v => isCategoryOn(cats, v),
+    on: v => setCats(v === null ? null : toggleCategory(cats, v, CATS)) }
   const mh = { padding: '8px 12px', fontSize: 11, fontWeight: 700, color: t.textM, borderBottom: '1px solid ' + t.border, whiteSpace: 'nowrap' }
   const md = { padding: '7px 12px', fontSize: 11.5, color: t.text }
   const msg = c => ({ padding: '28px 20px', textAlign: 'center', color: c, fontSize: 13 })
@@ -6571,37 +6635,46 @@ export function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
       <div onMouseDown={onHeaderMouseDown} style={{ background: t.nav, padding: '16px 20px', color: '#fff', cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ textAlign: 'left' }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>{loc}{desc ? ' · ' + desc : ''}</div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{rows === null ? '불러오는 중…' : rows.length.toLocaleString() + '건'}</div>
+          {/* ★ 머리글 건수 = 보이는 줄 수. 필터를 걸면 함께 줄어든다 — 숫자와 줄 수가 어긋나지 않는다. */}
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{rows === null ? '불러오는 중…' : (searchMode ? '원내 검색 ' : '') + shown.length.toLocaleString() + '건'}</div>
         </div>
         <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 28, height: 28, borderRadius: 8, cursor: 'pointer', fontSize: 15, flexShrink: 0 }}>✕</button>
       </div>
       {/* ★ 검색창은 스크롤 박스 밖이다 — 안에 두면 691건(O-1)을 훑는 동안 위로 밀려 사라진다.
           ★ 헤더의 건수는 구역 총건수를 그대로 두고, 필터 결과는 이 줄 우측에만 표시한다. */}
-      {!!(rows || []).length && <div style={{ borderTop: '1px solid ' + t.border, padding: '9px 14px', display: 'flex', gap: 8, alignItems: 'center', textAlign: 'left' }}>
+      {/* ★ 비어 있는 위치에서도 검색은 열어 둔다 — 「가져오기」가 바로 그런 자리에서 필요하다 */}
+      {rows !== null && <div style={{ borderTop: '1px solid ' + t.border, padding: '9px 14px', display: 'flex', gap: 8, alignItems: 'center', textAlign: 'left' }}>
         <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="약품코드 · 약품명 검색" style={{ width: '100%', padding: '5px 26px 5px 9px', border: '1px solid ' + t.border, borderRadius: 7, fontSize: 11.5, outline: 'none', background: t.card, color: t.text, textAlign: 'left', boxSizing: 'border-box' }} />
           {!!q && <button onClick={() => setQ('')} title="검색어 지우기" style={{ position: 'absolute', right: 4, border: 'none', background: 'transparent', color: t.textL, cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '0 3px' }}>×</button>}
         </div>
-        <span style={{ fontSize: 11, color: t.textM, whiteSpace: 'nowrap', fontWeight: 600 }}>{qq ? rows.length.toLocaleString() + '건 중 ' + shown.length.toLocaleString() + '건' : rows.length.toLocaleString() + '건'}</span>
+        <span style={{ fontSize: 11, color: t.textM, whiteSpace: 'nowrap', fontWeight: 600 }}>{seeking ? '찾는 중…' : searchMode ? '원내 ' + shown.length.toLocaleString() + '건' : shown.length.toLocaleString() + '건'}</span>
       </div>}
       <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
         {err ? <div style={msg(t.red)}>{err}</div>
           : rows === null ? <div style={msg(t.textL)}>불러오는 중…</div>
-            : !rows.length ? <div style={msg(t.textL)}>해당 위치의 약품이 없습니다</div>
-              : !shown.length ? <div style={msg(t.textL)}>검색 결과가 없습니다</div>
-              : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            : (searchMode && seeking) ? <div style={msg(t.textL)}>찾는 중…</div>
+              : (!searchMode && !rows.length) ? <div style={msg(t.textL)}>해당 위치의 약품이 없습니다</div>
+                : !shown.length ? <div style={msg(t.textL)}>검색 결과가 없습니다</div>
+                  : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ background: t.bg }}>
                   {/* ★ 부분 선택은 indeterminate — React 가 prop 으로 받지 않아 ref 로 DOM 에 직접 건다 */}
                   <th style={{ ...mh, textAlign: 'center', width: 36 }}><input type="checkbox" checked={allSel} ref={el => { if (el) el.indeterminate = someSel }} onChange={toggleAll} title="전체 선택" style={{ accentColor: t.accent, cursor: 'pointer', margin: 0 }} /></th>
-                  <th style={{ ...mh, textAlign: 'left', width: 112 }}>약품코드</th>
-                  <th style={{ ...mh, textAlign: 'left' }}>약품명</th>
-                  <th style={{ ...mh, textAlign: 'left', width: 76 }}>구분</th>
-                  <th style={{ ...mh, textAlign: 'right', width: 76 }}>현재고</th>
+                  {/* ★ 머리글은 공용 ColMenu 다(수요조사 명단·향정마약과 같은 부품) — 정렬은 오름→내림→해제. */}
+                  <th style={{ ...mh, textAlign: 'left', width: 112 }}><ColMenu colKey="drug_code" label="약품코드" sk={sk} sd={sd} setSort={setSort} /></th>
+                  <th style={{ ...mh, textAlign: 'left' }}><ColMenu colKey="drug_name" label="약품명" sk={sk} sd={sd} setSort={setSort} /></th>
+                  <th style={{ ...mh, textAlign: 'left', width: 76 }}><ColMenu colKey="category" label="구분" sk={sk} sd={sd} setSort={setSort} filter={catFilter} /></th>
+                  <th style={{ ...mh, textAlign: 'right', width: 76 }}><ColMenu colKey="current_qty" label="현재고" sk={sk} sd={sd} setSort={setSort} /></th>
+                  {/* ★ 「현재 위치」는 검색 중에만 — 이 위치 목록에서는 전부 같은 값이라 자리만 먹는다 */}
+                  {searchMode && <th style={{ ...mh, textAlign: 'left', width: 92 }}>현재 위치</th>}
                   <th style={{ ...mh, textAlign: 'center', width: 64 }}>상태</th>
                 </tr></thead>
-                <tbody>{shown.map(d => <tr key={rid(d)} style={{ borderTop: '1px solid ' + t.border }}>
-                  <td style={{ ...md, textAlign: 'center' }}><input type="checkbox" checked={sel.has(rid(d))} onChange={() => toggleOne(d)} style={{ accentColor: t.accent, cursor: 'pointer', margin: 0 }} /></td>
-                  <td style={{ ...md, textAlign: 'left', color: t.textM, whiteSpace: 'nowrap' }}>{d.drug_code}</td>
+                {/* ★ 검색 중에는 고를 수 없는 줄이 섞인다 — 중지 약품과 이미 이 위치에 있는 약품.
+                    회색으로 눕히고 체크를 끄되 **숨기지는 않는다**: 「찾았는데 없다」로 보이면 다시 찾는다. */}
+                <tbody>{shown.map(d => { const blocked = searchMode ? pickBlockedReason(d, loc) : null
+                  return <tr key={rid(d)} style={{ borderTop: '1px solid ' + t.border, ...(blocked ? { color: t.textL, background: t.bg } : {}) }} title={blocked ? BLOCK_TEXT[blocked] : undefined}>
+                  <td style={{ ...md, textAlign: 'center' }}><input type="checkbox" checked={sel.has(rid(d))} disabled={!!blocked} onChange={() => toggleOne(d)} title={blocked ? BLOCK_TEXT[blocked] : undefined} style={{ accentColor: t.accent, cursor: blocked ? 'not-allowed' : 'pointer', margin: 0, opacity: blocked ? 0.4 : 1 }} /></td>
+                  <td style={{ ...md, textAlign: 'left', color: blocked ? t.textL : t.textM, whiteSpace: 'nowrap' }}>{d.drug_code}</td>
                   {/* ★ 편집칸은 약품명 셀 안에 넣는다 — 열을 늘리면 약품명 폭이 부족해진다.
                       datalist 는 기존 LocVocabDatalist 를 그대로 쓴다(자유 입력 유지). */}
                   <td style={{ ...md, textAlign: 'left', fontWeight: 600 }}>{editId === ekey(d)
@@ -6623,13 +6696,20 @@ export function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
                           : <button disabled={saving} onClick={() => setClearAsk(true)} style={{ padding: '3px 9px', borderRadius: 7, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap' }}>위치 해제</button>}
                       </span>
                     </span>
-                    : <span onClick={() => { setClearAsk(false); setEditVal(''); setEditId(ekey(d)) }} title="보관위치 수정" style={{ color: t.purple, cursor: 'pointer' }}>{d.drug_name}</span>}</td>
-                  <td style={{ ...md, textAlign: 'left', color: t.textM }}>{d.category || '-'}</td>
-                  <td style={{ ...md, textAlign: 'right' }}>{(d.current_qty || 0).toLocaleString()}</td>
+                    : searchMode
+                      /* ★ 검색 결과에서는 이름을 눌러도 편집칸이 열리지 않는다 — 그 약품은 이 위치에 없다.
+                         위치를 바꾸는 길은 아래 「이 위치로 가져오기」 하나뿐이다. */
+                      ? <span style={{ color: blocked ? t.textL : t.text }}>{d.drug_name}</span>
+                      : <span onClick={() => { setClearAsk(false); setEditVal(''); setEditId(ekey(d)) }} title="보관위치 수정" style={{ color: t.purple, cursor: 'pointer' }}>{d.drug_name}</span>}</td>
+                  <td style={{ ...md, textAlign: 'left', color: t.textL }}>{d.category || '-'}</td>
+                  <td style={{ ...md, textAlign: 'right', color: blocked ? t.textL : t.text }}>{(d.current_qty || 0).toLocaleString()}</td>
+                  {searchMode && <td style={{ ...md, textAlign: 'left', color: t.textL, whiteSpace: 'nowrap' }}>{(d.storage_location || '').trim() || '—'}</td>}
                   <td style={{ ...md, textAlign: 'center' }}><SB s={d.status} /></td>
-                </tr>)}</tbody>
+                </tr> })}</tbody>
               </table>}
-        {capped && <div style={{ padding: '10px 14px', borderTop: '1px solid ' + t.border, background: t.bg, fontSize: 11.5, color: t.amber, textAlign: 'left' }}>1,000건 상한에 걸려 일부가 표시되지 않았을 수 있습니다.</div>}
+        {/* ★ 50건을 넘으면 더 받아 오지 않는다 — 1,000행 한계에 닿기 전에 좁히게 한다 */}
+        {searchMode && more && <div style={{ padding: '10px 14px', borderTop: '1px solid ' + t.border, background: t.bg, fontSize: 11.5, color: t.amber, textAlign: 'left' }}>결과가 {SEARCH_LIMIT}건을 넘습니다 — 더 좁혀 검색해 주세요</div>}
+        {!searchMode && capped && <div style={{ padding: '10px 14px', borderTop: '1px solid ' + t.border, background: t.bg, fontSize: 11.5, color: t.amber, textAlign: 'left' }}>1,000건 상한에 걸려 일부가 표시되지 않았을 수 있습니다.</div>}
         <LocVocabDatalist id="loc-vocab-inline" />
       </div>
       {/* ★ 푸터는 스크롤 컨테이너 밖이다 — 안에 두면 691건(O-1) 목록을 끝까지 내려야 보인다.
@@ -6638,8 +6718,21 @@ export function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
             누적해 둔 선택분을 옮길 수 없게 된다.
           ★ 선택 건수는 누적 전체(selRows)이고, 검색으로 가려진 선택분은 「화면 밖 M건」으로 병기한다 —
             화면에 안 보이는 것까지 함께 옮겨진다는 사실을 숨기지 않는다. */}
-      {!!(rows || []).length && <div style={{ borderTop: '1px solid ' + t.border, background: t.bg, padding: '10px 14px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', textAlign: 'left' }}>
-        {moveAsk
+      {rows !== null && <div style={{ borderTop: '1px solid ' + t.border, background: t.bg, padding: '10px 14px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', textAlign: 'left' }}>
+        {searchMode
+          ? (pickAsk
+            /* ★ 확인 줄에 **지금 어디 있는지**를 함께 적는다 — 「어디서 가져오는지」를 모르고 누르면
+               다른 위치의 선반이 비는 것을 나중에야 알게 된다. */
+            ? <><span style={{ fontSize: 12, color: t.text, fontWeight: 600 }}>{selRows.length.toLocaleString()}건을 「{loc}」로 옮깁니다. 지금 위치: {summaryText(selRows)}</span>
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                <button disabled={saving} onClick={bulkPick} style={{ padding: '5px 13px', borderRadius: 7, border: '1px solid ' + t.accent, background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{saving ? '옮기는 중…' : '가져오기'}</button>
+                <button disabled={saving} onClick={() => setPickAsk(false)} style={{ padding: '5px 13px', borderRadius: 7, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>취소</button>
+              </span></>
+            : <><span style={{ fontSize: 11.5, color: selRows.length ? t.text : t.textL, fontWeight: 600 }}>{selRows.length.toLocaleString()}건 선택됨{offscr > 0 ? ' (화면 밖 ' + offscr.toLocaleString() + '건)' : ''}</span>
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button disabled={saving || !selRows.length} onClick={() => setPickAsk(true)} style={{ padding: '5px 13px', borderRadius: 7, border: '1px solid ' + (selRows.length ? t.accent : t.border), background: selRows.length ? t.accent : 'transparent', color: selRows.length ? '#fff' : t.textL, cursor: selRows.length ? 'pointer' : 'not-allowed', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>이 위치로 가져오기</button>
+              </span></>)
+          : moveAsk
           ? <><span style={{ fontSize: 12, color: t.text, fontWeight: 600 }}>{selRows.length.toLocaleString()}건을 「{dest}」로 이동합니다</span>
             <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
               <button disabled={saving} onClick={bulkMove} style={{ padding: '5px 13px', borderRadius: 7, border: '1px solid ' + t.accent, background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{saving ? '이동 중…' : '확인'}</button>
