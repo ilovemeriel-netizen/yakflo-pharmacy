@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { useState } from 'react'
-import { render, cleanup, waitFor } from '@testing-library/react'
+import { render, cleanup, waitFor, fireEvent } from '@testing-library/react'
 
 /* ── 재료 — 유효기한 동률·미기재·아주 긴 이름을 일부러 섞는다 ────────── */
 const LONG = '65세 이상 어르신(플루백신VIII-TF주 0.5mL)'      /* 25자 — 옛 규칙이 18자에서 잘랐다 */
@@ -246,6 +246,136 @@ describe('④ 정렬·여백은 #379 그대로 (함정 #31)', () => {
     await openLot()
     const tds = cellsOf(lotRows()[0])
     for (const i of [3, 4]) expect(css(tds[i]).textAlign).toBe('right')
+  })
+})
+
+/* 메뉴 항목 — ColMenu 는 켜진 항목 뒤에 ✓ 를 붙이므로 이름으로 찾을 때 기호를 뗀다 */
+const menuItem = (label) => [...document.querySelectorAll('button')]
+  .find(b => clean(b.textContent) === clean(label))
+const openMenu = async (th) => {
+  const lab = th.querySelector('span[title="필터"]')
+  expect(lab, '필터 라벨을 찾지 못했다').toBeTruthy()
+  lab.click()
+  await waitFor(() => expect(menuItem('전체')).toBeTruthy())
+}
+/* 구역 머리의 건수 — 「N건」 또는 「N건 / 전체 M」.
+   ★ 화면에 「1건」 같은 글자가 여러 곳(위쪽 요약 카드 「유효기한 임박 1건」 등)에 있다.
+     조상을 더듬어 찾으면 그 카드를 집는다. 구역을 여닫는 **단추 안**의 글자만 본다 —
+     제목과 건수가 한 단추에 나란히 있으므로 「LOT · 유효기한」을 품은 단추가 곧 그 구역이다. */
+const lotHint = () => {
+  const btn = [...document.querySelectorAll('button')].find(b => b.textContent.includes('LOT · 유효기한'))
+  if (!btn) return ''
+  const el = [...btn.querySelectorAll('span')].find(e => /^\d+건/.test(e.textContent.trim()))
+  return el ? el.textContent.trim() : ''
+}
+
+describe('⑦ 약품 복수 필터 (LOT 표)', () => {
+  it('약품 머리글에만 필터가 붙는다', async () => {
+    await openLot()
+    expect(thOf('약품').querySelector('span[title="필터"]'), '약품').toBeTruthy()
+    for (const h of ['LOT', '유효기한', '입고', '잔량(참고)', '상태']) {
+      expect(thOf(h).querySelector('span[title="필터"]'), h + ' 는 필터 없음').toBeNull()
+    }
+  })
+  it('메뉴에 「코드 · 이름」으로 항목이 뜬다', async () => {
+    await openLot()
+    await openMenu(thOf('약품'))
+    expect(menuItem('TETRA6 · ' + LONG), 'TETRA6 항목').toBeTruthy()
+    expect(menuItem('SPIKVX · 스파이크박스프리필드시린지주'), 'SPIKVX 항목').toBeTruthy()
+  })
+  it('★ 하나를 끄면 그 약품 줄이 사라지고 건수도 함께 준다', async () => {
+    await openLot()
+    expect(lotHint()).toMatch(/^4건/)
+    await openMenu(thOf('약품'))
+    menuItem('SPIKVX · 스파이크박스프리필드시린지주').click()
+    await waitFor(() => expect(lotRows().length).toBe(2))
+    expect(lotHint(), '건수 = 보이는 줄 수').toMatch(/^2건 \/ 전체 4/)
+    expect(lotRows().map((_, i) => nameAt(i)).join(' ')).not.toContain('SPIKVX')
+  })
+  it('★ 복수 선택 — 고를 때마다 메뉴가 닫히지 않는다', async () => {
+    await openLot()
+    await openMenu(thOf('약품'))
+    menuItem('SPIKVX · 스파이크박스프리필드시린지주').click()
+    /* ★ 한 번 누를 때마다 재렌더를 기다린다 — 연달아 누르면 두 번째가 **낡은 값**으로
+       토글해 첫 선택이 묻힌다(정렬에서 겪은 것과 같은 함정). */
+    await waitFor(() => expect(lotRows().length).toBe(2))
+    expect(menuItem('TETRA5 · ' + LONG2), '메뉴가 열린 채여야 한다').toBeTruthy()
+    menuItem('TETRA5 · ' + LONG2).click()
+    await waitFor(() => expect(lotRows().length).toBe(1))
+    expect(nameAt(0)).toContain('TETRA6')
+  })
+  it('「전체」로 되돌리면 건수도 돌아온다', async () => {
+    await openLot()
+    await openMenu(thOf('약품'))
+    menuItem('SPIKVX · 스파이크박스프리필드시린지주').click()
+    await waitFor(() => expect(lotRows().length).toBe(2))
+    menuItem('전체').click()
+    await waitFor(() => expect(lotRows().length).toBe(4))
+    expect(lotHint()).toMatch(/^4건/)
+    expect(lotHint(), '전체면 「/ 전체」를 붙이지 않는다').not.toContain('/ 전체')
+  })
+  it('필터와 정렬이 함께 걸린다', async () => {
+    await openLot()
+    await openMenu(thOf('약품'))
+    menuItem('SPIKVX · 스파이크박스프리필드시린지주').click()
+    await waitFor(() => expect(lotRows().length).toBe(2))
+    thOf('LOT').querySelector('span[title="정렬(오름→내림→해제)"]').click()
+    await waitFor(() => expect(lotAt(0)).toBe('LOT-B'))
+    expect(lotRows().length, '필터가 풀리지 않는다').toBe(2)
+  })
+})
+
+describe('⑧ 공개 표시명 표 — 약품명 정렬·필터', () => {
+  const pubTable = () => [...document.querySelectorAll('table')]
+    .find(tb => [...tb.querySelectorAll('th')].some(x => clean(x.textContent) === '공개표시명'))
+  const pubRows = () => [...pubTable().querySelectorAll('tbody tr')]
+  const pubTh = (label) => [...pubTable().querySelectorAll('th')]
+    .find(x => clean(x.textContent).startsWith(clean(label)))
+  const pubCount = () => {
+    const el = [...document.querySelectorAll('*')]
+      .filter(e => e.children.length === 0 && /^\d+건( \/ 전체 \d+)?$/.test(e.textContent.trim()))
+    return el.length ? el[el.length - 1].textContent.trim() : ''
+  }
+  async function openPub() {
+    open()
+    await waitFor(() => expect(pubTable()).toBeTruthy())
+  }
+
+  it('약품명 머리글에만 메뉴가 붙는다', async () => {
+    await openPub()
+    expect(pubTh('약품명').querySelector('span[title="필터"]'), '약품명').toBeTruthy()
+    for (const h of ['약품코드', '재원', '공개 표시명', '공개']) {
+      expect(pubTh(h).querySelector('span[title="필터"]'), h + ' 는 변경 없음').toBeNull()
+    }
+  })
+  it('★ 필터를 걸면 줄과 건수가 함께 준다', async () => {
+    await openPub()
+    const all = pubRows().length
+    expect(pubCount()).toBe(all + '건')
+    await openMenu(pubTh('약품명'))
+    menuItem('스파이크박스프리필드시린지주').click()
+    await waitFor(() => expect(pubRows().length).toBe(all - 1))
+    expect(pubCount()).toBe((all - 1) + '건 / 전체 ' + all)
+  })
+  it('정렬 — 약품명 가나다순으로 선다', async () => {
+    await openPub()
+    pubTh('약품명').querySelector('span[title="정렬(오름→내림→해제)"]').click()
+    await waitFor(() => expect(pubTh('약품명').textContent).toMatch(/[▲▼]/))
+    const names = pubRows().map(r => r.querySelectorAll('td')[2].textContent.trim())
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'ko')))
+  })
+  it('★ 필터 중에도 공개 표시명 입력·저장 대상이 그대로다 (데이터는 안 건드린다)', async () => {
+    await openPub()
+    /* 먼저 **걸러질 줄**의 표시명을 고친다 */
+    const target = pubRows().find(r => r.querySelectorAll('td')[2].textContent.includes('스파이크박스'))
+    const input = target.querySelector('input')
+    fireEvent.change(input, { target: { value: '코로나(모더나)' } })
+    await waitFor(() => expect(document.body.textContent).toContain('바뀐 칸 1개'))
+    /* 그 줄을 걸러 내도 「바뀐 칸」은 그대로여야 한다 */
+    await openMenu(pubTh('약품명'))
+    menuItem('스파이크박스프리필드시린지주').click()
+    await waitFor(() => expect(pubRows().every(r => !r.textContent.includes('스파이크박스'))).toBe(true))
+    expect(document.body.textContent, '안 보이는 수정이 사라지면 안 된다').toContain('바뀐 칸 1개')
   })
 })
 
