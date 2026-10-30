@@ -171,8 +171,14 @@ function buildSummary(ws, dto, mono) {
 function buildList(ws, dto, mono) {
   for (const [col, width] of Object.entries(LIST_WIDTHS)) ws.getColumn(col).width = width
 
+  /* 머리글 — 기준 양식에는 서식이 없다. 글자·굵기·크기·색·정렬은 그대로 두고
+     ★ 테두리만 데이터 칸과 같게 넣는다. 데이터에만 선이 있으면 머리글만 떠 보인다. */
   const head = ws.getRow(1)
-  LIST_HEADERS.forEach((h, i) => { head.getCell(i + 1).value = h })
+  LIST_HEADERS.forEach((h, i) => {
+    const cell = head.getCell(i + 1)
+    cell.value = h
+    cell.border = { left: { style: 'thin' }, right: { style: 'thin' }, top: { style: 'thin' }, bottom: { style: 'thin' } }
+  })
 
   dto.list.forEach((item, i) => {
     const row = ws.getRow(i + 2)

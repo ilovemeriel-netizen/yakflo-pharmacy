@@ -31,6 +31,7 @@ const EXCEPTIONS = {
 const LIST_EXCEPTIONS = [
   '수량 6열(D·F·H·J·K·L) 형식은 #,##0.00;(#,##0.00) — 스펙 numFmt_D_M 은 금액 4열에만 적용',
   '데이터 칸 테두리 · 세로 가운데 정렬 · 약품명(B열) 줄바꿈 추가 — 열 너비는 스펙 그대로',
+  '머리글(1행)에도 같은 테두리 — 글자·굵기·크기·색·정렬은 기준 양식 그대로(서식 없음)',
 ]
 
 /* ── 재료 — 2026년 9월 마감값 ───────────────────────────────────────────── */
@@ -288,9 +289,22 @@ describe('약품목록 시트', () => {
       expect(ws().getCell('B' + r).alignment.wrapText).toBe(true)
     }
   })
-  it('헤더 행은 기준 양식처럼 서식을 넣지 않는다', () => {
-    expect(fillOf(ws().getCell('A1'))).toBe(null)
-    expect(sides(ws().getCell('A1')).length).toBe(0)
+  it('머리글에도 데이터 칸과 같은 테두리가 들어간다 (승인 보정)', () => {
+    for (let i = 1; i <= LIST_HEADERS.length; i++) {
+      const cell = ws().getRow(1).getCell(i)
+      expect(sides(cell).slice().sort(), i + '번째 머리글 테두리').toEqual(['bottom', 'left', 'right', 'top'])
+      expect(sides(cell)).toEqual(sides(ws().getRow(2).getCell(i)))   /* 데이터 칸과 같은 테두리 */
+    }
+  })
+  it('머리글의 배경·굵기·크기·색·정렬은 기준 양식 그대로 — 테두리만 더했다', () => {
+    for (let i = 1; i <= LIST_HEADERS.length; i++) {
+      const cell = ws().getRow(1).getCell(i)
+      expect(fillOf(cell), i + '번째 머리글 배경').toBe(null)
+      /* 테두리를 넣으면 exceljs 가 기본 글꼴을 붙이는데, 거기엔 argb 가 없다(테마 색) */
+      expect(colorOf(cell) || null, i + '번째 머리글 글자색').toBe(null)
+      expect(!!(cell.font && cell.font.bold), i + '번째 머리글 굵기').toBe(false)
+      expect(cell.alignment == null || Object.keys(cell.alignment).length === 0, i + '번째 머리글 정렬').toBe(true)
+    }
   })
   it('조용한 약품은 들어 있지 않다', () => {
     const codes = ws().getColumn('A').values.slice(2)
@@ -353,8 +367,9 @@ describe('스펙 비교에서 빼 둔 항목이 문서로 남아 있다', () => 
   it('요약 보정은 5종 9칸뿐', () => {
     expect(Object.keys(EXCEPTIONS).sort()).toEqual(['B10', 'B21', 'B25', 'B26', 'B5', 'B9', 'C18', 'C6', 'F13'])
   })
-  it('약품목록 보정은 2종뿐 — K열 너비는 예외가 아니다', () => {
-    expect(LIST_EXCEPTIONS.length).toBe(2)
+  it('약품목록 보정은 3종뿐 — K열 너비는 예외가 아니다', () => {
+    expect(LIST_EXCEPTIONS.length).toBe(3)
     expect(LIST_EXCEPTIONS.join(' ')).not.toContain('K열')
+    expect(LIST_EXCEPTIONS.join(' ')).toContain('머리글(1행)에도 같은 테두리')
   })
 })
