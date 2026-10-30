@@ -166,11 +166,15 @@ describe('① 약품별 집계 — 약품명', () => {
     const tds = tdsOfRow(document.querySelectorAll('tbody tr')[0])
     for (const i of [3, 4, 5, 6, 7]) expect(css(tds[i]).textAlign, i + '번째 칸').toBe('right')
   })
-  it('약품코드 칸은 현재 정렬을 유지한다 (이번 범위 아님)', async () => {
+  it('★ 약품코드 칸도 왼쪽 — 머리글과 같은 여백', async () => {
     open()
     await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBeGreaterThan(0))
     const code = tdsOfRow(document.querySelectorAll('tbody tr')[0])[0]
-    expect(code.style.textAlign, '직접 지정하지 않았다').toBe('')
+    const th = thOf('약품코드')
+    expect(code.style.textAlign, '칸에 직접 지정').toBe('left')
+    expect(css(code).textAlign).toBe('left')
+    expect(css(code).paddingLeft, '머리글과 같은 여백').toBe(css(th).paddingLeft)
+    expect(css(code).paddingLeft).toBe('12px')
   })
 })
 
@@ -219,6 +223,51 @@ describe('② LOT·유효기한 표', () => {
   })
 })
 
+describe('②-2 이벤트 이력 표', () => {
+  /* 이 표는 계정 카드의 [이력] 을 눌러야 열린다 */
+  async function openHistory() {
+    open()
+    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBeGreaterThan(0))
+    const btn = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '이력')
+    expect(btn, '[이력] 버튼을 찾지 못했다').toBeTruthy()
+    btn.click()
+    await waitFor(() => expect(histTable()).toBeTruthy())
+  }
+  const histTable = () => [...document.querySelectorAll('table')]
+    .find(tb => { const h = [...tb.querySelectorAll('th')].map(x => x.textContent.trim()); return h[0] === '일자' && h.includes('유형') })
+
+  it('일자·유형·대상 칸이 왼쪽으로 선다', async () => {
+    await openHistory()
+    const tds = [...histTable().querySelectorAll('tbody tr')[0].querySelectorAll('td')]
+    for (const [i, nm] of [[0, '일자'], [1, '유형'], [2, '대상']]) {
+      expect(tds[i].style.textAlign, nm + ' 직접 지정').toBe('left')
+      expect(css(tds[i]).textAlign, nm + ' 정렬').toBe('left')
+    }
+  })
+  it('★ 머리글과 왼쪽 여백이 같다 (둘 다 8px)', async () => {
+    await openHistory()
+    const ths = [...histTable().querySelectorAll('th')]
+    const tds = [...histTable().querySelectorAll('tbody tr')[0].querySelectorAll('td')]
+    for (const i of [0, 1, 2]) {
+      expect(css(ths[i]).textAlign, i + '번째 머리글').toBe('left')
+      expect(css(tds[i]).paddingLeft, i + '번째 여백').toBe(css(ths[i]).paddingLeft)
+      expect(css(tds[i]).paddingLeft).toBe('8px')
+    }
+  })
+  it('수량 칸은 오른쪽 그대로', async () => {
+    await openHistory()
+    const tds = [...histTable().querySelectorAll('tbody tr')[0].querySelectorAll('td')]
+    expect(css(tds[3]).textAlign).toBe('right')
+  })
+  it('★ 하위 행(LOT·유효기한)도 왼쪽 — inline-flex 가 가운데로 밀리지 않는다', async () => {
+    await openHistory()
+    const sub = [...histTable().querySelectorAll('tbody td')].find(x => x.getAttribute('colspan') === '5')
+    expect(sub, 'LOT 하위 행을 찾지 못했다').toBeTruthy()
+    expect(sub.style.textAlign).toBe('left')
+    expect(css(sub).paddingLeft).toBe('8px')
+  })
+})
+
 /* ★ 시안 캡처 — 실제 렌더 결과를 떠 둔다(함정 #27). CAPTURE_DIR 이 있을 때만 파일로 남긴다.
    표 두 개를 모두 담아야 하므로 LOT 구역을 펼친 뒤에 뜬다. */
 describe('④ 시안 캡처', () => {
@@ -232,6 +281,9 @@ describe('④ 시안 캡처', () => {
     for (let k = 0; k < 6 && el; k++) { if (el.onclick) break; el = el.parentElement }
     if (el) el.click()
     await waitFor(() => expect(document.querySelectorAll('table').length).toBeGreaterThan(2))
+    /* 이벤트 이력도 함께 담는다 — 이번에 같이 고친 표다 */
+    const hist = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '이력')
+    if (hist) { hist.click(); await waitFor(() => expect(document.querySelectorAll('table').length).toBeGreaterThan(3)) }
     if (dir) {
       mkdirSync(dir, { recursive: true })
       writeFileSync(dir + '/app.html', rootEl.innerHTML, 'utf8')

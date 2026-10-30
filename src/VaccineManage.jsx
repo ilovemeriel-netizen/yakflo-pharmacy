@@ -722,7 +722,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
                   const bgc = i % 2 ? t.bg : t.card
                   return <tr key={r.id}>
                     {/* ★ 표는 밝은 배경이라 라벤더 배지가 그대로 읽힌다 — 기존 badge() 토큰 재사용 */}
-                    <td style={{ ...td, position: 'sticky', left: 0, zIndex: 2, background: bgc, fontWeight: 600 }}>
+                    <td style={{ ...txt, position: 'sticky', left: 0, zIndex: 2, background: bgc, fontWeight: 600 }}>
                       {r.noDrug ? badge(NO_DRUG, t.lavender) : r.drug_code}</td>
                     {/* ★ 약품명 — 매칭 실패는 '—'(오류가 아니다). 긴 이름은 ellipsis + title */}
                     <td title={r.drug_name || undefined}
@@ -1220,6 +1220,10 @@ function FixList({ t, btn, ip, badge, evts, cats, onFix }) {
   useBusy('vaccine-fix', target != null || reason !== '')
   const catName = id => (cats.find(c => c.id === id) || {}).label || ''
   const td = { padding: '7px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border, color: t.text }
+  /* ★ 글자 칸 — td 에 textAlign 이 없어 `#root { text-align: center }` 를 상속해 가운데로 선다.
+       머리글은 왼쪽을 명시하고 있어 둘이 어긋났다. 여백은 머리글도 같은 td(8px)를 쓰므로
+       **정렬만** 지정하면 한 세로선에 선다. 숫자 칸(수량)은 지금처럼 오른쪽 그대로 둔다. */
+  const txt = { ...td, textAlign: 'left' }
   return <>
     {/* ★ 상단 안내 — 「고칠 수 없다」를 먼저 알리고 [정정] 이 그 대안임을 붙인다.
         이전에는 회색 잔글씨라 못 보고 수정 버튼을 찾는 일이 있었다. */}
@@ -1239,15 +1243,15 @@ function FixList({ t, btn, ip, badge, evts, cats, onFix }) {
           const sub = hasLot || (neg && !!e.memo)
           return <Fragment key={e.id}>
             <tr>
-              <td style={{ ...td, ...(sub ? { borderBottom: 'none' } : {}) }}>{e.event_date}</td>
-              <td style={{ ...td, ...(sub ? { borderBottom: 'none' } : {}) }}>
+              <td style={{ ...txt, ...(sub ? { borderBottom: 'none' } : {}) }}>{e.event_date}</td>
+              <td style={{ ...txt, ...(sub ? { borderBottom: 'none' } : {}) }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                   {e.event_type}
                   {/* ★ 라벤더 테두리 배지 — 기존 badge() 토큰 그대로. 신색 없음 */}
                   {neg && badge('정정', t.lavender)}
                 </span>
               </td>
-              <td style={{ ...td, color: t.textM, ...(sub ? { borderBottom: 'none' } : {}) }}>{catName(e.category_id) || '—'}</td>
+              <td style={{ ...txt, color: t.textM, ...(sub ? { borderBottom: 'none' } : {}) }}>{catName(e.category_id) || '—'}</td>
               <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: neg ? t.textM : t.text, fontVariantNumeric: 'tabular-nums', ...(sub ? { borderBottom: 'none' } : {}) }}>{Number(e.qty).toLocaleString()}</td>
               <td style={{ ...td, textAlign: 'right', ...(sub ? { borderBottom: 'none' } : {}) }}>
                 {/* ★ 회색 잔글씨였던 것을 보라 테두리 + 굵기로 올린다(신색 없이 대비만 높인다).
@@ -1258,7 +1262,7 @@ function FixList({ t, btn, ip, badge, evts, cats, onFix }) {
             </tr>
             {/* ★ LOT·유효기한 — 유형 무관 표시 */}
             {hasLot && <tr>
-              <td colSpan={5} style={{ padding: '0 8px 5px 8px', borderBottom: (neg && e.memo) ? 'none' : '1px solid ' + t.border }}>
+              <td colSpan={5} style={{ padding: '0 8px 5px 8px', textAlign: 'left', borderBottom: (neg && e.memo) ? 'none' : '1px solid ' + t.border }}>
                 <span style={{ display: 'inline-flex', gap: 10, fontSize: 10, color: t.textM, paddingLeft: 7 }}>
                   {(e.lot_no || '').trim() ? <span>LOT <b style={{ color: t.text }}>{e.lot_no}</b></span> : null}
                   {e.expiry_date ? <span>유효기한 <b style={{ color: t.text }}>{String(e.expiry_date).slice(0, 10)}</b></span> : null}
@@ -1267,7 +1271,7 @@ function FixList({ t, btn, ip, badge, evts, cats, onFix }) {
             </tr>}
             {/* 사유 — 무엇을 왜 되돌렸는지가 행에서 바로 읽혀야 한다 */}
             {neg && e.memo && <tr>
-              <td colSpan={5} style={{ padding: '0 8px 7px 8px', borderBottom: '1px solid ' + t.border }}>
+              <td colSpan={5} style={{ padding: '0 8px 7px 8px', textAlign: 'left', borderBottom: '1px solid ' + t.border }}>
                 <span style={{ display: 'block', borderLeft: '3px solid ' + t.lavender, paddingLeft: 7, fontSize: 10, color: t.textM, lineHeight: 1.6 }}>{e.memo}</span>
               </td>
             </tr>}
