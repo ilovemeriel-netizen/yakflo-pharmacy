@@ -505,6 +505,14 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
      한 값으로 묶어 헤더·본문이 같은 세로선에 서게 한다. */
   const NUM_PR = 12
   const num = { ...td, textAlign: 'right', paddingRight: NUM_PR, fontVariantNumeric: 'tabular-nums' }
+  /* ★ 글자 열 좌측 정렬선 — 숫자 열의 NUM_PR 과 짝이 되는 상수.
+       ① 본문 td 에는 textAlign 이 없어 `#root { text-align: center }` 를 **상속해 가운데로** 선다.
+          헤더(TS)는 왼쪽이라 둘이 어긋난다. 상속은 이 저장소에서 세 번 재발한 함정이라
+          **칸에 직접 지정**한다(상위에서 고치지 않는다).
+       ② 그래도 헤더 TS() 는 좌측 패딩 12, 본문 td 는 10 이라 2px 어긋난다.
+          글자 열은 헤더와 같은 12 로 묶어 한 세로선에 세운다. */
+  const TXT_PL = 12
+  const txt = { ...td, textAlign: 'left', paddingLeft: TXT_PL }
 
   /* ★ n:1 은 숫자 열 표시 — 순서·너비·헤더 구성은 그대로 두고 우측 패딩만 묶는 데 쓴다 */
   /* ★ 좌측 sticky 는 약품코드·약품명 2열(표준 표 사양). 재원은 sticky 에서 내린다 —
@@ -718,7 +726,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
                       {r.noDrug ? badge(NO_DRUG, t.lavender) : r.drug_code}</td>
                     {/* ★ 약품명 — 매칭 실패는 '—'(오류가 아니다). 긴 이름은 ellipsis + title */}
                     <td title={r.drug_name || undefined}
-                      style={{ ...td, position: 'sticky', left: 128, zIndex: 2, background: bgc, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      style={{ ...txt, position: 'sticky', left: 128, zIndex: 2, background: bgc, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {r.drug_name || <span style={{ color: t.textL }}>—</span>}
                     </td>
                     <td style={td}>
@@ -1168,6 +1176,10 @@ function FundDonut({ t, data }) {
    ★ 잔량 열은 **계정 잔량 참고값**이다. LOT별 차감이 없어 LOT 잔량은 계산할 수 없다. */
 function LotTable({ t, rows, badge }) {
   const td = { padding: '7px 9px', fontSize: 11, borderBottom: '1px solid ' + t.border, color: t.text, whiteSpace: 'nowrap' }
+  /* ★ 글자 열 — td 에 textAlign 이 없어 `#root { text-align: center }` 를 상속해 가운데로 선다.
+       머리글은 이미 왼쪽이라 둘이 어긋났다. 좌측 패딩은 머리글도 같은 td(9px)를 써서 이미 같으므로
+       **정렬만** 지정하면 한 세로선에 선다. 상속은 재발 함정이라 칸에 직접 건다. */
+  const txt = { ...td, textAlign: 'left' }
   const BAL_TIP = 'LOT별 차감이 없어 LOT 단위 잔량은 계산할 수 없습니다. 계정 전체 잔량을 참고값으로 표시합니다.'
   if (!rows.length) return <div style={{ padding: 22, textAlign: 'center', color: t.textL, fontSize: 12 }}>입고 기록이 없습니다 — LOT 은 입고 이벤트에만 기록됩니다</div>
   return <div style={{ overflowX: 'auto' }}>
@@ -1178,9 +1190,9 @@ function LotTable({ t, rows, badge }) {
             style={{ ...td, color: t.textM, fontWeight: 700, textAlign: al, background: t.bg }}>{h}</th>)}
       </tr></thead>
       <tbody>{rows.map(x => <tr key={x.key}>
-        <td style={td}>{x.noDrug ? badge(NO_DRUG, t.lavender) : <span title={x.drug_name || undefined}><b>{x.drug_code}</b>{x.drug_name ? <span style={{ color: t.textM }}> · {x.drug_name.length > 18 ? x.drug_name.slice(0, 18) + '…' : x.drug_name}</span> : null}</span>}</td>
-        <td style={{ ...td, color: x.lot === LOT_NONE ? t.textL : t.text, fontWeight: x.lot === LOT_NONE ? 400 : 600 }}>{x.lot}</td>
-        <td style={{ ...td, fontVariantNumeric: 'tabular-nums' }}>{x.expiry || <span style={{ color: t.textL }}>—</span>}</td>
+        <td style={txt}>{x.noDrug ? badge(NO_DRUG, t.lavender) : <span title={x.drug_name || undefined}><b>{x.drug_code}</b>{x.drug_name ? <span style={{ color: t.textM }}> · {x.drug_name.length > 18 ? x.drug_name.slice(0, 18) + '…' : x.drug_name}</span> : null}</span>}</td>
+        <td style={{ ...txt, color: x.lot === LOT_NONE ? t.textL : t.text, fontWeight: x.lot === LOT_NONE ? 400 : 600 }}>{x.lot}</td>
+        <td style={{ ...txt, fontVariantNumeric: 'tabular-nums' }}>{x.expiry || <span style={{ color: t.textL }}>—</span>}</td>
         <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmt(x.received)}</td>
         <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: t.textM }} title={BAL_TIP}>{fmt(x.accBalance)}</td>
         <td style={td}>
