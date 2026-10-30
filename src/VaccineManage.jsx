@@ -1239,9 +1239,11 @@ function LotTable({ t, rows, badge, ColMenu, sk, sd, setSort, drugFilter }) {
        **정렬만** 지정하면 한 세로선에 선다. 상속은 재발 함정이라 칸에 직접 건다. */
   const txt = { ...td, textAlign: 'left' }
   const BAL_TIP = 'LOT별 차감이 없어 LOT 단위 잔량은 계산할 수 없습니다. 계정 전체 잔량을 참고값으로 표시합니다.'
-  /* ★ 약품 칸만 줄바꿈을 연다 — td 의 nowrap 때문에 이름이 한 줄에 갇혀 있었다.
-     열 너비·글꼴·크기·여백·색은 그대로 두고 **넘칠 때 아래로 흐르게만** 한다. */
-  const nameTd = { ...txt, whiteSpace: 'normal', wordBreak: 'break-word' }
+  /* ★ 약품명 칸만 줄바꿈을 연다 — td 의 nowrap 때문에 이름이 한 줄에 갇혀 있었다.
+     글꼴·크기·여백·색은 그대로 두고 **넘칠 때 아래로 흐르게만** 한다. */
+  const nameTd = { ...txt, whiteSpace: 'normal', wordBreak: 'break-word', color: t.textM }
+  /* ★ 약품코드는 한 줄(td 의 nowrap 그대로)·굵게. 폭은 약품별 집계표의 약품코드 열과 같은 128. */
+  const CODE_W = 128
   /* ★ 거르기·정렬은 **부모가 끝낸다** — 구역 머리의 건수가 같은 배열을 써야
      「건수 = 보이는 줄 수」가 어긋나지 않는다(#360). 여기서 다시 정렬하지 않는다. */
   const shown = rows
@@ -1252,22 +1254,30 @@ function LotTable({ t, rows, badge, ColMenu, sk, sd, setSort, drugFilter }) {
   if (!rows.length) return <div style={{ padding: 22, textAlign: 'center', color: t.textL, fontSize: 12 }}>입고 기록이 없습니다 — LOT 은 입고 이벤트에만 기록됩니다</div>
   return <div style={{ overflowX: 'auto' }}>
     <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
+      {/* ★ 약품코드 열만 폭을 못 박는다 — 나머지는 지금처럼 내용에 맞춰 늘어난다.
+          표 전체 폭(width:100%)은 그대로이므로 **원래 「약품」 열 폭을 둘이 나눠 쓰는** 셈이다. */}
+      <colgroup><col style={{ width: CODE_W }} /></colgroup>
       <thead><tr>
         {/* ★ 머리글은 약품별 집계표와 **같은 공용 ColMenu** 다 — 부품을 고치지 않는다.
-            정렬 대상은 글자 열 셋뿐이고, 숫자·상태 열은 지금처럼 평범한 머리글로 둔다. */}
-        {[['약품', 'left', 'drug_code'], ['LOT', 'left', 'lot'], ['유효기한', 'left', 'expiry'],
+            정렬 대상은 글자 열 넷뿐이고, 숫자·상태 열은 지금처럼 평범한 머리글로 둔다.
+            ★ 약품 복수 필터는 **약품명** 머리글에 붙는다(약품코드는 정렬만). */}
+        {[['약품코드', 'left', 'drug_code'], ['약품명', 'left', 'drug_name'],
+          ['LOT', 'left', 'lot'], ['유효기한', 'left', 'expiry'],
           ['입고', 'right', null], ['잔량(참고)', 'right', null], ['상태', 'left', null]].map(([h, al, k]) =>
           <th key={h} title={h === '잔량(참고)' ? BAL_TIP : undefined}
             style={{ ...td, color: t.textM, fontWeight: 700, textAlign: al, background: t.bg }}>
             {k ? <HeadMenu colKey={k} label={h} sk={sk} sd={sd} setSort={setSort}
-              filter={k === 'drug_code' ? drugFilter : null} /> : h}</th>)}
+              filter={k === 'drug_name' ? drugFilter : null} /> : h}</th>)}
       </tr></thead>
       <tbody>{shown.map(x => <tr key={x.key}>
+        {/* ★ 코드와 이름을 **다른 칸**에 둔다 — 한 칸에 「코드 · 이름」으로 붙여 두면
+            이름이 길 때 코드까지 아래로 밀려 세로선이 흐트러진다. 구분자 「 · 」는 없앴다. */}
+        <td style={txt}>{x.noDrug ? badge(NO_DRUG, t.lavender) : <b>{x.drug_code}</b>}</td>
         {/* ★ 이름을 자르지 않는다 — 전에는 18자에서 잘라 「…」를 붙였다. CSS 말줄임이
             아니라 **글자를 버리는 처리**라, 열에 자리가 남아도 잘리고 복사해도 잘린 채였다.
             괄호 중간에서 끊겨 「65세 이상 어르신(플루백신VII…」처럼 읽히기도 했다.
             이제 전부 보여 주고 넘치면 칸 안에서 줄을 바꾼다. */}
-        <td style={nameTd}>{x.noDrug ? badge(NO_DRUG, t.lavender) : <span><b>{x.drug_code}</b>{x.drug_name ? <span style={{ color: t.textM }}> · {x.drug_name}</span> : null}</span>}</td>
+        <td style={nameTd}>{x.drug_name || <span style={{ color: t.textL }}>—</span>}</td>
         <td style={{ ...txt, color: x.lot === LOT_NONE ? t.textL : t.text, fontWeight: x.lot === LOT_NONE ? 400 : 600 }}>{x.lot}</td>
         <td style={{ ...txt, fontVariantNumeric: 'tabular-nums' }}>{x.expiry || <span style={{ color: t.textL }}>—</span>}</td>
         <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmt(x.received)}</td>

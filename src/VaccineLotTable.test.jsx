@@ -125,31 +125,35 @@ async function openLot() {
 }
 const lotRows = () => [...lotTable().querySelectorAll('tbody tr')]
 const cellsOf = tr => [...tr.querySelectorAll('td')]
-const nameAt = i => cellsOf(lotRows()[i])[0].textContent.trim()
-const lotAt = i => cellsOf(lotRows()[i])[1].textContent.trim()
-const expAt = i => cellsOf(lotRows()[i])[2].textContent.trim()
+/* 열 차례: 약품코드 · 약품명 · LOT · 유효기한 · 입고 · 잔량(참고) · 상태 */
+const C = { code: 0, name: 1, lot: 2, exp: 3, recv: 4, bal: 5, stage: 6 }
+const codeAt = i => cellsOf(lotRows()[i])[C.code].textContent.trim()
+const nameAt = i => cellsOf(lotRows()[i])[C.name].textContent.trim()
+const lotAt = i => cellsOf(lotRows()[i])[C.lot].textContent.trim()
+const expAt = i => cellsOf(lotRows()[i])[C.exp].textContent.trim()
+/* ★ 꼭 맞는 것만 — startsWith 로 찾으면 「약품명」을 찾을 때 「약품코드」가 먼저 걸린다 */
 const thOf = label => [...lotTable().querySelectorAll('th')]
-  .find(x => x.textContent.replace(/[⇅▲▼✓\s]/g, '').startsWith(label.replace(/\s/g, '')))
+  .find(x => clean(x.textContent) === clean(label))
 
 describe('① 약품 이름이 잘리지 않는다', () => {
   it('★ 긴 이름이 「…」 없이 전부 보인다', async () => {
     await openLot()
-    const row = lotRows().find(r => cellsOf(r)[0].textContent.includes('TETRA6'))
+    const row = lotRows().find(r => cellsOf(r)[C.code].textContent.includes('TETRA6'))
     expect(row, 'TETRA6 줄을 찾지 못했다').toBeTruthy()
-    const text = cellsOf(row)[0].textContent
+    const text = cellsOf(row)[C.name].textContent
     expect(text).toContain(LONG)
     expect(text, '말줄임이 남아 있다').not.toContain('…')
   })
   it('★ 괄호가 중간에서 끊기지 않는다', async () => {
     await openLot()
-    const text = lotRows().map(r => cellsOf(r)[0].textContent).join(' ')
+    const text = lotRows().map(r => cellsOf(r)[C.name].textContent).join(' ')
     expect(text).toContain('(플루백신VIII-TF주 0.5mL)')
     /* 여는 괄호 수 = 닫는 괄호 수 */
     expect((text.match(/\(/g) || []).length).toBe((text.match(/\)/g) || []).length)
   })
   it('★ 관리 화면은 원본 이름을 쓴다 — 공개용 가공을 들이지 않는다', async () => {
     await openLot()
-    const text = lotRows().map(r => cellsOf(r)[0].textContent).join(' ')
+    const text = lotRows().map(r => cellsOf(r)[C.name].textContent).join(' ')
     expect(text).toContain('독감-5 지자체')        /* publicDrugName 이면 사라졌을 부분 */
     expect(text).toContain('65세 이상 어르신')
     /* ★ 낱말이 아니라 **쓰임**을 본다 — 주석으로 「쓰지 않는다」고 적어 둘 수 있어야 한다 */
@@ -159,15 +163,54 @@ describe('① 약품 이름이 잘리지 않는다', () => {
   })
   it('넘치면 줄을 바꾼다 — 한 줄에 가두지 않는다', async () => {
     await openLot()
-    const cell = cellsOf(lotRows()[0])[0]
+    const cell = cellsOf(lotRows()[0])[C.name]
     expect(css(cell).whiteSpace).toBe('normal')
     expect(css(cell).wordBreak).toBe('break-word')
   })
-  it('다른 칸은 한 줄 유지(nowrap) — 약품 칸만 열었다', async () => {
+  it('다른 칸은 한 줄 유지(nowrap) — 약품명 칸만 열었다', async () => {
     await openLot()
     const cells = cellsOf(lotRows()[0])
-    expect(css(cells[1]).whiteSpace, 'LOT').toBe('nowrap')
-    expect(css(cells[2]).whiteSpace, '유효기한').toBe('nowrap')
+    expect(css(cells[C.code]).whiteSpace, '약품코드').toBe('nowrap')
+    expect(css(cells[C.lot]).whiteSpace, 'LOT').toBe('nowrap')
+    expect(css(cells[C.exp]).whiteSpace, '유효기한').toBe('nowrap')
+  })
+})
+
+describe('①-2 약품 열을 둘로 나눴다 — 약품코드 · 약품명', () => {
+  it('★ 머리글 7칸 = 모든 줄 7칸 (함정 #27)', async () => {
+    await openLot()
+    const ths = [...lotTable().querySelectorAll('thead th')]
+    expect(ths.map(x => clean(x.textContent)))
+      .toEqual(['약품코드', '약품명', 'LOT', '유효기한', '입고', '잔량(참고)', '상태'])
+    expect(ths.length).toBe(7)
+    for (const [i, r] of lotRows().entries()) {
+      expect(cellsOf(r).length, (i + 1) + '번째 줄의 칸 수').toBe(ths.length)
+    }
+  })
+  it('코드와 이름이 **다른 칸**에 서고 구분자 「 · 」가 없다', async () => {
+    await openLot()
+    const row = lotRows().find(r => cellsOf(r)[C.code].textContent.includes('TETRA6'))
+    expect(cellsOf(row)[C.code].textContent.trim()).toBe('TETRA6')
+    expect(cellsOf(row)[C.name].textContent.trim()).toBe(LONG)
+    expect(cellsOf(row)[C.code].textContent, '코드 칸에 이름이 섞이면 안 된다').not.toContain('플루백신')
+  })
+  it('약품코드는 굵게, 약품명은 보통 굵기', async () => {
+    await openLot()
+    const row = lotRows()[0]
+    expect(cellsOf(row)[C.code].querySelector('b'), '코드는 <b>').toBeTruthy()
+    expect(cellsOf(row)[C.name].querySelector('b'), '이름은 굵게 하지 않는다').toBeNull()
+  })
+  it('★ 약품코드 열 폭을 못 박았다 — 약품별 집계표와 같은 128', async () => {
+    await openLot()
+    const col = lotTable().querySelector('colgroup col')
+    expect(col, 'colgroup 이 없다').toBeTruthy()
+    expect(col.style.width).toBe('128px')
+  })
+  it('★ 표 전체 폭 규칙은 그대로 — width 100% · minWidth 620', async () => {
+    await openLot()
+    const tb = lotTable()
+    expect(tb.style.width).toBe('100%')
+    expect(tb.style.minWidth).toBe('620px')
   })
 })
 
@@ -182,15 +225,15 @@ describe('② 기본 정렬 — 유효기한 오름차순', () => {
   it('★ 같은 유효기한이면 약품코드 → LOT 으로 묶인다', async () => {
     await openLot()
     /* 2027-05-10 두 줄: SPIKVX(LOT-A) 와 TETRA6(LOT-B) → 코드순 S < T */
-    expect(nameAt(1)).toContain('SPIKVX')
-    expect(nameAt(2)).toContain('TETRA6')
+    expect(codeAt(1)).toBe('SPIKVX')
+    expect(codeAt(2)).toBe('TETRA6')
   })
 })
 
 describe('③ 머리글 정렬 메뉴 (공용 ColMenu)', () => {
-  it('약품·LOT·유효기한에 메뉴가 붙는다', async () => {
+  it('약품코드·약품명·LOT·유효기한에 메뉴가 붙는다', async () => {
     await openLot()
-    for (const h of ['약품', 'LOT', '유효기한']) {
+    for (const h of ['약품코드', '약품명', 'LOT', '유효기한']) {
       expect(thOf(h), h + ' 머리글').toBeTruthy()
       expect(thOf(h).querySelector('span[title="정렬(오름→내림→해제)"]'), h + ' 정렬 아이콘').toBeTruthy()
     }
@@ -216,6 +259,23 @@ describe('③ 머리글 정렬 메뉴 (공용 ColMenu)', () => {
     await waitFor(() => expect(expAt(0)).toBe('2027-05-10'))
     expect(expAt(3), '미기재는 방향과 무관하게 뒤').toBe('—')
   })
+  it('★ 약품코드 머리글을 누르면 코드순으로 선다', async () => {
+    await openLot()
+    thOf('약품코드').querySelector('span[title="정렬(오름→내림→해제)"]').click()
+    await waitFor(() => expect(codeAt(0)).toBe('SPIKVX'))
+    expect([codeAt(0), codeAt(1), codeAt(2), codeAt(3)])
+      .toEqual(['SPIKVX', 'SPIKVX', 'TETRA5', 'TETRA6'])
+  })
+  it('★ 약품명 머리글을 누르면 이름 가나다순으로 선다 — 코드순과 다르다', async () => {
+    await openLot()
+    thOf('약품명').querySelector('span[title="정렬(오름→내림→해제)"]').click()
+    await waitFor(() => expect(thOf('약품명').textContent).toMatch(/[▲▼]/))
+    const names = lotRows().map((_, i) => nameAt(i))
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'ko')))
+    /* 이름순과 코드순이 같은 줄 세우기라면 이 시험은 아무것도 지키지 못한다 */
+    expect(names.join('|'), '이름순이 코드순과 같으면 재료를 바꿔야 한다')
+      .not.toBe(['SPIKVX', 'SPIKVX', 'TETRA5', 'TETRA6'].join('|'))
+  })
   it('세 번 누르면 해제되어 기본(유효기한 오름차순)으로 돌아온다', async () => {
     await openLot()
     const icon = () => thOf('LOT').querySelector('span[title="정렬(오름→내림→해제)"]')
@@ -232,11 +292,11 @@ describe('③ 머리글 정렬 메뉴 (공용 ColMenu)', () => {
 })
 
 describe('④ 정렬·여백은 #379 그대로 (함정 #31)', () => {
-  it('약품·LOT·유효기한 칸이 왼쪽, 머리글과 여백 9px 동일', async () => {
+  it('약품코드·약품명·LOT·유효기한 칸이 왼쪽, 머리글과 여백 9px 동일', async () => {
     await openLot()
     const ths = [...lotTable().querySelectorAll('th')]
     const tds = cellsOf(lotRows()[0])
-    for (const i of [0, 1, 2]) {
+    for (const i of [C.code, C.name, C.lot, C.exp]) {
       expect(css(tds[i]).textAlign, i + '번째 칸').toBe('left')
       expect(css(tds[i]).paddingLeft).toBe(css(ths[i]).paddingLeft)
       expect(css(tds[i]).paddingLeft).toBe('9px')
@@ -245,7 +305,7 @@ describe('④ 정렬·여백은 #379 그대로 (함정 #31)', () => {
   it('숫자 칸은 오른쪽 그대로', async () => {
     await openLot()
     const tds = cellsOf(lotRows()[0])
-    for (const i of [3, 4]) expect(css(tds[i]).textAlign).toBe('right')
+    for (const i of [C.recv, C.bal]) expect(css(tds[i]).textAlign).toBe('right')
   })
 })
 
@@ -270,31 +330,31 @@ const lotHint = () => {
 }
 
 describe('⑦ 약품 복수 필터 (LOT 표)', () => {
-  it('약품 머리글에만 필터가 붙는다', async () => {
+  it('★ 필터는 약품명 머리글에만 붙는다 — 약품코드는 정렬만', async () => {
     await openLot()
-    expect(thOf('약품').querySelector('span[title="필터"]'), '약품').toBeTruthy()
-    for (const h of ['LOT', '유효기한', '입고', '잔량(참고)', '상태']) {
+    expect(thOf('약품명').querySelector('span[title="필터"]'), '약품명').toBeTruthy()
+    for (const h of ['약품코드', 'LOT', '유효기한', '입고', '잔량(참고)', '상태']) {
       expect(thOf(h).querySelector('span[title="필터"]'), h + ' 는 필터 없음').toBeNull()
     }
   })
   it('메뉴에 「코드 · 이름」으로 항목이 뜬다', async () => {
     await openLot()
-    await openMenu(thOf('약품'))
+    await openMenu(thOf('약품명'))
     expect(menuItem('TETRA6 · ' + LONG), 'TETRA6 항목').toBeTruthy()
     expect(menuItem('SPIKVX · 스파이크박스프리필드시린지주'), 'SPIKVX 항목').toBeTruthy()
   })
   it('★ 하나를 끄면 그 약품 줄이 사라지고 건수도 함께 준다', async () => {
     await openLot()
     expect(lotHint()).toMatch(/^4건/)
-    await openMenu(thOf('약품'))
+    await openMenu(thOf('약품명'))
     menuItem('SPIKVX · 스파이크박스프리필드시린지주').click()
     await waitFor(() => expect(lotRows().length).toBe(2))
     expect(lotHint(), '건수 = 보이는 줄 수').toMatch(/^2건 \/ 전체 4/)
-    expect(lotRows().map((_, i) => nameAt(i)).join(' ')).not.toContain('SPIKVX')
+    expect(lotRows().map((_, i) => codeAt(i))).not.toContain('SPIKVX')
   })
   it('★ 복수 선택 — 고를 때마다 메뉴가 닫히지 않는다', async () => {
     await openLot()
-    await openMenu(thOf('약품'))
+    await openMenu(thOf('약품명'))
     menuItem('SPIKVX · 스파이크박스프리필드시린지주').click()
     /* ★ 한 번 누를 때마다 재렌더를 기다린다 — 연달아 누르면 두 번째가 **낡은 값**으로
        토글해 첫 선택이 묻힌다(정렬에서 겪은 것과 같은 함정). */
@@ -302,11 +362,11 @@ describe('⑦ 약품 복수 필터 (LOT 표)', () => {
     expect(menuItem('TETRA5 · ' + LONG2), '메뉴가 열린 채여야 한다').toBeTruthy()
     menuItem('TETRA5 · ' + LONG2).click()
     await waitFor(() => expect(lotRows().length).toBe(1))
-    expect(nameAt(0)).toContain('TETRA6')
+    expect(codeAt(0)).toBe('TETRA6')
   })
   it('「전체」로 되돌리면 건수도 돌아온다', async () => {
     await openLot()
-    await openMenu(thOf('약품'))
+    await openMenu(thOf('약품명'))
     menuItem('SPIKVX · 스파이크박스프리필드시린지주').click()
     await waitFor(() => expect(lotRows().length).toBe(2))
     menuItem('전체').click()
@@ -316,7 +376,7 @@ describe('⑦ 약품 복수 필터 (LOT 표)', () => {
   })
   it('필터와 정렬이 함께 걸린다', async () => {
     await openLot()
-    await openMenu(thOf('약품'))
+    await openMenu(thOf('약품명'))
     menuItem('SPIKVX · 스파이크박스프리필드시린지주').click()
     await waitFor(() => expect(lotRows().length).toBe(2))
     thOf('LOT').querySelector('span[title="정렬(오름→내림→해제)"]').click()
@@ -388,13 +448,11 @@ describe('⑥ 시안 캡처', () => {
       mkdirSync(dir, { recursive: true })
       writeFileSync(dir + '/app.html', rootEl.innerHTML, 'utf8')
     }
-    /* ★ 이 표의 ColMenu 에는 filter 를 주지 않았으므로 **열리는 드롭다운이 없다** —
-       라벨을 눌러도 아무 일이 없고, 정렬 삼각형만 오름→내림→해제로 돈다.
-       그래서 「메뉴 열린 모습」 대신 **정렬이 걸린 모습**을 떠 둔다. */
-    const icon = thOf('약품').querySelector('span[title="정렬(오름→내림→해제)"]')
+    /* 약품코드 머리글에 정렬이 걸린 모습을 떠 둔다(드롭다운 열린 모습은 별도 하네스에서 찍는다) */
+    const icon = thOf('약품코드').querySelector('span[title="정렬(오름→내림→해제)"]')
     expect(icon, '정렬 아이콘을 찾지 못했다').toBeTruthy()
     icon.click()
-    await waitFor(() => expect(thOf('약품').textContent).toMatch(/[▲▼]/))
+    await waitFor(() => expect(thOf('약품코드').textContent).toMatch(/[▲▼]/))
     if (dir) writeFileSync(dir + '/sorted.html', rootEl.innerHTML, 'utf8')
     expect(lotTable()).toBeTruthy()
   })
