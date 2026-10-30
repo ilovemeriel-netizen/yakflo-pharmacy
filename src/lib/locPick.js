@@ -53,14 +53,19 @@ export function summaryText(rows) {
      · null  = 전체(아무것도 거르지 않는다) — 메뉴의 「전체」가 돌려주는 값
      · 배열  = 고른 구분만. **빈 배열은 아무 줄도 안 보인다**(체크를 다 끈 상태 그대로).
    ★ 빈 배열을 전체로 접지 않는다. 다 껐는데 전부 보이면 체크가 거짓말을 하는 셈이다.
-     대신 메뉴에 늘 「전체」가 있어 한 번에 되돌릴 수 있다. */
-export function filterByCategory(rows, cats) {
+     대신 메뉴에 늘 「전체」가 있어 한 번에 되돌릴 수 있다.
+   ★ key 는 **덧붙인 인자**다 — 기본값이 'category' 라 기존 호출은 한 글자도 안 바뀐다.
+     백신관리의 약품 필터가 다른 칸을 보려고 쓴다. */
+export function filterByCategory(rows, cats, key = 'category') {
   if (cats == null) return rows || []
   const set = new Set(cats)
-  return (rows || []).filter(d => set.has(d.category || ''))
+  return (rows || []).filter(d => set.has(d[key] || ''))
 }
 
-/* 복수 선택 토글 — 전부 켠 상태는 null(전체)로 접는다(「전체」와 같은 뜻이므로). */
+/* 복수 선택 토글 — 전부 켠 상태는 null(전체)로 접는다(「전체」와 같은 뜻이므로).
+   ★ 이름은 「Category」지만 **값의 뜻을 모르는 일반 함수**다 — 글자 목록이면 무엇이든 된다.
+     백신관리의 약품 필터도 이 셋(filterByCategory·toggleCategory·isCategoryOn)을 그대로 쓴다.
+     같은 규칙을 두 벌 두면 한쪽만 고쳐져 「전체 해제가 화면마다 다르게 동작」하게 된다. */
 export function toggleCategory(cats, v, all) {
   const list = all || []
   const cur = new Set(cats == null ? list : cats)

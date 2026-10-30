@@ -28,6 +28,9 @@ import VaccineSurveyPanel from './VaccineSurveyPanel'
    AI 10 = LOT · AI 17 = 유효기한을 이미 파싱한다. 카메라 라이브러리는 쓰지 않는다 —
    스캐너가 키보드 웨지로 넣어 주는 문자열을 그대로 받는다. */
 import { decodeGs1 } from './lib/scan'
+/* ★ 복수 선택 필터 규칙은 보관위치 화면과 **같은 함수**를 쓴다 — 이름은 Category 지만
+   값의 뜻을 모르는 일반 함수다. 두 벌로 두면 「전체 해제」 동작이 화면마다 갈린다. */
+import { filterByCategory as filterByValues, toggleCategory as toggleValue, isCategoryOn as isValueOn } from './lib/locPick'
 
 /* ── 상수 ─────────────────────────────────────────────────────────────────── */
 const FUNDINGS = ['일반', '보건소', '지자체']
@@ -91,6 +94,12 @@ const dayDiff = (from, to) => {
 export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
   const { t } = useTheme()
   const { sk, sd, setSort, so, TS } = useSort('drug_code')
+  /* ★ LOT 표는 **자기 정렬 상태**를 쓴다 — 약품별 집계와 같은 걸 나눠 쓰면 한쪽 머리글을
+     누를 때 다른 표까지 따라 움직인다. 기본값을 비워 두어 「고른 열 없음 = 유효기한 오름차순」. */
+  const lotSort = useSort('')
+  /* 약품 복수 필터 — null 이 전체. ★ 거르기·정렬을 **여기서** 끝낸다.
+     구역 머리의 건수가 이 길이를 써야 「건수 = 보이는 줄 수」가 성립한다(#360). */
+  const [lotDrugF, setLotDrugF] = useState(null)
 
   const [accs, setAccs] = useState([])      // vaccine_accounts
   const [bal, setBal] = useState([])        // v_vaccine_balance
@@ -275,12 +284,26 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
       return { ...x, days: d, stage }
     }).sort((a, b) => {
       /* 유효기한 오름차순. 미기재는 뒤로 보낸다(정렬 기준이 없어 앞에 오면 오독된다) */
-      if (!a.expiry && !b.expiry) return String(a.drug_code).localeCompare(String(b.drug_code), 'ko')
+      if (!a.expiry && !b.expiry) return lotTie(a, b)
       if (!a.expiry) return 1
       if (!b.expiry) return -1
-      return a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : 0
+      /* ★ 같은 유효기한이면 약품코드 → LOT 으로 묶는다. 안 그러면 Map 에 들어간 순서가
+         그대로 나와 **조회할 때마다 줄 순서가 달라 보인다**(같은 데이터인데 다르게 읽힌다). */
+      return (a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : 0) || lotTie(a, b)
     })
   }, [rows, evtsOf, todayYmd])
+
+  /* 약품 필터에 쓸 항목 — 「코드 · 이름」 한 덩이로 고른다. 코드만으로는 어느 약인지
+     모르고, 이름만으로는 같은 이름의 다른 계정을 가를 수 없다. */
+  const lotDrugKey = x => (x.noDrug ? NO_DRUG : x.drug_code) + (x.drug_name ? ' · ' + x.drug_name : '')
+  const lotDrugItems = useMemo(
+    () => [...new Set(lotRows.map(lotDrugKey))].sort((a, b) => a.localeCompare(b, 'ko')),
+    [lotRows])
+  /* ★ 보이는 줄 — 거르고 정렬한 결과. 구역 머리 건수도 이 길이를 쓴다. */
+  const lotShown = useMemo(
+    () => sortLotRows(filterByValues(lotRows.map(x => ({ ...x, _drug: lotDrugKey(x) })), lotDrugF, '_drug'),
+      lotSort.sk, lotSort.sd),
+    [lotRows, lotDrugF, lotSort.sk, lotSort.sd])
 
   /* ── 요약 스트립 집계 — v_vaccine_balance 기준 ── */
   const summary = useMemo(() => {
@@ -755,8 +778,14 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
 
         {/* ═══ 6. LOT·유효기한 — ★ 기본 접힘 ═══ */}
         <Collapsible t={t} open={openLot} onToggle={() => setOpenLot(v => !v)}
-          title="LOT · 유효기한" hint={lotRows.length + '건' + (summary.expSoon ? ' · 임박 ' + summary.expSoon : '')}>
-          <LotTable t={t} rows={lotRows} badge={badge} />
+          title="LOT · 유효기한" hint={lotShown.length + '건' + (lotDrugF ? ' / 전체 ' + lotRows.length : '') + (summary.expSoon ? ' · 임박 ' + summary.expSoon : '')}>
+          <LotTable t={t} rows={lotShown} badge={badge} ColMenu={ColMenu}
+            sk={lotSort.sk} sd={lotSort.sd} setSort={lotSort.setSort}
+            drugFilter={{
+              items: lotDrugItems, multi: true, value: lotDrugF,
+              isOn: v => isValueOn(lotDrugF, v),
+              on: v => setLotDrugF(v === null ? null : toggleValue(lotDrugF, v, lotDrugItems)),
+            }} />
         </Collapsible>
       </>}
 
@@ -764,7 +793,8 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
       onClose={() => setModal(null)} onAccount={addAccount} onEvent={addEvent} onFix={fixEvent} onCat={saveCat}
       onUpdAccount={updAccount} onDelAccount={delAccount} onAccActive={setAccActive}
       todayYmd={todayYmd} ymd={ymd} />}
-    <VaccinePublicPanel accounts={accs} season={sel} drugNames={dnames} onReload={loadAll} onFlash={flash} />
+    <VaccinePublicPanel accounts={accs} season={sel} drugNames={dnames} onReload={loadAll} onFlash={flash}
+      ColMenu={ColMenu} useSort={useSort} />
     {/* ↑↑↑ 기존 백신 관리 화면 끝 ↑↑↑ */}
       </>}
   </div>
@@ -1172,25 +1202,82 @@ function FundDonut({ t, data }) {
   </div>
 }
 
-/* LOT·유효기한 표 — 유효기한 오름차순. 상태 3단계.
-   ★ 잔량 열은 **계정 잔량 참고값**이다. LOT별 차감이 없어 LOT 잔량은 계산할 수 없다. */
-function LotTable({ t, rows, badge }) {
+/* 같은 값일 때 줄 순서를 묶는 기준 — 약품코드 → LOT.
+   ★ 정렬 방향과 무관하게 **늘 오름차순**이다. 동률 안에서 방향까지 뒤집으면
+     「무엇이 바뀐 건지」 눈으로 따라갈 수 없다. */
+function lotTie(a, b) {
+  return String(a.drug_code || '').localeCompare(String(b.drug_code || ''), 'ko')
+    || String(a.lot || '').localeCompare(String(b.lot || ''), 'ko')
+}
+
+/* 머리글 정렬 — 고른 열이 없으면 들어온 순서(기본: 유효기한 오름차순)를 그대로 쓴다.
+   ★ 값이 없는 줄은 **방향과 무관하게 뒤로** 보낸다. 기본 정렬이 그렇게 하고 있어서,
+     머리글로 뒤집었을 때만 미기재가 맨 위로 올라오면 규칙이 둘로 갈린다.
+     (공용 useSort.so 는 null 을 '' 로 보아 앞으로 보낸다 — 그래서 여기서 따로 센다) */
+function sortLotRows(rows, sk, sd) {
+  if (!sk) return rows
+  const dir = sd === 'desc' ? -1 : 1
+  const empty = v => v == null || v === ''
+  return [...rows].sort((a, b) => {
+    const va = a[sk], vb = b[sk]
+    if (empty(va) && empty(vb)) return lotTie(a, b)
+    if (empty(va)) return 1
+    if (empty(vb)) return -1
+    const c = String(va).localeCompare(String(vb), 'ko')
+    return c !== 0 ? c * dir : lotTie(a, b)
+  })
+}
+
+/* LOT·유효기한 표 — 기본 유효기한 오름차순. 상태 3단계.
+   ★ 잔량 열은 **계정 잔량 참고값**이다. LOT별 차감이 없어 LOT 잔량은 계산할 수 없다.
+   ★ 약품 이름은 drugs.drug_name **원본 그대로** 쓴다 — 공개 사이트의 publicDrugName
+     가공을 여기에 들이지 않는다. 약제과는 「독감-5 지자체」 같은 구분이 있어야 고른다. */
+function LotTable({ t, rows, badge, ColMenu, sk, sd, setSort, drugFilter }) {
   const td = { padding: '7px 9px', fontSize: 11, borderBottom: '1px solid ' + t.border, color: t.text, whiteSpace: 'nowrap' }
   /* ★ 글자 열 — td 에 textAlign 이 없어 `#root { text-align: center }` 를 상속해 가운데로 선다.
        머리글은 이미 왼쪽이라 둘이 어긋났다. 좌측 패딩은 머리글도 같은 td(9px)를 써서 이미 같으므로
        **정렬만** 지정하면 한 세로선에 선다. 상속은 재발 함정이라 칸에 직접 건다. */
   const txt = { ...td, textAlign: 'left' }
   const BAL_TIP = 'LOT별 차감이 없어 LOT 단위 잔량은 계산할 수 없습니다. 계정 전체 잔량을 참고값으로 표시합니다.'
+  /* ★ 약품명 칸만 줄바꿈을 연다 — td 의 nowrap 때문에 이름이 한 줄에 갇혀 있었다.
+     글꼴·크기·여백·색은 그대로 두고 **넘칠 때 아래로 흐르게만** 한다. */
+  const nameTd = { ...txt, whiteSpace: 'normal', wordBreak: 'break-word', color: t.textM }
+  /* ★ 약품코드는 한 줄(td 의 nowrap 그대로)·굵게. 폭은 약품별 집계표의 약품코드 열과 같은 128. */
+  const CODE_W = 128
+  /* ★ 거르기·정렬은 **부모가 끝낸다** — 구역 머리의 건수가 같은 배열을 써야
+     「건수 = 보이는 줄 수」가 어긋나지 않는다(#360). 여기서 다시 정렬하지 않는다. */
+  const shown = rows
+  /* ★ 한 번 변수로 받는다 — 이 저장소의 eslint 설정에는 react 플러그인이 없어
+     **JSX 태그 이름으로만** 쓰인 식별자를 「쓰이지 않음」으로 본다(식으로 읽히지 않는다).
+     변수로 받으면 식이 되고, 변수 쪽은 varsIgnorePattern '^[A-Z_]' 이 덮어 준다. */
+  const HeadMenu = ColMenu
   if (!rows.length) return <div style={{ padding: 22, textAlign: 'center', color: t.textL, fontSize: 12 }}>입고 기록이 없습니다 — LOT 은 입고 이벤트에만 기록됩니다</div>
   return <div style={{ overflowX: 'auto' }}>
     <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
+      {/* ★ 약품코드 열만 폭을 못 박는다 — 나머지는 지금처럼 내용에 맞춰 늘어난다.
+          표 전체 폭(width:100%)은 그대로이므로 **원래 「약품」 열 폭을 둘이 나눠 쓰는** 셈이다. */}
+      <colgroup><col style={{ width: CODE_W }} /></colgroup>
       <thead><tr>
-        {[['약품', 'left'], ['LOT', 'left'], ['유효기한', 'left'], ['입고', 'right'], ['잔량(참고)', 'right'], ['상태', 'left']].map(([h, al]) =>
+        {/* ★ 머리글은 약품별 집계표와 **같은 공용 ColMenu** 다 — 부품을 고치지 않는다.
+            정렬 대상은 글자 열 넷뿐이고, 숫자·상태 열은 지금처럼 평범한 머리글로 둔다.
+            ★ 약품 복수 필터는 **약품명** 머리글에 붙는다(약품코드는 정렬만). */}
+        {[['약품코드', 'left', 'drug_code'], ['약품명', 'left', 'drug_name'],
+          ['LOT', 'left', 'lot'], ['유효기한', 'left', 'expiry'],
+          ['입고', 'right', null], ['잔량(참고)', 'right', null], ['상태', 'left', null]].map(([h, al, k]) =>
           <th key={h} title={h === '잔량(참고)' ? BAL_TIP : undefined}
-            style={{ ...td, color: t.textM, fontWeight: 700, textAlign: al, background: t.bg }}>{h}</th>)}
+            style={{ ...td, color: t.textM, fontWeight: 700, textAlign: al, background: t.bg }}>
+            {k ? <HeadMenu colKey={k} label={h} sk={sk} sd={sd} setSort={setSort}
+              filter={k === 'drug_name' ? drugFilter : null} /> : h}</th>)}
       </tr></thead>
-      <tbody>{rows.map(x => <tr key={x.key}>
-        <td style={txt}>{x.noDrug ? badge(NO_DRUG, t.lavender) : <span title={x.drug_name || undefined}><b>{x.drug_code}</b>{x.drug_name ? <span style={{ color: t.textM }}> · {x.drug_name.length > 18 ? x.drug_name.slice(0, 18) + '…' : x.drug_name}</span> : null}</span>}</td>
+      <tbody>{shown.map(x => <tr key={x.key}>
+        {/* ★ 코드와 이름을 **다른 칸**에 둔다 — 한 칸에 「코드 · 이름」으로 붙여 두면
+            이름이 길 때 코드까지 아래로 밀려 세로선이 흐트러진다. 구분자 「 · 」는 없앴다. */}
+        <td style={txt}>{x.noDrug ? badge(NO_DRUG, t.lavender) : <b>{x.drug_code}</b>}</td>
+        {/* ★ 이름을 자르지 않는다 — 전에는 18자에서 잘라 「…」를 붙였다. CSS 말줄임이
+            아니라 **글자를 버리는 처리**라, 열에 자리가 남아도 잘리고 복사해도 잘린 채였다.
+            괄호 중간에서 끊겨 「65세 이상 어르신(플루백신VII…」처럼 읽히기도 했다.
+            이제 전부 보여 주고 넘치면 칸 안에서 줄을 바꾼다. */}
+        <td style={nameTd}>{x.drug_name || <span style={{ color: t.textL }}>—</span>}</td>
         <td style={{ ...txt, color: x.lot === LOT_NONE ? t.textL : t.text, fontWeight: x.lot === LOT_NONE ? 400 : 600 }}>{x.lot}</td>
         <td style={{ ...txt, fontVariantNumeric: 'tabular-nums' }}>{x.expiry || <span style={{ color: t.textL }}>—</span>}</td>
         <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmt(x.received)}</td>

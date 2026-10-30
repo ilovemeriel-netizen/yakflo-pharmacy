@@ -10,13 +10,18 @@
    ★ vaccine_events · v_vaccine_balance 는 읽지도 쓰지도 않는다.
    ★ 색은 브랜드 4색과 그 투명도만 쓴다 — #804A87 · #019748 · #BFA6D9 · #2E4A62.
      테마 토큰(t.purple·t.green·t.lavender·t.blue)이 그 값이므로 토큰을 쓰고 새 hex 를 적지 않는다.
-   ★ 이 패널의 작은 표는 표준 표 사양 13항목 적용 제외(승인됨) — ColMenu·정렬·필터를 붙이지 않는다.
+   ★ 이 패널의 작은 표는 표준 표 사양 13항목 적용 제외(승인됨)였으나, 「약품명」 머리글만
+     예외로 공용 ColMenu(정렬 + 약품 복수 선택 필터)를 붙였다(2026-10-31 승인). 나머지 머리글은 그대로다.
+     ★ 거르기는 **보이는 줄만** 줄인다 — 저장 대상(dirty·tooLong·saveLabels)은 거르지 않은 rows 로 센다.
+       안 보이는 줄의 수정이 조용히 사라지면 데이터를 잃는다.
    ═══════════════════════════════════════════════════════════════════════════ */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { anyFilled } from './lib/pwaUpdate'
 import { useBusy } from './lib/useBusy.js'
 import { supabase } from './lib/supabase'
 import { useTheme } from './lib/theme'
+/* ★ 복수 선택 필터 규칙은 보관위치·LOT 표와 **같은 함수**를 쓴다(이름은 Category 지만 일반 함수) */
+import { filterByCategory, toggleCategory, isCategoryOn } from './lib/locPick'
 import { dbErrorMsg } from './lib/dbError'
 
 const PUBLIC_URL = 'vaccine.ehwaa.com'
@@ -34,8 +39,14 @@ function labelTooLong(v) {
   return String(v ?? '').trim().length > LABEL_MAX
 }
 
-export default function VaccinePublicPanel({ accounts, season, drugNames, onReload, onFlash }) {
+export default function VaccinePublicPanel({ accounts, season, drugNames, onReload, onFlash, ColMenu, useSort }) {
   const { t } = useTheme()
+  /* ★ 이 표만의 정렬 상태 — 기본값 없음(= 약품코드 순 그대로). 다른 표와 나눠 쓰지 않는다. */
+  const { sk, sd, setSort } = useSort('')
+  const [drugF, setDrugF] = useState(null)   /* 약품명 복수 필터 — null 이 전체 */
+  /* ★ JSX 태그 이름으로만 쓰인 식별자는 이 저장소 eslint(react 플러그인 없음)가
+     미사용으로 본다 — 한 번 변수로 받아 식이 되게 한다. */
+  const HeadMenu = ColMenu
 
   /* ── 공통 스타일 — VaccineManage 의 ip·btn 과 같은 모양 ── */
   const ip = { padding: '7px 10px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, outline: 'none', background: t.bg, color: t.text, boxSizing: 'border-box' }
@@ -61,8 +72,33 @@ export default function VaccinePublicPanel({ accounts, season, drugNames, onRelo
   const [savingLabels, setSavingLabels] = useState(false)
 
   const valOf = a => (a.id in draft ? draft[a.id] : (baseline[a.id] ?? ''))
+  /* ★ dirty·tooLong·저장은 **거르기 전 rows** 를 본다 — 필터는 보이는 줄만 바꾼다.
+     여기서 shownRows 를 쓰면 「거른 뒤 저장하니 안 보이던 수정이 사라지는」 일이 생긴다. */
   const dirty = rows.filter(a => normLabel(valOf(a)) !== (a.public_label || null))
   const tooLong = rows.filter(a => labelTooLong(valOf(a)))
+
+  /* ── 약품명 머리글 — 정렬 + 복수 필터. 보이는 줄만 바꾼다 ── */
+  /* ★ 이름을 한 번만 뽑아 표로 들고 있는다 — 매 렌더 새로 만드는 함수를 memo 안에서 쓰면
+     의존성이 맞지 않아(함수가 늘 새 값) 캐시가 무의미해진다. */
+  const nameMap = useMemo(() => {
+    const m = {}
+    for (const a of rows) m[a.id] = drugNames?.[(a.drug_code || '').trim()] || ''
+    return m
+  }, [rows, drugNames])
+  const drugItems = useMemo(
+    () => [...new Set(rows.map(a => nameMap[a.id] || '—'))].sort((a, b) => a.localeCompare(b, 'ko')),
+    [rows, nameMap])
+  /* ★ 이름은 shownRows — 줄 안쪽에 이미 `shown`(공개/숨김 뱃지)이 있어 가려진다(그림자) */
+  const shownRows = useMemo(() => {
+    const kept = filterByCategory(rows.map(a => ({ ...a, _name: nameMap[a.id] || '—' })), drugF, '_name')
+    if (!sk) return kept
+    const dir = sd === 'desc' ? -1 : 1
+    return [...kept].sort((a, b) => {
+      const c = String(a._name).localeCompare(String(b._name), 'ko')
+      return (c !== 0 ? c * dir : 0)
+        || String(a.drug_code).localeCompare(String(b.drug_code), 'ko')   /* 동률은 늘 코드순 */
+    })
+  }, [rows, drugF, sk, sd, nameMap])
 
   async function saveLabels() {
     if (!dirty.length || tooLong.length) return
@@ -179,6 +215,7 @@ export default function VaccinePublicPanel({ accounts, season, drugNames, onRelo
     {/* ── 현재 절기 계정 표 (표준 표 사양 적용 제외 — 승인됨) ── */}
     <div style={{ marginTop: 14, marginBottom: 6, display: 'flex', alignItems: 'baseline', gap: 8 }}>
       <span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>공개 표시명</span>
+      <span style={{ fontSize: 11, color: t.textM, fontWeight: 600 }}>{shownRows.length}건{drugF ? ' / 전체 ' + rows.length : ''}</span>
       <span style={{ fontSize: 11, color: t.textL }}>{season} · 비우면 공개 화면에서 숨깁니다 · 최대 {LABEL_MAX}자</span>
     </div>
 
@@ -189,11 +226,15 @@ export default function VaccinePublicPanel({ accounts, season, drugNames, onRelo
           <thead><tr style={{ background: t.bg }}>
             <th style={th}>약품코드</th>
             <th style={th}>재원</th>
-            <th style={th}>약품명</th>
+            {/* ★ 약품명만 정렬·복수 필터 — 공용 ColMenu 그대로다(부품 무수정) */}
+            <th style={th}><HeadMenu colKey="_name" label="약품명" sk={sk} sd={sd} setSort={setSort}
+              filter={{ items: drugItems, multi: true, value: drugF,
+                isOn: v => isCategoryOn(drugF, v),
+                on: v => setDrugF(v === null ? null : toggleCategory(drugF, v, drugItems)) }} /></th>
             <th style={th}>공개 표시명</th>
             <th style={{ ...th, textAlign: 'center' }}>공개</th>
           </tr></thead>
-          <tbody>{rows.map(a => {
+          <tbody>{shownRows.map(a => {
             const v = valOf(a)
             const long = labelTooLong(v)
             const shown = !!normLabel(v)

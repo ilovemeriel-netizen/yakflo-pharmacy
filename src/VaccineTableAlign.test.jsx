@@ -181,7 +181,9 @@ describe('① 약품별 집계 — 약품명', () => {
 describe('② LOT·유효기한 표', () => {
   const lotRows = () => {
     const tables = [...document.querySelectorAll('table')]
-    const lot = tables.find(tb => [...tb.querySelectorAll('th')].some(x => x.textContent.trim() === 'LOT'))
+    /* ★ 머리글에 ColMenu 가 붙어 글자가 「LOT⇅」이 된다 — 정렬 기호를 떼고 찾는다 */
+    const lot = tables.find(tb => [...tb.querySelectorAll('th')]
+      .some(x => x.textContent.replace(/[⇅▲▼✓\s]/g, '') === 'LOT'))
     return lot ? { table: lot, rows: [...lot.querySelectorAll('tbody tr')] } : null
   }
   /* ★ 이 구역은 Collapsible 안이라 접힌 채로 시작한다 — 펼쳐야 표가 생긴다 */
@@ -197,10 +199,11 @@ describe('② LOT·유효기한 표', () => {
     await waitFor(() => expect(lotRows() && lotRows().rows.length).toBeGreaterThan(0))
   }
 
-  it('약품·LOT·유효기한 칸이 왼쪽으로 선다', async () => {
+  /* ★ 열 차례 — 「약품」 1열을 약품코드·약품명 2열로 나눴다(#382). 번호가 하나씩 밀린다. */
+  it('약품코드·약품명·LOT·유효기한 칸이 왼쪽으로 선다', async () => {
     await openLot()
     const tds = tdsOfRow(lotRows().rows[0])
-    for (const [i, nm] of [[0, '약품'], [1, 'LOT'], [2, '유효기한']]) {
+    for (const [i, nm] of [[0, '약품코드'], [1, '약품명'], [2, 'LOT'], [3, '유효기한']]) {
       expect(css(tds[i]).textAlign, nm + ' 칸 정렬').toBe('left')
       expect(tds[i].style.textAlign, nm + ' 직접 지정').toBe('left')
     }
@@ -210,7 +213,7 @@ describe('② LOT·유효기한 표', () => {
     const { table } = lotRows()
     const ths = [...table.querySelectorAll('th')]
     const tds = tdsOfRow(lotRows().rows[0])
-    for (const i of [0, 1, 2]) {
+    for (const i of [0, 1, 2, 3]) {
       expect(css(ths[i]).textAlign, i + '번째 머리글').toBe('left')
       expect(css(tds[i]).paddingLeft, i + '번째 여백').toBe(css(ths[i]).paddingLeft)
       expect(css(tds[i]).paddingLeft).toBe('9px')
@@ -219,7 +222,7 @@ describe('② LOT·유효기한 표', () => {
   it('입고·잔량 숫자 열은 오른쪽 그대로', async () => {
     await openLot()
     const tds = tdsOfRow(lotRows().rows[0])
-    for (const i of [3, 4]) expect(css(tds[i]).textAlign, i + '번째 칸').toBe('right')
+    for (const i of [4, 5]) expect(css(tds[i]).textAlign, i + '번째 칸').toBe('right')
   })
 })
 
