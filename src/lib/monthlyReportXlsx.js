@@ -16,6 +16,14 @@
 
 const BLACK = 'FF000000'
 
+/* ★ 글꼴 이름 — 기준 양식 실측: styles.xml 의 글꼴 16개 중 15개가 「맑은 고딕」이고
+   저마다 이름을 **명시**한다(테마의 minor 는 Calibri 지만 이름이 이기므로 무관).
+   exceljs 는 아무것도 안 주면 Calibri 로 쓴다 — 한글이 대체 글꼴로 떨어져 기준 양식과
+   자간·높이가 달라 보인다. 그래서 **모든 칸에 이름을 박는다.** */
+export const FONT_NAME = '맑은 고딕'
+/* 빈 칸·기본 스타일까지 따라오게 쓰는 열 기본 글꼴. 크기는 엑셀 기본과 같은 11. */
+export const DEFAULT_FONT = { name: FONT_NAME, size: 11 }
+
 /* 스펙(openpyxl)의 세로 정렬 「center」는 엑셀 파일에서 「middle」이다.
    그대로 넘기면 엑셀이 알아보지 못해 정렬이 조용히 사라진다. */
 export const V_ALIGN = { center: 'middle' }
@@ -126,12 +134,12 @@ const LIST_KEYS = ['code', 'name', 'category', 'openingQty', 'openingAmount', 'i
 /* ── 그리기 도우미 ─────────────────────────────────────────────────────── */
 function paint(cell, s, mono) {
   if (s.fill && !mono) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: s.fill } }
-  const font = {}
+  const font = { name: FONT_NAME }
   if (s.bold) font.bold = true
   if (s.size) font.size = s.size
   const color = mono ? (s.fontColor ? BLACK : null) : s.fontColor
   if (color) font.color = { argb: color }
-  if (Object.keys(font).length) cell.font = font
+  cell.font = font
   if (s.numFmt && s.numFmt !== 'General') cell.numFmt = s.numFmt
   if (s.h || s.v) {
     cell.alignment = {
@@ -146,7 +154,14 @@ function paint(cell, s, mono) {
   }
 }
 
+/* 빈 칸까지 글꼴을 따라오게 한다 — 열에 기본 글꼴을 걸어 둔다.
+   ★ 값을 쓰기 **전에** 걸어야 한다. 나중에 걸면 이미 칠해 둔 칸의 크기·색을 덮어쓴다. */
+function setColumnFont(ws, cols) {
+  for (const col of cols) ws.getColumn(col).font = { ...DEFAULT_FONT }
+}
+
 function buildSummary(ws, dto, mono) {
+  setColumnFont(ws, Object.keys(SUMMARY_WIDTHS))
   for (const [col, width] of Object.entries(SUMMARY_WIDTHS)) ws.getColumn(col).width = width
   for (const [row, height] of Object.entries(SUMMARY_HEIGHTS)) ws.getRow(Number(row)).height = height
 
@@ -169,6 +184,7 @@ function buildSummary(ws, dto, mono) {
 }
 
 function buildList(ws, dto, mono) {
+  setColumnFont(ws, Object.keys(LIST_WIDTHS))
   for (const [col, width] of Object.entries(LIST_WIDTHS)) ws.getColumn(col).width = width
 
   /* 머리글 — 기준 양식에는 서식이 없다. 글자·굵기·크기·색·정렬은 그대로 두고
@@ -178,6 +194,7 @@ function buildList(ws, dto, mono) {
     const cell = head.getCell(i + 1)
     cell.value = h
     cell.border = { left: { style: 'thin' }, right: { style: 'thin' }, top: { style: 'thin' }, bottom: { style: 'thin' } }
+    cell.font = { ...DEFAULT_FONT }
   })
 
   dto.list.forEach((item, i) => {
@@ -194,6 +211,7 @@ function buildList(ws, dto, mono) {
       const cell = row.getCell(c)
       cell.border = { left: { style: 'thin' }, right: { style: 'thin' }, top: { style: 'thin' }, bottom: { style: 'thin' } }
       cell.alignment = { vertical: 'middle', ...(c === 2 ? { wrapText: true } : {}) }
+      cell.font = { ...DEFAULT_FONT }
     }
     for (const col of QTY_COLS) row.getCell(col).numFmt = QTY_FMT
     for (const col of AMT_COLS) row.getCell(col).numFmt = AMT_FMT
