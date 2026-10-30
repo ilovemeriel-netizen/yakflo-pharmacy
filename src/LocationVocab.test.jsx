@@ -26,7 +26,7 @@ const DRUGS = [
   { id: 'd6', drug_code: 'EEE', drug_name: '마바사정', category: '경구제', current_qty: 7, status: '사용', storage_location: 'O-1' },
 ]
 const VOCAB = [
-  { id: 'v0', tenant_id: 'tn', code: '치울 곳을 정하는 중인 약품', label: '임시보관(미지정)', sort_order: 0, is_active: true, is_system: true },
+  { id: 'v0', tenant_id: 'tn', code: '보관 위치를 정하기 전 잠시 두는 약품', label: '임시보관(미지정)', sort_order: 0, is_active: true, is_system: true },
   { id: 'v1', tenant_id: 'tn', code: 'D-1', label: 'D-1', sort_order: 1, is_active: true, is_system: false },
   { id: 'v2', tenant_id: 'tn', code: '주사 냉장', label: 'O-1', sort_order: 2, is_active: true, is_system: false },
   { id: 'v3', tenant_id: 'tn', code: 'T-1', label: 'T-1', sort_order: 3, is_active: true, is_system: false },
@@ -241,17 +241,53 @@ describe('④ 임시보관함 — 시스템 위치', () => {
   })
 })
 
+describe('④-b 임시보관함이 제안 목록·목적지에서도 맨 위다', () => {
+  const APP = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8')
+  it('★ 약품 등록·수정의 제안 목록(datalist)이 시스템 위치를 먼저 둔다', () => {
+    const dl = APP.slice(APP.indexOf('function LocVocabDatalist'), APP.indexOf('export function DrugEditModal'))
+    expect(dl).toContain('is_system')
+    expect(dl).toContain('live.filter(x => x.is_system)')
+  })
+  it('★ 이동 창 목적지도 시스템 위치를 먼저 둔다', () => {
+    const md = APP.slice(APP.indexOf('const [destOpts'), APP.indexOf('const qq = q.trim()'))
+    expect(md).toContain('live.filter(x => x.is_system)')
+  })
+  it('★ 자유 입력은 그대로다 — datalist 이지 select 가 아니다', () => {
+    const dl = APP.slice(APP.indexOf('function LocVocabDatalist'), APP.indexOf('export function DrugEditModal'))
+    expect(dl).toContain('<datalist')
+    expect(dl.includes('<select'), '자유 입력을 막는 select 로 바뀌었다').toBe(false)
+  })
+})
+
 describe('⑤ NULL(위치 미등록)은 건드리지 않았다', () => {
   const APP = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8')
   it('★ 위치 해제는 여전히 NULL 을 쓴다', () => {
     expect(APP).toContain("update({ storage_location: null })")
   })
+  const MIG = readFileSync(resolve(process.cwd(), 'supabase/migrations/0103_location_vocab_system.sql'), 'utf8')
+
   it('★ 임시보관함은 NULL 이 아니라 이름이 있는 위치다', () => {
-    const mig = readFileSync(resolve(process.cwd(), 'supabase/migrations/0103_location_vocab_system.sql'), 'utf8')
-    expect(mig).toContain("'임시보관(미지정)'")
-    expect(mig).toContain('is_system')
-    /* NULL 을 바꾸는 구문이 들어 있지 않다 */
-    expect(mig.includes('update public.drugs'), '마이그레이션이 약품을 건드린다').toBe(false)
-    expect(mig.includes('storage_location'), '마이그레이션이 약품 위치를 건드린다').toBe(false)
+    expect(MIG).toContain("'임시보관(미지정)'")
+    expect(MIG).toContain('is_system')
+    /* 약품 데이터를 건드리는 구문이 들어 있지 않다 */
+    expect(MIG.includes('update public.drugs'), '마이그레이션이 약품을 건드린다').toBe(false)
+    expect(MIG.includes('storage_location'), '마이그레이션이 약품 위치를 건드린다').toBe(false)
+  })
+
+  it('★ 설명 문구가 확정본이다', () => {
+    expect(MIG).toContain('보관 위치를 정하기 전 잠시 두는 약품')
+  })
+
+  it('★★ DB 트리거가 삭제·이름 변경·중지를 막는다 — 화면 가드만으로는 엑셀·직접 SQL 을 못 막는다', () => {
+    expect(MIG).toContain('create trigger trg_guard_location_vocab_system')
+    expect(MIG).toContain('before update or delete on public.location_vocab')
+    for (const msg of ['시스템 위치는 삭제할 수 없습니다', '시스템 위치의 이름은 바꿀 수 없습니다', '시스템 위치는 중지할 수 없습니다']) {
+      expect(MIG, '막는 문구가 없다: ' + msg).toContain(msg)
+    }
+  })
+
+  it('★ 잠금을 푸는 길이 남아 있다 — is_system=false 는 통과시킨다', () => {
+    expect(MIG).toContain('old.is_system and new.is_system')
+    expect(MIG).toContain('set is_system = false')
   })
 })

@@ -458,8 +458,14 @@ function LocVocabDatalist({ id }) {
   const [opts, setOpts] = useState([])
   useEffect(() => {
     let on = true
-    supabase.from('location_vocab').select('label,code,sort_order,is_active').order('sort_order').order('label')
-      .then(({ data }) => { if (on) setOpts((data || []).filter(x => x.is_active !== false)) })
+    supabase.from('location_vocab').select('label,code,sort_order,is_system,is_active').order('sort_order').order('label')
+      .then(({ data }) => {
+        if (!on) return
+        const live = (data || []).filter(x => x.is_active !== false)
+        /* ★ 시스템 위치(임시보관함)는 맨 위에 못 박는다 — sort_order 0 이라 지금도 첫째지만,
+           나중에 번호가 바뀌어도 제안 목록에서 첫 줄을 지키게 한다. */
+        setOpts([...live.filter(x => x.is_system), ...live.filter(x => !x.is_system)])
+      })
     return () => { on = false }
   }, [])
   return <datalist id={id}>{opts.map(o => { const d = lvDesc(o)
@@ -6433,8 +6439,13 @@ export function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
      LocVocabDatalist 는 수정 금지라 내부 데이터를 빌려올 수 없어 여기서 따로 읽는다(38행, 비용 무시 가능). */
   useEffect(() => {
     let on = true
-    supabase.from('location_vocab').select('label,code,sort_order,is_active').order('sort_order').order('label')
-      .then(({ data }) => { if (on) setDestOpts((data || []).filter(x => x.is_active !== false)) })
+    supabase.from('location_vocab').select('label,code,sort_order,is_system,is_active').order('sort_order').order('label')
+      .then(({ data }) => {
+        if (!on) return
+        const live = (data || []).filter(x => x.is_active !== false)
+        /* ★ 임시보관함을 목적지 맨 위로 — 「일단 여기」가 가장 자주 고르는 값이다 */
+        setDestOpts([...live.filter(x => x.is_system), ...live.filter(x => !x.is_system)])
+      })
     return () => { on = false }
   }, [])
   /* ★ 검색은 이미 받아온 rows 를 거르는 클라이언트 필터다 — 추가 조회를 하지 않는다.

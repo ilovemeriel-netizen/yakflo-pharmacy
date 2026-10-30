@@ -21,10 +21,14 @@
 --   ※ 다만 화면은 `select('*')` 로 읽고 `r.is_system` 이 없으면 undefined(거짓)이므로,
 --     순서가 뒤바뀌어도 **깨지지 않고 「시스템 위치 없음」으로 동작**한다.
 --
--- ★ 되돌리기
+-- ★ 되돌리기 — **순서가 중요하다**(트리거가 삭제를 막는다)
+--     drop trigger if exists trg_guard_location_vocab_system on public.location_vocab;
+--     drop function if exists public.guard_location_vocab_system();
 --     delete from public.location_vocab where is_system;   -- ※ 그 위치를 쓰던 약품은
 --                                                          --   「미등록 위치」가 된다
 --     alter table public.location_vocab drop column if exists is_system;
+--   ※ 트리거를 그대로 두고 한 행만 지우려면 먼저 잠금을 푼다:
+--     update public.location_vocab set is_system = false where label = '임시보관(미지정)';
 -- ═══════════════════════════════════════
 
 alter table public.location_vocab
@@ -43,7 +47,7 @@ comment on column public.location_vocab.is_system is
 -- ★ (tenant_id, label) 이 UNIQUE 라 두 번 돌려도 한 행만 남는다.
 insert into public.location_vocab (tenant_id, code, label, sort_order, is_active, is_system)
 select distinct v.tenant_id,
-       '치울 곳을 정하는 중인 약품',
+       '보관 위치를 정하기 전 잠시 두는 약품',
        '임시보관(미지정)',
        0,
        true,
@@ -54,5 +58,56 @@ select distinct v.tenant_id,
     where x.tenant_id = v.tenant_id and x.label = '임시보관(미지정)'
  )
 on conflict (tenant_id, label) do nothing;
+
+-- ── 시스템 위치 보호 트리거 ───────────────────────────────────────────────
+-- ★ 화면에서도 버튼을 끄지만, 화면 가드만으로는 **엑셀 일괄등록·직접 SQL·다른 클라이언트**를
+--   막지 못한다. 이름이 바뀌거나 행이 지워지면 그 위치를 쓰던 약품이 전부
+--   「미등록 위치」로 끊기므로 DB 에서도 받친다.
+--
+-- ★ 막는 것 세 가지 — DELETE · label 변경 · is_active 변경.
+-- ★ 막지 않는 것 — code(설명) 변경, sort_order 변경.
+--   설명은 바꿔도 연결이 끊기지 않고, 순서는 화면이 애초에 시스템 행을 빼고 다시 번호를 매긴다.
+--
+-- ★★ 잠금을 푸는 길 — `is_system` 자체는 바꿀 수 있게 열어 둔다.
+--   정말 지워야 할 때는 `update public.location_vocab set is_system = false where ...` 를
+--   먼저 하고 지운다. 이 길이 없으면 트리거를 떨어뜨리지 않고는 되돌릴 수 없다.
+create or replace function public.guard_location_vocab_system()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+begin
+  if tg_op = 'DELETE' then
+    if old.is_system then
+      raise exception '시스템 위치는 삭제할 수 없습니다 (%)', old.label
+        using errcode = 'check_violation';
+    end if;
+    return old;
+  end if;
+
+  -- UPDATE — 잠금을 푸는 변경(is_system → false)은 통과시킨다
+  if old.is_system and new.is_system then
+    if new.label is distinct from old.label then
+      raise exception '시스템 위치의 이름은 바꿀 수 없습니다 (%)', old.label
+        using errcode = 'check_violation';
+    end if;
+    if new.is_active is distinct from old.is_active then
+      raise exception '시스템 위치는 중지할 수 없습니다 (%)', old.label
+        using errcode = 'check_violation';
+    end if;
+  end if;
+  return new;
+end
+$$;
+
+comment on function public.guard_location_vocab_system() is
+  '시스템 위치(is_system)의 삭제·이름 변경·중지를 막는다. '
+  '설명(code)·순서(sort_order)는 허용하고, is_system 을 false 로 바꾸면 잠금이 풀린다.';
+
+drop trigger if exists trg_guard_location_vocab_system on public.location_vocab;
+create trigger trg_guard_location_vocab_system
+  before update or delete on public.location_vocab
+  for each row execute function public.guard_location_vocab_system();
 
 notify pgrst, 'reload schema';
