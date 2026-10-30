@@ -145,13 +145,12 @@ export default defineConfig(({ mode }) => {
           ],
         },
         workbox: {
+          /* ★ 결산 엑셀용 exceljs(약 930 kB) 청크도 프리캐시에 **그대로 둔다**(사용자 결정 2026-10-30).
+             메인 번들에는 안 들어가고 버튼을 누를 때만 쓰지만, 미리 받아 두면 네트워크가
+             느리거나 끊겨도 결산 엑셀을 만들 수 있다. 첫 방문 29개 3,520 KiB.
+             ※ 한때 globIgnores 로 뺐다가(28개 2,612 KiB) 되돌렸다 — 다시 빼자는 제안은
+               「오프라인에서도 결산 엑셀을 만들 수 있어야 한다」를 먼저 뒤집어야 한다. */
           globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-          /* ★ 결산 엑셀용 exceljs(약 930 kB)는 미리 받지 않는다.
-             보고서에서 「엑셀」을 누른 사람만 쓰는데, globPatterns 가 모든 js 를 잡아
-             첫 방문자까지 프리캐시로 내려받고 있었다(27개 2,626 KiB → 29개 3,520 KiB).
-             빼면 오프라인일 때 결산 엑셀만 못 만들고 나머지 화면은 그대로다.
-             청크 이름은 rolldown 이 해시를 붙이므로 앞머리로 맞춘다. */
-          globIgnores: ['**/exceljs*.js'],
           navigateFallback: '/offline.html',
           /* SW가 처리하지 않을 경로 (서버 함수·OAuth 콜백 등) */
           navigateFallbackDenylist: [/^\/api\//, /^\/auth\//],

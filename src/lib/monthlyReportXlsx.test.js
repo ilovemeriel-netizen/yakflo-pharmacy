@@ -363,6 +363,87 @@ describe('흑백판 — 배경 없음·글자 검정, 나머지는 컬러판과 
   })
 })
 
+/* ── 보고 연·월이 파일명과 요약 D2 에 함께 따라붙는가 ─────────────────────
+   ★ 둘이 **다른 코드 자리**에서 만들어진다(파일명은 monthlyReportFileName,
+     D2 는 쓰기 계층의 _period). 한쪽만 고치면 「12월 파일 안에 11월」 같은 일이 난다.
+   ★ 다운로드 **날짜**가 아니라 화면에서 고른 **보고 연·월**이어야 한다.
+     작성 시각은 B25 에만 적힌다. */
+describe('보고 연·월 — 파일명과 요약 D2 가 함께 따라온다', () => {
+  const PERIODS = [
+    [2026, 9, '2026년 9월'],
+    [2026, 12, '2026년 12월'],
+    [2027, 1, '2027년 1월'],    /* ★ 연도 경계 — 12월 다음이 이듬해 1월이다 */
+    [2027, 10, '2027년 10월'],
+    [2030, 3, '2030년 3월'],
+  ]
+  const dtoFor = (y, m) => buildMonthlyReportDTO({
+    closed: true, totals: TOTALS, rows: ROWS, drugs: DRUGS, live: null,
+    year: y, month: m, stamp: STAMP, copyright: COPY,
+  })
+
+  for (const [y, m, text] of PERIODS) {
+    it(y + '-' + String(m).padStart(2, '0') + ' → 파일명·D2 모두 「' + text + '」', async () => {
+      const d = dtoFor(y, m)
+      expect(monthlyReportFileName(d, false)).toBe(text + ' 의약품 결산 내역.xlsx')
+      expect(monthlyReportFileName(d, true)).toBe(text + ' 의약품 결산 내역(흑백).xlsx')
+      const wb = await load(await writeMonthlyReportXlsx(d, { mono: false }))
+      expect(wb.getWorksheet('요약').getCell('D2').value).toBe(text)
+      /* 파일명 안에 D2 와 똑같은 글자가 들어 있다 — 둘이 갈라지면 여기서 걸린다 */
+      expect(monthlyReportFileName(d, false)).toContain(text)
+    }, 30000)
+  }
+
+  it('월은 0 으로 채우지 않는다 — 「09월」이 아니라 「9월」', () => {
+    for (let m = 1; m <= 9; m++) {
+      const n = monthlyReportFileName(dtoFor(2026, m), false)
+      expect(n, m + '월').toBe('2026년 ' + m + '월 의약품 결산 내역.xlsx')
+      expect(n).not.toContain('0' + m + '월')
+    }
+  })
+
+  it('★ 연도 경계 — 2026년 12월과 2027년 1월이 서로 다른 이름이 된다', () => {
+    const dec = monthlyReportFileName(dtoFor(2026, 12), false)
+    const jan = monthlyReportFileName(dtoFor(2027, 1), false)
+    expect(dec).not.toBe(jan)
+    expect(dec).toContain('2026년 12월')
+    expect(jan).toContain('2027년 1월')
+    expect(jan).not.toContain('2026')
+  })
+
+  it('작성 시각(B25)은 따로 간다 — 보고월을 따라가지 않는다', async () => {
+    const wb = await load(await writeMonthlyReportXlsx(dtoFor(2027, 1), { mono: false }))
+    const s = wb.getWorksheet('요약')
+    expect(s.getCell('D2').value).toBe('2027년 1월')
+    expect(s.getCell('B25').value).toBe(STAMP)          /* 다운로드 시점 */
+    expect(s.getCell('B25').value).not.toContain('2027년 1월')
+  }, 30000)
+
+  it('★ 결산 코드에 연·월이 박혀 있지 않다', () => {
+    for (const f of ['monthlyReportXlsx.js', 'monthlyReportDTO.js', 'monthlyReportQuery.js']) {
+      const src = readFileSync('src/lib/' + f, 'utf8')
+      /* 주석은 설명이라 뺀다 — 실제로 실행되는 줄만 본다.
+         ★ 블록 주석을 **먼저** 통째로 지운다. 줄 단위로 먼저 걸러 내면 여는 `/*` 가
+           사라져 블록 몸통이 코드인 양 남는다(처음에 이렇게 틀렸다). */
+      const code = src
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n')
+      expect(code.match(/\b20\d\d\b/g), f + ' 에 연도 리터럴').toBe(null)
+      expect(code.match(/\d\s*월/g), f + ' 에 월 리터럴').toBe(null)
+    }
+  })
+
+  it('★ 화면 쪽도 고른 연·월을 그대로 넘긴다 (App.jsx dlFmt)', () => {
+    const app = readFileSync('src/App.jsx', 'utf8')
+    const i = app.indexOf('async function dlFmt()')
+    expect(i, 'dlFmt 를 찾지 못했다').toBeGreaterThan(0)
+    const body = app.slice(i, app.indexOf('\n  }', i))
+    expect(body, '고른 연·월을 넘긴다').toMatch(/year,\s*month,/)
+    expect(body.match(/\b20\d\d\b/g), 'dlFmt 에 연도 리터럴').toBe(null)
+    /* 파일명은 dto 에서 만든다 — 화면이 따로 짜 맞추지 않는다 */
+    expect(body).toContain('monthlyReportFileName(dto,mono)')
+  })
+})
+
 describe('스펙 비교에서 빼 둔 항목이 문서로 남아 있다', () => {
   it('요약 보정은 5종 9칸뿐', () => {
     expect(Object.keys(EXCEPTIONS).sort()).toEqual(['B10', 'B21', 'B25', 'B26', 'B5', 'B9', 'C18', 'C6', 'F13'])
