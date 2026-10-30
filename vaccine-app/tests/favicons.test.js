@@ -183,6 +183,6 @@ describe('바꾸지 않기로 한 것', () => {
   })
   it('★ 공개 사이트의 문구·저작권은 손대지 않았다', () => {
     expect(HTML).toContain('<title>백신 잔량 조회</title>')
-    expect(APP).toMatch(/Copyright © 2026 JEONGHWALEE/)
+    expect(APP).toContain("© 2026 JEONGHWALEE. All rights reserved. 무단 복제 및 재배포를 금지합니다.")
   })
 })

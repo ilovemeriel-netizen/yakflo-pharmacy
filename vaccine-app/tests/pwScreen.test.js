@@ -1,7 +1,7 @@
 /* 비밀번호 화면 문구 — 사용자 확정본(2026-10-30).
 
    ★ 문구는 사용자가 정한 것이다. 바뀌면 바로 걸리게 **원문 그대로** 박아 둔다.
-   ★ 저작권 문구는 이번에 바꾸지 않는다(시스템 전체 일괄 변경으로 보류) — 그대로인지도 본다.
+   ★ 저작권 문구는 2026-10-30 에 시스템 전체 일괄로 바뀌었다(PR #371) — 새 문구인지 본다.
    ★ 배치·색·크기·굵기는 건드리지 않았다 — 색 리터럴이 늘지 않았는지 함께 본다. */
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -45,10 +45,13 @@ describe('바꾸지 않기로 한 것', () => {
     expect(APP).toContain("const TEL = '약제과(내선 217)'")
     expect(APP).toContain('{TEL}</span>')
   })
-  it('★ 저작권 문구는 이번에 바꾸지 않는다 — 시스템 전체 일괄 변경으로 보류', () => {
+  /* ★ 2026-10-30 뒤집음 — 보류하던 시스템 전체 일괄 변경이 끝났다(PR #371).
+     이제는 **새 문구가 들어 있고 옛 문구가 없다**를 고정한다. */
+  it('★ 저작권은 새 문구다 — 시스템 전체 일괄 변경 완료', () => {
     const ft = readFileSync(resolve(process.cwd(), 'vaccine-app/src/App.jsx'), 'utf8')
-    expect(ft).toMatch(/Copyright © 2026 JEONGHWALEE/)
-    expect(ft, '새 저작권 문구를 아직 넣지 않는다').not.toContain('무단 복제 및 재배포를 금지합니다')
+    expect(ft).toContain("© 2026 JEONGHWALEE. All rights reserved. 무단 복제 및 재배포를 금지합니다.")
+    expect(ft, '옛 저작권 문구가 남아 있다').not.toContain('무단 전재 및 재배포 금지')
+    expect(ft, '「Copyright」 단어는 새 문구에 없다').not.toContain('Copyright')
   })
   it('★ 버튼의 색 동작(비활성·활성)은 그대로', () => {
     expect(APP).toContain("background: ready && !busy ? 'var(--v-purple)' : 'rgba(128, 74, 135, 0.3)'")

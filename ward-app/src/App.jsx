@@ -791,7 +791,7 @@ function Ft() {
       textAlign: 'center', padding: '20px 0 12px', fontSize: 11, color: rgba(NAVY, 0.5),
       borderTop: '1px solid ' + rgba(NAVY, 0.12), marginTop: 24, lineHeight: 1.6,
     }}>
-      Copyright © 2026 JEONGHWALEE. All rights reserved. 무단 전재 및 재배포 금지.
+      © 2026 JEONGHWALEE. All rights reserved. 무단 복제 및 재배포를 금지합니다.
     </div>
   )
 }
