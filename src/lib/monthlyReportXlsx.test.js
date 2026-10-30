@@ -10,6 +10,7 @@ import {
   writeMonthlyReportXlsx, monthlyReportFileName,
   SUMMARY_CELLS, SUMMARY_MERGES, SUMMARY_DROPPED,
   LIST_HEADERS, QTY_FMT, QTY_COLS, AMT_FMT, AMT_COLS, V_ALIGN,
+  FONT_NAME, DEFAULT_FONT,
 } from './monthlyReportXlsx.js'
 
 const SPEC_PATH = 'src/lib/__fixtures__/report_layout_spec.json'
@@ -441,6 +442,83 @@ describe('보고 연·월 — 파일명과 요약 D2 가 함께 따라온다', (
     expect(body.match(/\b20\d\d\b/g), 'dlFmt 에 연도 리터럴').toBe(null)
     /* 파일명은 dto 에서 만든다 — 화면이 따로 짜 맞추지 않는다 */
     expect(body).toContain('monthlyReportFileName(dto,mono)')
+  })
+})
+
+/* ── 글꼴 ────────────────────────────────────────────────────────────────
+   기준 양식 실측: styles.xml 의 글꼴 16개 중 15개가 「맑은 고딕」이고 저마다 이름을
+   명시한다(테마의 minor 는 Calibri 지만 이름이 이긴다).
+   ★ exceljs 는 아무것도 안 주면 Calibri 로 쓴다. 한글은 테마의 `script="Hang"` 덕에
+     맑은 고딕으로 떨어지지만 **숫자·영문은 Calibri 로 남아** 기준 양식과 달라 보인다. */
+describe('글꼴 — 모든 칸이 맑은 고딕', () => {
+  const everyCell = (wb, fn) => {
+    for (const ws of wb.worksheets) ws.eachRow(r => r.eachCell({ includeEmpty: true }, c => fn(ws, c)))
+  }
+
+  it('요약 — 스펙에 있는 칸 53개가 전부 맑은 고딕', () => {
+    const ws = color.getWorksheet('요약')
+    const checked = []
+    for (const addr of Object.keys(SPEC['요약'].cells)) {
+      if (addr === 'B5' || addr === 'B21') continue      /* 보정②로 넣지 않는 칸 */
+      expect(ws.getCell(addr).font && ws.getCell(addr).font.name, addr + ' 글꼴').toBe(FONT_NAME)
+      checked.push(addr)
+    }
+    expect(checked.length).toBeGreaterThan(45)
+  })
+
+  it('요약 — 글꼴을 박아도 크기·굵기·색은 스펙 그대로다', () => {
+    const ws = color.getWorksheet('요약')
+    for (const [addr, want] of Object.entries(SPEC['요약'].cells)) {
+      if (EXCEPTIONS[addr]) continue
+      const f = ws.getCell(addr).font || {}
+      if (want.size) expect(f.size, addr + ' 크기').toBe(want.size)
+      expect(!!f.bold, addr + ' 굵기').toBe(!!want.bold)
+      expect(f.color ? f.color.argb : null, addr + ' 색').toBe(want.fontColor)
+    }
+  })
+
+  it('약품목록 — 머리글 14칸과 데이터 칸 전부 맑은 고딕', () => {
+    const ws = color.getWorksheet('약품목록')
+    for (let i = 1; i <= LIST_HEADERS.length; i++) {
+      expect(ws.getRow(1).getCell(i).font.name, '머리글 ' + i).toBe(FONT_NAME)
+    }
+    for (let r = 2; r <= dto.list.length + 1; r++) {
+      for (let c = 1; c <= LIST_HEADERS.length; c++) {
+        expect(ws.getRow(r).getCell(c).font.name, r + '행 ' + c + '열').toBe(FONT_NAME)
+      }
+    }
+  })
+
+  it('★ 빈 칸까지 포함해 Calibri 가 한 칸도 없다 (컬러판)', () => {
+    const bad = []
+    everyCell(color, (ws, c) => {
+      const n = c.font && c.font.name
+      if (n !== FONT_NAME) bad.push(ws.name + '!' + c.address + '=' + (n || '(없음)'))
+    })
+    expect(bad, '맑은 고딕이 아닌 칸: ' + bad.join(', ')).toEqual([])
+  })
+
+  it('★ 흑백판도 똑같이 Calibri 0칸', () => {
+    const bad = []
+    everyCell(mono, (ws, c) => {
+      const n = c.font && c.font.name
+      if (n !== FONT_NAME) bad.push(ws.name + '!' + c.address + '=' + (n || '(없음)'))
+    })
+    expect(bad, '맑은 고딕이 아닌 칸: ' + bad.join(', ')).toEqual([])
+  })
+
+  it('열에도 기본 글꼴이 걸려 있다 — 나중에 빈 칸에 입력해도 따라온다', () => {
+    for (const [name, cols] of [['요약', 'ABCDEF'], ['약품목록', 'ABCDEFGHIJKLMN']]) {
+      const ws = color.getWorksheet(name)
+      for (const col of cols) {
+        expect(ws.getColumn(col).font && ws.getColumn(col).font.name, name + ' ' + col + '열').toBe(FONT_NAME)
+      }
+    }
+  })
+
+  it('DEFAULT_FONT 는 이름과 기본 크기만 들고 있다 — 색·굵기를 섞지 않는다', () => {
+    expect(DEFAULT_FONT).toEqual({ name: FONT_NAME, size: 11 })
+    expect(FONT_NAME).toBe('맑은 고딕')
   })
 })
 
