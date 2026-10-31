@@ -101,6 +101,42 @@ describe('인쇄에서 푸터가 숨는다', () => {
   })
 })
 
+/* ★ 조작 결과 안내 띠·토스트는 인쇄에서 빠져야 한다(함정 #33).
+     보기 문제가 아니라 **쪽이 밀린다** — 월간 요약 블록은 min-height 265mm 인데
+     인쇄 가능 높이가 273mm 라 여유가 8mm 뿐이다. 띠 하나(약 18mm)면 빈 쪽이 생긴다.
+     2026-11-01 에 30곳을 한 번에 붙였다. 새 띠를 만들면 여기서 잡힌다. */
+describe('안내 띠·토스트는 전부 no-print 다', () => {
+  /* 「…Msg && <div」·「msg && <div」 꼴 = 조작 결과를 알리는 띠.
+     ★ 조건을 둘로 나눈다 — ① 줄에 메시지 변수가 있고 ② `&&` 바로 뒤에 <div 가 온다.
+       하나로 욕심내면(변수와 && 와 <div 를 한 정규식으로) 중간에 낀 다른 조건
+       (`dropped.length===0&&msg&&`)에 걸려 **조용히 10건만** 잡는다. 실제로 그랬다. */
+  /* ★ `&&<div` **바로 앞**이 메시지 변수여야 한다.
+     「줄 어딘가에 msg 가 있고 어딘가에 &&<div 가 있다」로 잡으면 모달 **배경 오버레이**
+     (`{delTx&&<div onClick=…}`)까지 끌려온다 — 실제로 6건이 그렇게 섞였다. */
+  const BANNER = /\b([A-Za-z]*[Mm]sg|flash|toast)\s*&&\s*<div[\s>]/
+  const sites = () => APP.split(/\r?\n/)
+    .map((text, i) => ({ no: i + 1, text }))
+    .filter(s => BANNER.test(s.text))
+
+  it('★ no-print 가 빠진 안내 띠가 하나도 없다', () => {
+    const bad = sites().filter(s => !/no-print/.test(s.text))
+      .map(s => s.no + '줄: ' + s.text.trim().slice(0, 70))
+    expect(bad, '새 안내 띠에는 className="no-print" 를 붙일 것\n' + bad.join('\n')).toEqual([])
+  })
+
+  it('찾은 띠가 충분히 많다 — 정규식이 조용히 0건이 되지 않았는지', () => {
+    /* ★ 위 시험은 「없음」이면 통과한다. 정규식이 망가져 **아무것도 못 찾아도** 통과한다.
+       그래서 찾은 개수 자체를 본다(2026-11-01 실측 31곳 = 새로 붙인 30 + closeMsg 1). */
+    expect(sites().length, '안내 띠를 찾는 정규식이 망가졌다').toBeGreaterThanOrEqual(25)
+  })
+
+  it('.no-print 숨김은 @media print 안에만 있다 — 화면 표시는 그대로다', () => {
+    const outside = APP.replace(/@media print \{[\s\S]*?\n\s*\}/g, '')
+      .replace(/@media print\{[^}]*\.no-print[^}]*\}[^}]*\}/g, '')
+    expect(outside, '화면에서도 숨기면 안내가 안 보인다').not.toMatch(/\.no-print\s*\{\s*display:\s*none/)
+  })
+})
+
 describe('화면 컴포넌트 파일은 손대지 않았다', () => {
   for (const f of ['src/VaccineManage.jsx', 'src/EmergencyDispense.jsx']) {
     it(`${f} 에 <Ft/> 가 없다`, () => {
