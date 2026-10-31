@@ -232,8 +232,11 @@ describe('입출고 화면 — 단건 저장·엑셀 일괄의 배선', () => {
   })
 
   it('③ 단건 배너가 연보라 분기를 쓴다 — 「완료」가 없는 문구는 빨강이 되므로 별도 상태다', () => {
-    expect(SRC).toContain("{dropped.length>0&&<div style={{background:PARTIAL_BG,borderRadius:6,padding:'6px 10px',marginBottom:6,color:PARTIAL_FG,fontSize:11,fontWeight:600}}>{partialText(dropped,txColLabel)}</div>}")
-    expect(SRC).toContain("{dropped.length===0&&msg&&<div style={{background:msg.includes('완료')?t.greenL:t.redL")
+    /* ★ 2026-11-01: 안내 띠에 className="no-print" 가 붙었다(함정 #33).
+       **색 분기**를 보는 시험이므로 className 은 건너뛰고 style 부터 본다 —
+       글자 그대로 비교하면 인쇄 속성 하나 붙을 때마다 여기가 깨진다. */
+    expect(SRC).toContain("{dropped.length>0&&<div className=\"no-print\" style={{background:PARTIAL_BG,borderRadius:6,padding:'6px 10px',marginBottom:6,color:PARTIAL_FG,fontSize:11,fontWeight:600}}>{partialText(dropped,txColLabel)}</div>}")
+    expect(SRC).toMatch(/\{dropped\.length===0&&msg&&<div [^>]*style=\{\{background:msg\.includes\('완료'\)\?t\.greenL:t\.redL/)
   })
 
   it('④ 엑셀 일괄이 행마다 집계하고, 기존 건수 줄은 그대로다', () => {
@@ -251,7 +254,8 @@ describe('입출고 화면 — 단건 저장·엑셀 일괄의 배선', () => {
   })
 
   it('④ 일괄 요약 한 줄이 연보라이고 화면 이름을 쓴다', () => {
-    expect(SRC).toContain('{bulkPartial&&<div style={{marginTop:6,background:PARTIAL_BG')
+    /* ★ className="no-print" 가 사이에 끼어도 색 분기는 그대로여야 한다(함정 #33) */
+    expect(SRC).toMatch(/\{bulkPartial&&<div [^>]*style=\{\{marginTop:6,background:PARTIAL_BG/)
     expect(SRC).toContain('partialBulkText(bulkPartial.n,bulkPartial.cols,txColLabel)')
     /* 문구 합성이 화면 이름으로 나온다 */
     expect(partialBulkText(3, ['total_amount'], txColLabel)).toBe('3건은 일부 항목 미반영(금액 등)')

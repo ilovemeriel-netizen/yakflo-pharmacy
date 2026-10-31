@@ -411,7 +411,7 @@ function Drug360Modal({ drug: dr, onClose, pos, setPos, onSaved }) {
           const bd = (txt, col, fill) => <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 6, fontSize: 9, fontWeight: 700, whiteSpace: 'nowrap', border: '1px solid ' + col, background: fill ? col : 'transparent', color: fill ? t.card : col }}>{txt}</span>
           const ownWarn = bcF.code_type === '자체' && ownCodeLooksLikeGs1(bcF.code)
           return <div>
-            {bcMsg && <div style={{ marginBottom: 10, padding: '7px 11px', borderRadius: 8, fontSize: 11, fontWeight: 600, background: bcMsg.kind === 'err' ? t.bg : t.greenL, color: bcMsg.kind === 'err' ? t.text : t.green, borderLeft: '3px solid ' + (bcMsg.kind === 'err' ? t.text : t.green) }}>{bcMsg.text}</div>}
+            {bcMsg && <div className="no-print" style={{ marginBottom: 10, padding: '7px 11px', borderRadius: 8, fontSize: 11, fontWeight: 600, background: bcMsg.kind === 'err' ? t.bg : t.greenL, color: bcMsg.kind === 'err' ? t.text : t.green, borderLeft: '3px solid ' + (bcMsg.kind === 'err' ? t.text : t.green) }}>{bcMsg.text}</div>}
             {/* 등록 폼 */}
             <div style={{ background: t.bg, border: '1px solid ' + t.border, borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -753,8 +753,8 @@ export function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
       </div>
       <div style={{ padding: '16px 24px 20px' }}>
         {/* ★ 저장 성공('SAVED')과 API 조회 성공('OK')을 분리한다 — 예전엔 둘 다 'OK' 라서 저장해도 「API 조회 완료!」가 떴다 */}
-        {dropped.length > 0 && <div style={{ background: PARTIAL_BG, borderRadius: 8, padding: '10px', marginBottom: 12, color: PARTIAL_FG, fontSize: 13, fontWeight: 600 }}>{partialText(dropped)}</div>}
-        {dropped.length === 0 && msg && <div style={{ background: (msg === 'OK' || msg === 'SAVED') ? t.greenL : t.redL, borderRadius: 8, padding: '10px', marginBottom: 12, color: (msg === 'OK' || msg === 'SAVED') ? t.green : t.red, fontSize: 13, fontWeight: 600 }}>{msg === 'SAVED' ? '✅ 저장 완료' : msg === 'OK' ? '✅ API 조회 완료!' : msg}</div>}
+        {dropped.length > 0 && <div className="no-print" style={{ background: PARTIAL_BG, borderRadius: 8, padding: '10px', marginBottom: 12, color: PARTIAL_FG, fontSize: 13, fontWeight: 600 }}>{partialText(dropped)}</div>}
+        {dropped.length === 0 && msg && <div className="no-print" style={{ background: (msg === 'OK' || msg === 'SAVED') ? t.greenL : t.redL, borderRadius: 8, padding: '10px', marginBottom: 12, color: (msg === 'OK' || msg === 'SAVED') ? t.green : t.red, fontSize: 13, fontWeight: 600 }}>{msg === 'SAVED' ? '✅ 저장 완료' : msg === 'OK' ? '✅ API 조회 완료!' : msg}</div>}
         {apiResults.length>0&&<div style={{background:t.bg,borderRadius:10,border:`1px solid ${t.green}40`,marginBottom:12,overflow:'hidden'}}>
           <div style={{padding:'8px 14px',borderBottom:`1px solid ${t.border}`,fontSize:11,color:t.green,fontWeight:600}}>{apiResults.length}개 결과 · 다른 약품을 선택하려면 클릭하세요</div>
           <div style={{maxHeight:140,overflowY:'auto'}}>{apiResults.map((item,i)=><div key={i} onClick={()=>selectApiResult(item)} style={{padding:'8px 14px',borderBottom:`1px solid ${t.border}`,cursor:'pointer',fontSize:12}} onMouseEnter={e=>e.currentTarget.style.background=t.greenL} onMouseLeave={e=>e.currentTarget.style.background=''}><div style={{fontWeight:600,color:t.text}}>{item.name||'-'}</div><div style={{fontSize:10,color:t.textL,marginTop:1}}>{item.manufacturer||''}{item.ingredient?` · ${item.ingredient}`:''}</div></div>)}</div>
@@ -927,7 +927,7 @@ function DrugDeleteConfirm({ drug: dr, onClose, onDeleted }) {
       </>}
 
       {(phase === 'confirm' || phase === 'deleting') && <>
-        {errMsg && <div style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.textM, borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 11.5 }}>{errMsg}</div>}
+        {errMsg && <div className="no-print" style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.textM, borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 11.5 }}>{errMsg}</div>}
         {counts.snap > 0 && <div style={{ background: t.amberL, border: `1px solid ${t.amber}40`, borderRadius: 8, padding: '10px 12px', marginBottom: 10, fontSize: 11.5, color: t.text, lineHeight: 1.55 }}>
           ⚠️ 이 약품은 과거 월마감 기록 <strong style={{ color: t.amber }}>{counts.snap}건</strong>에 약품코드로 남아 있습니다.<br />
           삭제 후 과거 월마감 보고서에서 약품명이 표시되지 않을 수 있습니다.
@@ -980,8 +980,8 @@ export function AdjustModal({ drug: dr, onClose, onSaved }) {
     <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }} onClick={e => e.stopPropagation()}>
       <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: `1px solid ${t.border}` }}><div style={{ fontSize: 15, fontWeight: 700, color: t.amber }}>재고 보정</div><div style={{ fontSize: 12, color: t.textM, marginTop: 2 }}>{dr.drug_name}</div></div>
       <div style={{ padding: '16px 20px' }}>
-        {dropped.length > 0 && <div style={{ background: PARTIAL_BG, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: PARTIAL_FG, fontSize: 12, fontWeight: 600 }}>{partialText(dropped, txColLabel)}</div>}
-        {dropped.length === 0 && msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '보정 완료' : msg}</div>}
+        {dropped.length > 0 && <div className="no-print" style={{ background: PARTIAL_BG, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: PARTIAL_FG, fontSize: 12, fontWeight: 600 }}>{partialText(dropped, txColLabel)}</div>}
+        {dropped.length === 0 && msg && <div className="no-print" style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '보정 완료' : msg}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
           <div style={{ background: t.bg, borderRadius: 10, padding: '12px', textAlign: 'center', border: `1px solid ${t.border}` }}><div style={{ fontSize: 10, color: t.textM }}>서류재고</div><div style={{ fontSize: 22, fontWeight: 700, color: t.text, marginTop: 4 }}>{(dr.current_qty || 0).toLocaleString()}</div></div>
           <div style={{ background: t.bg, borderRadius: 10, padding: '12px', textAlign: 'center', border: `1px solid ${diff !== 0 ? t.amber : t.border}` }}><div style={{ fontSize: 10, color: t.textM }}>실재고</div><input type="number" value={qty} onChange={e => setQty(Number(e.target.value))} style={{ width: '100%', textAlign: 'center', fontSize: 22, fontWeight: 700, border: 'none', background: 'transparent', color: t.text, outline: 'none', marginTop: 4 }} /></div>
@@ -1040,8 +1040,8 @@ export function DisposalModal({ drug: dr, onClose, onSaved }) {
     <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: `1px solid ${t.border}`, boxShadow: t.shadowH, maxHeight: '92vh', overflowY: 'auto', transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }} onClick={e => e.stopPropagation()}>
       <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: `1px solid ${t.border}` }}><div style={{ fontSize: 15, fontWeight: 700, color: t.amber }}>폐기 · 반품 처리</div><div style={{ fontSize: 12, color: t.textM, marginTop: 2 }}>{dr.drug_name}</div></div>
       <div style={{ padding: '16px 20px' }}>
-        {dropped.length > 0 && <div style={{ background: PARTIAL_BG, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: PARTIAL_FG, fontSize: 12, fontWeight: 600 }}>{partialText(dropped, txColLabel)}</div>}
-        {dropped.length === 0 && msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '처리 완료' : msg}</div>}
+        {dropped.length > 0 && <div className="no-print" style={{ background: PARTIAL_BG, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: PARTIAL_FG, fontSize: 12, fontWeight: 600 }}>{partialText(dropped, txColLabel)}</div>}
+        {dropped.length === 0 && msg && <div className="no-print" style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '처리 완료' : msg}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
           <div style={{ background: t.bg, borderRadius: 10, padding: '12px', textAlign: 'center', border: `1px solid ${t.border}` }}><div style={{ fontSize: 10, color: t.textM }}>현재고</div><div style={{ fontSize: 22, fontWeight: 700, color: t.text, marginTop: 4 }}>{cur.toLocaleString()}</div></div>
           <div style={{ background: t.bg, borderRadius: 10, padding: '12px', textAlign: 'center', border: `1px solid ${t.border}` }}><div style={{ fontSize: 10, color: t.textM }}>유효기한</div><div style={{ fontSize: 15, fontWeight: 700, color: t.text, marginTop: 8 }}>{dr.expiry_date || '-'}</div></div>
@@ -1097,7 +1097,7 @@ function LotModal({ drug: dr, onClose, onSaved }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ fontSize: 12, color: t.green, fontWeight: 600 }}>활성합계: {totalQty}개</span><button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${t.border}`, background: 'transparent', cursor: 'pointer', fontSize: 14, color: t.textM }}>✕</button></div>
       </div>
       <div style={{ padding: '16px 20px' }}>
-        {msg && <div style={{ background: msg.includes('완료') ? t.greenL : t.redL, borderRadius: 6, padding: '8px 12px', marginBottom: 10, color: msg.includes('완료') ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg}</div>}
+        {msg && <div className="no-print" style={{ background: msg.includes('완료') ? t.greenL : t.redL, borderRadius: 6, padding: '8px 12px', marginBottom: 10, color: msg.includes('완료') ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg}</div>}
         <div style={{ background: t.bg, borderRadius: 10, padding: '14px', marginBottom: 14, border: `1px solid ${t.border}` }}>
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>새 LOT 추가</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
@@ -1428,7 +1428,7 @@ function Ordering({ drugs, onAdjust }) {
   }
   return <div style={{ padding: '20px 24px' }}>
     <div style={{ textAlign: 'left', marginBottom: 10 }}><span style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>발주 관리</span> <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>현재고 ≤ 안전재고 후보 · 사용·휴면 기준 · 사용량 비의존(발주제안 = 안전 − 현재고)</span></div>
-    {msg && <div style={{ background: t.accentL, color: t.accent, padding: '8px 14px', borderRadius: 8, marginBottom: 12, fontSize: 12, fontWeight: 600 }}>{msg}</div>}
+    {msg && <div className="no-print" style={{ background: t.accentL, color: t.accent, padding: '8px 14px', borderRadius: 8, marginBottom: 12, fontSize: 12, fontWeight: 600 }}>{msg}</div>}
     {(() => { const _si = { padding: '7px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, background: t.bg, color: t.text }; return <div style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: '14px 16px', marginBottom: 16, boxShadow: t.shadow }}>
       <div style={{ fontWeight: 700, fontSize: 13, color: t.text, marginBottom: 10 }}>{editSupId ? '도매사 수정' : '도매사 등록'} <span style={{ fontWeight: 500, fontSize: 11, color: t.textL }}>· 리드타임(입고 소요일)까지 관리 · 등록 {suppliers.length}곳</span></div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: suppliers.length ? 12 : 0 }}>
@@ -2256,7 +2256,7 @@ function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}
   function dlUsageTemplate(){const ws=XLSX.utils.aoa_to_sheet([['약품코드','약품명(참고용)','전년사용량','최근3개월사용량','직전1개월사용량'],['SGBRONNC10','가바로닌캡슐100mg',1592,974,320],['GRD2','게리드정2밀리그램',330,105,35]]);const _rg=XLSX.utils.decode_range(ws['!ref']);for(let R=1;R<=_rg.e.r;R++){const _a=XLSX.utils.encode_cell({r:R,c:0});if(ws[_a]){ws[_a].t='s';ws[_a].z='@'}for(const C of [2,3,4]){const _c=XLSX.utils.encode_cell({r:R,c:C});if(ws[_c]){ws[_c].t='n';ws[_c].z='0'}}}ws['!cols']=[{wch:14},{wch:22},{wch:12},{wch:16},{wch:16}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'사용량');XLSX.writeFile(wb,'사용량_업로드_양식.xlsx')}
   return<div style={{padding:'20px 24px'}}>
     <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:8,marginBottom:14}}>{[{k:'전체',c:t.text},{k:'긴급',c:t.red},{k:'주문필요',c:t.amber},{k:'재고없음',c:t.red},{k:'정상',c:t.green},{k:'과잉',c:t.blue},{k:'기준미설정',c:t.textM}].map(f2=><div key={f2.k} onClick={()=>{setFilter(f2.k);setPage(1)}} style={{background:filter===f2.k?f2.c+'15':t.card,borderRadius:12,padding:'12px 16px',border:`1px solid ${filter===f2.k?f2.c:t.border}`,cursor:'pointer',backdropFilter:'blur(12px)'}}><div style={{fontSize:10,color:t.textM}}>{f2.k}</div><div style={{fontSize:24,fontWeight:700,color:f2.c}}>{sg[f2.k]}</div></div>)}</div>
-    {uMsg&&<div style={{background:uMsg.includes('완료')?t.greenL:uMsg.includes('오류')?t.redL:t.blueL,border:`1px solid ${uMsg.includes('완료')?t.green:uMsg.includes('오류')?t.red:t.blue}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:uMsg.includes('완료')?t.green:uMsg.includes('오류')?t.red:t.blue,fontSize:12,fontWeight:600}}>{uMsg}</div>}
+    {uMsg&&<div className="no-print" style={{background:uMsg.includes('완료')?t.greenL:uMsg.includes('오류')?t.redL:t.blueL,border:`1px solid ${uMsg.includes('완료')?t.green:uMsg.includes('오류')?t.red:t.blue}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:uMsg.includes('완료')?t.green:uMsg.includes('오류')?t.red:t.blue,fontSize:12,fontWeight:600}}>{uMsg}</div>}
     {uRep&&<div className="no-print" style={{background:t.card,border:'1px solid '+t.border,borderRadius:12,padding:'12px 16px',marginBottom:12,fontSize:12,backdropFilter:'blur(12px)'}}>
       {uRep.phase==='error'?<div style={{color:t.red,fontWeight:600}}>업로드 오류: {uRep.msg}</div>
       :uRep.phase==='applying'?<div style={{color:t.blue,fontWeight:600}}>반영 중...</div>
@@ -2892,7 +2892,7 @@ function DrugRegister({onRefresh, drugs}) {
                   📋 마스터 조회
                 </button>
               </div>
-              {apiMsg&&<div style={{fontSize:12,color:C.coral,marginTop:6}}>{apiMsg}</div>}
+              {apiMsg&&<div className="no-print" style={{fontSize:12,color:C.coral,marginTop:6}}>{apiMsg}</div>}
               {apiResults.length>0&&(
                 <div style={{marginTop:8,background:'#fff',borderRadius:8,border:`0.5px solid ${C.purpleB}`,maxHeight:180,overflowY:'auto'}}>
                   <div style={{fontSize:11,color:'#888',padding:'6px 12px',borderBottom:`0.5px solid ${C.grayB}`}}>
@@ -2945,7 +2945,7 @@ function DrugRegister({onRefresh, drugs}) {
             </div>}
             {priceInfo?.notFound&&<div style={{marginTop:8,padding:'8px 14px',background:C.grayL,borderRadius:8,fontSize:11,color:'#888'}}>약가기준정보: 해당 약품의 약가 데이터를 찾을 수 없습니다</div>}
 
-            {msg&&<div style={{background:msg.type==='partial'?PARTIAL_BG:msg.type==='success'?C.greenL:C.coralL,border:`1px solid ${msg.type==='partial'?PARTIAL_LINE:msg.type==='success'?C.greenB:C.coralB}`,borderRadius:8,padding:'10px 14px',marginBottom:14,color:msg.type==='partial'?PARTIAL_FG:msg.type==='success'?C.greenD:C.coral,fontSize:13}}>{msg.text}</div>}
+            {msg&&<div className="no-print" style={{background:msg.type==='partial'?PARTIAL_BG:msg.type==='success'?C.greenL:C.coralL,border:`1px solid ${msg.type==='partial'?PARTIAL_LINE:msg.type==='success'?C.greenB:C.coralB}`,borderRadius:8,padding:'10px 14px',marginBottom:14,color:msg.type==='partial'?PARTIAL_FG:msg.type==='success'?C.greenD:C.coral,fontSize:13}}>{msg.text}</div>}
 
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
               <div><label style={lbl}>약품코드 <span style={{color:C.coral}}>*</span></label><input value={form.drug_code} onChange={e=>set('drug_code',e.target.value.toUpperCase())} placeholder="원내코드 입력" style={inp}/></div>
@@ -3026,7 +3026,7 @@ function DrugRegister({onRefresh, drugs}) {
             <div style={{fontSize:12,color:'#aaa'}}>.xlsx / .xls 파일 지원</div>
             <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={xlUpload} style={{display:'none'}}/>
           </div>
-          {bulkMsg&&<div style={{background:bulkMsg.type==='partial'?PARTIAL_BG:bulkMsg.type==='success'?C.greenL:bulkMsg.type==='error'?C.coralL:C.blueL,border:`1px solid ${bulkMsg.type==='partial'?PARTIAL_LINE:bulkMsg.type==='success'?C.greenB:bulkMsg.type==='error'?C.coralB:C.blueB}`,borderRadius:8,padding:'10px 14px',marginBottom:14,color:bulkMsg.type==='partial'?PARTIAL_FG:bulkMsg.type==='success'?C.greenD:bulkMsg.type==='error'?C.coral:C.blue,fontSize:13}}>{bulkMsg.text}</div>}
+          {bulkMsg&&<div className="no-print" style={{background:bulkMsg.type==='partial'?PARTIAL_BG:bulkMsg.type==='success'?C.greenL:bulkMsg.type==='error'?C.coralL:C.blueL,border:`1px solid ${bulkMsg.type==='partial'?PARTIAL_LINE:bulkMsg.type==='success'?C.greenB:bulkMsg.type==='error'?C.coralB:C.blueB}`,borderRadius:8,padding:'10px 14px',marginBottom:14,color:bulkMsg.type==='partial'?PARTIAL_FG:bulkMsg.type==='success'?C.greenD:bulkMsg.type==='error'?C.coral:C.blue,fontSize:13}}>{bulkMsg.text}</div>}
           {bulk.length>0&&(
             <>
               <div style={{overflowX:'auto',marginBottom:14,maxHeight:380,overflowY:'auto',border:`0.5px solid ${C.grayB}`,borderRadius:8}}>
@@ -3327,8 +3327,8 @@ export function TransactionForm({drugs,onReload,navFilter}){
           <select value={form.process_status} onChange={e=>sf('process_status',e.target.value)} style={{...ip,marginBottom:6}}>{TX_STATUS.map(s=><option key={s}>{s}</option>)}</select>
         </>}
         <input value={form.note} onChange={e=>sf('note',e.target.value)} placeholder="비고" style={{...ip,marginBottom:10}}/>
-        {dropped.length>0&&<div style={{background:PARTIAL_BG,borderRadius:6,padding:'6px 10px',marginBottom:6,color:PARTIAL_FG,fontSize:11,fontWeight:600}}>{partialText(dropped,txColLabel)}</div>}
-        {dropped.length===0&&msg&&<div style={{background:msg.includes('완료')?t.greenL:t.redL,borderRadius:6,padding:'6px 10px',marginBottom:6,color:msg.includes('완료')?t.green:t.red,fontSize:11}}>{msg}</div>}
+        {dropped.length>0&&<div className="no-print" style={{background:PARTIAL_BG,borderRadius:6,padding:'6px 10px',marginBottom:6,color:PARTIAL_FG,fontSize:11,fontWeight:600}}>{partialText(dropped,txColLabel)}</div>}
+        {dropped.length===0&&msg&&<div className="no-print" style={{background:msg.includes('완료')?t.greenL:t.redL,borderRadius:6,padding:'6px 10px',marginBottom:6,color:msg.includes('완료')?t.green:t.red,fontSize:11}}>{msg}</div>}
         <button onClick={()=>submit()} disabled={saving||_selClosed} style={{width:'100%',padding:10,borderRadius:8,border:'none',background:(saving||_selClosed)?t.textL:tc[tab]?.c,color:'#fff',cursor:(saving||_selClosed)?'not-allowed':'pointer',fontSize:13,fontWeight:700}}>{_selClosed?'마감된 월 (읽기 전용)':saving?'처리 중...':tab+' 등록'}</button>
         {/* 대량등록 */}
         <div style={{borderTop:`1px solid ${t.border}`,marginTop:14,paddingTop:12}}>
@@ -3338,8 +3338,8 @@ export function TransactionForm({drugs,onReload,navFilter}){
             <button onClick={()=>fileRef.current.click()} disabled={_selClosed} style={{flex:1,padding:'6px',borderRadius:6,border:`1px solid ${_selClosed?t.border:tc[tab]?.c}`,background:_selClosed?t.bg:tc[tab]?.bg,color:_selClosed?t.textL:tc[tab]?.c,cursor:_selClosed?'not-allowed':'pointer',fontSize:10,fontWeight:600}}>업로드</button>
           </div>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={xlUpload} style={{display:'none'}}/>
-          {bulkPartial&&<div style={{marginTop:6,background:PARTIAL_BG,borderRadius:6,padding:'5px 9px',fontSize:10,fontWeight:600,color:PARTIAL_FG}}>{partialBulkText(bulkPartial.n,bulkPartial.cols,txColLabel)}</div>}
-          {bulkMsg&&<div style={{marginTop:6,fontSize:10,color:bulkMsg.includes('완료')?t.green:bulkMsg.includes('오류')?t.red:t.blue,fontWeight:600}}>{bulkMsg}{bulkData.some(r=>r._fail)?<button onClick={()=>setBulkMsg(null)} style={{marginLeft:6,padding:'1px 6px',borderRadius:4,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>닫기</button>:null}</div>}
+          {bulkPartial&&<div className="no-print" style={{marginTop:6,background:PARTIAL_BG,borderRadius:6,padding:'5px 9px',fontSize:10,fontWeight:600,color:PARTIAL_FG}}>{partialBulkText(bulkPartial.n,bulkPartial.cols,txColLabel)}</div>}
+          {bulkMsg&&<div className="no-print" style={{marginTop:6,fontSize:10,color:bulkMsg.includes('완료')?t.green:bulkMsg.includes('오류')?t.red:t.blue,fontWeight:600}}>{bulkMsg}{bulkData.some(r=>r._fail)?<button onClick={()=>setBulkMsg(null)} style={{marginLeft:6,padding:'1px 6px',borderRadius:4,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>닫기</button>:null}</div>}
           {bulkData.some(r=>!r.found)?<div style={{marginTop:8}}><div style={{color:t.amber,fontWeight:600,fontSize:11,marginBottom:4}}>매칭실패 {bulkData.filter(r=>!r.found).length}건 — 코드 정정 후 재매핑</div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:10}}><thead><tr>{['업로드코드','약품명','수량','단가',''].map((h,hi)=><th key={hi} style={{textAlign:(hi>=2&&hi<=3)?'right':'left',padding:'4px 6px',color:t.textM,borderBottom:'1px solid '+t.border}}>{h}</th>)}</tr></thead><tbody>{bulkData.filter(r=>!r.found).map(r=><tr key={r.idx} style={{borderBottom:'1px solid '+t.border}}><td style={{padding:'3px 6px'}}><input value={r.drug_code} onChange={e=>setBulkCode(r.idx,e.target.value)} style={{padding:'2px 6px',border:'1px solid '+(r._err?t.red:t.border),borderRadius:5,fontSize:10,background:t.bg,color:t.text,width:100}}/>{r._err?<span style={{marginLeft:4,color:t.red,fontSize:9}}>{r._err}</span>:null}</td><td style={{padding:'3px 6px',color:t.textM}}>{r.drug_name||'-'}</td><td style={{padding:'3px 6px',textAlign:'right',color:t.textM}}>{r.quantity}</td><td style={{padding:'3px 6px',textAlign:'right',color:t.textM}}>{r.unit_price}</td><td style={{padding:'3px 6px',whiteSpace:'nowrap'}}><button onClick={()=>remapBulk(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:600,marginRight:3}}>재매핑</button><button onClick={()=>cancelBulk(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>취소</button></td></tr>)}</tbody></table></div></div>:null}
           {bulkData.some(r=>r.found&&!(r.quantity>0))?<div style={{marginTop:8}}><div style={{color:t.red,fontWeight:600,fontSize:11,marginBottom:4}}>수량 오류 {bulkData.filter(r=>r.found&&!(r.quantity>0)).length}건 — 수량 수정 후 재검증 또는 취소</div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:10}}><thead><tr>{['코드','약품명','수량(수정)','사유',''].map((h,hi)=><th key={hi} style={{textAlign:hi===2?'right':'left',padding:'4px 6px',color:t.textM,borderBottom:'1px solid '+t.border}}>{h}</th>)}</tr></thead><tbody>{bulkData.filter(r=>r.found&&!(r.quantity>0)).map(r=><tr key={r.idx} style={{borderBottom:'1px solid '+t.border}}><td style={{padding:'3px 6px',color:t.text}}>{r.drug_code}</td><td style={{padding:'3px 6px',color:t.textM}}>{r.drug_name||'-'}</td><td style={{padding:'3px 6px',textAlign:'right'}}><input value={r.quantity} onChange={e=>setBulkQty(r.idx,e.target.value)} style={{padding:'2px 6px',border:'1px solid '+(r._qerr?t.red:t.border),borderRadius:5,fontSize:10,background:t.bg,color:t.text,width:64,textAlign:'right'}}/></td><td style={{padding:'3px 6px',color:t.red,fontSize:9}}>수량 0 이하/비숫자{r._qerr?' · '+r._qerr:''}</td><td style={{padding:'3px 6px',whiteSpace:'nowrap'}}><button onClick={()=>revalidateBulkQty(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:600,marginRight:3}}>재검증</button><button onClick={()=>cancelBulk(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>취소</button></td></tr>)}</tbody></table></div></div>:null}
           {/* ★ 등록 실패 사유(결함 34) — 마크업·간격·타이포는 위 두 블록과 동일. 색만 팔레트 안(t.purple)으로 처리한다. */}
@@ -3367,7 +3367,7 @@ export function TransactionForm({drugs,onReload,navFilter}){
       <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:440,width:'100%',border:'1px solid '+t.border,boxShadow:t.shadowH}}>
         <div style={{fontSize:14,fontWeight:700,color:t.red,marginBottom:10}}>선택 거래 삭제</div>
         {selDelStage===1?<div style={{fontSize:12,color:t.textM,lineHeight:1.7,marginBottom:14}}>선택한 <strong style={{color:t.red}}>{selIds.length}건</strong>을 삭제하시겠습니까? 삭제분은 재고가 자동 복원됩니다. <strong style={{color:t.red}}>되돌릴 수 없습니다.</strong></div>:<div style={{fontSize:12,color:t.textM,lineHeight:1.7,marginBottom:14}}>정말로 <strong style={{color:t.red}}>{selIds.length}건</strong>을 영구 삭제합니다. 마지막 확인입니다.</div>}
-        {selDelMsg&&<div style={{background:t.redL,color:t.red,borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:11,fontWeight:600}}>{selDelMsg}</div>}
+        {selDelMsg&&<div className="no-print" style={{background:t.redL,color:t.red,borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:11,fontWeight:600}}>{selDelMsg}</div>}
         <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
           <button onClick={()=>{setSelDelStage(0);setSelDelMsg(null)}} disabled={selDelBusy} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.border,background:'transparent',color:t.textM,cursor:selDelBusy?'not-allowed':'pointer',fontSize:12,fontWeight:700}}>취소</button>
           {selDelStage===1?<button onClick={()=>setSelDelStage(2)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.red,background:'transparent',color:t.red,cursor:'pointer',fontSize:12,fontWeight:700}}>삭제 ({selIds.length}건)</button>:<button onClick={_delSel} disabled={selDelBusy} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.red,background:t.red,color:'#fff',cursor:selDelBusy?'not-allowed':'pointer',fontSize:12,fontWeight:700}}>{selDelBusy?'삭제 중...':'영구 삭제'}</button>}
@@ -3378,7 +3378,7 @@ export function TransactionForm({drugs,onReload,navFilter}){
       <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:440,width:'100%',border:'1px solid '+t.border,boxShadow:t.shadowH}}>
         <div style={{fontSize:14,fontWeight:700,color:t.red,marginBottom:10}}>{tab} 이력 전체 삭제</div>
         {delAllStage===1?<div style={{fontSize:12,color:t.textM,lineHeight:1.7,marginBottom:14}}>현재 <strong style={{color:t.text}}>{tab}</strong> 이력 <strong style={{color:t.red}}>{txns.length}건</strong>을 전부 삭제합니다. 삭제분은 재고가 자동 복원됩니다. <strong style={{color:t.red}}>되돌릴 수 없습니다.</strong></div>:<div style={{fontSize:12,color:t.textM,lineHeight:1.7,marginBottom:14}}>정말로 <strong style={{color:t.red}}>{tab} {txns.length}건</strong>을 영구 삭제합니다. 마지막 확인입니다.</div>}
-        {delAllMsg&&<div style={{background:t.redL,color:t.red,borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:11,fontWeight:600}}>{delAllMsg}</div>}
+        {delAllMsg&&<div className="no-print" style={{background:t.redL,color:t.red,borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:11,fontWeight:600}}>{delAllMsg}</div>}
         <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
           <button onClick={()=>{setDelAllOpen(false);setDelAllStage(1);setDelAllMsg(null)}} disabled={delAllBusy} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.border,background:'transparent',color:t.textM,cursor:delAllBusy?'not-allowed':'pointer',fontSize:12,fontWeight:700}}>취소</button>
           {delAllStage===1?<button onClick={()=>setDelAllStage(2)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.red,background:'transparent',color:t.red,cursor:'pointer',fontSize:12,fontWeight:700}}>삭제 ({txns.length}건)</button>:<button onClick={_delAll} disabled={delAllBusy} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.red,background:t.red,color:'#fff',cursor:delAllBusy?'not-allowed':'pointer',fontSize:12,fontWeight:700}}>{delAllBusy?'삭제 중...':'영구 삭제'}</button>}
@@ -3410,7 +3410,7 @@ export function TransactionForm({drugs,onReload,navFilter}){
       <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:14,padding:'22px 26px',maxWidth:420,width:'100%',border:`1px solid ${t.border}`,boxShadow:t.shadowH}}>
         <div style={{fontSize:14,fontWeight:700,color:t.red,marginBottom:10}}>거래 삭제 확인</div>
         <div style={{fontSize:12,color:t.textM,lineHeight:1.7,marginBottom:14}}><strong style={{color:t.text}}>{delTx.drug_name||delTx.drug_code}</strong> · {delTx.type} · {(delTx.quantity||0).toLocaleString()}개 · ₩{(delTx.total_amount||0).toLocaleString()} · {delTx.transaction_date}<br/>삭제하면 재고가 자동 복원됩니다. <strong style={{color:t.red}}>삭제 이력은 남지 않아 되돌릴 수 없습니다.</strong><br/>잘못 입력한 거래는 삭제 후 다시 등록하세요.</div>
-        {delMsg&&<div style={{background:t.redL,color:t.red,borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:11,fontWeight:600}}>{delMsg}</div>}
+        {delMsg&&<div className="no-print" style={{background:t.redL,color:t.red,borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:11,fontWeight:600}}>{delMsg}</div>}
         <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
           <button onClick={()=>{setDelTx(null);setDelMsg(null)}} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.border}`,background:'transparent',color:t.textM,cursor:'pointer',fontSize:12,fontWeight:700}}>취소</button>
           <button onClick={()=>_delTx(delTx)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.red}`,background:t.red,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>삭제</button>
@@ -3468,7 +3468,7 @@ function ChangePlanModal({ plan, drugs, onClose, onSaved }) {
     <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 440, border: `1px solid ${t.border}`, boxShadow: t.shadowH, maxHeight: '92vh', overflowY: 'auto', transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }} onClick={e => e.stopPropagation()}>
       <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: `1px solid ${t.border}` }}><div style={{ fontSize: 15, fontWeight: 700, color: t.accent }}>{isNew ? '약품변경 등록' : '약품변경 수정'}</div></div>
       <div style={{ padding: '16px 20px' }}>
-        {msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '저장 완료' : msg}</div>}
+        {msg && <div className="no-print" style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '저장 완료' : msg}</div>}
         <div style={{ marginBottom: 10 }}><label style={lb}>기존 약품 *</label>
           {sel ? <div style={{ background: t.bg, borderRadius: 8, padding: '8px 10px', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span><strong>{sel.drug_name}</strong> <span style={{ color: t.textL, fontSize: 10 }}>({sel.drug_code}) · 현재고 {(sel.current_qty || 0).toLocaleString()}</span></span>{isNew && <button onClick={() => { setSelCode(''); setSearch('') }} style={{ border: 'none', background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11 }}>변경</button>}</div>
             : <><input value={search} onChange={e => setSearch(e.target.value)} placeholder="약품 검색 (코드/이름)" style={ip} />{search.trim() && filtered.length > 0 && <div style={{ border: `1px solid ${t.border}`, borderRadius: 6, maxHeight: 140, overflowY: 'auto', marginTop: 4 }}>{filtered.map(d => <div key={d.drug_code} onClick={() => { setSelCode(d.drug_code); setSearch('') }} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 11, borderBottom: `1px solid ${t.border}` }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>{d.drug_name} <span style={{ color: t.textL, fontSize: 9 }}>({d.drug_code})</span></div>)}</div>}</>}
@@ -3771,11 +3771,11 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
     </div>
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}><span style={{ fontSize: 10, color: t.textM }}>남은 주:</span>{[['4주↑', '#BFA6D9'], ['3~4주', '#B8CBD9'], ['2~3주', '#A8D9BE'], ['1~2주', '#F5DFAE'], ['1주 미만', '#EFB8B0']].map(([l, bg]) => <span key={l} style={{ fontSize: 9, padding: '2px 8px', borderRadius: 6, background: bg, color: bg === '#EFB8B0' ? '#8C2F26' : '#333', fontWeight: 600 }}>{l}</span>)}<span style={{ fontSize: 9, color: t.textM, marginLeft: 4 }}>· 과별 누적 사용이 현재고 초과 시 해당 칸 노랑</span></div>
     <div style={{ fontSize: 10, color: t.textM, marginBottom: 10 }}>FM 가정의학과 · RM 재활의학과 · NR 신경과</div>
-    {uMsg && <div style={{ background: uMsg.includes('오류') ? t.redL : t.blueL, border: `1px solid ${uMsg.includes('오류') ? t.red : t.blue}`, borderRadius: 8, padding: '10px 14px', marginBottom: 10, color: uMsg.includes('오류') ? t.red : t.blue, fontSize: 12, fontWeight: 600 }}>{uMsg}</div>}
+    {uMsg && <div className="no-print" style={{ background: uMsg.includes('오류') ? t.redL : t.blueL, border: `1px solid ${uMsg.includes('오류') ? t.red : t.blue}`, borderRadius: 8, padding: '10px 14px', marginBottom: 10, color: uMsg.includes('오류') ? t.red : t.blue, fontSize: 12, fontWeight: 600 }}>{uMsg}</div>}
     <div style={{ background: t.card, borderRadius: 12, border: `1px solid ${t.border}`, overflow: 'hidden' }}>
       {/* ═══ 재고보정 상태 · 도구줄 ═══
           ★ 세션이 없으면 아무것도 그리지 않는다 — 아직 아무 것도 안 한 화면에 경고를 띄우지 않는다. */}
-      {cntMsg && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: cntMsg.kind === 'err' ? t.bg : t.greenL, color: cntMsg.kind === 'err' ? t.text : t.green, borderLeft: '3px solid ' + (cntMsg.kind === 'err' ? t.text : t.green) }}>{cntMsg.text}</div>}
+      {cntMsg && <div className="no-print" style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: cntMsg.kind === 'err' ? t.bg : t.greenL, color: cntMsg.kind === 'err' ? t.text : t.green, borderLeft: '3px solid ' + (cntMsg.kind === 'err' ? t.text : t.green) }}>{cntMsg.text}</div>}
       {cntSes && <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderLeft: '3px solid ' + (cntApplied ? t.green : t.lavender), borderRadius: 12, padding: '12px 16px', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 700, fontSize: 13, color: t.text }}>{cntTitle}</span>
@@ -5133,7 +5133,7 @@ function InventoryCount({ drugs, onReload }) {
   return <div style={{ padding: '20px 24px' }}>
     {/* ★ textAlign:'left' 명시 — #root{text-align:center} 상속으로 제목이 가운데 렌더되는 회귀(함정 #20) */}
     <div style={{ marginBottom: 10, textAlign: 'left' }}><div style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>실사 <span style={{ fontSize: 12, fontWeight: 400, color: t.textM }}>· 재고 실사 세션 · 승인 시에만 총재고 반영</span></div></div>
-    {msg && <div style={{ background: msg.kind === 'err' ? t.redL : t.greenL, color: msg.kind === 'err' ? t.red : t.green, borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>{msg.text}</div>}
+    {msg && <div className="no-print" style={{ background: msg.kind === 'err' ? t.redL : t.greenL, color: msg.kind === 'err' ? t.red : t.green, borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>{msg.text}</div>}
 
     {/* ── 세션 목록 ── */}
     <div style={{ background: t.card, borderRadius: 14, border: '1px solid ' + t.border, boxShadow: t.shadow, marginBottom: 12 }}>
@@ -5603,8 +5603,8 @@ export function IdleRegisterModal({ drugs, onClose, onSaved }) {
     <div ref={_dmBox} style={{ background: t.cardSolid, borderRadius: 16, width: '100%', maxWidth: 420, border: '1px solid ' + t.border, boxShadow: t.shadowH, maxHeight: '92vh', overflowY: 'auto', transform: 'translate(' + _dmPos.x + 'px, ' + _dmPos.y + 'px)' }} onClick={e => e.stopPropagation()}>
       <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', padding: '16px 20px', borderBottom: '1px solid ' + t.border }}><div style={{ fontSize: 15, fontWeight: 700, color: t.accent }}>사용 점검 등록</div></div>
       <div style={{ padding: '16px 20px' }}>
-        {dropped.length > 0 && <div style={{ background: PARTIAL_BG, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: PARTIAL_FG, fontSize: 12, fontWeight: 600 }}>{partialText(dropped)}</div>}
-        {dropped.length === 0 && msg && <div style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '저장 완료' : msg}</div>}
+        {dropped.length > 0 && <div className="no-print" style={{ background: PARTIAL_BG, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: PARTIAL_FG, fontSize: 12, fontWeight: 600 }}>{partialText(dropped)}</div>}
+        {dropped.length === 0 && msg && <div className="no-print" style={{ background: msg === 'OK' ? t.greenL : t.redL, borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: msg === 'OK' ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg === 'OK' ? '저장 완료' : msg}</div>}
         <div style={{ marginBottom: 10 }}><label style={lb}>약품 * <span style={{ color: t.textL, fontWeight: 400 }}>· 마지막사용일 없는 약품만</span></label>
           {sel ? <div style={{ background: t.bg, borderRadius: 8, padding: '8px 10px', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span><strong>{sel.drug_name}</strong> <span style={{ color: t.textL, fontSize: 10 }}>({sel.drug_code})</span></span><button onClick={() => { setSelCode(''); setSearch('') }} style={{ border: 'none', background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 11 }}>변경</button></div>
             : <><input value={search} onChange={e => setSearch(e.target.value)} placeholder="약품 검색 (코드/이름)" style={ip} />{search.trim() && filtered.length > 0 && <div style={{ border: '1px solid ' + t.border, borderRadius: 6, maxHeight: 140, overflowY: 'auto', marginTop: 4 }}>{filtered.map(d => <div key={d.drug_code} onClick={() => { setSelCode(d.drug_code); setSearch('') }} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 11, borderBottom: '1px solid ' + t.border }} onMouseEnter={e => e.currentTarget.style.background = t.glass} onMouseLeave={e => e.currentTarget.style.background = ''}>{d.drug_name} <span style={{ color: t.textL, fontSize: 9 }}>({d.drug_code})</span></div>)}</div>}{search.trim() && filtered.length === 0 && <div style={{ fontSize: 10, color: t.textL, marginTop: 4 }}>후보 없음 (이미 사용일 있는 약품은 표에서 편집)</div>}</>}
@@ -6265,7 +6265,7 @@ function MyPage({ profile, onProfileUpdated }) {
       <div style={{ fontSize: 12, color: t.textL, marginTop: 6 }}>내 프로필 정보를 확인하고 수정할 수 있습니다.</div>
     </div>
 
-    {errMsg && <div style={{ background: t.redL, color: t.red, borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, fontWeight: 500, border: `1px solid ${t.red}30` }}>{errMsg}</div>}
+    {errMsg && <div className="no-print" style={{ background: t.redL, color: t.red, borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, fontWeight: 500, border: `1px solid ${t.red}30` }}>{errMsg}</div>}
 
     {/* 기본 정보 카드 */}
     <div style={{ background: t.card, borderRadius: 16, border: `1px solid ${t.border}`, boxShadow: t.shadow, padding: '24px 28px', marginBottom: 16 }}>
@@ -6315,7 +6315,7 @@ function MyPage({ profile, onProfileUpdated }) {
       <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, padding: '20px 24px', marginBottom: 16 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>비밀번호 변경</div>
         <div style={{ fontSize: 11, color: t.textL, marginBottom: 14 }}>임시 비밀번호를 받으셨다면 여기서 정식 비밀번호로 바꿔 주세요.</div>
-        {pwMsg && <div style={{ background: pwMsg.startsWith('✅') ? t.greenL : t.redL, color: pwMsg.startsWith('✅') ? t.green : t.red, borderRadius: 8, padding: '9px 12px', marginBottom: 12, fontSize: 12, fontWeight: 500 }}>{pwMsg}</div>}
+        {pwMsg && <div className="no-print" style={{ background: pwMsg.startsWith('✅') ? t.greenL : t.redL, color: pwMsg.startsWith('✅') ? t.green : t.red, borderRadius: 8, padding: '9px 12px', marginBottom: 12, fontSize: 12, fontWeight: 500 }}>{pwMsg}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
             <label style={lb}>새 비밀번호</label>
@@ -6389,7 +6389,7 @@ function DeleteAccountModal({ isEmailUser, onClose, onDeleted }) {
         탈퇴하면 <strong style={{ color: t.text }}>{user?.email}</strong> 계정과 프로필이 즉시 영구 삭제됩니다.<br />이 작업은 <strong style={{ color: t.red }}>되돌릴 수 없습니다.</strong>
       </div>
 
-      {err && <div style={{ background: t.redL, color: t.red, borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 500 }}>{err}</div>}
+      {err && <div className="no-print" style={{ background: t.redL, color: t.red, borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 500 }}>{err}</div>}
 
       {isEmailUser && <div style={{ marginBottom: 12 }}>
         <label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 6, fontWeight: 600 }}>현재 비밀번호</label>
@@ -6994,7 +6994,7 @@ export function LocationVocab() {
       <div style={{ fontSize: 12, color: t.textL, marginTop: 6 }}>대시보드 위치 필터가 이 목록에서 선택지를 읽습니다 · 등록 {rows.length}종 (사용 {rows.filter(r => r.is_active).length}종)</div>
     </div>
 
-    {errMsg && <div style={{ background: t.redL, color: t.red, borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, fontWeight: 500, border: `1px solid ${t.red}30` }}>{errMsg}</div>}
+    {errMsg && <div className="no-print" style={{ background: t.redL, color: t.red, borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, fontWeight: 500, border: `1px solid ${t.red}30` }}>{errMsg}</div>}
 
     {/* ★ 인쇄 구역 선택 — 별도 라우트 없이 같은 화면 오버레이(기존 인쇄 3곳과 같은 방식).
         ★ 사용+휴면 0건 구역은 체크 자체를 막는다 — 고르면 빈 페이지가 나온다. */}
@@ -7201,7 +7201,7 @@ function AdminUsers() {
       <input value={q} onChange={e => setQ(e.target.value)} placeholder="이메일·이름·부서·직책 검색" style={{ minWidth: 260, padding: '10px 14px', border: `1.5px solid ${t.border}`, borderRadius: 10, fontSize: 13, outline: 'none', background: t.card, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
     </div>
 
-    {errMsg && <div style={{ background: t.redL, color: t.red, borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, fontWeight: 500, border: `1px solid ${t.red}30` }}>{errMsg.includes('profiles') ? '프로필 테이블이 아직 준비되지 않았습니다. DB 스키마(profiles_schema.sql)를 먼저 실행해 주세요.' : errMsg}</div>}
+    {errMsg && <div className="no-print" style={{ background: t.redL, color: t.red, borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, fontWeight: 500, border: `1px solid ${t.red}30` }}>{errMsg.includes('profiles') ? '프로필 테이블이 아직 준비되지 않았습니다. DB 스키마(profiles_schema.sql)를 먼저 실행해 주세요.' : errMsg}</div>}
 
     <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, boxShadow: t.shadow, overflow: 'hidden' }}>
       {loading ? <div style={{ padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 13 }}>불러오는 중...</div>
@@ -7295,7 +7295,7 @@ function AdminUserEditModal({ row, currentUserId, onClose, onSaved }) {
         {isSelf && <span style={{ marginLeft: 6, background: t.accentL, color: t.accent, padding: '2px 6px', borderRadius: 6, fontSize: 10, fontWeight: 700 }}>본인</span>}
       </div>
 
-      {errMsg && <div style={{ background: t.redL, color: t.red, borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 500 }}>{errMsg}</div>}
+      {errMsg && <div className="no-print" style={{ background: t.redL, color: t.red, borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 500 }}>{errMsg}</div>}
 
       <label style={lb}>권한</label>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -7374,7 +7374,7 @@ function LoginPage() {
         <div style={{ fontSize: 18, fontWeight: 700, color: t.nav }}>약플로 · Yakflo</div>
         <div style={{ fontSize: 12, color: t.textL, marginTop: 4 }}>약품 통합 관리 솔루션</div>
       </div>
-      {msg && <div style={{ background: msg.startsWith('✅') ? t.greenL : t.redL, borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: msg.startsWith('✅') ? t.green : t.red, fontSize: 13, fontWeight: 500 }}>{msg}</div>}
+      {msg && <div className="no-print" style={{ background: msg.startsWith('✅') ? t.greenL : t.redL, borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: msg.startsWith('✅') ? t.green : t.red, fontSize: 13, fontWeight: 500 }}>{msg}</div>}
       <div style={{ marginBottom: 14 }}><label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 4, fontWeight: 500 }}>이메일</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@example.com" style={ip} onKeyDown={e => e.key === 'Enter' && (mode === 'login' ? handleLogin() : mode === 'signup' ? handleSignup() : handleReset())} /></div>
       {mode !== 'reset' && <div style={{ marginBottom: 14 }}><label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 4, fontWeight: 500 }}>비밀번호</label><input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="••••••" style={ip} onKeyDown={e => e.key === 'Enter' && (mode === 'login' ? handleLogin() : handleSignup())} /></div>}
       {mode === 'signup' && <div style={{ marginBottom: 14 }}><label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 4, fontWeight: 500 }}>비밀번호 확인</label><input type="password" value={pw2} onChange={e => setPw2(e.target.value)} placeholder="••••••" style={ip} onKeyDown={e => e.key === 'Enter' && handleSignup()} /></div>}
@@ -7432,7 +7432,7 @@ function RecoveryPage({ onDone }) {
         <div style={{ fontSize: 18, fontWeight: 700, color: t.nav }}>새 비밀번호 설정</div>
         <div style={{ fontSize: 12, color: t.textL, marginTop: 4 }}>사용할 새 비밀번호를 입력해 주세요</div>
       </div>
-      {msg && <div style={{ background: msg.startsWith('✅') ? t.greenL : t.redL, borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: msg.startsWith('✅') ? t.green : t.red, fontSize: 13, fontWeight: 500 }}>{msg}</div>}
+      {msg && <div className="no-print" style={{ background: msg.startsWith('✅') ? t.greenL : t.redL, borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: msg.startsWith('✅') ? t.green : t.red, fontSize: 13, fontWeight: 500 }}>{msg}</div>}
       <div style={{ marginBottom: 14 }}><label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 4, fontWeight: 500 }}>새 비밀번호</label><input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="6자 이상" style={ip} autoComplete="new-password" /></div>
       <div style={{ marginBottom: 18 }}><label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 4, fontWeight: 500 }}>새 비밀번호 확인</label><input type="password" value={pw2} onChange={e => setPw2(e.target.value)} placeholder="6자 이상" style={ip} autoComplete="new-password" onKeyDown={e => e.key === 'Enter' && handleUpdate()} /></div>
       <button onClick={handleUpdate} disabled={loading} style={{ width: '100%', padding: 14, borderRadius: 10, border: 'none', background: loading ? t.textL : `linear-gradient(135deg, #804A87, #019748)`, color: '#fff', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>{loading ? '처리 중...' : '비밀번호 변경'}</button>
@@ -7532,7 +7532,7 @@ function Schedule({ drugs, onNav }) {
         </div>;
       })}
     </div>
-    {msg && <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: msg.includes('완료') ? t.green : t.red }}>{msg}</div>}
+    {msg && <div className="no-print" style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: msg.includes('완료') ? t.green : t.red }}>{msg}</div>}
 
     {/* 일자 상세 */}
     {dayDetail && <div onClick={() => setDayDetail(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -7556,7 +7556,7 @@ function Schedule({ drugs, onNav }) {
         </div>
         <div style={{ marginBottom: 10 }}><label style={lb}>분류</label><select value={editEv.category} onChange={e => setEditEv(v => ({ ...v, category: e.target.value }))} style={ip}>{['발주', '실사', '마감', '업무', '근무', '입퇴원', '휴일', '기타'].map(c => <option key={c}>{c}</option>)}</select></div>
         <div style={{ marginBottom: 14 }}><label style={lb}>메모</label><input value={editEv.memo} onChange={e => setEditEv(v => ({ ...v, memo: e.target.value }))} style={ip} placeholder="선택" /></div>
-        {msg && <div style={{ marginBottom: 10, fontSize: 11, color: t.red, fontWeight: 600 }}>{msg}</div>}
+        {msg && <div className="no-print" style={{ marginBottom: 10, fontSize: 11, color: t.red, fontWeight: 600 }}>{msg}</div>}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
           <div>{editEv.id && <button onClick={() => delEv(editEv.id)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>삭제</button>}</div>
           <div style={{ display: 'flex', gap: 8 }}>
