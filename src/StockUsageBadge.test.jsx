@@ -108,7 +108,7 @@ describe('② 자동 값에만 「자동」 뱃지', () => {
     const badge = [...cell.querySelectorAll('span')].find(s => s.textContent.trim() === '자동')
     expect(badge, '「자동」 뱃지').toBeTruthy()
     expect(badge.getAttribute('title'))
-      .toBe('출고 기록으로 자동 계산한 값입니다. 원내 프로그램 값이 아닙니다')
+      .toBe('출고 기록 자동 계산값')
   })
   it('뱃지 모양은 쓰던 그대로다 — 새 색 없음', async () => {
     await ready()
@@ -137,12 +137,12 @@ describe('③ 머리글 툴팁 — 모양은 그대로, title 만', () => {
   it('최근3개월사용량', async () => {
     await ready()
     expect(thOf('최근3개월사용량').getAttribute('title'))
-      .toBe('원내 프로그램 기준값입니다(사용량 양식 업로드).')
+      .toBe('원내 프로그램 기준값')
   })
   it('직전1개월사용량', async () => {
     await ready()
     expect(thOf('직전1개월사용량').getAttribute('title'))
-      .toBe('원내 프로그램 집계값입니다. 향정·마약 등 일부 품목은 원내 프로그램에서 받아 직접 입력합니다.')
+      .toBe('원내 프로그램 기준값')
   })
   it('다른 머리글에는 툴팁을 붙이지 않았다', async () => {
     await ready()
