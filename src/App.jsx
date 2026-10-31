@@ -2206,6 +2206,8 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
   function editUsage(d,field,val){setDrafts(prev=>{const o0=origStr(d.prev_year_usage),o1=origStr(d.recent_3m_usage);const cur=prev[d.drug_code]||{py:o0,r3:o1};const next={...cur,[field]:val};if(next.py===o0&&next.r3===o1){const cp={...prev};delete cp[d.drug_code];return cp}return{...prev,[d.drug_code]:next}})}
   function cancelUsage(code){setDrafts(prev=>{if(!prev[code])return prev;const cp={...prev};delete cp[code];return cp})}
   async function saveRowUsage(d){const dr=drafts[d.drug_code];if(!dr)return;const pv=pNum(dr.py),rv=pNum(dr.r3);if(pv===undefined||rv===undefined){setUMsg('오류: 숫자(0 이상)만 입력하세요');setTimeout(()=>setUMsg(null),3000);return}const upd={prev_year_usage:pv,recent_3m_usage:rv,usage_source:'manual'};let m=null;if(rv!=null)m=Math.round(rv/3);else if(pv!=null)m=Math.round(pv/12);if(m!=null){upd.monthly_avg=m;upd.safety_stock=Math.ceil(m*SAFETY_FACTOR);upd.max_stock=Math.round(m*3)}const{error}=await supabase.from('drugs').update(upd).eq('drug_code',d.drug_code);if(error){setUMsg('저장 오류: '+error.message);return}cancelUsage(d.drug_code);onReload?.()}
+  const canRecompute=canDispose
+  const[recomfirm,setRecomfirm]=useState(false)
   async function recomputeUsage(){setUBusy(true);const{data,error}=await supabase.rpc('app_recompute_usage',{p_overwrite_manual:false});setUBusy(false);if(error){setUMsg('자동집계 오류: '+error.message);setTimeout(()=>setUMsg(null),4000);return}setUMsg('출고 자동집계 완료 — '+(data??0)+'품목 갱신 (수기 manual 보존)');setTimeout(()=>setUMsg(null),4000);onReload?.()}
   const _u=arr=>[...new Set(arr.filter(v=>v!=null&&String(v).trim()!==''))]
   const hf={category:{items:_u(merged.map(d=>d.category)).sort(),value:cats.length===1?cats[0]:null,on:v=>{setCats(v?[v]:CATS);setPage(1)}},status:{items:_u(drugs.map(d=>d.status)),value:stats.length===1?stats[0]:null,on:v=>{setStats(v?[v]:MAIN_STATS);setPage(1)}},stockStatus:{items:_u(merged.map(d=>d.stockStatus)),value:filter==='전체'?null:filter,on:v=>{setFilter(v||'전체');setPage(1)}}}
@@ -2287,7 +2289,7 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
         <button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>
         <button onClick={dlUsageTemplate} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 양식</button>
         <button onClick={()=>uRef.current.click()} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 업로드</button>
-        <button onClick={recomputeUsage} disabled={uBusy} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.purpleL,color:t.purple,cursor:uBusy?'default':'pointer',fontSize:11,fontWeight:600,opacity:uBusy?0.6:1}}>{uBusy?'집계 중…':'출고 자동집계'}</button>
+        {canRecompute&&<button onClick={()=>setRecomfirm(true)} disabled={uBusy} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.purpleL,color:t.purple,cursor:uBusy?'default':'pointer',fontSize:11,fontWeight:600,opacity:uBusy?0.6:1}}>{uBusy?'집계 중…':'출고 자동집계'}</button>}
         <input ref={uRef} type="file" accept=".xlsx,.xls" onChange={uploadUsage} style={{display:'none'}}/>
       </div>
       <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
@@ -2310,6 +2312,12 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
         </tr>})}</tbody>
       </StandardTable>
       <Pg page={page} setPage={setPage} tp={tp} fl={filtered} pp={PP} ends/>
+      {recomfirm&&<CountConfirmModal t={t} title="출고 자동집계" tone={t.purple} busy={uBusy}
+        head="직전1개월 사용량이 출고 기록 값으로 바뀝니다."
+        strong={'지금 값이 들어 있는 약품 '+(drugs||[]).filter(d=>Number(d.recent_1m_usage)!==0&&d.recent_1m_usage!=null).length.toLocaleString()+'종의 값이 덮어써지고, 되돌릴 수 없습니다.'}
+        body="계속할까요?" confirm="계속" escClose focusCancel
+        onClose={()=>setRecomfirm(false)}
+        onConfirm={()=>{setRecomfirm(false);recomputeUsage()}} />}
     </div><Ft/>
   </div>
 }
@@ -5428,7 +5436,17 @@ function InventoryCountDetail({ t, r, items, drugMap, bookOf, q, onQ, found, sea
 
 /* 실사 확인 모달 — 반영·되돌리기·삭제가 함께 쓴다. 훅A(useDraggableModal · 함정 #13).
    reason 이 넘어오면 사유 입력칸을 보여준다 — ★ 선택 입력이라 비워도 저장된다. */
-function CountConfirmModal({ t, title, tone, head, meta, strong, body, confirm, busy, onClose, onConfirm, reason, setReason }) {
+function CountConfirmModal({ t, title, tone, head, meta, strong, body, confirm, busy, onClose, onConfirm, reason, setReason, escClose, focusCancel }) {
+  /* ★ escClose·focusCancel 은 **덧붙인 선택지**다 — 넘기지 않으면 기존 3곳(재고반영·되돌리기·
+     실사 삭제)은 한 글자도 달라지지 않는다. 되돌릴 수 없는 조작에만 켠다. */
+  const _cancel = useRef(null)
+  useEffect(() => { if (focusCancel && _cancel.current) _cancel.current.focus() }, [focusCancel])
+  useEffect(() => {
+    if (!escClose) return
+    const onKey = e => { if (e.key === 'Escape' && !busy) onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [escClose, busy, onClose])
   const _b = useRef(null); const [_p, _sp] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _h } = useDraggableModal(_b, _p, _sp)
   const ta = { width: '100%', minHeight: 64, padding: '8px 10px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text, resize: 'vertical', fontFamily: 'inherit' }
   return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => !busy && onClose()}>
@@ -5446,7 +5464,7 @@ function CountConfirmModal({ t, title, tone, head, meta, strong, body, confirm, 
           <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="되돌리는 이유 등" style={ta} />
         </div>}
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={onClose} disabled={busy} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button>
+          <button ref={_cancel} onClick={onClose} disabled={busy} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button>
           <button onClick={onConfirm} disabled={busy} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer', background: busy ? t.textL : tone, color: t.card, fontSize: 13, fontWeight: 700 }}>{busy ? '처리 중...' : confirm}</button>
         </div>
       </div>
