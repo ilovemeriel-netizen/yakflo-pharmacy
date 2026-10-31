@@ -543,7 +543,9 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
   const COLS = [
     { k: 'drug_code', h: '약품코드', w: 128, sticky: 0 },
     { k: 'drug_name', h: '약품명', w: 200, sticky: 128 },
-    { k: 'funding_source', h: '재원', w: 96 },
+    /* ★ c:1 은 가운데 열 표시 — 칸에 든 것이 글자가 아니라 **뱃지**다.
+       뱃지는 칸 가운데에 서므로 머리글도 가운데로 맞춘다(LOT 표 「상태」와 같은 규칙). */
+    { k: 'funding_source', h: '재원', w: 96, c: 1 },
     { k: 'allocated_qty', h: '배정', w: 92, n: 1 },
     { k: 'received_qty', h: '입고', w: 92, n: 1 },
     { k: 'administered_qty', h: '접종', w: 92, n: 1 },
@@ -732,6 +734,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
                    헤더 정렬(좌측)은 기존 표들과 같게 유지한다(월마감 표도 좌측이다). */
                 const st = { ...TS(c.k), background: t.bg, borderRight: '1px solid ' + t.border,
                   ...(c.n ? { paddingRight: NUM_PR } : {}),
+                  ...(c.c ? { textAlign: 'center' } : {}),
                   ...(c.sticky != null ? { position: 'sticky', left: c.sticky, zIndex: 6, minWidth: c.w, maxWidth: c.w, width: c.w } : {}),
                   ...(hf[c.k] && hf[c.k].value ? { background: t.lavender + '33' } : {}) }
                 /* ★ 표 헤더는 ColMenu 를 그대로 재사용한다(자체 구현 금지) */
@@ -752,7 +755,8 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
                       style={{ ...txt, position: 'sticky', left: 128, zIndex: 2, background: bgc, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {r.drug_name || <span style={{ color: t.textL }}>—</span>}
                     </td>
-                    <td style={td}>
+                    {/* ★ 가운데를 직접 선언한다 — 지금도 가운데로 보이지만 그건 상속일 뿐이다(함정 #31) */}
+                    <td style={{ ...td, textAlign: 'center' }}>
                       {badge(r.funding_source, r.paid ? t.purple : t.green)}
                     </td>
                     <td style={num}>{r.paid ? '—' : fmt(r.allocated_qty)}</td>
@@ -1263,7 +1267,10 @@ function LotTable({ t, rows, badge, ColMenu, sk, sd, setSort, drugFilter }) {
             ★ 약품 복수 필터는 **약품명** 머리글에 붙는다(약품코드는 정렬만). */}
         {[['약품코드', 'left', 'drug_code'], ['약품명', 'left', 'drug_name'],
           ['LOT', 'left', 'lot'], ['유효기한', 'left', 'expiry'],
-          ['입고', 'right', null], ['잔량(참고)', 'right', null], ['상태', 'left', null]].map(([h, al, k]) =>
+          /* ★ 상태는 **가운데** — 칸에 든 것이 글자가 아니라 뱃지다. 뱃지는 칸 가운데에 서므로
+             머리글만 왼쪽이면 같은 열인데 두 세로선이 된다(함정 #31 의 반대 방향).
+             뱃지 쪽을 왼쪽으로 끌어오지 않고 **머리글을 뱃지에 맞춘다** — 뱃지 모양·색은 그대로 둔다. */
+          ['입고', 'right', null], ['잔량(참고)', 'right', null], ['상태', 'center', null]].map(([h, al, k]) =>
           <th key={h} title={h === '잔량(참고)' ? BAL_TIP : undefined}
             style={{ ...td, color: t.textM, fontWeight: 700, textAlign: al, background: t.bg }}>
             {k ? <HeadMenu colKey={k} label={h} sk={sk} sd={sd} setSort={setSort}
@@ -1282,7 +1289,9 @@ function LotTable({ t, rows, badge, ColMenu, sk, sd, setSort, drugFilter }) {
         <td style={{ ...txt, fontVariantNumeric: 'tabular-nums' }}>{x.expiry || <span style={{ color: t.textL }}>—</span>}</td>
         <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmt(x.received)}</td>
         <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: t.textM }} title={BAL_TIP}>{fmt(x.accBalance)}</td>
-        <td style={td}>
+        {/* ★ 가운데를 **직접 선언**한다 — 지금도 가운데로 보이지만 그건 `#root{text-align:center}`
+            상속일 뿐이다(함정 #31). 상위 규칙이 바뀌면 조용히 틀어지므로 칸이 스스로 적는다. */}
+        <td style={{ ...td, textAlign: 'center' }}>
           {/* ★ 3단계 — 정상 녹색 / 임박 라벤더 / 경과 라벤더 굵게. 표는 밝은 배경이라 라벤더가 읽힌다. */}
           {x.stage === 'ok' ? badge('정상', t.green)
             : x.stage === 'soon' ? <span title={'D-' + x.days}>{badge('임박 D-' + x.days, t.lavender)}</span>
