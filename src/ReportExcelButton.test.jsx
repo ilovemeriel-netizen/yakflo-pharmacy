@@ -238,6 +238,53 @@ describe('④ 마감월은 사이드카 금액을 그대로 쓴다', () => {
   })
 })
 
+/* ★ 인쇄 빈 쪽 — 안내 띠가 인쇄에 끼면 월간 요약이 1쪽을 넘긴다.
+     요약 블록은 min-height 265mm, 인쇄 가능 높이는 273mm(@page margin 12mm) → **여유 8mm**.
+     띠는 약 18mm 라 그것만으로 12.7mm 넘겨, 넘친 꼬리만 2쪽에 남고 목록은 3쪽부터 나왔다.
+     (헤드리스 Chrome 실측: 524행 16쪽 → 17쪽, 1,131행 33쪽 → 34쪽) */
+describe('⑥ 안내 띠는 인쇄에서 빠진다', () => {
+  const banner = () => [...document.querySelectorAll('div')]
+    .find(d => /^[✅❌]/.test((d.textContent || '').trim()) && d.children.length === 0)
+
+  it('★ 내려받은 뒤 뜨는 안내 띠에 no-print 가 붙는다', async () => {
+    render(<Report drugs={DRUGS} onNav={() => {}} />)
+    fireEvent.click(await screen.findByRole('button', { name: '엑셀' }))
+    await waitFor(() => expect(banner()).toBeTruthy())
+    expect(banner().className, '인쇄에서 빠져야 한다').toContain('no-print')
+  })
+  it('화면에서는 그대로 보인다 — 숨긴 게 아니라 인쇄에서만 뺀다', async () => {
+    render(<Report drugs={DRUGS} onNav={() => {}} />)
+    fireEvent.click(await screen.findByRole('button', { name: '엑셀' }))
+    await waitFor(() => expect(banner()).toBeTruthy())
+    const el = banner()
+    expect(window.getComputedStyle(el).display, '화면에서는 숨기지 않는다').not.toBe('none')
+    expect(el.textContent).toContain('내려받았습니다')
+  })
+  it('전역 인쇄 규칙이 .no-print 를 숨긴다 (띠가 기대는 규칙)', () => {
+    const src = readFileSync('src/App.jsx', 'utf8')
+    expect(src).toMatch(/\.no-print\s*\{\s*display:\s*none\s*!important/)
+  })
+})
+
+/* ★ 연속 다운로드는 Chrome 의 「여러 파일 자동 다운로드」 권한에 막힐 수 있다.
+     앱은 그것을 **알 방법이 없다** — click() 은 성공하고 ✅ 도 뜬다.
+     그래서 화면에 줄을 늘리지 않고 툴팁에만 길을 적어 둔다. */
+describe('⑦ 「엑셀」 툴팁에 다운로드 차단 안내가 있다', () => {
+  it('툴팁에 사이트 설정 › 자동 다운로드 안내가 들어 있다', async () => {
+    render(<Report drugs={DRUGS} onNav={() => {}} />)
+    const b = await screen.findByRole('button', { name: '엑셀' })
+    const title = b.getAttribute('title') || ''
+    expect(title, '기존 설명은 그대로 둔다').toContain('기준 양식')
+    expect(title).toContain('자동 다운로드')
+    expect(title).toContain('사이트 설정')
+  })
+  it('화면에 새 줄을 만들지 않았다 — 안내는 툴팁에만 있다', async () => {
+    render(<Report drugs={DRUGS} onNav={() => {}} />)
+    await screen.findByRole('button', { name: '엑셀' })
+    expect(document.body.textContent, '보이는 글자로 나오면 안 된다').not.toContain('자동 다운로드')
+  })
+})
+
 describe('⑤ 시안 캡처', () => {
   it('도구줄 HTML 을 떠 둔다 (CAPTURE_DIR 이 있을 때만)', async () => {
     const dir = process.env.CAPTURE_DIR

@@ -5959,7 +5959,11 @@ export function Report({drugs,onNav}){
       <div style={{flex:1}}/>
       {rtype==='monthly'
         ? <>
-            <button onClick={dlFmt} disabled={dling} title="기준 양식(의약품 결산 내역)과 같은 모양으로 내려받습니다" style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:dling?'not-allowed':'pointer',opacity:dling?0.5:1,fontSize:11,fontWeight:600}}>{dling?'만드는 중...':'엑셀'}</button>
+            {/* ★ 툴팁에만 덧붙인다 — 화면에 줄을 늘리지 않는다.
+                연속으로 두 번째 파일을 받으면 Chrome 이 「여러 파일 자동 다운로드」 권한으로
+                **조용히** 막는 일이 있다. 앱은 그걸 알 방법이 없어(클릭은 성공하고 ✅ 도 뜬다)
+                여기서 미리 일러 둔다. 실측: 권한 기본(ask)이면 3번 눌러 1개만 받아졌다. */}
+            <button onClick={dlFmt} disabled={dling} title="기준 양식(의약품 결산 내역)과 같은 모양으로 내려받습니다 — 파일이 받아지지 않으면 주소창 왼쪽 아이콘 › 사이트 설정 › 자동 다운로드를 허용해 주세요" style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:dling?'not-allowed':'pointer',opacity:dling?0.5:1,fontSize:11,fontWeight:600}}>{dling?'만드는 중...':'엑셀'}</button>
             {/* 흑백판 선택 — 누르면 채워지고, 다시 누르면 컬러판으로 돌아간다. 기존 버튼 색만 쓴다 */}
             <button onClick={()=>setMono(v=>!v)} aria-pressed={mono} title={mono?'흑백판으로 내려받습니다 — 다시 누르면 컬러판':'컬러판으로 내려받습니다 — 누르면 흑백판'} style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${t.green}`,background:mono?t.green:'transparent',color:mono?'#fff':t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>흑백</button>
           </>
@@ -5971,7 +5975,12 @@ export function Report({drugs,onNav}){
         ? <button onClick={requestClose} disabled={closing||isFuture||monthClosed} title={monthClosed?'이미 스냅샷이 있어 재마감이 제한됩니다':isFuture?'미래 월은 마감할 수 없습니다':undefined} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:(closing||isFuture||monthClosed)?'not-allowed':'pointer',opacity:(closing||isFuture||monthClosed)?0.5:1,fontSize:11,fontWeight:700}}>{closing?'마감 중...':(monthClosed?'📋 마감됨':'📋 월마감')}</button>
         : <button onClick={showAnnualInfo} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:700}}>📅 연마감</button>)}
     </div>
-    {closeMsg&&<div style={{background:closeMsg.includes('✅')?t.greenL:t.redL,border:`1px solid ${closeMsg.includes('✅')?t.green:t.red}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:closeMsg.includes('✅')?t.green:t.red,fontSize:12,fontWeight:600}}>{closeMsg}</div>}
+    {/* ★ 안내 띠는 **인쇄에서 뺀다**(no-print). 조작 결과를 알리는 글이지 보고서 내용이 아니다.
+        ★ 그냥 「안 예쁘다」가 아니라 **쪽이 밀린다** — 월간 요약 블록은 min-height 265mm 이고
+          인쇄 가능 높이는 273mm(@page margin 12mm)라 **여유가 8mm 뿐**이다. 이 띠(약 18mm)가
+          위에 끼면 요약이 1쪽을 12.7mm 넘겨, 넘친 꼬리(작성 시각·저작권)만 2쪽에 홀로 남고
+          약품 목록은 page-break-before 때문에 3쪽부터 시작했다(524행 16쪽 → 17쪽). */}
+    {closeMsg&&<div className="no-print" style={{background:closeMsg.includes('✅')?t.greenL:t.redL,border:`1px solid ${closeMsg.includes('✅')?t.green:t.red}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:closeMsg.includes('✅')?t.green:t.red,fontSize:12,fontWeight:600}}>{closeMsg}</div>}
 
     {/* 앱 내 확인/안내 모달(alert·confirm 대체) — 기존 DrugDeleteConfirm 스타일 재사용 */}
     {dialog&&<div onClick={()=>setDialog(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
