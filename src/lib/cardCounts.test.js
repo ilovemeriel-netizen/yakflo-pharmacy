@@ -165,7 +165,10 @@ describe('App.jsx 배선 — 고친 곳이 되돌아가지 않게', () => {
   it('★ 재고현황 카드 숫자가 _sb(구분·검색 적용)에서 나온다', () => {
     expect(APP).toContain('const sg={전체:_sb.length')
     expect(APP, '옛 방식이 남아 있다').not.toContain('const sg={전체:merged.length')
-    expect(APP).toContain("const filtered=so(_sb.filter(d=>filter==='전체'||d.stockStatus===filter))")
+    /* ★ 2026-11-01 급변 필터가 끼면서 이 줄이 길어졌다 — 글자 그대로 비교하면 깨진다.
+       지키려는 뜻은 「filtered 가 _sb 에서 나온다」이므로 그것만 본다. */
+    expect(APP).toContain('const filtered=so(_sb.filter(d=>')
+    expect(APP, '재고상태 칩 조건은 그대로').toContain("filter==='전체'||d.stockStatus===filter")
   })
 
   it('★ 향정마약 카드 숫자가 _cb(카드 선택만 뺀 기준)에서 나온다', () => {
