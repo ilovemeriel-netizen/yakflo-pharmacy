@@ -146,17 +146,22 @@ describe('① 버튼 배치', () => {
 })
 
 describe('② 흑백 선택이 그대로 전달된다', () => {
-  it('처음엔 컬러판이다', async () => {
+  /* ★ aria-pressed 는 **채움**과 같이 간다(2026-11-01 결정) — 채워져 있는 컬러 모드가 true 다.
+     어느 모드인지는 aria-label 이 말하므로, 눌림 표시는 눈에 보이는 채움과 어긋나지 않게 둔다. */
+  it('처음엔 컬러판이다 — 채워져 있으므로 aria-pressed 는 true', async () => {
     render(<Report drugs={DRUGS} onNav={() => {}} />)
-    expect((await screen.findByRole('button', { name: /엑셀 색상/ })).getAttribute('aria-pressed')).toBe('false')
+    const b = await screen.findByRole('button', { name: /엑셀 색상/ })
+    expect(b.getAttribute('aria-pressed')).toBe('true')
+    expect(b.getAttribute('aria-label')).toBe('엑셀 색상: 컬러')
   })
-  it('누르면 눌린 상태가 되고, 다시 누르면 돌아온다', async () => {
+  it('누르면 흑백(테두리만)이 되고, 다시 누르면 돌아온다', async () => {
     render(<Report drugs={DRUGS} onNav={() => {}} />)
     const b = await screen.findByRole('button', { name: /엑셀 색상/ })
     fireEvent.click(b)
-    await waitFor(() => expect(b.getAttribute('aria-pressed')).toBe('true'))
-    fireEvent.click(b)
     await waitFor(() => expect(b.getAttribute('aria-pressed')).toBe('false'))
+    expect(b.getAttribute('aria-label')).toBe('엑셀 색상: 흑백')
+    fireEvent.click(b)
+    await waitFor(() => expect(b.getAttribute('aria-pressed')).toBe('true'))
   })
   it('컬러판으로 내려받으면 mono:false 로 간다', async () => {
     render(<Report drugs={DRUGS} onNav={() => {}} />)
@@ -297,13 +302,14 @@ describe('⑧ 흑백 버튼 글자가 상태를 말한다', () => {
     })
     for (let i = 0; i < 4; i++) {
       const s = look()
-      const on = s.text === '흑백'
-      expect(s.filled, i + '회: 채움').toBe(on)
-      expect(s.pressed, i + '회: aria-pressed').toBe(String(on))
-      expect(s.tip, i + '회: 툴팁').toBe(on)
-      expect(s.label, i + '회: aria-label').toBe('엑셀 색상: ' + (on ? '흑백' : '컬러'))
+      const isMono = s.text === '흑백'
+      /* ★ 채움은 **컬러 모드**가 가져간다(2026-11-01 결정) — 흑백일 때는 테두리만 */
+      expect(s.filled, i + '회: 채움은 컬러 모드').toBe(!isMono)
+      expect(s.pressed, i + '회: aria-pressed 는 채움과 같이 간다').toBe(String(!isMono))
+      expect(s.tip, i + '회: 툴팁').toBe(isMono)
+      expect(s.label, i + '회: aria-label').toBe('엑셀 색상: ' + (isMono ? '흑백' : '컬러'))
       fireEvent.click(b())
-      await waitFor(() => expect(b().textContent).toBe(on ? '컬러' : '흑백'))
+      await waitFor(() => expect(b().textContent).toBe(isMono ? '컬러' : '흑백'))
     }
   })
 
@@ -329,6 +335,23 @@ describe('⑧ 흑백 버튼 글자가 상태를 말한다', () => {
     fireEvent.click(b())
     await waitFor(() => expect(b().textContent).toBe('흑백'))
     expect(b().textContent.length).toBe(2)
+  })
+
+  /* ★ 색 **값**까지 못 박는다 — 조건만 뒤집었지 새 색을 쓰지 않았음을 보증한다.
+     흑백 모드의 배경/글자색이 예전 컬러 모드 값과 같고, 그 반대도 같아야 한다. */
+  it('★ 채움은 컬러 모드가 가져간다 — 색 값은 쓰던 것 그대로', async () => {
+    render(<Report drugs={DRUGS} onNav={() => {}} />)
+    await screen.findByRole('button', { name: /엑셀 색상/ })
+    const rgbGreen = 'rgb(1, 151, 72)'          /* T.green 을 jsdom 이 돌려주는 모양 */
+    expect(b().textContent).toBe('컬러')
+    expect(b().style.background, '컬러: 초록 채움').toBe(rgbGreen)
+    expect(b().style.color, '컬러: 흰 글자').toBe('rgb(255, 255, 255)')
+
+    fireEvent.click(b())
+    await waitFor(() => expect(b().textContent).toBe('흑백'))
+    expect(b().style.background, '흑백: 테두리만').toBe('transparent')
+    expect(b().style.color, '흑백: 초록 글자').toBe(rgbGreen)
+    expect(b().style.border, '테두리는 두 모드 모두 그대로').toBe('1px solid ' + rgbGreen)
   })
 
   it('스타일 규칙은 그대로다 — 색·여백·테두리를 건드리지 않았다', async () => {
@@ -367,7 +390,8 @@ describe('⑤ 시안 캡처', () => {
     const b = await screen.findByRole('button', { name: /엑셀 색상/ })
     const off = withSelected(toolbar())
     fireEvent.click(b)
-    await waitFor(() => expect(b.getAttribute('aria-pressed')).toBe('true'))
+    /* 컬러(채움·pressed true) → 흑백(테두리만·pressed false) */
+    await waitFor(() => expect(b.getAttribute('aria-pressed')).toBe('false'))
     const on = withSelected(toolbar())
     expect(off).not.toBe(on)          /* 눌린 모양이 실제로 달라진다 */
     /* 시안이 실제 선택 월을 보여 준다 — 「2024년 1월」로 굳어 버리지 않는다 */

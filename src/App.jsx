@@ -5970,7 +5970,12 @@ export function Report({drugs,onNav}){
                 둘 다 두 글자라 버튼 폭은 그대로다(실측 확인).
                 ★ 글자가 상태를 말하게 됐으므로 읽는 도구에도 모드를 알려 준다 —
                   aria-label 을 주면 접근 이름이 글자 대신 이것이 된다(화면은 안 바뀐다). */}
-            <button onClick={()=>setMono(v=>!v)} aria-pressed={mono} aria-label={'엑셀 색상: '+(mono?'흑백':'컬러')} title={mono?'흑백판으로 내려받습니다 — 다시 누르면 컬러판':'컬러판으로 내려받습니다 — 누르면 흑백판'} style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${t.green}`,background:mono?t.green:'transparent',color:mono?'#fff':t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>{mono?'흑백':'컬러'}</button>
+            {/* ★ 채움은 **컬러 모드**가 가져간다 — 색이 들어간 판을 받는 쪽이 색으로 차 있는 게
+                눈에 더 맞는다(사용자 요청). 조건만 mono → !mono 로 뒤집었고
+                색 값·여백·모서리·글씨·폭·툴팁은 그대로다.
+                ★ aria-pressed 는 **채움과 같이** 간다 — 읽는 도구에 「눌려 있다」로 전해지는 것이
+                  화면에서 차 있는 것과 어긋나면 안 된다. 어느 모드인지는 aria-label 이 말한다. */}
+            <button onClick={()=>setMono(v=>!v)} aria-pressed={!mono} aria-label={'엑셀 색상: '+(mono?'흑백':'컬러')} title={mono?'흑백판으로 내려받습니다 — 다시 누르면 컬러판':'컬러판으로 내려받습니다 — 누르면 흑백판'} style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${t.green}`,background:mono?'transparent':t.green,color:mono?t.green:'#fff',cursor:'pointer',fontSize:11,fontWeight:600}}>{mono?'흑백':'컬러'}</button>
           </>
         : <button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>}
       {isOwner&&rtype==='monthly'&&<button onClick={()=>setUploadOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accentL,color:t.accent,cursor:'pointer',fontSize:11,fontWeight:600}}>스냅샷 업로드</button>}
