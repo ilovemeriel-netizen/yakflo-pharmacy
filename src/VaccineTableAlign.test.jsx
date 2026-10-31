@@ -154,11 +154,18 @@ describe('① 약품별 집계 — 약품명', () => {
     expect(css(name).paddingLeft, '칸 여백').toBe(css(th).paddingLeft)
     expect(css(name).paddingLeft).toBe('12px')
   })
-  it('★ 대조군 — 재원 칸은 정렬을 선언하지 않는다(손대지 않았다)', async () => {
+  /* ★ 재원은 **뱃지 열**이다 — 전에는 머리글만 왼쪽이고 칸은 상속으로 가운데였다.
+     2026-11-01 부터 둘 다 가운데로 맞춘다(뱃지 쪽을 끌어오지 않고 머리글을 뱃지에 맞췄다).
+     ※ PR #379 때 이 자리에 「손대지 않은 대조군」 시험이 있었다 — 이제 손댔으므로 뜻을 바꾼다. */
+  it('★ 재원(뱃지 열) — 머리글·칸이 함께 가운데, 둘 다 직접 선언', async () => {
     open()
     await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBeGreaterThan(0))
     const fund = tdsOfRow(document.querySelectorAll('tbody tr')[0])[2]
-    expect(fund.style.textAlign, '건드리지 않은 칸은 빈 값이어야 한다').toBe('')
+    const th = thOf('재원')
+    expect(fund.querySelector('span[style*="border-radius"]'), '뱃지가 든 칸이어야 한다').toBeTruthy()
+    expect(fund.style.textAlign, '칸이 직접 선언 — 상속에 기대지 않는다').toBe('center')
+    expect(th.style.textAlign, '머리글도 직접 선언').toBe('center')
+    expect(css(fund).textAlign).toBe(css(th).textAlign)
   })
   it('숫자 열은 오른쪽 그대로', async () => {
     open()
@@ -223,6 +230,25 @@ describe('② LOT·유효기한 표', () => {
     await openLot()
     const tds = tdsOfRow(lotRows().rows[0])
     for (const i of [4, 5]) expect(css(tds[i]).textAlign, i + '번째 칸').toBe('right')
+  })
+  /* ★ 상태는 뱃지 열 — 머리글만 왼쪽이고 칸은 상속으로 가운데라 두 세로선에 섰다.
+     뱃지 모양·색·열 너비는 그대로 두고 **머리글을 뱃지에 맞춘다**. */
+  it('★ 상태(뱃지 열) — 머리글·칸이 함께 가운데, 둘 다 직접 선언', async () => {
+    await openLot()
+    const { table } = lotRows()
+    const tds = tdsOfRow(lotRows().rows[0])
+    const th = [...table.querySelectorAll('th')][6]
+    expect(th.textContent.replace(/[⇅▲▼✓\s]/g, ''), '7번째 머리글').toBe('상태')
+    expect(tds[6].querySelector('span[style*="border-radius"]'), '뱃지가 든 칸이어야 한다').toBeTruthy()
+    expect(tds[6].style.textAlign, '칸이 직접 선언').toBe('center')
+    expect(th.style.textAlign, '머리글도 직접 선언').toBe('center')
+    expect(css(tds[6]).textAlign).toBe(css(th).textAlign)
+  })
+  it('★ 상태 말고는 아무 칸도 움직이지 않았다', async () => {
+    await openLot()
+    const tds = tdsOfRow(lotRows().rows[0])
+    for (const i of [0, 1, 2, 3]) expect(css(tds[i]).textAlign, i + '번째').toBe('left')
+    for (const i of [4, 5]) expect(css(tds[i]).textAlign, i + '번째').toBe('right')
   })
 })
 
