@@ -5965,7 +5965,12 @@ export function Report({drugs,onNav}){
                 여기서 미리 일러 둔다. 실측: 권한 기본(ask)이면 3번 눌러 1개만 받아졌다. */}
             <button onClick={dlFmt} disabled={dling} title="기준 양식(의약품 결산 내역)과 같은 모양으로 내려받습니다 — 파일이 받아지지 않으면 주소창 왼쪽 아이콘 › 사이트 설정 › 자동 다운로드를 허용해 주세요" style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:dling?'not-allowed':'pointer',opacity:dling?0.5:1,fontSize:11,fontWeight:600}}>{dling?'만드는 중...':'엑셀'}</button>
             {/* 흑백판 선택 — 누르면 채워지고, 다시 누르면 컬러판으로 돌아간다. 기존 버튼 색만 쓴다 */}
-            <button onClick={()=>setMono(v=>!v)} aria-pressed={mono} title={mono?'흑백판으로 내려받습니다 — 다시 누르면 컬러판':'컬러판으로 내려받습니다 — 누르면 흑백판'} style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${t.green}`,background:mono?t.green:'transparent',color:mono?'#fff':t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>흑백</button>
+            {/* ★ 글자가 **지금 상태**를 말한다 — 「흑백」으로 고정해 두면 켜짐/꺼짐을 채움 색
+                하나로만 읽어야 해서, 색을 놓치면 「눌러도 안 바뀐다」로 보인다.
+                둘 다 두 글자라 버튼 폭은 그대로다(실측 확인).
+                ★ 글자가 상태를 말하게 됐으므로 읽는 도구에도 모드를 알려 준다 —
+                  aria-label 을 주면 접근 이름이 글자 대신 이것이 된다(화면은 안 바뀐다). */}
+            <button onClick={()=>setMono(v=>!v)} aria-pressed={mono} aria-label={'엑셀 색상: '+(mono?'흑백':'컬러')} title={mono?'흑백판으로 내려받습니다 — 다시 누르면 컬러판':'컬러판으로 내려받습니다 — 누르면 흑백판'} style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${t.green}`,background:mono?t.green:'transparent',color:mono?'#fff':t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>{mono?'흑백':'컬러'}</button>
           </>
         : <button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>}
       {isOwner&&rtype==='monthly'&&<button onClick={()=>setUploadOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accentL,color:t.accent,cursor:'pointer',fontSize:11,fontWeight:600}}>스냅샷 업로드</button>}
