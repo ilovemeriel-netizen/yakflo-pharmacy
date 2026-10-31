@@ -119,24 +119,25 @@ describe('① 버튼 배치', () => {
   it('월간 탭에 「엑셀」과 「흑백」이 나란히 있다', async () => {
     render(<Report drugs={DRUGS} onNav={() => {}} />)
     expect(await screen.findByRole('button', { name: '엑셀' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '흑백' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /엑셀 색상/ })).toBeTruthy()
   })
   it('「흑백」이 「엑셀」 바로 옆에 온다', async () => {
     render(<Report drugs={DRUGS} onNav={() => {}} />)
     const bar = toolbar()
     const names = [...bar.querySelectorAll('button')].map(b => b.textContent)
-    expect(names.indexOf('흑백') - names.indexOf('엑셀')).toBe(1)
+    /* ★ 글자가 상태에 따라 「컬러」/「흑백」으로 바뀐다 — 처음에는 꺼짐이라 「컬러」다 */
+    expect(names.indexOf('컬러') - names.indexOf('엑셀')).toBe(1)
   })
   it('연간 탭에는 「흑백」이 없다 — 기준 양식은 월간 전용이다', async () => {
     render(<Report drugs={DRUGS} onNav={() => {}} />)
     await screen.findByRole('button', { name: '엑셀' })
     fireEvent.click(screen.getByRole('button', { name: '연간' }))
-    await waitFor(() => expect(screen.queryByRole('button', { name: '흑백' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('button', { name: /엑셀 색상/ })).toBeNull())
     expect(screen.getByRole('button', { name: '엑셀' })).toBeTruthy()
   })
   it('기존 버튼 색만 쓴다 — 새 색을 들이지 않는다', async () => {
     render(<Report drugs={DRUGS} onNav={() => {}} />)
-    const mono = await screen.findByRole('button', { name: '흑백' })
+    const mono = await screen.findByRole('button', { name: /엑셀 색상/ })
     const used = (mono.getAttribute('style') || '').toLowerCase()
     for (const m of used.match(/#[0-9a-f]{3,8}/g) || []) {
       expect([T.green.toLowerCase(), T.greenL.toLowerCase(), '#fff', '#ffffff'], '쓰인 색 ' + m).toContain(m)
@@ -147,11 +148,11 @@ describe('① 버튼 배치', () => {
 describe('② 흑백 선택이 그대로 전달된다', () => {
   it('처음엔 컬러판이다', async () => {
     render(<Report drugs={DRUGS} onNav={() => {}} />)
-    expect((await screen.findByRole('button', { name: '흑백' })).getAttribute('aria-pressed')).toBe('false')
+    expect((await screen.findByRole('button', { name: /엑셀 색상/ })).getAttribute('aria-pressed')).toBe('false')
   })
   it('누르면 눌린 상태가 되고, 다시 누르면 돌아온다', async () => {
     render(<Report drugs={DRUGS} onNav={() => {}} />)
-    const b = await screen.findByRole('button', { name: '흑백' })
+    const b = await screen.findByRole('button', { name: /엑셀 색상/ })
     fireEvent.click(b)
     await waitFor(() => expect(b.getAttribute('aria-pressed')).toBe('true'))
     fireEvent.click(b)
@@ -165,7 +166,7 @@ describe('② 흑백 선택이 그대로 전달된다', () => {
   })
   it('흑백을 누른 뒤 내려받으면 mono:true 로 간다', async () => {
     render(<Report drugs={DRUGS} onNav={() => {}} />)
-    fireEvent.click(await screen.findByRole('button', { name: '흑백' }))
+    fireEvent.click(await screen.findByRole('button', { name: /엑셀 색상/ }))
     fireEvent.click(screen.getByRole('button', { name: '엑셀' }))
     await waitFor(() => expect(written.length).toBe(1))
     expect(written[0].opts.mono).toBe(true)
@@ -269,6 +270,80 @@ describe('⑥ 안내 띠는 인쇄에서 빠진다', () => {
 /* ★ 연속 다운로드는 Chrome 의 「여러 파일 자동 다운로드」 권한에 막힐 수 있다.
      앱은 그것을 **알 방법이 없다** — click() 은 성공하고 ✅ 도 뜬다.
      그래서 화면에 줄을 늘리지 않고 툴팁에만 길을 적어 둔다. */
+/* ★ 버튼 글자가 **지금 상태**를 말한다. 전에는 「흑백」으로 고정이라 켜짐/꺼짐을
+     채움 색 하나로만 읽어야 했고, 색을 놓치면 「눌러도 안 바뀐다」로 보였다. */
+describe('⑧ 흑백 버튼 글자가 상태를 말한다', () => {
+  const b = () => screen.getByRole('button', { name: /엑셀 색상/ })
+
+  it('★ 마운트 「컬러」 → 1회 「흑백」 → 2회 「컬러」', async () => {
+    render(<Report drugs={DRUGS} onNav={() => {}} />)
+    await screen.findByRole('button', { name: /엑셀 색상/ })
+    expect(b().textContent).toBe('컬러')
+    fireEvent.click(b())
+    await waitFor(() => expect(b().textContent).toBe('흑백'))
+    fireEvent.click(b())
+    await waitFor(() => expect(b().textContent).toBe('컬러'))
+  })
+
+  it('★ 글자·채움·툴팁·aria-pressed 가 늘 한 몸이다', async () => {
+    render(<Report drugs={DRUGS} onNav={() => {}} />)
+    await screen.findByRole('button', { name: /엑셀 색상/ })
+    const look = () => ({
+      text: b().textContent,
+      filled: b().style.background !== 'transparent',
+      pressed: b().getAttribute('aria-pressed'),
+      tip: (b().getAttribute('title') || '').startsWith('흑백판'),
+      label: b().getAttribute('aria-label'),
+    })
+    for (let i = 0; i < 4; i++) {
+      const s = look()
+      const on = s.text === '흑백'
+      expect(s.filled, i + '회: 채움').toBe(on)
+      expect(s.pressed, i + '회: aria-pressed').toBe(String(on))
+      expect(s.tip, i + '회: 툴팁').toBe(on)
+      expect(s.label, i + '회: aria-label').toBe('엑셀 색상: ' + (on ? '흑백' : '컬러'))
+      fireEvent.click(b())
+      await waitFor(() => expect(b().textContent).toBe(on ? '컬러' : '흑백'))
+    }
+  })
+
+  it('★ 내려받는 모드가 글자와 같다', async () => {
+    render(<Report drugs={DRUGS} onNav={() => {}} />)
+    await screen.findByRole('button', { name: /엑셀 색상/ })
+    expect(b().textContent).toBe('컬러')
+    fireEvent.click(screen.getByRole('button', { name: '엑셀' }))
+    await waitFor(() => expect(written.length).toBe(1))
+    expect(written[0].opts.mono, '글자가 「컬러」면 mono:false').toBe(false)
+
+    fireEvent.click(b())
+    await waitFor(() => expect(b().textContent).toBe('흑백'))
+    fireEvent.click(screen.getByRole('button', { name: '엑셀' }))
+    await waitFor(() => expect(written.length).toBe(2))
+    expect(written[1].opts.mono, '글자가 「흑백」이면 mono:true').toBe(true)
+  })
+
+  it('글자는 늘 두 글자다 — 버튼 폭이 흔들리지 않는다', async () => {
+    render(<Report drugs={DRUGS} onNav={() => {}} />)
+    await screen.findByRole('button', { name: /엑셀 색상/ })
+    expect(b().textContent.length).toBe(2)
+    fireEvent.click(b())
+    await waitFor(() => expect(b().textContent).toBe('흑백'))
+    expect(b().textContent.length).toBe(2)
+  })
+
+  it('스타일 규칙은 그대로다 — 색·여백·테두리를 건드리지 않았다', async () => {
+    render(<Report drugs={DRUGS} onNav={() => {}} />)
+    await screen.findByRole('button', { name: /엑셀 색상/ })
+    const s = b().style
+    expect(s.padding).toBe('6px 12px')
+    expect(s.borderRadius).toBe('8px')
+    expect(s.fontSize).toBe('11px')
+    expect(s.fontWeight).toBe('600')
+    /* jsdom 은 hex 를 rgb() 로 바꿔 돌려준다 — 값을 맞춰 비교한다 */
+    expect(s.border).toBe('1px solid rgb(1, 151, 72)')
+  })
+})
+
 describe('⑦ 「엑셀」 툴팁에 다운로드 차단 안내가 있다', () => {
   it('툴팁에 사이트 설정 › 자동 다운로드 안내가 들어 있다', async () => {
     render(<Report drugs={DRUGS} onNav={() => {}} />)
@@ -289,7 +364,7 @@ describe('⑤ 시안 캡처', () => {
   it('도구줄 HTML 을 떠 둔다 (CAPTURE_DIR 이 있을 때만)', async () => {
     const dir = process.env.CAPTURE_DIR
     render(<Report drugs={DRUGS} onNav={() => {}} />)
-    const b = await screen.findByRole('button', { name: '흑백' })
+    const b = await screen.findByRole('button', { name: /엑셀 색상/ })
     const off = withSelected(toolbar())
     fireEvent.click(b)
     await waitFor(() => expect(b.getAttribute('aria-pressed')).toBe('true'))
