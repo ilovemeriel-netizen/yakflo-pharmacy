@@ -327,6 +327,51 @@ describe('⑦ 확인필요 — 네 갈래', () => {
   })
 })
 
+/* ═══ ⑧ 5·6번 판정 불변 증명 ═══
+   「확인필요 대상이 아닌 줄」에서는 전·후 결과가 **글자 하나도** 달라지지 않아야 한다.
+   식을 눈으로 비교하는 대신, 경계값을 모두 깐 표를 **실제로 렌더해서** ▲▼와 색을 본다.
+   줄 수는 한 쪽 분량(20줄)에 맞췄다 — 쪽 나누기 때문에 21줄째는 화면에 없다. */
+describe('⑧ 급증·급감이 전혀 변하지 않았다 (경계값 20줄)', () => {
+  /* 확인필요가 될 수 없는 조합만 깐다: 값이 있고, 음수가 아니고, 0 이면 수기다 */
+  const V = [0, 1, 49, 50, 51, 100, 149, 150, 151, 200]
+  const GRID = []
+  for (const ma of [0, 100]) for (const v1 of V) {
+    GRID.push({ ...mk('G' + ma + '_' + v1, '경구제', v1), monthly_avg: ma })
+  }
+  /* ★ 옛 식을 **그대로** 적어 둔다 — 이것이 기준이다 */
+  const old = (ma, v1) => (v1 == null || v1 === '') ? null
+    : !(ma > 0) ? null
+      : v1 > ma * 1.5 ? '급증' : v1 < ma * 0.5 ? '급감' : null
+
+  it('★ 20줄 모두 옛 식과 같은 ▲▼·같은 색', async () => {
+    render(<StockStatus drugs={GRID} inv={[]} navFilter={null}
+      onEdit={() => {}} onAdjust={() => {}} onReload={() => {}} onDispose={() => {}} />)
+    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(GRID.length))
+    const diff = []
+    for (const d of GRID) {
+      const tr = [...document.querySelectorAll('tbody tr')]
+        .find(x => x.querySelector('td').textContent.trim() === d.drug_code)
+      const mark = [...tr.querySelectorAll('span')].find(s => s.getAttribute('aria-label'))
+      const got = mark ? mark.getAttribute('aria-label') : null
+      const want = old(d.monthly_avg, d.recent_1m_usage)
+      const color = mark ? mark.parentElement.style.color : null
+      const wantColor = want === '급증' ? 'rgb(198, 40, 40)' : want === '급감' ? 'rgb(46, 74, 98)' : null
+      if (got !== want || (want && color !== wantColor)) {
+        diff.push(d.drug_code + ' 월평균' + d.monthly_avg + '·값' + d.recent_1m_usage
+          + ' → 옛 ' + want + ' / 새 ' + got + ' (색 ' + color + ')')
+      }
+    }
+    expect(diff, '달라진 줄:\n' + diff.join('\n')).toEqual([])
+  })
+
+  it('확인필요는 이 20줄에 하나도 없다 (대조군이 깨끗하다)', async () => {
+    render(<StockStatus drugs={GRID} inv={[]} navFilter={null}
+      onEdit={() => {}} onAdjust={() => {}} onReload={() => {}} onDispose={() => {}} />)
+    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(GRID.length))
+    expect(document.querySelector('tbody').textContent).not.toContain('?')
+  })
+})
+
 describe('⑥ 판정 함수가 한 곳뿐이다', () => {
   it('surgeOf 만 쓰고 옛 인라인 식은 없다', () => {
     const { readFileSync } = require('node:fs')
