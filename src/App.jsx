@@ -2078,6 +2078,33 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload,onDispose}){
 }
 
 /* ═══ 재고현황 — ★ 사용량 엑셀 업로드 추가 ═══ */
+/* ★ 급변 판정 — 직전1개월이 월평균보다 많이 벗어났나.
+   색·필터·엑셀이 전부 이 함수 하나만 부른다 — 세 곳이 각자 판단하면 조용히 어긋난다.
+     · 급증 = 월평균 × 1.5 **초과**  (▲ 빨강)
+     · 급감 = 월평균 × 0.5 **미만**  (▼ 파랑)
+     · 월평균이 0 이하면 **판정하지 않는다**(null).
+
+   ★ 「확인필요」가 먼저다 — 2026-11-01 진단으로 넣었다.
+     직전1개월 0 은 두 가지 뜻이 섞여 있었다. ⓐ 수기로 「이 달엔 안 썼다」고 적은 0 과
+     ⓑ 아직 아무도 안 넣은 0(출고 자동집계가 남긴 것·초기값). 둘을 똑같이 ▼로 보여 주면
+     ▼ 137개 중 119개가 「줄었다」가 아니라 「값이 없다」는 뜻이 된다 — 숫자를 못 믿게 된다.
+     그래서 ⓑ·빈 값·음수는 ▼가 아니라 「?」로 따로 뺀다. 수기 0(ⓐ)은 그대로 ▼ 급감이다.
+     usage_source 가 'manual' 인지로 ⓐ·ⓑ 를 가른다 — 업로드·화면저장만 'manual' 을 찍는다. */
+function surgeOf(ma, v1, src) {
+  if (v1 == null || v1 === '') return SURGE_CHECK                     /* ① 빈 값 */
+  if (v1 < 0) return SURGE_CHECK                                      /* ② 음수 — DB 에 제약이 없어 들어올 수 있다 */
+  if (Number(v1) === 0 && src !== 'manual') return SURGE_CHECK        /* ③ 미입력 0 (usage_source NULL·auto) */
+  if (!(ma > 0)) return null
+  return v1 > ma * 1.5 ? '급증' : v1 < ma * 0.5 ? '급감' : null
+}
+const SURGE_ALL = '전체'
+const SURGE_CHECK = '확인필요'
+/* 칩·머리글 메뉴가 같이 쓰는 목록 — 한 곳에서만 적는다 */
+const SURGE_ITEMS = ['급증', '급감', SURGE_CHECK]
+const surgeMark = s => s === '급증' ? '▲' : s === '급감' ? '▼' : s === SURGE_CHECK ? '?' : null
+const surgeLabel = s => s === '급증' ? '▲ 급증' : s === '급감' ? '▼ 급감' : s === SURGE_CHECK ? '? 확인 필요' : s
+const SURGE_CHECK_TIP = '확인 필요 — 값이 비었거나 0(미입력)·음수'
+
 /* 사용량 수기입력 셀(전년/최근3개월). effect 없음 → lint 안전. 행 reorder는 key=drug_code로 대응. StockStatus 전용. */
 function UsageCell({ value, dirty, onChange, onUndo }) {
   const { t } = useTheme();
@@ -2186,6 +2213,8 @@ function AtcTable({ t, cols, rows, minWidth, colWidths, resetable, qfilter }) {
 export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}){
   const{t,memberRole,profile}=useTheme();const canDispose=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
+  const[surge,setSurge]=useState(SURGE_ALL)   /* 급변 필터 — 머리글 메뉴와 칩이 **이 하나**를 같이 쓴다 */
+  const[xlAsk,setXlAsk]=useState(false)              /* 엑셀 범위 선택 창 */
   const[uMsg,setUMsg]=useState(null);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});const[uBusy,setUBusy]=useState(false)
   /* ★ 아직 저장 안 한 값이 있으면 새 배포 자동 적용을 미룬다(화면에 그리는 것은 없다) */
   useBusy('stock-drafts', Object.keys(drafts).length > 0)
@@ -2196,11 +2225,11 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
      2026-10-29 전까지 merged(상태만 적용)에서 세어 구분·검색을 바꿔도 숫자가 그대로였다. */
   const _sb=merged.filter(d=>{if(!cats.includes(d.category))return false;if(search.trim()){const q=search.trim().toLowerCase();return d.drug_name?.toLowerCase().includes(q)||d.drug_code?.toLowerCase().includes(q)};return true})
   const sg={전체:_sb.length,긴급:_sb.filter(d=>d.stockStatus==='긴급').length,주문필요:_sb.filter(d=>d.stockStatus==='주문필요').length,재고없음:_sb.filter(d=>d.stockStatus==='재고없음').length,정상:_sb.filter(d=>d.stockStatus==='정상').length,과잉:_sb.filter(d=>d.stockStatus==='과잉').length,기준미설정:_sb.filter(d=>d.stockStatus==='기준미설정').length}
-  const filtered=so(_sb.filter(d=>filter==='전체'||d.stockStatus===filter));const tp=Math.ceil(filtered.length/PP),paged=filtered.slice((page-1)*PP,page*PP)
+  const filtered=so(_sb.filter(d=>(filter==='전체'||d.stockStatus===filter)&&(surge===SURGE_ALL||surgeOf(d.monthly_avg,d.recent_1m_usage,d.usage_source)===surge)));const tp=Math.ceil(filtered.length/PP),paged=filtered.slice((page-1)*PP,page*PP)
   const sc=s=>s==='재고없음'?t.red:s==='긴급'?t.red:s==='주문필요'?t.amber:s==='과잉'?t.blue:s==='기준미설정'?t.textL:t.green
-  const _dCard=filter!=='전체',_dCat=cats.length!==CATS.length,_dStat=!(stats.length===MAIN_STATS.length&&MAIN_STATS.every(s=>stats.includes(s))),_dSearch=search.trim()!=='',_dSort=!(sk==='drug_name'&&sd==='asc');
-  const _fcount=(_dCard?1:0)+(_dCat?1:0)+(_dStat?1:0)+(_dSearch?1:0)+(_dSort?1:0);const _showReset=_fcount>0;
-  function _resetF(){setFilter('전체');setCats(CATS);setStats(MAIN_STATS);setSearch('');setSort('drug_name','asc');setPage(1)}
+  const _dSurge=surge!==SURGE_ALL,_dCard=filter!=='전체',_dCat=cats.length!==CATS.length,_dStat=!(stats.length===MAIN_STATS.length&&MAIN_STATS.every(s=>stats.includes(s))),_dSearch=search.trim()!=='',_dSort=!(sk==='drug_name'&&sd==='asc');
+  const _fcount=(_dSurge?1:0)+(_dCard?1:0)+(_dCat?1:0)+(_dStat?1:0)+(_dSearch?1:0)+(_dSort?1:0);const _showReset=_fcount>0;
+  function _resetF(){setSurge(SURGE_ALL);setFilter('전체');setCats(CATS);setStats(MAIN_STATS);setSearch('');setSort('drug_name','asc');setPage(1)}
   const origStr=v=>v==null?'':String(v)
   const pNum=v=>{const x=String(v).trim();if(x==='')return null;const n=Number(x.replace(/,/g,''));return(Number.isFinite(n)&&n>=0)?n:undefined}
   function editUsage(d,field,val){setDrafts(prev=>{const o0=origStr(d.prev_year_usage),o1=origStr(d.recent_3m_usage);const cur=prev[d.drug_code]||{py:o0,r3:o1};const next={...cur,[field]:val};if(next.py===o0&&next.r3===o1){const cp={...prev};delete cp[d.drug_code];return cp}return{...prev,[d.drug_code]:next}})}
@@ -2210,8 +2239,13 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
   const[recomfirm,setRecomfirm]=useState(false)
   async function recomputeUsage(){setUBusy(true);const{data,error}=await supabase.rpc('app_recompute_usage',{p_overwrite_manual:false});setUBusy(false);if(error){setUMsg('자동집계 오류: '+error.message);setTimeout(()=>setUMsg(null),4000);return}setUMsg('출고 자동집계 완료 — '+(data??0)+'품목 갱신 (수기 manual 보존)');setTimeout(()=>setUMsg(null),4000);onReload?.()}
   const _u=arr=>[...new Set(arr.filter(v=>v!=null&&String(v).trim()!==''))]
-  const hf={category:{items:_u(merged.map(d=>d.category)).sort(),value:cats.length===1?cats[0]:null,on:v=>{setCats(v?[v]:CATS);setPage(1)}},status:{items:_u(drugs.map(d=>d.status)),value:stats.length===1?stats[0]:null,on:v=>{setStats(v?[v]:MAIN_STATS);setPage(1)}},stockStatus:{items:_u(merged.map(d=>d.stockStatus)),value:filter==='전체'?null:filter,on:v=>{setFilter(v||'전체');setPage(1)}}}
-  function dl(){const ws=XLSX.utils.json_to_sheet(filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,현재고:d.current_qty,안전재고:d.safety_stock,최대재고:d.max_stock,월평균:d.monthly_avg,상태:d.status,재고상태:d.stockStatus})));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'재고');XLSX.writeFile(wb,`재고_${new Date().toISOString().split('T')[0]}.xlsx`)}
+  const hf={category:{items:_u(merged.map(d=>d.category)).sort(),value:cats.length===1?cats[0]:null,on:v=>{setCats(v?[v]:CATS);setPage(1)}},status:{items:_u(drugs.map(d=>d.status)),value:stats.length===1?stats[0]:null,on:v=>{setStats(v?[v]:MAIN_STATS);setPage(1)}},stockStatus:{items:_u(merged.map(d=>d.stockStatus)),value:filter==='전체'?null:filter,on:v=>{setFilter(v||'전체');setPage(1)}},recent_1m_usage:{items:SURGE_ITEMS,value:surge===SURGE_ALL?null:surge,on:v=>{setSurge(v||SURGE_ALL);setPage(1)}}}
+  function dlRows(scope){return scope==='all'?so(_sb.filter(d=>filter==='전체'||d.stockStatus===filter)):filtered}
+  /* 엑셀 11열 — 월평균 뒤에 직전1개월·급변을 넣는다. 「급변」 열은 화면과 **같은 함수**(surgeOf)를 쓴다.
+     확인필요도 그대로 적는다 — 엑셀만 보는 사람이 0 을 「줄었다」로 읽지 않게. */
+  function dl(scope){const rows=dlRows(scope||'view');const ws=XLSX.utils.json_to_sheet(rows.map(d=>{const _s=surgeOf(d.monthly_avg,d.recent_1m_usage,d.usage_source);return{약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,현재고:d.current_qty,안전재고:d.safety_stock,최대재고:d.max_stock,월평균:d.monthly_avg,직전1개월:d.recent_1m_usage,급변:_s===SURGE_CHECK?'확인 필요':_s||'',상태:d.status,재고상태:d.stockStatus}}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'재고');XLSX.writeFile(wb,`재고_${new Date().toISOString().split('T')[0]}.xlsx`)}
+  /* ★ 급변 필터가 걸려 있을 때만 묻는다. 안 걸려 있으면 지금처럼 바로 받는다. */
+  function dlAsk(){if(surge===SURGE_ALL){dl('view');return}setXlAsk(true)}
   /* 대량등록: 파싱→검증(숫자·매칭)→검토(미반영)→확정 시 RLS 일괄 UPDATE. 연쇄계산은 saveUsage와 동일. */
   async function uploadUsage(e){
     const file=e.target.files[0];if(!file)return;setURep(null)
@@ -2286,7 +2320,7 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
     <div className="no-print" style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'12px 16px',marginBottom:12,display:'flex',flexDirection:'column',gap:8,backdropFilter:'blur(12px)'}}>
       <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
         <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} placeholder="검색..." style={{flex:1,minWidth:120,padding:'8px 12px',border:`1px solid ${t.border}`,borderRadius:8,fontSize:12,outline:'none',background:t.bg,color:t.text}}/>
-        <button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>
+        <button onClick={dlAsk} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>
         <button onClick={dlUsageTemplate} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 양식</button>
         <button onClick={()=>uRef.current.click()} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 업로드</button>
         {canRecompute&&<button onClick={()=>setRecomfirm(true)} disabled={uBusy} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.purpleL,color:t.purple,cursor:uBusy?'default':'pointer',fontSize:11,fontWeight:600,opacity:uBusy?0.6:1}}>{uBusy?'집계 중…':'출고 자동집계'}</button>}
@@ -2296,15 +2330,18 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
         <MP items={CATS} selected={cats} onChange={v=>{setCats(v);setPage(1)}} color={t.purple} label="구분"/>
         <div style={{width:1,height:16,background:t.border}}/>
         <MP items={STATS} selected={stats} onChange={v=>{setStats(v);setPage(1)}} color={t.green} label="상태"/>
+        <div style={{width:1,height:16,background:t.border}}/>
+        <span style={{fontSize:10,color:t.textM,fontWeight:600}}>급변</span>
+        {[[SURGE_ALL,t.textM],['급증',t.red],['급감',t.blue],[SURGE_CHECK,t.textM]].map(([k,c])=>{const on=surge===k;return <button key={k} onClick={()=>{setSurge(k);setPage(1)}} aria-pressed={on} style={{padding:'3px 9px',borderRadius:7,border:'1px solid '+(on?c:t.border),background:on?c+'18':'transparent',color:on?c:t.textM,cursor:'pointer',fontSize:10,fontWeight:on?700:500}}>{surgeLabel(k)}</button>})}
       </div>
     </div>
     <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden',backdropFilter:'blur(12px)'}}>
-<div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.purple,display:'flex',justifyContent:'space-between'}}><span>재고 현황 목록</span><span style={{display:'flex',alignItems:'center',gap:10}}><span style={{color:t.textM,fontWeight:500}}>{filtered.length}개</span>{_showReset?<button onClick={_resetF} title="처음 상태로 초기화" style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accent+'12',color:t.accent,cursor:'pointer',fontSize:11,fontWeight:700,whiteSpace:'nowrap'}}>필터 초기화{_fcount>0?' ('+_fcount+')':''}</button>:null}</span></div>
+<div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.purple,display:'flex',justifyContent:'space-between'}}><span style={{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}}>재고 현황 목록{/* 급변 범례 — 표 바로 위에 둔다(칩 줄에 있던 것을 옮겼다). t.textL 은 흰 배경에서 2.5:1 이라 t.textM(7.9:1)을 쓴다. */}<span style={{fontSize:10,fontWeight:500,color:t.textM}}>▲ 급증(월평균 1.5배 초과) · ▼ 급감(0.5배 미만) · ? 확인 필요</span></span><span style={{display:'flex',alignItems:'center',gap:10}}><span style={{color:t.textM,fontWeight:500}}>{filtered.length}개</span>{_showReset?<button onClick={_resetF} title="처음 상태로 초기화" style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accent+'12',color:t.accent,cursor:'pointer',fontSize:11,fontWeight:700,whiteSpace:'nowrap'}}>필터 초기화{_fcount>0?' ('+_fcount+')':''}</button>:null}</span></div>
       <StandardTable t={t} TS={TS} sk={sk} sd={sd} setSort={(k,sdv)=>{setSort(k,sdv);setPage(1)}} hf={hf} grid layout="fixed" minWidth={1366} colWidths={[100,200,90,80,80,80,92,120,104,120,90,90,100,140]} hscroll={{noLabel:true,ends:true}} cols={[{k:'drug_code',h:'약품코드',sticky:{left:0,w:100}},{k:'drug_name',h:'약품명',sticky:{left:100}},{k:'category',h:'구분',sticky:{left:300,w:90}},{k:'current_qty',h:'현재고',sticky:{left:390,w:80}},{k:'safety_stock',h:'안전재고'},{k:'max_stock',h:'최대재고'},{k:'prev_year_usage',h:'전년사용량'},{k:'recent_3m_usage',h:'최근3개월사용량',thTitle:'원내 프로그램 기준값'},{k:'monthly_avg',h:'월평균'},{k:'recent_1m_usage',h:'직전1개월사용량',thTitle:'원내 프로그램 기준값'},{k:'status',h:'상태'},{k:'stockStatus',h:'재고상태'},{k:'expiry_date',h:'유효기한'},{k:'',h:'보정',plain:true}]}>
         <tbody>{!paged.length?<tr><td colSpan={14} style={{padding:40,textAlign:'center',color:t.textL}}>없음</td></tr>:paged.map((d,i)=>{const dr=drafts[d.drug_code];const dirty=!!dr;const pyV=dirty?dr.py:origStr(d.prev_year_usage);const r3V=dirty?dr.r3:origStr(d.recent_3m_usage);let pM=d.monthly_avg,pSf=d.safety_stock,pMx=d.max_stock,pSt=d.stockStatus;if(dirty){const pv=pNum(dr.py),rv=pNum(dr.r3);const pvN=typeof pv==='number'?pv:null,rvN=typeof rv==='number'?rv:null;let m=null;if(rvN!=null)m=Math.round(rvN/3);else if(pvN!=null)m=Math.round(pvN/12);pM=m;pSf=m!=null?Math.ceil(m*SAFETY_FACTOR):null;pMx=m!=null?Math.round(m*3):null;const q=d.current_qty||0;pSt=stockStat({current_qty:d.current_qty,safety_stock:pSf});if(pSt==='정상'&&pMx>0&&q>pMx)pSt='과잉'}const unused=!d.prev_year_usage&&!d.recent_3m_usage;return <tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
           <td style={{padding:'8px 12px',fontSize:10,color:t.textM,textAlign:'left',position:'sticky',left:0,zIndex:2,background:t.card,minWidth:100,maxWidth:100,width:100,overflow:'hidden',borderRight:'1px solid '+t.border}}>{d.drug_code}<NT d={d}/></td><td style={{padding:'8px 12px',fontWeight:600,textAlign:'left',color:t.accent,cursor:'pointer',position:'sticky',left:100,zIndex:2,background:t.card,borderRight:'1px solid '+t.border,minWidth:160,maxWidth:240}} onClick={()=>onEdit(d)} onMouseEnter={e=>{e.currentTarget.style.textDecoration='underline';e.currentTarget.style.color=t.purple}} onMouseLeave={e=>{e.currentTarget.style.textDecoration='none';e.currentTarget.style.color=t.accent}}>{d.drug_name}</td><td style={{padding:'8px 10px',color:t.textM,fontSize:11,position:'sticky',left:300,zIndex:2,background:t.card,minWidth:90,maxWidth:90,width:90,borderRight:'1px solid '+t.border}}>{d.category}</td>
           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:d.stockStatus==='재고없음'?t.red:d.stockStatus==='긴급'?t.red:d.stockStatus==='주문필요'?t.amber:t.text,position:'sticky',left:390,zIndex:2,background:t.card,minWidth:80,maxWidth:80,width:80,borderRight:'1px solid '+t.border}}>{d.current_qty?.toLocaleString()}</td>
-          <td style={{padding:'8px 10px',textAlign:'right',color:dirty?t.accent:t.textM,fontStyle:dirty?'italic':'normal',borderRight:'1px solid '+t.border}}>{dirty?(pSf==null?'-':pSf):(d.safety_stock||'-')}</td><td style={{padding:'8px 10px',textAlign:'right',color:dirty?t.accent:t.textM,fontStyle:dirty?'italic':'normal',borderRight:'1px solid '+t.border}}>{dirty?(pMx==null?'-':pMx):(d.max_stock||'-')}</td><td style={{padding:'5px 6px',borderRight:'1px solid '+t.border}}><UsageCell value={pyV} dirty={dirty} onChange={v=>editUsage(d,'py',v)} onUndo={()=>cancelUsage(d.drug_code)}/></td><td style={{padding:'5px 6px',borderRight:'1px solid '+t.border}}><UsageCell value={r3V} dirty={dirty} onChange={v=>editUsage(d,'r3',v)} onUndo={()=>cancelUsage(d.drug_code)}/></td><td style={{padding:'5px 6px',textAlign:'right',color:dirty?t.accent:t.textM,borderRight:'1px solid '+t.border}}>{dirty?<div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3}}><span style={{fontWeight:700,fontStyle:'italic'}}>{pM==null?'-':pM}</span><span style={{display:'flex',gap:3}}><button onClick={()=>saveRowUsage(d)} title="저장" style={{padding:'2px 6px',borderRadius:4,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:700,whiteSpace:'nowrap'}}>저장</button><button onClick={()=>cancelUsage(d.drug_code)} title="취소(Ctrl+Z)" style={{padding:'2px 6px',borderRadius:4,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>취소</button></span></div>:(<span>{d.monthly_avg||'-'}{d.usage_source==='auto'&&d.monthly_avg?<span title="출고 기록 자동 계산값" style={{marginLeft:5,padding:'1px 5px',borderRadius:4,fontSize:8,fontWeight:700,background:t.blue+'18',color:t.blue,border:'1px solid '+t.blue+'40'}}>자동</span>:null}</span>)}</td><td style={{padding:'8px 10px',textAlign:'right',borderRight:'1px solid '+t.border}}>{(()=>{const v1=d.recent_1m_usage,ma=d.monthly_avg;if(v1==null||v1==='')return <span style={{color:t.textM}}>-</span>;const cc=(ma>0&&v1>ma*1.5)?t.red:(ma>0&&v1<ma*0.5)?t.blue:t.textM;return <span style={{color:cc,fontWeight:cc!==t.textM?700:400}} title={ma>0?'급변지수 '+(v1/ma).toFixed(1)+'× (월평균 대비)':''}>{Number(v1).toLocaleString()}</span>})()}</td>
+          <td style={{padding:'8px 10px',textAlign:'right',color:dirty?t.accent:t.textM,fontStyle:dirty?'italic':'normal',borderRight:'1px solid '+t.border}}>{dirty?(pSf==null?'-':pSf):(d.safety_stock||'-')}</td><td style={{padding:'8px 10px',textAlign:'right',color:dirty?t.accent:t.textM,fontStyle:dirty?'italic':'normal',borderRight:'1px solid '+t.border}}>{dirty?(pMx==null?'-':pMx):(d.max_stock||'-')}</td><td style={{padding:'5px 6px',borderRight:'1px solid '+t.border}}><UsageCell value={pyV} dirty={dirty} onChange={v=>editUsage(d,'py',v)} onUndo={()=>cancelUsage(d.drug_code)}/></td><td style={{padding:'5px 6px',borderRight:'1px solid '+t.border}}><UsageCell value={r3V} dirty={dirty} onChange={v=>editUsage(d,'r3',v)} onUndo={()=>cancelUsage(d.drug_code)}/></td><td style={{padding:'5px 6px',textAlign:'right',color:dirty?t.accent:t.textM,borderRight:'1px solid '+t.border}}>{dirty?<div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3}}><span style={{fontWeight:700,fontStyle:'italic'}}>{pM==null?'-':pM}</span><span style={{display:'flex',gap:3}}><button onClick={()=>saveRowUsage(d)} title="저장" style={{padding:'2px 6px',borderRadius:4,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:700,whiteSpace:'nowrap'}}>저장</button><button onClick={()=>cancelUsage(d.drug_code)} title="취소(Ctrl+Z)" style={{padding:'2px 6px',borderRadius:4,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>취소</button></span></div>:(<span>{d.monthly_avg||'-'}{d.usage_source==='auto'&&d.monthly_avg?<span title="출고 기록 자동 계산값" style={{marginLeft:5,padding:'1px 5px',borderRadius:4,fontSize:8,fontWeight:700,background:t.blue+'18',color:t.blue,border:'1px solid '+t.blue+'40'}}>자동</span>:null}</span>)}</td><td style={{padding:'8px 10px',textAlign:'right',borderRight:'1px solid '+t.border}}>{(()=>{const v1=d.recent_1m_usage,ma=d.monthly_avg;const sg2=surgeOf(ma,v1,d.usage_source);const cc=sg2==='급증'?t.red:sg2==='급감'?t.blue:t.textM;const _n=(v1==null||v1==='')?'-':Number(v1).toLocaleString();return <span style={{color:cc,fontWeight:cc!==t.textM?700:400}} title={sg2===SURGE_CHECK?SURGE_CHECK_TIP:ma>0?'급변지수 '+(v1/ma).toFixed(1)+'× (월평균 대비)':''}>{_n}{surgeMark(sg2)?<span aria-label={sg2} style={{marginLeft:3,fontSize:10}}>{surgeMark(sg2)}</span>:null}</span>})()}</td>
           <td style={{padding:'8px 10px',borderRight:'1px solid '+t.border}}><SB s={d.status}/></td>
           <td style={{padding:'8px 10px',borderRight:'1px solid '+t.border}}><div style={{display:'flex',flexDirection:'column',gap:3,alignItems:'flex-start'}}><Bd bg={sc(dirty?pSt:d.stockStatus)+'18'} color={sc(dirty?pSt:d.stockStatus)}>{dirty?pSt:d.stockStatus}</Bd>{unused?<Bd bg={t.amber+'18'} color={t.amber}>미사용</Bd>:null}</div></td>
           <td style={{padding:'8px 10px',fontSize:11,...exS(d.expiry_date,t),borderRight:'1px solid '+t.border}}>{d.expiry_date||'-'}</td>
@@ -2312,6 +2349,15 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
         </tr>})}</tbody>
       </StandardTable>
       <Pg page={page} setPage={setPage} tp={tp} fl={filtered} pp={PP} ends/>
+      {xlAsk&&<CountConfirmModal t={t} title="엑셀 내려받기" tone={t.green} busy={false}
+        head="어떤 줄을 엑셀로 받을까요?"
+        strong={surgeLabel(surge)+' 필터가 걸려 있습니다.'}
+        body="구분·상태·검색 칩은 그대로 적용됩니다."
+        confirm={'보이는 줄만 ('+filtered.length.toLocaleString()+'줄)'}
+        altLabel={'급변 필터 빼고 모두 ('+dlRows('all').length.toLocaleString()+'줄)'} onAlt={()=>{setXlAsk(false);dl('all')}}
+        escClose focusCancel
+        onClose={()=>setXlAsk(false)}
+        onConfirm={()=>{setXlAsk(false);dl('view')}} />}
       {recomfirm&&<CountConfirmModal t={t} title="출고 자동집계" tone={t.purple} busy={uBusy}
         head="직전1개월 사용량이 출고 기록 값으로 바뀝니다."
         strong={'지금 값이 들어 있는 약품 '+(drugs||[]).filter(d=>Number(d.recent_1m_usage)!==0&&d.recent_1m_usage!=null).length.toLocaleString()+'종의 값이 덮어써지고, 되돌릴 수 없습니다.'}
@@ -5436,7 +5482,7 @@ function InventoryCountDetail({ t, r, items, drugMap, bookOf, q, onQ, found, sea
 
 /* 실사 확인 모달 — 반영·되돌리기·삭제가 함께 쓴다. 훅A(useDraggableModal · 함정 #13).
    reason 이 넘어오면 사유 입력칸을 보여준다 — ★ 선택 입력이라 비워도 저장된다. */
-function CountConfirmModal({ t, title, tone, head, meta, strong, body, confirm, busy, onClose, onConfirm, reason, setReason, escClose, focusCancel }) {
+function CountConfirmModal({ t, title, tone, head, meta, strong, body, confirm, busy, onClose, onConfirm, reason, setReason, escClose, focusCancel, altLabel, onAlt }) {
   /* ★ escClose·focusCancel 은 **덧붙인 선택지**다 — 넘기지 않으면 기존 3곳(재고반영·되돌리기·
      실사 삭제)은 한 글자도 달라지지 않는다. 되돌릴 수 없는 조작에만 켠다. */
   const _cancel = useRef(null)
@@ -5465,7 +5511,7 @@ function CountConfirmModal({ t, title, tone, head, meta, strong, body, confirm, 
         </div>}
         <div style={{ display: 'flex', gap: 8 }}>
           <button ref={_cancel} onClick={onClose} disabled={busy} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + t.border, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent', color: t.textM, fontSize: 13 }}>취소</button>
-          <button onClick={onConfirm} disabled={busy} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer', background: busy ? t.textL : tone, color: t.card, fontSize: 13, fontWeight: 700 }}>{busy ? '처리 중...' : confirm}</button>
+          {altLabel && <button onClick={onAlt} disabled={busy} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid ' + tone, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent', color: tone, fontSize: 13, fontWeight: 700 }}>{altLabel}</button>}<button onClick={onConfirm} disabled={busy} style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer', background: busy ? t.textL : tone, color: t.card, fontSize: 13, fontWeight: 700 }}>{busy ? '처리 중...' : confirm}</button>
         </div>
       </div>
     </div>
