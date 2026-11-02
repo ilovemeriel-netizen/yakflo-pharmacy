@@ -88,15 +88,14 @@ describe('① 관리자에게만 보인다', () => {
     await ready()
     expect(btn()).toBeTruthy()
   })
-  /* ★ 2026-11-02 기대값 변경 — 전: 「admin 도 버튼이 있다」 / 후: 「admin 은 없다」.
-     사용량을 건드리는 길은 **owner 만** 으로 좁혔다(이정화 님 결정).
-     DB(0105)도 tenant_members.role='owner' 만 통과시키므로 화면과 기준이 같아졌다. */
-  it('★ admin — 버튼이 **없다** (owner 단독으로 좁혔다)', async () => {
+  it('admin — 버튼이 있다 (이 약국의 관리자다)', async () => {
     ROLE = { memberRole: 'admin', profile: { role: 'user' } }
     await ready()
-    expect(btn(), 'admin 은 더 이상 자동집계를 못 한다').toBeFalsy()
+    expect(btn()).toBeTruthy()
   })
-  it('★ profiles.role=admin 도 버튼이 없다', async () => {
+  /* ★ 2026-11-02 새로 막은 것 — 전역 프로필의 admin 은 **이 약국의 멤버가 아니다**.
+     전에는 profile?.role==='admin' 만으로도 버튼이 보였다. DB(tenant_members) 기준과 맞춘다. */
+  it('★ profiles.role=admin 뿐인 사람 — 버튼이 없다', async () => {
     ROLE = { memberRole: 'member', profile: { role: 'admin' } }
     await ready()
     expect(btn()).toBeFalsy()

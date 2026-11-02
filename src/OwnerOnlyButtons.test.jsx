@@ -13,7 +13,7 @@
      ③ 숨기는 게 아니라 **DOM 에서 아예 뺀다** (개발자도구로도 못 누른다)
      ④ 역할과 **상관없는** 단추(엑셀)는 늘 보인다 */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, cleanup, waitFor } from '@testing-library/react'
+import { render, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
@@ -77,12 +77,13 @@ describe('① 재고현황 — 사용량 단추 3곳', () => {
     await openStock()
     for (const s of 사용량단추) expect(byText(s), s).toBeTruthy()
   })
-  it('★ admin — 셋 다 없다', async () => {
+  it('★ admin — 셋 다 보인다 (이 약국의 관리자다)', async () => {
     ROLE = { memberRole: 'admin', profile: { role: 'user' } }
     await openStock()
-    for (const s of 사용량단추) expect(byText(s), s).toBeFalsy()
+    for (const s of 사용량단추) expect(byText(s), s).toBeTruthy()
   })
-  it('★ profiles.role=admin — 셋 다 없다', async () => {
+  /* ★ 전역 프로필의 admin 은 **이 약국의 멤버가 아니다** — DB(tenant_members)가 보는 기준과 맞춘다 */
+  it('★ profiles.role=admin 뿐인 사람 — 셋 다 없다', async () => {
     ROLE = { memberRole: 'member', profile: { role: 'admin' } }
     await openStock()
     for (const s of 사용량단추) expect(byText(s), s).toBeFalsy()
@@ -112,80 +113,109 @@ describe('① 재고현황 — 사용량 단추 3곳', () => {
   })
 })
 
-describe('② 출고관리 — 삭제 단추 2곳 + 체크박스', () => {
-  it('owner — 전체삭제가 보인다', async () => {
-    ROLE = { memberRole: 'owner', profile: { role: 'user' } }
-    await openTx()
-    expect(byText('전체삭제')).toBeTruthy()
-  })
-  for (const [name, r] of [
-    ['admin', { memberRole: 'admin', profile: { role: 'user' } }],
-    ['profiles.admin', { memberRole: 'member', profile: { role: 'admin' } }],
-    ['일반 직원', { memberRole: 'member', profile: { role: 'user' } }],
-    ['역할 못 읽음', { memberRole: null, profile: null }],
+/* ═══ ② 출고관리 — **입고·출고 탭만** 더 좁게 본다 ═══
+   폐기·반품 탭은 지금까지 쓰던 canDel(= owner·admin·profiles.admin) 그대로다. */
+describe('② 출고관리 — 입고·출고 탭은 이 약국 관리자만', () => {
+  const 체크칸 = () => document.querySelectorAll('thead input[type="checkbox"]').length
+
+  for (const [name, r, 보임] of [
+    ['owner', { memberRole: 'owner', profile: { role: 'user' } }, true],
+    ['admin', { memberRole: 'admin', profile: { role: 'user' } }, true],
+    ['★ profiles.admin 뿐인 사람', { memberRole: 'member', profile: { role: 'admin' } }, false],
+    ['★ 일반 직원', { memberRole: 'member', profile: { role: 'user' } }, false],
+    ['★ 역할 못 읽음', { memberRole: null, profile: null }, false],
   ]) {
-    it('★ ' + name + ' — 전체삭제가 없다', async () => {
+    it(name + ' — 입고 탭 전체삭제가 ' + (보임 ? '보인다' : '없다'), async () => {
       ROLE = r
-      await openTx()
-      expect(byText('전체삭제')).toBeFalsy()
-      expect(document.body.textContent).not.toContain('전체삭제')
+      await openTx()                       /* 기본 탭이 입고다 */
+      if (보임) expect(byText('전체삭제')).toBeTruthy()
+      else {
+        expect(byText('전체삭제')).toBeFalsy()
+        expect(document.body.textContent).not.toContain('전체삭제')
+      }
     })
   }
+
   it('★ 체크박스 열도 함께 사라진다 — 고를 수가 없다', async () => {
     ROLE = { memberRole: 'owner', profile: null }
     await openTx()
-    const owner = document.querySelectorAll('thead input[type="checkbox"]').length
+    const owner = 체크칸()
     cleanup()
     ROLE = { memberRole: 'member', profile: null }
     await openTx()
-    const staff = document.querySelectorAll('thead input[type="checkbox"]').length
-    expect(owner, 'owner 에게는 전체선택 칸이 있다').toBeGreaterThan(0)
+    const staff = 체크칸()
+    expect(owner, '관리자에게는 전체선택 칸이 있다').toBeGreaterThan(0)
     expect(staff, '직원에게는 없다').toBe(0)
+  })
+
+  /* ★ 폐기·반품은 바꾸지 않기로 했다 — profiles.admin 뿐인 사람도 그대로 쓸 수 있어야 한다 */
+  it('★ 폐기 탭은 기존 canDel 그대로 — profiles.admin 뿐이어도 체크박스가 있다', async () => {
+    ROLE = { memberRole: 'member', profile: { role: 'admin' } }
+    await openTx()
+    expect(체크칸(), '입고 탭에서는 없다').toBe(0)
+    fireEvent.click([...document.querySelectorAll('button')].find(b => b.textContent.trim() === '폐기관리'))
+    await waitFor(() => expect(document.body.textContent).toContain('폐기 이력'))
+    expect(체크칸(), '폐기 탭에서는 있다').toBeGreaterThan(0)
+  })
+
+  it('★ 반품 탭도 기존 canDel 그대로', async () => {
+    ROLE = { memberRole: 'member', profile: { role: 'admin' } }
+    await openTx()
+    fireEvent.click([...document.querySelectorAll('button')].find(b => b.textContent.trim() === '반품관리'))
+    await waitFor(() => expect(document.body.textContent).toContain('반품 이력'))
+    expect(체크칸()).toBeGreaterThan(0)
   })
 })
 
+
 /* ═══ ③ 소스 고정 — 되돌아가지 않게 ═══ */
-describe('③ 조건이 owner 단독인지 소스로 못 박는다', () => {
+describe('③ 조건을 소스로 못 박는다', () => {
   const APP = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8')
 
-  it('★ 이름이 뜻을 드러낸다 — isOwner 가 아니라 isTenantOwner', () => {
-    expect(APP).toContain("const isTenantOwner=memberRole==='owner'")
-    expect(APP).toContain('const canRecompute=isTenantOwner')
+  it('★ 이름이 뜻을 드러낸다 — isOwner 가 아니라 isTenantManager', () => {
+    expect((APP.match(/const isTenantManager=memberRole==='owner'\|\|memberRole==='admin'/g) || []).length,
+      '재고현황·출고관리 두 곳').toBe(2)
+    expect(APP).toContain('const canRecompute=isTenantManager')
   })
-  it('★ 사용량 단추 2곳이 isTenantOwner 로 묶였다', () => {
-    expect(APP).toContain('{isTenantOwner&&<button onClick={dlUsageTemplate}')
-    expect(APP).toContain('{isTenantOwner&&<button onClick={()=>uRef.current.click()}')
+
+  it('★ 전역 프로필 admin 은 새 조건에 들어가지 않는다', () => {
+    const i = APP.indexOf("const isTenantManager=memberRole==='owner'||memberRole==='admin'")
+    const line = APP.slice(i, APP.indexOf('\n', i))
+    expect(line, "profile?.role 을 보면 DB 기준과 어긋난다").not.toContain('profile')
   })
-  it('★ 출고관리 canDel 이 owner 단독이다', () => {
-    expect(APP).toContain("const canDel=memberRole==='owner';")
+
+  it('★ 사용량 단추 2곳이 isTenantManager 로 묶였다', () => {
+    expect(APP).toContain('{isTenantManager&&<button onClick={dlUsageTemplate}')
+    expect(APP).toContain('{isTenantManager&&<button onClick={()=>uRef.current.click()}')
   })
+
+  it('★ 출고관리 canDel 은 **그대로** 두고 탭별로 갈랐다', () => {
+    expect(APP, 'canDel 원래 식이 살아 있어야 한다')
+      .toContain("const canDel=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin'")
+    expect(APP).toContain("const isLedgerTab=tab==='입고'||tab==='출고'")
+    expect(APP).toContain('const canDelTab=isLedgerTab?isTenantManager:canDel')
+  })
+
+  it('★ 삭제 화면 5줄이 canDelTab 으로 바뀌었다 (단가 「마스터도 변경」은 canDel 그대로)', () => {
+    expect((APP.match(/canDelTab&&/g) || []).length, '전체삭제·선택삭제·체크박스 열 2·칸 2').toBe(6)
+    expect(APP, '단가 확인 창은 건드리지 않았다')
+      .toContain('canDel&&<button onClick={()=>_doSave(ppConfirm.inputPp,true)}')
+  })
+
   it('★ 발주관리·약품변경의 canDel 은 그대로 (건드리지 않았다)', () => {
     const n = (APP.match(/const canDel = memberRole === 'owner' \|\| memberRole === 'admin' \|\| profile\?\.role === 'admin'/g) || []).length
     expect(n, '두 화면은 옛 조건 그대로여야 한다').toBe(2)
   })
-  it('★ 월마감 isOwner(5707 쪽)도 그대로', () => {
+
+  it('★ 월마감 isOwner 도 그대로', () => {
     expect(APP).toContain("const isOwner=memberRole==='owner'")
   })
-})
 
-/* ═══ ④ 역할 읽기 보완 ═══ */
-describe('④ 역할을 못 읽어 단추가 사라지던 것을 푼다', () => {
-  const APP = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8')
-
-  it('★ 실패하면 원문을 콘솔에 남긴다 — 왜 안 보이는지 알 수 있게', () => {
-    expect(APP).toContain("console.error('[역할 읽기 실패]'")
-  })
-  it('★ 최대 2번 더 해 본다 (지연 뒤)', () => {
-    expect(APP).toMatch(/if \(tries < 2\) \{ setTimeout\(\(\) => loadMemberRole\(tries \+ 1\), 800 \* \(tries \+ 1\)\); return \}/)
-  })
-  it('★ 로그인·토큰 갱신 때 역할을 다시 읽는다', () => {
-    expect(APP).toContain("if (_event === 'TOKEN_REFRESHED' || _event === 'SIGNED_IN') setRoleTick(n => n + 1)")
-    expect(APP).toContain('useEffect(() => { loadMemberRole() }, [user, roleTick])')
-  })
-  it('화면에 새로 그리는 것은 없다 — 안내 문구를 넣지 않았다', () => {
-    const i = APP.indexOf('[역할 읽기 실패]')
-    const block = APP.slice(i - 600, i + 600)
-    expect(block).not.toContain('setMsg')
-    expect(block).not.toContain('setDialog')
+  /* ★ 역할 읽기 보완(재시도·TOKEN_REFRESHED·console.error)은 이 PR 에서 **뺐다**.
+     마감 뒤 별도 작업으로 돌린다 — 인계문서 백로그 참조. */
+  it('★ 역할 읽기 보완은 이번 PR 에 들어 있지 않다', () => {
+    expect(APP).not.toContain('[역할 읽기 실패]')
+    expect(APP).not.toContain('roleTick')
+    expect(APP).toContain('useEffect(() => { loadMemberRole() }, [user])')
   })
 })
