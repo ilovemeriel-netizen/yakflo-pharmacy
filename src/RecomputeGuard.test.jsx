@@ -218,10 +218,12 @@ describe('⑤ 공용 확인 창의 기존 쓰임은 그대로다', () => {
     expect(src).toContain('if (focusCancel && _cancel.current)')
     /* ★ 쓰는 곳을 `<CountConfirmModal[^>]*` 로 잘라 보면 안 된다 —
        속성 안의 화살표 함수(`d=>…`)에 들어 있는 `>` 에서 끊겨 뒤가 날아간다. 세는 쪽을 바꾼다. */
+    /* ★ 2026-11-02 기대값 변경 — 전 5군데 / 후 **6군데**.
+       향정·마약 인쇄의 「게시용 / 심사용」 고르는 창이 이 부품을 그대로 쓴다. */
     const uses = (src.match(/<CountConfirmModal\b/g) || []).length
-    expect(uses, '쓰는 곳 5군데(실사 3 + 자동집계 1 + 엑셀 범위 1)').toBe(5)
-    /* 선언(구조분해) 1 + 본문 3 + 켠 곳 1 = 5. 켠 곳만 따로 센다 */
-    expect((src.match(/escClose/g) || []).length, 'escClose 총 등장').toBe(6)
-    expect((src.match(/escClose focusCancel/g) || []).length, '켠 곳은 되돌릴 수 없는 조작 2군데').toBe(2)
+    expect(uses, '쓰는 곳 6군데(실사 3 + 자동집계 1 + 엑셀 범위 1 + 인쇄 쓰임새 1)').toBe(6)
+    /* 선언(구조분해) 1 + 본문 3 + 켠 곳 N. 켠 곳만 따로 센다 */
+    expect((src.match(/escClose/g) || []).length, 'escClose 총 등장').toBe(7)
+    expect((src.match(/escClose focusCancel/g) || []).length, '켠 곳 3군데(자동집계·엑셀 범위·인쇄 쓰임새)').toBe(3)
   })
 })

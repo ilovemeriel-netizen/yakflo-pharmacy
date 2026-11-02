@@ -2456,7 +2456,62 @@ function NoninsDonuts({ used, t, donutF, onPick, onClear }) {
     </div>
   </div>;
 }
-function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
+/* ═══ 향정·마약류 인쇄 리포트 — 2026-11-02 ═══
+   ★ 화면에는 없고 종이에만 나오는 표다. 보관위치·병동 인쇄와 같은 방식:
+     인쇄 때 .narc-root 의 다른 자식은 전부 숨기고 .narc-print 만 남긴다.
+     ※ 이 주석에 다른 인쇄 마커 이름을 적지 말 것 — 마커 **개수**를 회귀 기준값으로 쓰고 있어
+       주석 한 줄이 숫자를 흔든다(이 파일에서 실제로 겪었다).
+   ★ 다크 모드여도 종이는 흰 바탕·검정 글자다 — 토큰을 쓰지 않고 색을 직접 적는다.
+   ★ 용지(@page)는 **여기 적지 않는다**. 전역 @page(A4 세로 12mm)를 덮으면
+     월간보고서·보관위치 인쇄까지 같이 흔들린다. 누를 때만 끼웠다 뺀다(narcPrint). */
+const NARC_ORDER=['마약','향정']
+/* 제형 차례 — 경구 → 주사 → 외용. 목록에 없는 것은 맨 뒤로 간다(indexOf 가 -1 이라 앞으로 오지 않게 보정). */
+const NARC_CAT_ORDER=['경구제','주사제','외용제','수액제','영양제','의약외품']
+/* 배경색 클래스 이름에 한글을 쓰지 않으려고 영문 키를 둔다 */
+const NARC_CAT_KEY={'경구제':'oral','주사제':'inj','외용제':'ext'}
+const NARC_COL_LABEL={category:'제형',narcotic_type:'마약류 구분',atc_l1:'ATC 1단계',atc_l2:'ATC 2단계',atc_l3:'ATC 3단계',manufacturer:'제조사',packaging:'포장',insurance_type:'급여'}
+const NARC_PRINT_CSS=`
+.narc-print{display:none}
+@media print{
+  .narc-root{padding:0!important}
+  .narc-root>*:not(.narc-print){display:none!important}
+  .narc-print{display:block!important;background:#fff!important;color:#000!important}
+  .narc-print *{background:transparent!important;color:#000!important;box-shadow:none!important}
+  .narc-print .np-h{font-size:15pt;font-weight:700;margin:0 0 1.5mm;text-align:left}
+  .narc-print .np-h::after{content:"";display:block;width:55mm;height:0;border-top:1.6pt solid #000;margin-top:1.2mm}
+  .narc-print .np-m{font-size:8.5pt;line-height:1.5;margin:2.5mm 0 4mm;text-align:left}
+  .narc-print table{width:100%;border-collapse:collapse;table-layout:fixed}
+  .narc-print thead{display:table-header-group}
+  .narc-print tr{break-inside:avoid;page-break-inside:avoid}
+  .narc-print th,.narc-print td{border:0.5pt solid #666;padding:1.6mm 2mm;font-size:9pt;line-height:1.35;
+    vertical-align:top;word-break:break-word;overflow-wrap:anywhere}
+  /* 머리글 아래 **이중선** — 머리와 몸통을 또렷하게 가른다 */
+  .narc-print th{font-weight:700;border-bottom:3pt double #000}
+  /* 묶음(같은 구분+제형)은 쪽 경계에서 쪼개지 않는다 — rowspan 칸이 첫 쪽에만 남는 것을 막는다 */
+  .narc-print tbody.np-g{break-inside:avoid;page-break-inside:avoid}
+  .narc-print .np-grp{vertical-align:middle}
+  .narc-print .np-no{color:#333}
+  /* ★ 제형별 배경 — **인쇄 전용**이다. 화면 토큰(themes)에는 넣지 않는다.
+     ★ 새 색을 만들지 않는다(2026-11-02 결정 — 나안). 브랜드 4색 중 셋을 투명도로 옅게 쓴다:
+       경구 = 라벤더 #BFA6D9 · 주사 = 네이비 #2E4A62 · 외용 = 녹색 #019748.
+     제형 글자는 그대로 남겨 흑백으로 뽑아도 뜻이 통한다.
+     ★ 배경을 인쇄에 실으려면 print-color-adjust 가 있어야 한다 — 없으면 브라우저가 지운다. */
+  .narc-print .np-cat{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .narc-print .np-cat-oral .np-cat{background:rgba(191,166,217,0.22)!important}
+  .narc-print .np-cat-inj  .np-cat{background:rgba(46,74,98,0.14)!important}
+  .narc-print .np-cat-ext  .np-cat{background:rgba(1,151,72,0.14)!important}
+  /* ★ 칸마다 정렬을 직접 적는다 — #root{text-align:center} 가 전 화면에 상속되기 때문(함정 #31) */
+  .narc-print .np-l{text-align:left}
+  .narc-print .np-c{text-align:center}
+  .narc-print .np-name{font-weight:700}
+  .narc-print .np-b{display:inline-block;border:0.5pt solid #000;border-radius:2pt;padding:0.2mm 1.4mm;font-size:8pt}
+  .narc-print .np-sign{margin-top:8mm;font-size:9pt}
+  .narc-print .np-sign td{border:none;padding:0 6mm 0 0;white-space:nowrap}
+  .narc-print .np-f{margin-top:6mm;font-size:7.5pt;text-align:center}
+}`
+
+/* export 는 시험에서 이 화면만 따로 띄우기 위한 것이다(StockStatus·TransactionForm 과 같은 방식) */
+export function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
   const{t}=useTheme();
   const[stats,setStats]=useState(navFilter?.narcStatus||['사용']);
   const[cardF,setCardF]=useState('전체');
@@ -2464,6 +2519,14 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
   const[page,setPage]=useState(1);
   const[hfV,setHfV]=useState({});
   const[donutF,setDonutF]=useState(null);const[resetN,setResetN]=useState(0);
+  /* 인쇄 — 누르면 먼저 「게시용 / 심사용」을 고른다.
+     게시용 = 서명 칸 없음 · 심사용 = 작성자·확인자 서명 칸 있음. */
+  const[narcAsk,setNarcAsk]=useState(false)
+  const[narcSign,setNarcSign]=useState(true)
+  /* ★ 고른 값이 화면에 그려진 **뒤에** 인쇄해야 한다 — setState 바로 뒤에 print() 하면
+     아직 옛 DOM 이 찍힌다. 숫자를 하나 올려 effect 에서 부른다. */
+  const[narcGo,setNarcGo]=useState(0)
+  useEffect(()=>{if(narcGo)window.print()},[narcGo])
   const{so,TS,sk,sd,setSort}=useSort('drug_name');
   const base=drugs.filter(d=>isN(d)); /* isN: 한외마약 제외(getNT→'일반') */
   const narcs=base.filter(d=>stats.includes(d.status));
@@ -2514,8 +2577,92 @@ function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
   const fcount=(dStats?1:0)+(dCard?1:0)+(dSearch?1:0)+(dDonut?1:0)+dHf;const showReset=fcount>0||dSort;
   function resetFilters(){setStats(['사용']);setCardF('전체');setSearch('');setHfV({});setDonutF(null);setSort('drug_name','asc');setPage(1);setResetN(n=>n+1)}
   function dl(){const ws=XLSX.utils.json_to_sheet(filtered.map(d=>({약품코드:d.drug_code,약품명:d.drug_name,구분:d.category,분류:getNT(d),ATC1단계:d.atc_l1||'',ATC2단계:d.atc_l2||'',ATC3단계:d.atc_l3||'',첨가제:d.additive||'',제조사:d.manufacturer||'',규격:d.total_qty??'',포장:d.packaging||'',현재고:d.current_qty||0,보험약가:d.edi_price??'',급여:d.insurance_type||'',보험코드:d.insurance_code||'',유효기한:d.expiry_date||'',남은일수:exD(d.expiry_date),보관:d.storage_method||'',상태:d.status})));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'향정마약');XLSX.writeFile(wb,`향정마약_${new Date().toISOString().split('T')[0]}.xlsx`)}
-  return<div style={{padding:'20px 24px'}}>
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><div style={{fontSize:16,fontWeight:700,color:t.purple}}>향정·마약류 관리</div><button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button></div>
+  /* ★ 인쇄 — 화면에 보이는 그 줄(filtered)을 그대로 종이에 옮긴다.
+     ★ 용지는 **건드리지 않는다**. 전역 @page(A4 세로 12mm)를 그대로 쓴다 —
+       2026-11-02 이정화 님 결정 ⑤. 한때 15mm 를 누를 때만 끼웠다 빼는 코드를 뒀는데,
+       3mm 차이를 위해 주입·제거·보험 타이머를 떠안는 것보다 전역에 맞추는 편이
+       단순하고 「다른 인쇄물 영향 0」이 **저절로** 증명된다. */
+  const narcPrint=()=>setNarcAsk(true)
+  const narcDo=sign=>{setNarcAsk(false);setNarcSign(sign);setNarcGo(n=>n+1)}
+  const narcNow=()=>{const d=new Date();const p=n=>String(n).padStart(2,'0')
+    return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())}
+  /* 적용된 거르개를 한 줄로 적어 둔다 — 종이만 보고도 무엇을 추린 것인지 알 수 있게 */
+  const narcFilterText=()=>{
+    const bits=['상태 '+(stats.length?stats.join('·'):'전체')]
+    if(cardF&&cardF!=='전체')bits.push(cardF)
+    for(const k of Object.keys(hfV))if(hfV[k]!=null)bits.push((NARC_COL_LABEL[k]||k)+' '+hfV[k])
+    if(donutF)bits.push(String(donutF.value))
+    if(search.trim())bits.push('검색 「'+search.trim()+'」')
+    return bits.join(' · ')
+  }
+  /* 인쇄 줄 — 마약 먼저 → 제형(경구→주사→외용) → 약품명 가나다. */
+  const narcPrintRows=[...filtered].sort((a,b)=>{
+    const t=NARC_ORDER.indexOf(getNT(a))-NARC_ORDER.indexOf(getNT(b))
+    if(t!==0)return t
+    const c=NARC_CAT_ORDER.indexOf(a.category)-NARC_CAT_ORDER.indexOf(b.category)
+    if(c!==0)return c
+    return String(a.drug_name||'').localeCompare(String(b.drug_name||''),'ko')
+  })
+  /* ★ 같은 「구분+제형」끼리 묶는다 — 묶음마다 그 두 칸을 **한 번만** 쓰기 위해서다(rowspan).
+     묶음 하나를 <tbody> 하나로 두고 break-inside:avoid 를 걸어, 묶음이 쪽 경계에서
+     쪼개지지 않게 한다. 쪼개지면 rowspan 칸이 첫 쪽에만 남아 다음 쪽이 비어 보인다. */
+  const narcGroups=(()=>{
+    const out=[]
+    for(const d of narcPrintRows){
+      const k=getNT(d)+'|'+(d.category||'')
+      const last=out[out.length-1]
+      if(last&&last.key===k)last.rows.push(d)
+      else out.push({key:k,nt:getNT(d),cat:d.category||'',rows:[d]})
+    }
+    return out
+  })()
+
+  return<div className="narc-root" style={{padding:'20px 24px'}}>
+    <style>{NARC_PRINT_CSS}</style>
+    <div className="no-print" style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><div style={{fontSize:16,fontWeight:700,color:t.purple}}>향정·마약류 관리</div><span style={{display:'flex',gap:8}}><button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button><button onClick={narcPrint} title="브라우저 인쇄 창이 열립니다 — 「PDF로 저장」도 됩니다" style={{padding:'6px 16px',borderRadius:8,border:'1px solid '+t.blue,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11.5,fontWeight:700}}>인쇄</button></span></div>
+    {/* ═══ 인쇄 전용 — 화면에는 안 보이고 종이에만 나온다 ═══ */}
+    <div className="narc-print">
+      <div className="np-h">향정·마약류 보유 목록</div>
+      <div className="np-m">출력 {narcNow()} · {narcFilterText()} · 모두 {filtered.length}건</div>
+      {/* ★ np-main — 서명 칸도 table 이라, 줄 수를 셀 때 섞이지 않게 이름을 따로 준다 */}
+      <table className="np-main">
+        <thead><tr>
+          <th className="np-c" style={{width:'6%'}}>번호</th>
+          <th className="np-c" style={{width:'12%'}}>마약류 구분</th>
+          <th className="np-c" style={{width:'11%'}}>제형</th>
+          <th className="np-l" style={{width:'29%'}}>약품명</th>
+          <th className="np-l" style={{width:'22%'}}>성분명</th>
+          <th className="np-l" style={{width:'20%'}}>성분명(영문)</th>
+        </tr></thead>
+        {(()=>{let no=0;return narcGroups.map((g,gi)=>
+          <tbody key={gi} className={'np-g np-cat-'+(NARC_CAT_KEY[g.cat]||'etc')}>
+            {g.rows.map((d,ri)=>{no++;return <tr key={ri}>
+              <td className="np-c np-no">{no}</td>
+              {ri===0?<td className="np-c np-grp" rowSpan={g.rows.length}><span className="np-b">{g.nt}</span></td>:null}
+              {ri===0?<td className="np-c np-grp np-cat" rowSpan={g.rows.length}>{g.cat}</td>:null}
+              <td className="np-l np-name">{d.drug_name||''}</td>
+              <td className="np-l">{d.ingredient_kr||''}</td>
+              {/* 영문 성분명 — 없으면 빈칸. 길어도 자르지 않고 줄바꿈한다(함정 #32) */}
+              <td className="np-l np-en">{d.ingredient_en||''}</td>
+            </tr>})}
+          </tbody>)})()}
+      </table>
+      {narcPrintRows.length===0?<div className="np-m">해당하는 약품이 없습니다.</div>:null}
+      {narcSign?<table className="np-sign"><tbody><tr>
+        <td>작성자 ______________________ (서명)</td>
+        <td>확인자 ______________________ (서명)</td>
+      </tr></tbody></table>:null}
+      <div className="np-f">© 2026 JEONGHWALEE. All rights reserved.</div>
+    </div>
+    {/* 인쇄 쓰임새 고르기 — 실사·자동집계에서 쓰던 확인 창을 그대로 쓴다(새 모양·새 색 없음) */}
+    {narcAsk&&<CountConfirmModal t={t} title="향정·마약류 인쇄" tone={t.blue} busy={false}
+      head="어떤 쓰임새로 뽑을까요?"
+      strong={'모두 '+narcPrintRows.length.toLocaleString()+'건'}
+      body="게시용은 서명 칸이 없고, 심사용은 작성자·확인자 서명 칸이 들어갑니다."
+      confirm="심사용" altLabel="게시용" onAlt={()=>narcDo(false)}
+      escClose focusCancel
+      onClose={()=>setNarcAsk(false)}
+      onConfirm={()=>narcDo(true)} />}
     <div style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'10px 16px',marginBottom:12,backdropFilter:'blur(12px)'}}>
       <MP items={STATS} selected={stats} onChange={v=>{setStats(v);setPage(1)}} color={t.green} label="상태"/>
     </div>

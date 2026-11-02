@@ -73,9 +73,15 @@ describe('인쇄에서 푸터가 숨는다', () => {
     expect(APP).not.toMatch(/\.no-print[^{;}]*\{[^}]*display:\s*(block|flex|inline|table)/)
   })
 
-  it('화이트리스트식 인쇄 규칙(>*:not(...))은 보관위치 화면에만 쓰인다 — 6화면에 영향 없다', () => {
+  /* ★ 2026-11-02 기대값 변경 — 전: 「보관위치 화면에만」(1종) / 후: 「보관위치·향정마약 두 화면」(2종).
+     향정·마약 인쇄 리포트가 같은 방식(자기 화면 안의 다른 자식만 숨김)을 쓴다.
+     ★ 여기 적힌 것 **외의** 화이트리스트 규칙이 생기면 여전히 걸린다 —
+       다른 화면으로 새어 나가는 것을 막는 것이 이 시험의 목적이다. */
+  it('화이트리스트식 인쇄 규칙(>*:not(...))은 허용된 두 화면에만 쓰인다', () => {
+    const OK = ['.lp-root>*:not(.loc-print)', '.narc-root>*:not(.narc-print)']
     const rules = APP.match(/[.\w-]+>\*:not\([^)]*\)/g) || []
-    for (const r of rules) expect(r).toBe('.lp-root>*:not(.loc-print)')
+    expect(rules.length, '규칙이 아예 사라지면 인쇄가 깨진다').toBeGreaterThan(0)
+    for (const r of rules) expect(OK, '허락하지 않은 화이트리스트 규칙: ' + r).toContain(r)
   })
 
   it('인쇄 경로 마커 개수가 main 과 같다 — 푸터 추가로 흔들리지 않았다', () => {
