@@ -84,6 +84,31 @@ describe('③ index.html 안전망 — 무한 새로고침이 절대 없다', ()
     expect(html).toMatch(/removeItem\(KEY\)/)
   })
 
+  /* ★ B 보강(2026-11-02) — 느린 망에서 멀쩡한 화면을 괜히 새로고침하면 안 된다 */
+  it('★ 주 신호는 모듈 error 이벤트다 — 즉시 1회', () => {
+    expect(html).toMatch(/addEventListener\('error'[\s\S]{0,200}reloadOnce\(/)
+  })
+  it('★ 시간 기준은 15~20초 사이다', () => {
+    const m = html.match(/WAIT = (\d+)/)
+    expect(m, 'WAIT 를 못 찾음').toBeTruthy()
+    expect(Number(m[1])).toBeGreaterThanOrEqual(15000)
+    expect(Number(m[1])).toBeLessThanOrEqual(20000)
+  })
+  it('★ 아직 받는 중이면(settled 아님) 새로고침하지 않는다', () => {
+    expect(html).toMatch(/if \(!settled\)[\s\S]{0,120}return;/)
+  })
+  it('★ 모듈이 돌았으면(__ykBoot) 시간이 지나도 새로고침하지 않는다', () => {
+    expect(html).toMatch(/if \(window\.__ykBoot\) return;/)
+    expect(read('src/main.jsx'), 'main.jsx 가 표식을 남겨야 한다').toContain('window.__ykBoot = 1')
+  })
+  it('★ 세 조건이 모두 맞을 때만 보조 새로고침이 걸린다', () => {
+    const i = html.indexOf('setTimeout(function ()')
+    const block = html.slice(i, html.indexOf('}, WAIT)'))
+    expect(block, '① #root 비었나').toMatch(/childElementCount > 0/)
+    expect(block, '② 모듈이 돌았나').toContain('__ykBoot')
+    expect(block, '③ 스크립트가 끝났나').toContain('settled')
+  })
+
   it('화면에 아무것도 그리지 않는다 — innerHTML·document.write 금지', () => {
     const script = html.slice(html.indexOf('yk_boot_reloaded') - 400, html.indexOf('</script>'))
     expect(script).not.toContain('innerHTML')

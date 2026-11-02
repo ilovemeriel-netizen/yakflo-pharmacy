@@ -67,6 +67,11 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   void updateSW
 }
 
+/* ★ 「이 모듈이 실제로 돌았다」는 표식 — index.html 의 부팅 안전망이 읽는다.
+   이것이 있으면 안전망은 시간이 지나도 **새로고침하지 않는다**(React 쪽 문제는
+   ErrorBoundary 가 맡는다). 없으면 = 파일은 왔는데 실행이 안 된 것(MIME 불일치 등). */
+if (typeof window !== 'undefined') window.__ykBoot = 1
+
 /* ═══ React 밖에서 터진 오류를 콘솔에 **원문 그대로** 남긴다 (화면에는 아무것도 안 그린다) ═══
    ErrorBoundary 는 **렌더 중** 오류만 잡는다. 비동기 콜백·이벤트 핸들러·모듈 로드에서
    터진 것은 아무 데도 안 남아, 2026-11-02 흰 화면 때 원인을 짚는 데 시간이 걸렸다.
