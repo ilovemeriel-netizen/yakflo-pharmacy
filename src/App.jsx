@@ -2245,7 +2245,12 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
   function editUsage(d,field,val){setDrafts(prev=>{const o0=origStr(d.prev_year_usage),o1=origStr(d.recent_3m_usage);const cur=prev[d.drug_code]||{py:o0,r3:o1};const next={...cur,[field]:val};if(next.py===o0&&next.r3===o1){const cp={...prev};delete cp[d.drug_code];return cp}return{...prev,[d.drug_code]:next}})}
   function cancelUsage(code){setDrafts(prev=>{if(!prev[code])return prev;const cp={...prev};delete cp[code];return cp})}
   async function saveRowUsage(d){const dr=drafts[d.drug_code];if(!dr)return;const pv=pNum(dr.py),rv=pNum(dr.r3);if(pv===undefined||rv===undefined){setUMsg('오류: 숫자(0 이상)만 입력하세요');setTimeout(()=>setUMsg(null),3000);return}const upd={prev_year_usage:pv,recent_3m_usage:rv,usage_source:'manual'};let m=null;if(rv!=null)m=Math.round(rv/3);else if(pv!=null)m=Math.round(pv/12);if(m!=null){upd.monthly_avg=m;upd.safety_stock=Math.ceil(m*SAFETY_FACTOR);upd.max_stock=Math.round(m*3)}const{error}=await supabase.from('drugs').update(upd).eq('drug_code',d.drug_code);if(error){setUMsg('저장 오류: '+error.message);return}cancelUsage(d.drug_code);onReload?.()}
-  const canRecompute=canDispose
+  /* ★ 사용량을 건드리는 단추는 **최고 관리자(owner)만** — 2026-11-02 이정화 님 결정.
+     canDispose(= owner·admin·profiles.admin)보다 **좁다**. 이름을 isOwner 로 두지 않는 이유는
+     이 파일에 isOwner 가 이미 두 가지 뜻으로 있기 때문이다(2601 느슨 · 5707 엄격).
+     DB 쪽(0105)도 tenant_members.role='owner' 만 통과시키므로 화면과 기준이 같아진다. */
+  const isTenantOwner=memberRole==='owner'
+  const canRecompute=isTenantOwner
   const[recomfirm,setRecomfirm]=useState(false)
   async function recomputeUsage(){setUBusy(true);const{data,error}=await supabase.rpc('app_recompute_usage',{p_overwrite_manual:false});setUBusy(false);if(error){setUMsg('자동집계 오류: '+error.message);setTimeout(()=>setUMsg(null),4000);return}setUMsg('출고 자동집계 완료 — '+(data??0)+'품목 갱신 (수기 manual 보존)');setTimeout(()=>setUMsg(null),4000);onReload?.()}
   const _u=arr=>[...new Set(arr.filter(v=>v!=null&&String(v).trim()!==''))]
@@ -2331,8 +2336,8 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
       <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
         <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} placeholder="검색..." style={{flex:1,minWidth:120,padding:'8px 12px',border:`1px solid ${t.border}`,borderRadius:8,fontSize:12,outline:'none',background:t.bg,color:t.text}}/>
         <button onClick={dlAsk} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>
-        <button onClick={dlUsageTemplate} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 양식</button>
-        <button onClick={()=>uRef.current.click()} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 업로드</button>
+        {isTenantOwner&&<button onClick={dlUsageTemplate} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 양식</button>}
+        {isTenantOwner&&<button onClick={()=>uRef.current.click()} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 업로드</button>}
         {canRecompute&&<button onClick={()=>setRecomfirm(true)} disabled={uBusy} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.purpleL,color:t.purple,cursor:uBusy?'default':'pointer',fontSize:11,fontWeight:600,opacity:uBusy?0.6:1}}>{uBusy?'집계 중…':'출고 자동집계'}</button>}
         <input ref={uRef} type="file" accept=".xlsx,.xls" onChange={uploadUsage} style={{display:'none'}}/>
       </div>
@@ -2368,9 +2373,11 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
         escClose focusCancel
         onClose={()=>setXlAsk(false)}
         onConfirm={()=>{setXlAsk(false);dl('view')}} />}
+      {/* ★ 0105 로 수기(manual) 약품은 보호되므로, 바뀌는 것은 **수기가 아닌 약품**뿐이다.
+          {N} 도 그 수로 센다 — 옛 문구는 「값이 들어 있는 약품」을 세어 실제보다 크게 보였다. */}
       {recomfirm&&<CountConfirmModal t={t} title="출고 자동집계" tone={t.purple} busy={uBusy}
-        head="직전1개월 사용량이 출고 기록 값으로 바뀝니다."
-        strong={'지금 값이 들어 있는 약품 '+(drugs||[]).filter(d=>Number(d.recent_1m_usage)!==0&&d.recent_1m_usage!=null).length.toLocaleString()+'종의 값이 덮어써지고, 되돌릴 수 없습니다.'}
+        head={'출고 기록으로 수기 입력이 없는 약품 '+(drugs||[]).filter(d=>d.usage_source!=='manual').length.toLocaleString()+'종의 사용량을 다시 계산합니다.'}
+        strong="수기로 넣은 약품의 값은 바뀌지 않습니다."
         body="계속할까요?" confirm="계속" escClose focusCancel
         onClose={()=>setRecomfirm(false)}
         onConfirm={()=>{setRecomfirm(false);recomputeUsage()}} />}
@@ -3167,7 +3174,11 @@ const txValidQty = v => {
 }
 /* ★ 시험에서 진짜 컴포넌트로 렌더하려고 내보낸다(ColMenu 와 같은 이유). 컴포넌트라 react-refresh 규칙에 걸리지 않는다. */
 export function TransactionForm({drugs,onReload,navFilter}){
-  const{t,memberRole,profile}=useTheme();const canDel=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
+  /* ★ 거래 이력 삭제는 **최고 관리자(owner)만** — 2026-11-02 이정화 님 결정.
+     DB 는 이미 그렇다(0037 transactions_delete_admin_own_tenant) — 화면을 DB 에 맞춘다.
+     이 변수는 네 탭(입고·출고·폐기·반품)의 체크박스·선택 삭제·전체 삭제를 함께 쥔다.
+     ※ 발주관리(Ordering)·약품변경(DrugChangePlans)의 canDel 은 **따로** 있고 건드리지 않는다. */
+  const{t,memberRole,profile}=useTheme();const canDel=memberRole==='owner';const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
   const[tab,setTab]=useState(subFromHash()||'입고')
   const[search,setSearch]=useState('');const[selDrug,setSelDrug]=useState(null)
   const[form,setForm]=useState({qty:'',purchase_price:'',edi_price:'',sub_type:'',note:'',supplier:'',lot_no:'',expiry_date:'',reason:'',handler:'이정화',approver:'',process_status:'처리완료',transaction_date:todayYmd()})
@@ -8029,6 +8040,9 @@ export default function App() {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [memberRole, setMemberRole] = useState(null)
+  /* 로그인·토큰 갱신 때 역할을 다시 읽게 하는 신호. 숫자가 바뀌면 아래 effect 가 다시 돈다.
+     ★ user 객체만 보고 있으면 토큰이 갱신돼도 같은 객체로 보여 다시 읽지 않을 수 있다. */
+  const [roleTick, setRoleTick] = useState(0)
   const [authLoading, setAuthLoading] = useState(true)
   const [recovery, setRecovery] = useState(false)
   const [menu, setMenu] = useState(routeFromHash)
@@ -8061,6 +8075,9 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => { setUser(session?.user || null); setAuthLoading(false) })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (_event === 'PASSWORD_RECOVERY') setRecovery(true)
+      /* 로그인했거나 토큰이 갱신됐으면 역할을 다시 읽는다 —
+         오래 열어 둔 탭에서 역할이 null 로 남아 관리자 단추가 사라지던 것을 푼다. */
+      if (_event === 'TOKEN_REFRESHED' || _event === 'SIGNED_IN') setRoleTick(n => n + 1)
       setUser(session?.user || null)
     })
     return () => subscription.unsubscribe()
@@ -8097,7 +8114,11 @@ export default function App() {
 
   /* 테넌트 멤버십 role 로드 — tenant_members 테이블이 아직 없거나 매핑 미존재 시 silent fail
      (앱은 정상 동작하되 관리자 전용 UI만 숨겨짐) */
-  async function loadMemberRole() {
+  /* ★ 역할 읽기가 실패하면 **관리자 단추가 통째로 사라진다**. 그런데 이 호출은
+       조용히 실패해 왔다 — 왜 안 보이는지 알 길이 없었다(2026-11-02 진단).
+     그래서 ① 실패 원문을 콘솔에 남기고 ② 잠깐 뒤 최대 2번 더 해 본다.
+     화면에는 아무것도 그리지 않는다(승인 범위) — 성공하면 단추가 그냥 나타난다. */
+  async function loadMemberRole(tries = 0) {
     if (!user) { setMemberRole(null); return }
     const { data, error } = await supabase
       .from('tenant_members')
@@ -8105,10 +8126,14 @@ export default function App() {
       .eq('user_id', user.id)
       .limit(1)
       .maybeSingle()
-    if (error || !data) { setMemberRole(null); return }
+    if (error || !data) {
+      console.error('[역할 읽기 실패]', error ? error.message : '멤버 행 없음', '시도', tries + 1)
+      if (tries < 2) { setTimeout(() => loadMemberRole(tries + 1), 800 * (tries + 1)); return }
+      setMemberRole(null); return
+    }
     setMemberRole(data.role)
   }
-  useEffect(() => { loadMemberRole() }, [user])
+  useEffect(() => { loadMemberRole() }, [user, roleTick])
 
   async function load() {
     const d = await fetchAll()
