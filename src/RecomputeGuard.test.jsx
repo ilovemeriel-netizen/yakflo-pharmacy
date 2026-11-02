@@ -14,15 +14,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup, waitFor, fireEvent } from '@testing-library/react'
 
-const mk = (code, r1) => ({
+const mk = (code, r1, src = 'manual') => ({
   drug_code: code, drug_name: code + '약', category: '경구제', status: '사용',
   current_qty: 100, safety_stock: 10, max_stock: 300, purchase_price: 100,
   prev_year_usage: 1200, recent_3m_usage: 300, monthly_avg: 100,
-  recent_1m_usage: r1, usage_source: 'manual', expiry_date: '2027-06-01',
+  recent_1m_usage: r1, usage_source: src, expiry_date: '2027-06-01',
 })
-/* 값이 든 약품 3종(90·5·1) · 0 인 약품 1종 · 값이 없는 약품 1종 → {N} 은 3 이어야 한다 */
-const DRUGS = [mk('AAA', 90), mk('BBB', 5), mk('CCC', 1), mk('ZER', 0), mk('NUL', null)]
-const EXPECT_N = 3
+/* ★ 2026-11-02 — 0105 가 수기(manual) 약품을 보호하므로 **바뀌는 것은 수기가 아닌 약품**뿐이다.
+   그래서 {N} 은 「값이 든 약품 수」가 아니라 **usage_source 가 manual 이 아닌 약품 수**다.
+   수기 3종(AAA·BBB·CCC) · 미설정 1종(NUL) · 자동 1종(AUT) → {N} 은 2 */
+const DRUGS = [
+  mk('AAA', 90), mk('BBB', 5), mk('CCC', 1),
+  mk('NUL', 0, null), mk('AUT', 7, 'auto'),
+]
+const EXPECT_N = 2
 
 const rpcCalls = []
 vi.mock('./lib/supabase', () => {
@@ -83,10 +88,17 @@ describe('① 관리자에게만 보인다', () => {
     await ready()
     expect(btn()).toBeTruthy()
   })
-  it('admin — 버튼이 있다', async () => {
+  it('admin — 버튼이 있다 (이 약국의 관리자다)', async () => {
     ROLE = { memberRole: 'admin', profile: { role: 'user' } }
     await ready()
     expect(btn()).toBeTruthy()
+  })
+  /* ★ 2026-11-02 새로 막은 것 — 전역 프로필의 admin 은 **이 약국의 멤버가 아니다**.
+     전에는 profile?.role==='admin' 만으로도 버튼이 보였다. DB(tenant_members) 기준과 맞춘다. */
+  it('★ profiles.role=admin 뿐인 사람 — 버튼이 없다', async () => {
+    ROLE = { memberRole: 'member', profile: { role: 'admin' } }
+    await ready()
+    expect(btn()).toBeFalsy()
   })
   it('★ 일반 직원 — 버튼이 DOM 에도 없다', async () => {
     ROLE = { memberRole: 'member', profile: { role: 'user' } }
@@ -114,8 +126,15 @@ describe('② 누르면 바로 실행하지 않는다', () => {
     await waitFor(() => expect(dialog()).toBeTruthy())
     const txt = dialog().textContent
     expect(txt).toContain('출고 자동집계')
-    expect(txt).toContain('직전1개월 사용량이 출고 기록 값으로 바뀝니다.')
-    expect(txt).toContain('되돌릴 수 없습니다.')
+    /* ★ 2026-11-02 문구 교체 —
+       전: 「직전1개월 사용량이 출고 기록 값으로 바뀝니다.」 + 「…덮어써지고, 되돌릴 수 없습니다.」
+       후: 「출고 기록으로 수기 입력이 없는 약품 {N}종의 사용량을 다시 계산합니다.」
+           + 「수기로 넣은 약품의 값은 바뀌지 않습니다.」
+       0105 가 수기 값을 보호하므로 「되돌릴 수 없다」가 더 이상 사실이 아니다. */
+    expect(txt).toContain('출고 기록으로 수기 입력이 없는 약품 ')
+    expect(txt).toContain('종의 사용량을 다시 계산합니다.')
+    expect(txt).toContain('수기로 넣은 약품의 값은 바뀌지 않습니다.')
+    expect(txt, '옛 문구가 남으면 안 된다').not.toContain('되돌릴 수 없습니다')
     expect(txt).toContain('계속할까요?')
     expect(inDialog('취소'), '취소 단추').toBeTruthy()
     expect(inDialog('계속'), '계속 단추').toBeTruthy()
@@ -124,10 +143,10 @@ describe('② 누르면 바로 실행하지 않는다', () => {
     await ready()
     fireEvent.click(btn())
     await waitFor(() => expect(dialog()).toBeTruthy())
-    /* 화면이 가진 drugs 로 직접 세어 본 값과 맞춘다 */
-    const n = DRUGS.filter(d => Number(d.recent_1m_usage) !== 0 && d.recent_1m_usage != null).length
+    /* 화면이 가진 drugs 로 직접 세어 본 값과 맞춘다 — **수기가 아닌 약품 수** */
+    const n = DRUGS.filter(d => d.usage_source !== 'manual').length
     expect(n).toBe(EXPECT_N)
-    expect(dialog().textContent).toContain('약품 ' + n + '종의 값이 덮어써지고')
+    expect(dialog().textContent).toContain('수기 입력이 없는 약품 ' + n + '종')
   })
   it('기본 포커스가 「취소」다', async () => {
     await ready()
