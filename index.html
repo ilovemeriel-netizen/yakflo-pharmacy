@@ -16,6 +16,35 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- ★ 부팅 안전망 — 화면에 **아무것도 그리지 않는다**.
+         메인 모듈을 못 받으면 React 가 아예 못 떠서 오류 카드조차 못 뜬다(= 순백 화면).
+         그때만 딱 한 번 새로고침한다. 새 index.html 을 받으면 새 해시로 고쳐진다.
+         ★ 무한 새로고침 금지 — sessionStorage 표시로 1회만. 저장소를 못 쓰면 아예 안 한다.
+         ★ 떴으면 표시를 지운다 — 다음 배포에서 다시 한 번 쓸 수 있게. -->
+    <script>
+      (function () {
+        var KEY = 'yk_boot_reloaded', WAIT = 8000, done = false;
+        function reloadOnce(why) {
+          if (done) return; done = true;
+          try {
+            if (sessionStorage.getItem(KEY)) { console.error('[부팅 실패] ' + why + ' — 이미 한 번 새로고침했다. 멈춘다.'); return; }
+            sessionStorage.setItem(KEY, '1');
+          } catch (e) { return; }   /* 저장소를 못 쓰면 되풀이 위험이 있어 하지 않는다 */
+          console.error('[부팅 실패] ' + why + ' — 1회 새로고침');
+          location.reload();
+        }
+        window.addEventListener('error', function (e) {
+          var el = e && e.target;
+          if (el && el.tagName === 'SCRIPT' && el.type === 'module') reloadOnce('모듈 스크립트를 못 받았다: ' + (el.src || ''));
+        }, true);
+        setTimeout(function () {
+          var r = document.getElementById('root');
+          if (!r) return;
+          if (r.childElementCount === 0) reloadOnce('#root 가 ' + WAIT + 'ms 동안 비어 있다');
+          else { try { sessionStorage.removeItem(KEY); } catch (e) { /* 무시 */ } }
+        }, WAIT);
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
