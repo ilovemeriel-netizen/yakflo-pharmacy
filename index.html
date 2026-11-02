@@ -16,6 +16,51 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- ★ 부팅 안전망 — 화면에 **아무것도 그리지 않는다**.
+         메인 모듈을 못 받으면 React 가 아예 못 떠서 오류 카드조차 못 뜬다(= 순백 화면).
+         그때만 딱 한 번 새로고침한다. 새 index.html 을 받으면 새 해시로 고쳐진다.
+
+         신호는 둘, **우선순위가 다르다**:
+           ① (주) 모듈 스크립트의 error 이벤트 — 못 받았다는 확실한 신호. 바로 1회 새로고침.
+           ② (보조) 18초 뒤 — **세 조건이 모두** 맞을 때만.
+                · #root 가 비어 있고
+                · 모듈이 실행된 흔적(window.__ykBoot)이 없고
+                · 스크립트가 **이미 끝났다**(load 든 error 든 떨어졌다)
+              ★ 셋째 조건이 핵심이다. 느린 망에서 아직 **받는 중**이면 아무것도 하지 않는다 —
+                안 그러면 느린 사람을 새로고침으로 괴롭히고 다운로드를 처음부터 다시 시킨다.
+
+         ★ 무한 새로고침 금지 — sessionStorage 표시로 1회만. 저장소를 못 쓰면 아예 안 한다.
+         ★ 떴으면 표시를 지운다 — 다음 배포에서 다시 한 번 쓸 수 있게. -->
+    <script>
+      (function () {
+        var KEY = 'yk_boot_reloaded', WAIT = 18000, done = false, settled = false;
+        function reloadOnce(why) {
+          if (done) return; done = true;
+          try {
+            if (sessionStorage.getItem(KEY)) { console.error('[부팅 실패] ' + why + ' — 이미 한 번 새로고침했다. 멈춘다.'); return; }
+            sessionStorage.setItem(KEY, '1');
+          } catch (e) { return; }   /* 저장소를 못 쓰면 되풀이 위험이 있어 하지 않는다 */
+          console.error('[부팅 실패] ' + why + ' — 1회 새로고침');
+          location.reload();
+        }
+        function isModule(el) { return !!el && el.tagName === 'SCRIPT' && el.type === 'module'; }
+        /* ① 주 신호 — 모듈을 못 받았다 */
+        window.addEventListener('error', function (e) {
+          if (isModule(e && e.target)) { settled = true; reloadOnce('모듈 스크립트를 못 받았다: ' + (e.target.src || '')); }
+        }, true);
+        /* 받기는 받았다 — 실행까지 됐는지는 __ykBoot 로 따로 본다 */
+        window.addEventListener('load', function (e) { if (isModule(e && e.target)) settled = true; }, true);
+        /* ② 보조 신호 — 세 조건이 모두 맞을 때만 */
+        setTimeout(function () {
+          var r = document.getElementById('root');
+          if (!r) return;
+          if (r.childElementCount > 0) { try { sessionStorage.removeItem(KEY); } catch (e) { /* 무시 */ } return; }
+          if (window.__ykBoot) return;          /* 모듈은 돌았다 — React 쪽 문제는 ErrorBoundary 몫 */
+          if (!settled) { console.error('[부팅 지연] 모듈을 아직 받는 중이다 — 새로고침하지 않는다'); return; }
+          reloadOnce('스크립트는 왔는데 ' + WAIT + 'ms 가 지나도 #root 가 비어 있다');
+        }, WAIT);
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

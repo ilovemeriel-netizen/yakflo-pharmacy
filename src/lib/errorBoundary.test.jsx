@@ -139,6 +139,9 @@ describe('배포 직후 옛 조각을 못 불러오는 오류', () => {
     new Error('Failed to fetch dynamically imported module: /assets/VaccineManage-abc.js'),
     new Error('error loading dynamically imported module'),
     new Error('Importing a module script failed.'),
+    /* ★ 2026-11-02 — 서버가 자바스크립트 자리에 HTML 을 돌려줄 때 브라우저가 하는 말.
+       SPA 대체 규칙이 /assets/*.js 까지 삼켜 404 가 아니라 200 + text/html 이 왔다. */
+    new Error('Failed to load module script: Expected a JavaScript module script but the server responded with a MIME type of "text/html".'),
   ]
 
   it('청크 오류를 알아본다', () => {
@@ -203,6 +206,27 @@ describe('배포 직후 옛 조각을 못 불러오는 오류', () => {
     render(<ErrorBoundary t={T} win={w}><Boom msg="Loading chunk 7 failed." /></ErrorBoundary>)
     expect(w.reloads, '두 번째인데 또 새로고침했다').toBe(0)
     expect(screen.getByText(EC_TITLE)).toBeTruthy()
+  })
+
+  /* ★ C 확인(2026-11-02) — 백신 조각이 HTML 을 받았을 때의 **전 과정**을 한 시험에 담는다.
+     ① 첫 번째: 1회 새로고침  ② 두 번째: 새로고침 없이 **기존** 오류 카드(새 UI 없음) */
+  it('★ 조각 자리에 HTML 이 와도 — 1회 새로고침 뒤 두 번째는 기존 오류 카드', () => {
+    const HTML_ERR = 'Failed to load module script: Expected a JavaScript module script but the server responded with a MIME type of "text/html".'
+    const w = fakeWin()
+    /* ① 처음 터졌다 */
+    render(<ErrorBoundary t={T} win={w}><Boom msg={HTML_ERR} /></ErrorBoundary>)
+    expect(w.reloads, '처음이면 1회 새로고침').toBe(1)
+    expect(w._store[EC_RELOAD_KEY]).toBe('1')
+    cleanup()
+    /* ② 새로고침했는데 또 터졌다 — 이제는 안내 화면 */
+    render(<ErrorBoundary t={T} win={w}><Boom msg={HTML_ERR} /></ErrorBoundary>)
+    expect(w.reloads, '두 번째인데 또 새로고침했다').toBe(1)
+    const card = screen.getByText(EC_TITLE)
+    expect(card, '기존 오류 카드가 떠야 한다').toBeTruthy()
+    /* 새 UI 가 아니다 — 버튼은 늘 쓰던 것뿐 */
+    expect(screen.getByRole('button', { name: '새로고침' })).toBeTruthy()
+    /* 오류 원문은 화면에 안 보인다(기존 규약 유지) */
+    expect(document.body.textContent).not.toContain('MIME')
   })
 
   it('clearChunkReloadMark 는 저장소가 없어도 터지지 않는다', () => {

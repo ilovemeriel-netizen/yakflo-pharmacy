@@ -74,6 +74,15 @@ export function isChunkError(err) {
     || /error loading dynamically imported module/i.test(msg)
     || /Importing a module script failed/i.test(msg)
     || /dynamically imported module/i.test(msg)
+    /* ★ 2026-11-02 추가 — 서버가 **자바스크립트 자리에 HTML 을** 돌려줄 때의 말들.
+       SPA 대체 규칙이 /assets/*.js 까지 삼키면 404 가 아니라 200 + text/html 이 온다.
+       브라우저는 「module 인 줄 알았는데 text/html 이네」라며 거부하는데, 그 말이
+       위 목록 어디에도 안 걸려 **청크 오류로 안 쳐 주고** 그냥 터졌다.
+       _redirects 를 고쳐 404 가 되게 했지만, 캐시·프록시·다른 호스팅에서 같은 일이
+       또 날 수 있으므로 말 자체도 알아듣게 한다. */
+    || /Expected a JavaScript module script/i.test(msg)
+    || /MIME type/i.test(msg)
+    || /text\/html/i.test(msg)
 }
 
 /* 청크 오류면 1회만 새로고침하고 true. 아니면(또는 이미 한 번 했으면) false. */

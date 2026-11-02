@@ -9,6 +9,16 @@
 [build.environment]
   NODE_VERSION = "24"
 
+# ★ 없는 /assets/* 는 404 로 — 아래 SPA 규칙보다 **반드시 먼저** 적어야 한다.
+#   netlify.toml 의 [[redirects]] 는 **적힌 순서대로** 평가된다.
+#   아래 catch-all 이 먼저 잡으면 자바스크립트 자리에 HTML(200)이 가고,
+#   브라우저가 실행하지 못해 React 가 아예 못 뜬다 = 순백 화면(2026-11-02 진단).
+#   ※ 실제로 있는 파일은 이 규칙보다 먼저 서빙된다(force 를 쓰지 않았다).
+[[redirects]]
+  from = "/assets/*"
+  to = "/index.html"
+  status = 404
+
 # SPA: 정적 파일·Function 경로가 아니면 index.html 로
 [[redirects]]
   from = "/*"

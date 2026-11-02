@@ -39,6 +39,11 @@ export function isChunkError(err) {
     || /error loading dynamically imported module/i.test(msg)
     || /Importing a module script failed/i.test(msg)
     || /dynamically imported module/i.test(msg)
+    /* ★ 2026-11-02 추가 — 서버가 자바스크립트 자리에 HTML 을 돌려줄 때의 말들.
+       SPA 대체 규칙이 /assets/*.js 까지 삼키면 404 가 아니라 200 + text/html 이 온다. */
+    || /Expected a JavaScript module script/i.test(msg)
+    || /MIME type/i.test(msg)
+    || /text\/html/i.test(msg)
 }
 
 export function chunkReloadOnce(err, win) {

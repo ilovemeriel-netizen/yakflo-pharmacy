@@ -1,3 +1,13 @@
+# ★ 없는 /assets/* 는 404 로 돌려준다 — 아래 SPA 대체보다 **반드시 위**에 둔다.
+#   2026-11-02 진단: 아래 catch-all 이 /assets/*.js 요청까지 삼켜,
+#   브라우저에 자바스크립트 대신 **HTML 을 200 으로** 돌려주고 있었다.
+#   브라우저는 그걸 실행하지 못해(Expected a JavaScript module script …)
+#   React 가 아예 뜨지 못한다 → ErrorBoundary 도 못 돌고 **순백 화면**이 된다.
+#   백신 화면이 유일한 lazy 청크라, 오래 열어 둔 탭에서 거기서만 증상이 났다.
+#   ※ 실제로 있는 파일은 이 규칙보다 먼저 그대로 서빙된다(Netlify shadowing —
+#     강제(!)를 붙이지 않았으므로 존재하는 파일에는 규칙이 적용되지 않는다).
+/assets/*    /index.html   404
+
 # SPA fallback — react-router 딥링크(/app/*) 새로고침 시 index.html 서빙.
 # Netlify Functions(/api/*)는 함수 path 바인딩이 우선하므로 영향 없음.
 /*    /index.html   200
