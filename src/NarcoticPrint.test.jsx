@@ -177,12 +177,29 @@ describe('③ 표 모양 — 함정 #27·#31·#32', () => {
     expect(document.querySelector('.np-main tbody .np-name')).toBeTruthy()
     expect(document.querySelector('.np-main tbody .np-b')).toBeTruthy()
   })
-  it('서명 칸과 저작권 문구가 있다', async () => {
+  /* ★ 2026-11-03 기대값 변경 — 전: 「서명 칸과 저작권 문구가 있다」 / 후: 「서명 칸만 있다」.
+       이 인쇄물에서만 저작권 줄을 뺀다(이정화 님 요청). 다른 인쇄물·바닥글은 그대로이며
+       src/lib/copyright.test.js 가 「향정은 예외」로 못 박아 되살아나면 걸리게 해 둔다. */
+  it('서명 칸은 있고, 저작권 문구는 없다', async () => {
     await open()
     const txt = document.querySelector('.narc-print').textContent
     expect(txt).toContain('작성자')
     expect(txt).toContain('확인자')
-    expect(txt).toContain('© 2026 JEONGHWALEE. All rights reserved.')
+    expect(txt, '향정 인쇄물에는 저작권 줄을 넣지 않는다').not.toContain('JEONGHWALEE')
+    expect(txt, '© 기호도 남지 않아야 한다').not.toContain('©')
+  })
+  /* ★ 빠진 것은 **인쇄물 바닥글 하나**다 — 화면 바닥글은 그대로 둔다.
+       화면 바닥글이 .narc-root 의 **직속 자식**이라야
+       `.narc-root>*:not(.narc-print)` 규칙이 인쇄에서 숨긴다. 자식이 아니게 되면
+       종이에 저작권 줄이 되살아나므로 그 자리까지 같이 고정한다. */
+  it('★ 화면 바닥글의 저작권은 그대로 — 인쇄 영역 밖, narc-root 직속 자식', async () => {
+    await open()
+    const root = document.querySelector('.narc-root')
+    expect(root.textContent, '화면 바닥글 저작권은 유지한다')
+      .toContain('© 2026 JEONGHWALEE. All rights reserved. 무단 복제 및 재배포를 금지합니다.')
+    const foot = [...root.children].find(el => el.textContent.includes('JEONGHWALEE'))
+    expect(foot, '바닥글이 narc-root 직속 자식이 아니면 인쇄에서 숨지 않는다').toBeTruthy()
+    expect(foot.classList.contains('narc-print'), '바닥글이 인쇄 영역 안으로 들어갔다').toBe(false)
   })
   /* ★ 정렬 3단계 — 마약/향정 → 제형(경구→주사→외용) → 약품명 가나다 */
   it('정렬 — 마약 먼저 → 제형 → 약품명 가나다', async () => {

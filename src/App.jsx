@@ -2507,7 +2507,6 @@ const NARC_PRINT_CSS=`
   .narc-print .np-b{display:inline-block;border:0.5pt solid #000;border-radius:2pt;padding:0.2mm 1.4mm;font-size:8pt}
   .narc-print .np-sign{margin-top:8mm;font-size:9pt}
   .narc-print .np-sign td{border:none;padding:0 6mm 0 0;white-space:nowrap}
-  .narc-print .np-f{margin-top:6mm;font-size:7.5pt;text-align:center}
 }`
 
 /* export 는 시험에서 이 화면만 따로 띄우기 위한 것이다(StockStatus·TransactionForm 과 같은 방식) */
@@ -2652,7 +2651,8 @@ export function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
         <td>작성자 ______________________ (서명)</td>
         <td>확인자 ______________________ (서명)</td>
       </tr></tbody></table>:null}
-      <div className="np-f">© 2026 JEONGHWALEE. All rights reserved.</div>
+      {/* ★ 이 인쇄물에는 저작권 줄을 넣지 않는다 (2026-11-03 이정화 님 요청).
+          다른 인쇄물·화면 바닥글의 저작권 줄은 그대로다 — src/lib/copyright.test.js 가 고정한다. */}
     </div>
     {/* 인쇄 쓰임새 고르기 — 실사·자동집계에서 쓰던 확인 창을 그대로 쓴다(새 모양·새 색 없음) */}
     {narcAsk&&<CountConfirmModal t={t} title="향정·마약류 인쇄" tone={t.blue} busy={false}
