@@ -5867,6 +5867,9 @@ function MRow2({label,cnt,amt,bg,fg}){return <tr><td style={{...mpTd,background:
 export function Report({drugs,onNav}){
   const{t,memberRole}=useTheme();
   const isOwner=memberRole==='owner'; // 마감·업로드 권한(고위험 체크박스와 동일 패턴)
+  /* 거래일 정정 「모두 바꾸기」 권한 — 0107 RPC 와 **같은 기준**(owner·admin).
+     화면에만 단추를 숨기는 것이 아니라 DB 함수도 같은 역할을 본다. */
+  const isTenantManager=memberRole==='owner'||memberRole==='admin'
   const cy=new Date().getFullYear(),cm=new Date().getMonth()+1;
   const[rtype,setRtype]=useState('monthly');
   const[year,setYear]=useState(cy);const[month,setMonth]=useState(cm);
@@ -5938,6 +5941,50 @@ export function Report({drugs,onNav}){
   }
 
   /* 월마감 요청 — 실행 직전 대상월 스냅샷 존재를 재조회. 있으면 차단(우회 경로 없음), 없으면 확인 후 진행 */
+  /* ── 마감월보다 뒤 날짜 거래 ───────────────────────────────────────────────
+     마감을 막는 조건이자, 「모두 바꾸기」의 대상이다.
+     ★ 이미 마감된 달의 거래는 빼고 센다 — 그 달은 손대면 안 되고, RPC 도 같은 기준으로 거른다
+       (0107). 화면과 RPC 가 다른 수를 말하면 「15건이라더니 0건 바뀜」이 된다. */
+  async function _loadFutureTx(){
+    const _e=new Date(year,month,0); const _p=n=>String(n).padStart(2,'0')
+    const end=`${_e.getFullYear()}-${_p(_e.getMonth()+1)}-${_p(_e.getDate())}`
+    const{data,error}=await supabase.from('transactions')
+      .select('id,transaction_date,type,drug_code,quantity')
+      .gt('transaction_date',end).order('transaction_date').limit(500)
+    if(error){setCloseMsg('❌ 마감 전 점검 실패: '+error.message);return null}
+    const closed=new Set(); (snaps||[]).forEach(s=>closed.add(Number(s.snap_year)+'-'+Number(s.snap_month)))
+    return (data||[]).filter(x=>{const d=String(x.transaction_date).slice(0,10).split('-')
+      return !closed.has(Number(d[0])+'-'+Number(d[1]))})
+  }
+  /* 안내 창 — 기존 dialog 를 그대로 쓴다(새 모양·새 색 없음).
+     「모두 바꾸기」 단추는 **owner·admin 에게만** 보인다. 그 외에는 안내만 보고 닫는다. */
+  function _futureTxDialog(rows){
+    const _e=new Date(year,month,0); const _p=n=>String(n).padStart(2,'0')
+    const endLabel=`${month}월 ${_e.getDate()}일`
+    const show=rows.slice(0,8).map(x=>{
+      const d=String(x.transaction_date).slice(5,10)
+      const nm=(drugMap[x.drug_code]||{}).drug_name||x.drug_code
+      return `${d}  ${x.type}  ${nm}  ${Number(x.quantity||0).toLocaleString()}`}).join('\n')
+    const more=rows.length>8?`\n… 그 밖 ${(rows.length-8).toLocaleString()}건`:''
+    const body=`마감월보다 뒤 날짜로 입력된 거래가 있습니다.\n\n${show}${more}\n\n`
+      +`월마감을 누르기 전 입력분은 지난달 몫입니다.\n`
+      +`이 거래들의 날짜를 ${endLabel}로 바꿔 주세요.\n바꾸기 전에는 마감할 수 없습니다.`
+    const d={title:`${year}년 ${month}월 마감`,stopText:`모두 ${rows.length.toLocaleString()}건`,body}
+    if(!isTenantManager)return d
+    return{...d,confirmLabel:`모두 ${endLabel}로 바꾸기`,onConfirm:()=>setDialog({
+      title:'거래일 정정',
+      body:`${rows.length.toLocaleString()}건의 거래일을 ${endLabel}로 바꿉니다.\n`
+        +`수량·금액·재고는 바뀌지 않고, 거래마다 정정 흔적이 남습니다.\n계속할까요?`,
+      confirmLabel:'바꾸기',onConfirm:()=>_fixFutureTx()})}
+  }
+  async function _fixFutureTx(){
+    setDialog(null);setClosing(true);setCloseMsg(null)
+    const{data,error}=await supabase.rpc('app_fix_tx_dates_to_month_end',{p_year:year,p_month:month})
+    setClosing(false)
+    if(error){setCloseMsg('❌ 거래일 정정 실패: '+error.message);return}
+    setCloseMsg(`✅ 거래일 ${Number(data||0).toLocaleString()}건을 바꿨습니다. 이제 월마감을 실행할 수 있습니다.`)
+  }
+
   async function requestClose(){
     if(!isOwner)return; // owner 전용(프론트 재확인)
     if(isFuture)return; // 미래 월 방어
@@ -5952,6 +5999,12 @@ export function Report({drugs,onNav}){
     const{count:_txCnt}=await supabase.from('transactions').select('id',{count:'exact',head:true}).gte('transaction_date',`${year}-${_cm}-01`).lt('transaction_date',`${_cn}-01`);
     const _n=_txCnt||0;
     if(_n===0){setDialog({title:`${label} 마감 불가`,body:'해당 월 거래가 없습니다. 거래 입력 후 마감하십시오.'});return;}
+    /* ★ 마감월보다 뒤 날짜로 들어온 거래가 있으면 마감을 막는다 (2026-11-03 신설).
+       업무 규칙상 **월마감을 누르기 전에 넣는 데이터는 이전 달 몫**인데, 입력 화면은 오늘 날짜를
+       기본으로 넣는다. 그대로 마감하면 그 거래가 다음 달로 새어 나간다.
+       2026-10 에 실제로 15건이 그랬다(손으로 SQL 을 돌려 고쳤다). */
+    const _fx=await _loadFutureTx(); if(_fx===null)return;
+    if(_fx.length>0){ setDialog(_futureTxDialog(_fx)); return; }
     const _tt=['입고','출고','폐기','반품','조정'];const _tc=await Promise.all(_tt.map(ty=>supabase.from('transactions').select('id',{count:'exact',head:true}).eq('type',ty).gte('transaction_date',`${year}-${_cm}-01`).lt('transaction_date',`${_cn}-01`)));const _bt={};_tt.forEach((ty,i)=>_bt[ty]=_tc[i].count||0);
     const{data:_uaRow}=await supabase.from('drugs').select('updated_at').not('updated_at','is',null).order('updated_at',{ascending:false}).limit(1).maybeSingle();const _asof=_uaRow&&_uaRow.updated_at?new Date(_uaRow.updated_at).toLocaleString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'기록 없음';
     const _vinfo='\n\n[검증 정보]\n· 거래 건수 (입고 '+_bt['입고'].toLocaleString()+' · 출고 '+_bt['출고'].toLocaleString()+' · 폐기 '+_bt['폐기'].toLocaleString()+' · 반품 '+_bt['반품'].toLocaleString()+' · 조정 '+_bt['조정'].toLocaleString()+')\n· 항등식 오차(보정값) '+(liveAudit!=null?('₩'+Math.round(liveAudit).toLocaleString()):'-')+'\n· 사용량 마지막 집계 '+_asof;

@@ -172,9 +172,12 @@ describe('② 출고관리 — 입고·출고 탭은 이 약국 관리자만', (
 describe('③ 조건을 소스로 못 박는다', () => {
   const APP = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8')
 
+  /* ★ 2026-11-03 기대값 변경 — 2곳 → 3곳. 보고서(Report)가 세 번째다.
+       마감 전 「거래일 모두 바꾸기」 단추도 같은 역할(owner·admin)을 쓰며,
+       DB 쪽 0107 RPC 가 **같은 기준**으로 다시 판정한다. 화면만 숨기는 것이 아니다. */
   it('★ 이름이 뜻을 드러낸다 — isOwner 가 아니라 isTenantManager', () => {
     expect((APP.match(/const isTenantManager=memberRole==='owner'\|\|memberRole==='admin'/g) || []).length,
-      '재고현황·출고관리 두 곳').toBe(2)
+      '재고현황·출고관리·보고서 세 곳').toBe(3)
     expect(APP).toContain('const canRecompute=isTenantManager')
   })
 
