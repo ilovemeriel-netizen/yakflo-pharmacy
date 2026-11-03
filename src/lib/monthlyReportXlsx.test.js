@@ -187,7 +187,9 @@ describe('요약 — 승인된 보정 5곳', () => {
     expect(SUMMARY_CELLS.B21).toBeUndefined()
   })
   it('③ C6·C18 이 숫자이고 형식이 품목·건이다', () => {
-    expect(ws().getCell('C6').value).toBe(dto.list.length)
+    /* ★ 2026-11-03 — C6 은 이제 「약품목록 줄 수」가 아니라 dto.summary.itemCount 다.
+         마감월은 사이드카 결재본 숫자, 미마감월은 기말재고≠0 품목 수. */
+    expect(ws().getCell('C6').value).toBe(dto.summary.itemCount)
     expect(typeof ws().getCell('C6').value).toBe('number')
     expect(ws().getCell('C6').numFmt).toBe('#,##0"품목"')
     expect(typeof ws().getCell('C18').value).toBe('number')
@@ -214,10 +216,15 @@ describe('약품목록 시트', () => {
   const ws = () => color.getWorksheet('약품목록')
   const D = SPEC['약품목록']
 
-  it('헤더 14개가 스펙 문구와 같다', () => {
-    expect(LIST_HEADERS).toEqual(D.headers)
-    const got = D.headers.map((_, i) => ws().getRow(1).getCell(i + 1).value)
-    expect(got).toEqual(D.headers)
+  /* ★ 2026-11-03 — 기준 양식 14열은 **그대로 두고** 맨 뒤에 O열 「상태」만 더했다.
+       중간에 끼우면 A~N 의 서식·열 너비가 한 칸씩 밀린다(함정 #27 과 같은 유형).
+       그래서 「앞 14개가 스펙과 같다」와 「15번째가 상태다」를 따로 고정한다. */
+  it('헤더 — 기준 양식 14개 그대로 + O열 「상태」', () => {
+    expect(LIST_HEADERS.slice(0, 14), '기준 양식 14열이 바뀌면 안 된다').toEqual(D.headers)
+    expect(LIST_HEADERS[14]).toBe('상태')
+    expect(LIST_HEADERS).toHaveLength(15)
+    const got = LIST_HEADERS.map((_, i) => ws().getRow(1).getCell(i + 1).value)
+    expect(got).toEqual(LIST_HEADERS)
   })
   it('열 너비가 스펙과 같다 (K열 9.78 포함 · 예외 없음)', () => {
     for (const [col, want] of Object.entries(D.widths)) {
