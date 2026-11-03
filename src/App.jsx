@@ -6393,9 +6393,9 @@ export function Report({drugs,onNav}){
     {rtype==='monthly'&&<div className="cnc-report-table rpt-fix" style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,overflow:'hidden'}}>
       <div style={{padding:'12px 18px',borderBottom:`1px solid ${t.border}`,fontWeight:700,fontSize:13,color:t.accent}}>{rtype==='monthly'?`${year}년 ${month}월`:`${year}년 연간`} 보고서 ({filtered.length}품목 · 중지 포함) {ld&&<span style={{fontSize:11,color:t.textL}}>로딩...</span>}</div>
       <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-        <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['opening_qty','전월재고'],['total_in_qty','입고'],['total_out_qty','출고'],['total_disp_qty','폐기'],['total_ret_qty','반품'],['closing_qty','기말재고'],['closing_amount','기말금액']].map(([k,h])=><th key={k} style={{ ...TS(k), background: t.bg, fontWeight: 700 }} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}</tr></thead>
+        <thead><tr>{[['drug_code','약품코드'],['drug_name','약품명'],['category','구분'],['opening_qty','전월재고'],['total_in_qty','입고'],['total_out_qty','출고'],['total_disp_qty','폐기'],['total_ret_qty','반품'],['closing_qty','기말재고'],['closing_amount','기말금액']].map(([k,h])=><th key={k} style={{ ...TS(k), background: t.bg, fontWeight: 700, ...(k==='drug_code'?{textAlign:'left',paddingLeft:10}:{}) }} onClick={()=>hs(k)}>{h}<SI col={k}/></th>)}</tr></thead>
         <tbody className="cnc-rpt-scr">{filtered.length===0?<tr><td colSpan={10} style={{padding:40,textAlign:'center',color:t.textL}}>{ld?'로딩 중...':(live?'실시간 집계 중 — 거래·재고 기준(미마감 당월)':'데이터 없음 — 월마감을 실행해주세요')}</td></tr>:filtered.slice((page-1)*RPP,page*RPP).map((d,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}} onMouseEnter={e=>e.currentTarget.style.background=t.glass} onMouseLeave={e=>e.currentTarget.style.background=''}>
-          <td style={{padding:'6px 10px',fontSize:10,color:t.textL}}>{d.drug_code}</td>
+          <td style={{padding:'6px 10px',fontSize:10,color:t.textL,textAlign:'left'}}>{d.drug_code}</td>
           <td style={{padding:'6px 10px',fontWeight:500,textAlign:'left'}}>{d.drug_name}</td>
           <td style={{padding:'6px 10px',color:t.textM}}>{d.category}</td>
           <td style={{padding:'6px 10px',textAlign:'right'}}>{d.opening_qty?.toLocaleString()}</td>
@@ -6408,7 +6408,7 @@ export function Report({drugs,onNav}){
         </tr>)}</tbody>
         {/* 인쇄 전용 tbody — 페이지 슬라이스 없이 filtered 전체 출력(화면 숨김, @media print에서만 표시) */}
         {filtered.length>0&&<tbody className="cnc-rpt-prn">{filtered.map((d,i)=><tr key={i} style={{borderBottom:`1px solid ${t.border}`}}>
-          <td style={{padding:'6px 10px',fontSize:10,color:t.textL}}>{d.drug_code}</td>
+          <td style={{padding:'6px 10px',fontSize:10,color:t.textL,textAlign:'left'}}>{d.drug_code}</td>
           <td style={{padding:'6px 10px',fontWeight:500,textAlign:'left'}}>{d.drug_name}</td>
           <td style={{padding:'6px 10px',color:t.textM}}>{d.category}</td>
           <td style={{padding:'6px 10px',textAlign:'right'}}>{d.opening_qty?.toLocaleString()}</td>
