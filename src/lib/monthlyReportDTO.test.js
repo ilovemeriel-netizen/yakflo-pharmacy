@@ -1,7 +1,7 @@
 /* 월간보고서 결산 엑셀 — 값 계층 시험.
    여기서 지키는 것: 수량 반올림 · 행 선정 규칙 · 금액은 원본 보존 · 마감월은 사이드카만. */
 import { describe, it, expect } from 'vitest'
-import { roundQty, isListRow, buildMonthlyReportDTO, listTotals, isoDate } from './monthlyReportDTO.js'
+import { roundQty, isListRow, isCountedItem, buildMonthlyReportDTO, listTotals, isoDate } from './monthlyReportDTO.js'
 
 describe('isoDate — 유효기한을 YYYY-MM-DD 글자로', () => {
   it('글자로 오면 앞 10자', () => {
@@ -128,9 +128,11 @@ describe('buildMonthlyReportDTO — 마감월', () => {
   it('조용한 중지 약품만 빠진다 (상태 때문이 아니라 움직임·잔량이 없어서)', () => {
     expect(dto.list.map(r => r.code)).toEqual(['BBB', 'AAA', 'DDD'])  /* 유효기한 오름차순, 빈 값 끝 */
   })
-  it('관리 품목수 = 약품목록 행 수 (사이드카 item_count 1125 를 쓰지 않는다)', () => {
-    expect(dto.summary.itemCount).toBe(3)
-    expect(dto.summary.itemCount).toBe(dto.list.length)
+  /* ★ 2026-11-03 기대값 변경 — 전: 「약품목록 행 수」 / 후: 「마감월은 사이드카 결재본 숫자」.
+       이미 마감된 달은 그 숫자로 결재가 끝났으므로 다시 뽑아도 같은 값이 나와야 한다
+       (이정화 님 결정 B). 새 기준(기말재고≠0)은 **마감할 때** 사이드카에 기록된다. */
+  it('마감월 관리 품목수 = 사이드카 item_count 그대로 (결재본 숫자 보존)', () => {
+    expect(dto.summary.itemCount).toBe(1125)
   })
   it('★ 월 총계·건수·유효기간은 사이드카 값 그대로 — 1원도 다르지 않다', () => {
     expect(dto.summary.opening).toBe(101208155.9)
@@ -209,6 +211,51 @@ describe('buildMonthlyReportDTO — 미마감월', () => {
   })
   it('유효기간 건수는 화면 계산값에서 온다', () => {
     expect([dto.summary.expExpired, dto.summary.expUrgent30, dto.summary.expCaution60, dto.summary.expCheck90]).toEqual([3, 4, 5, 6])
+  })
+
+  /* ★ 2026-11-03 — 미마감월은 사이드카가 없으므로 **기말재고≠0** 으로 센다(결정 A).
+       PDF·CSV 도 같은 함수(isCountedItem)를 쓰므로 세 곳 숫자가 같아진다. */
+  it('관리 품목수 = 기말재고가 남은 품목 수', () => {
+    expect(dto.summary.itemCount).toBe(1)
+    expect(dto.summary.itemCount).toBe(dto.list.filter(isCountedItem).length)
+  })
+
+  it('★ 재고 0 이 된 약품은 목록에는 남고 품목수에서만 빠진다', () => {
+    /* 10월 실측 사례 — 폐기로 재고가 0 이 된 중지 약품 10종이 이 자리에 있었다(544 vs 534) */
+    const r2 = [
+      snap('AAA', { opening_qty: 10, closing_qty: 13 }),
+      snap('BBB', { opening_qty: 5, total_disp_qty: 5, closing_qty: 0 }),   /* 폐기로 0 */
+      snap('CCC', { opening_qty: 0, total_out_qty: 3, closing_qty: 0 }),    /* 거래만 있고 0 */
+    ]
+    const d2 = buildMonthlyReportDTO({
+      closed: false, totals: null, rows: r2, drugs: DRUGS, live, year: 2026, month: 10,
+    })
+    expect(d2.list.map(r => r.code).sort(), '목록에는 셋 다 남는다').toEqual(['AAA', 'BBB', 'CCC'])
+    expect(d2.summary.itemCount, '품목수는 재고가 남은 하나뿐').toBe(1)
+  })
+})
+
+/* ── 엑셀 약품목록 O열 「상태」 ───────────────────────────────────────────── */
+describe('약품목록 행에 상태가 실린다 (O열)', () => {
+  it('drugs.status 를 그대로 싣는다 — 거르지 않는다', () => {
+    const rows = [snap('AAA', { closing_qty: 1 }), snap('BBB', { closing_qty: 0, total_disp_qty: 2 })]
+    const drugs = [
+      { drug_code: 'AAA', drug_name: 'A', category: '경구제', status: '사용' },
+      { drug_code: 'BBB', drug_name: 'B', category: '주사제', status: '중지' },
+    ]
+    const d = buildMonthlyReportDTO({ closed: false, totals: null, rows, drugs, live: {}, year: 2026, month: 10 })
+    const byCode = Object.fromEntries(d.list.map(r => [r.code, r.status]))
+    expect(byCode).toEqual({ AAA: '사용', BBB: '중지' })
+    expect(d.list.length, '중지라고 빠지지 않는다').toBe(2)
+  })
+  it('상태가 없으면 빈 글자 — 「-」 같은 것을 지어내지 않는다', () => {
+    const rows = [snap('AAA', { closing_qty: 1 })]
+    const d = buildMonthlyReportDTO({
+      closed: false, totals: null, rows,
+      drugs: [{ drug_code: 'AAA', drug_name: 'A', category: '경구제' }],
+      live: {}, year: 2026, month: 10,
+    })
+    expect(d.list[0].status).toBe('')
   })
 })
 

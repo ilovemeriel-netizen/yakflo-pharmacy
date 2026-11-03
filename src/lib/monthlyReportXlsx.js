@@ -114,8 +114,11 @@ export const SUMMARY_CELLS = {
 export const SUMMARY_DROPPED = ['B5', 'B21', 'B10']
 
 /* ── 약품목록 시트 ─────────────────────────────────────────────────────── */
-export const LIST_HEADERS = ['약품코드', '약품명', '구분', '전월재고수', '전월재고금액', '입고수량', '입고금액', '출고수량', '출고금액', '폐기수량', '반품수량', '기말재고수', '기말재고금액', '유효기한']
-export const LIST_WIDTHS = { A: 14.78, B: 40.78, C: 8.78, D: 11.78, E: 14.78, F: 11.78, G: 14.78, H: 11.78, I: 14.78, J: 9.78, K: 9.78, L: 12.78, M: 14.78, N: 12.78 }
+/* ★ O열 「상태」는 2026-11-03 에 더했다(이정화 님 요청).
+   기준 양식(14열)에는 없던 열이라 **맨 뒤에만 붙인다** — 중간에 끼우면 A~N 의 서식·수식·
+   열 너비가 한 칸씩 밀려 기준 양식과 어긋난다(함정 #27 과 같은 유형). */
+export const LIST_HEADERS = ['약품코드', '약품명', '구분', '전월재고수', '전월재고금액', '입고수량', '입고금액', '출고수량', '출고금액', '폐기수량', '반품수량', '기말재고수', '기말재고금액', '유효기한', '상태']
+export const LIST_WIDTHS = { A: 14.78, B: 40.78, C: 8.78, D: 11.78, E: 14.78, F: 11.78, G: 14.78, H: 11.78, I: 14.78, J: 9.78, K: 9.78, L: 12.78, M: 14.78, N: 12.78, O: 8.78 }
 /* ★ 역슬래시는 엑셀의 「다음 한 글자를 글자 그대로」 표시다. 기준 양식이 그렇게 저장돼 있어
    스펙과 같은 글자로 적어 둔다.
    ★ 다만 exceljs 는 파일로 쓸 때 이 역슬래시를 떼어낸다(`\(` → `(`). 엑셀에서 + - ( ) 는
@@ -129,7 +132,7 @@ export const AMT_COLS = ['E', 'G', 'I', 'M']
 export const LIST_FREEZE_X = 1          /* A열 고정 */
 
 const LIST_KEYS = ['code', 'name', 'category', 'openingQty', 'openingAmount', 'inQty', 'inAmount',
-  'outQty', 'outAmount', 'dispQty', 'retQty', 'closingQty', 'closingAmount', 'expiry']
+  'outQty', 'outAmount', 'dispQty', 'retQty', 'closingQty', 'closingAmount', 'expiry', 'status']
 
 /* ── 그리기 도우미 ─────────────────────────────────────────────────────── */
 function paint(cell, s, mono) {

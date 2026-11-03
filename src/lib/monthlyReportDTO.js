@@ -46,6 +46,26 @@ export function isListRow(r) {
     || nz(r.opening_qty) || nz(r.closing_qty)
 }
 
+/* ── 「관리 품목수」 판정 — 기말재고가 남아 있는 품목만 센다 ──────────────────
+   2026-11-03 이정화 님 결정 A. **PDF·엑셀 요약·CSV 가 이 함수 하나를 쓴다.**
+
+   ★ 왜 함수로 빼나 — 전에는 세 곳이 각자 셌다.
+     · 인쇄: 화면 필터를 거친 배열에서 기말≠0 (상태·검색을 바꾸면 종이 숫자가 달라졌다)
+     · 엑셀: 약품목록 행 수 (거래나 전월재고만 있어도 세어 10월 기준 10품목 더 많았다)
+     그래서 같은 달 보고서인데 PDF 534 · 엑셀 544 로 갈렸다(2026-10 실측).
+
+   ★ 약품목록(isListRow)과 다른 질문이다 — 목록에는 그달에 움직임이 있던 약품을 **다 싣고**,
+     품목수는 그중 **재고가 남은 것**만 센다. 폐기로 0이 된 약품은 목록에 보이되 수에는 빠진다.
+
+   ★ 키 이름 두 가지를 다 받는다 — 이 함수는 **세 군데**에서 불린다.
+     · 스냅샷·live 행: `closing_qty` (스네이크)
+     · DTO 가 만든 list 행: `closingQty` (카멜)
+     한쪽만 보면 다른 쪽에서 **조용히 0 을 세고** 품목수가 0 이 된다(실제로 그랬다). */
+export function isCountedItem(r) {
+  const v = r.closing_qty != null ? r.closing_qty : r.closingQty
+  return Number(v || 0) !== 0
+}
+
 /* 유효기한 오름차순(문자열 YYYY-MM-DD). 빈 값은 맨 뒤 — 기준 양식에는 빈 값이 없었으므로
    순서가 달라질 여지가 없고, 늘어난 행에 빈 값이 생기면 끝에 모인다.
    같은 날짜는 약품코드로 묶어 순서를 고정한다(같은 데이터 → 같은 파일). */
@@ -100,6 +120,10 @@ export function buildMonthlyReportDTO(input) {
       code: r.drug_code,
       name: d.drug_name || r.drug_name || r.drug_code,
       category: d.category || r.category || '-',
+      /* 상태 — 엑셀 약품목록 O열. drugs.status 를 그대로 싣는다(사용·중지·휴면).
+         ★ 이 값으로 **거르지 않는다**. 재고 0 이 된 중지 약품이 목록에 보이는 까닭을
+           표에서 바로 알 수 있게 적어 두는 것뿐이다. 품목수 판정은 isCountedItem 이 한다. */
+      status: d.status || r.status || '',
       /* 수량 — 표시용 반올림 */
       openingQty: roundQty(r.opening_qty),
       inQty: roundQty(r.total_in_qty),
@@ -132,8 +156,14 @@ export function buildMonthlyReportDTO(input) {
     year, month, closed: !!closed,
     source: closed ? CLOSED_SOURCE : { totals: '현재 데이터 집계', rows: '현재 데이터 집계' },
     summary: {
-      /* 관리 품목수 = 약품목록 행 수 — 두 시트가 같은 수를 말한다 */
-      itemCount: list.length,
+      /* 관리 품목수 = **기말재고가 남은 품목 수**(isCountedItem) — PDF·CSV 와 같은 식이다.
+         ★ 이미 마감된 달은 **사이드카에 적힌 결재본 숫자를 그대로** 쓴다
+           (2026-11-03 이정화 님 결정 B). 1~9월은 마감 당시 전 약품 수가 적혀 있는데,
+           그 숫자로 이미 결재가 끝났으므로 다시 뽑아도 같은 값이 나와야 한다.
+           새 기준은 10월 마감부터 사이드카에 기록된다(runClose). */
+      itemCount: (closed && totals && totals.item_count != null)
+        ? num(totals.item_count)
+        : list.filter(isCountedItem).length,
       opening, closing, delta: closing - opening,
       inCount: cnt('in_count', 'inCnt'), inAmount: inAmt,
       outCount: cnt('out_count', 'outCnt'), outAmount: outAmt,

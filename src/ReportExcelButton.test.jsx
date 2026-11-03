@@ -209,12 +209,18 @@ describe('③ ★ 화면 필터가 내려받는 내용에 섞이지 않는다', 
     expect(after.list.map(r => r.code)).toContain('PLC')
   })
 
-  it('관리 품목수는 약품목록 줄 수와 같다 (사이드카 item_count 999 를 쓰지 않는다)', async () => {
+  /* ★ 2026-11-03 기대값 변경 — 전: 「약품목록 줄 수와 같다」.
+       이제 관리 품목수는 **기말재고가 남은 품목 수**(isCountedItem)다. 약품목록에는
+       그달에 움직임이 있던 약품을 다 싣고, 수는 그중 재고가 남은 것만 센다.
+       마감월이면 사이드카 결재본 숫자를 그대로 쓴다(이정화 님 결정 A·B). */
+  it('마감월 관리 품목수 = 사이드카 결재본 숫자 그대로', async () => {
     render(<Report drugs={DRUGS} onNav={() => {}} />)
     await screen.findByRole('button', { name: '엑셀' })
     const dto = await download()
-    expect(dto.summary.itemCount).toBe(dto.list.length)
-    expect(dto.summary.itemCount).not.toBe(999)
+    expect(dto.closed, '이 픽스처는 마감월이다').toBe(true)
+    /* ★ 마감월은 다시 뽑아도 결재본과 같은 숫자가 나와야 한다 — 사이드카 값을 그대로 쓴다.
+         미마감월의 「기말재고≠0」 기준은 monthlyReportDTO.test.js 가 고정한다. */
+    expect(dto.summary.itemCount).toBe(999)
   })
 })
 
