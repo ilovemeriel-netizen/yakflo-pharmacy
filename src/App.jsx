@@ -5966,10 +5966,17 @@ export function Report({drugs,onNav}){
       const nm=(drugMap[x.drug_code]||{}).drug_name||x.drug_code
       return `${d}  ${x.type}  ${nm}  ${Number(x.quantity||0).toLocaleString()}`}).join('\n')
     const more=rows.length>8?`\n… 그 밖 ${(rows.length-8).toLocaleString()}건`:''
-    const body=`마감월보다 뒤 날짜로 입력된 거래가 있습니다.\n\n${show}${more}\n\n`
+    /* ★ 「모두 N건」은 **첫 문장 바로 아래**에 둔다(2026-11-03 이정화 님 결정).
+       몇 건인지가 먼저 보여야 목록을 읽을지 판단할 수 있다.
+       ★ 목록은 stopText 로 넘긴다 — 그 칸만 maxHeight 30vh·스크롤이라 길어도 창이 안 늘어난다.
+         (두 칸 모두 기존 dialog 가 이미 그리던 것이다 — 새 모양·새 색 없음) */
+    /* ★ 안내 세 줄은 **본문**에 둔다. stopText 는 maxHeight 30vh·스크롤이라
+       목록이 길면 그 아래 글자가 잘려 보이지 않는다(시안에서 실제로 잘렸다).
+       잘려도 괜찮은 것은 목록뿐이므로 목록만 그 칸에 넘긴다. */
+    const body=`마감월보다 뒤 날짜로 입력된 거래가 있습니다.\n\n모두 ${rows.length.toLocaleString()}건\n\n`
       +`월마감을 누르기 전 입력분은 지난달 몫입니다.\n`
       +`이 거래들의 날짜를 ${endLabel}로 바꿔 주세요.\n바꾸기 전에는 마감할 수 없습니다.`
-    const d={title:`${year}년 ${month}월 마감`,stopText:`모두 ${rows.length.toLocaleString()}건`,body}
+    const d={title:`${year}년 ${month}월 마감`,body,stopText:`${show}${more}`}
     if(!isTenantManager)return d
     return{...d,confirmLabel:`모두 ${endLabel}로 바꾸기`,onConfirm:()=>setDialog({
       title:'거래일 정정',
