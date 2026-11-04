@@ -151,7 +151,44 @@ export function buildPreview(drugs, merged, field) {
     if (cur === 0) continue                 /* 이미 0 이면 바뀌는 것이 없다 */
     zeros.push({ code, name: d.drug_name || code, status: d.status || '', before: cur })
   }
-  return { changes, unmatched, zeros }
+  return { changes, unmatched, zeros, stockChanges: buildStockChanges(drugs, changes, zeros, field) }
+}
+
+/* ── 안전재고·최대재고가 바뀌는 약품 ────────────────────────────────────────
+   2026-11-04 이정화 님 결정 3 — **최근3개월·전년을 올릴 때** 미리보기 맨 위에 따로 보여 준다.
+   그 두 칸을 올리면 월평균이 다시 계산되고, 월평균이 바뀌면 **발주 기준**이 따라 바뀌기 때문이다.
+
+   ★ 계산식은 화면(App.jsx:2291)·DB(0108)와 **같은 식**이다. 여기서 새로 만들지 않는다.
+       월평균 = 3개월 있으면 round(r3/3), 없으면 round(py/12)
+       안전재고 = ceil(월평균 × 1.2)   ·   최대재고 = round(월평균 × 3)
+   ★ 직전1개월을 올릴 때는 **빈 배열**이다 — 그 칸은 월평균을 건드리지 않는다.
+   ★ 0 이 될 약품도 함께 본다. 그 칸이 0 이 되면 월평균도 0 이 되어 발주 기준이 사라진다. */
+export const SAFETY_FACTOR = 1.2
+export const MAX_FACTOR = 3
+export function calcStock(monthlyAvg) {
+  if (monthlyAvg == null) return { safety: null, max: null }
+  return { safety: Math.ceil(monthlyAvg * SAFETY_FACTOR), max: Math.round(monthlyAvg * MAX_FACTOR) }
+}
+export function buildStockChanges(drugs, changes, zeros, field) {
+  if (field === 'recent_1m_usage') return []          /* 월평균을 건드리지 않는 칸 */
+  const byCode = new Map((drugs || []).map(d => [normCode(d.drug_code), d]))
+  const out = []
+  const push = (code, newValue) => {
+    const d = byCode.get(code); if (!d) return
+    const ma = field === 'recent_3m_usage' ? Math.round(newValue / 3) : Math.round(newValue / 12)
+    const now = calcStock(d.monthly_avg == null ? null : Number(d.monthly_avg))
+    const next = calcStock(ma)
+    if (String(now.safety) === String(next.safety) && String(now.max) === String(next.max)) return
+    out.push({
+      code, name: d.drug_name || code, status: d.status || '',
+      maBefore: d.monthly_avg == null ? null : Number(d.monthly_avg), maAfter: ma,
+      safetyBefore: now.safety, safetyAfter: next.safety,
+      maxBefore: now.max, maxAfter: next.max,
+    })
+  }
+  for (const c of (changes || [])) push(c.code, c.after)
+  for (const z of (zeros || [])) push(z.code, 0)      /* 0 이 되면 월평균도 0 */
+  return out
 }
 
 /* 확인 문구 — 「2026년 10월분 직전1개월사용량을 등록합니다. 357종 변경, 355종 0으로.」 */

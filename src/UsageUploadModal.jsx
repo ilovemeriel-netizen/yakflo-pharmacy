@@ -48,6 +48,10 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
   const zeroTargets = useMemo(
     () => (parsed ? parsed.zeros.filter(z => !keep.has(z.code)) : []),
     [parsed, keep])
+  /* 체크를 푼 것은 지금 값을 지키므로 「바뀌는 약품」에서 뺀다 */
+  const stockShown = useMemo(
+    () => (parsed ? parsed.stockChanges.filter(x => !keep.has(x.code)) : []),
+    [parsed, keep])
 
   async function onPick(e) {
     const picked = [...(e.target.files || [])]; e.target.value = ''
@@ -188,6 +192,65 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
                   {parsed.bad.length > 0 && badge('숫자 아님 ' + parsed.bad.length.toLocaleString(), t.redL, t.red)}
                   {parsed.dateLike.length > 0 && badge('날짜로 바뀐 코드 ' + parsed.dateLike.length.toLocaleString(), t.redL, t.red)}
                 </div>
+
+                {/* ★ 안전재고·최대재고가 바뀌는 약품 — 최근3개월·전년을 올릴 때만 뜬다.
+                      그 두 칸은 월평균을 다시 계산하고, 월평균이 바뀌면 **발주 기준**이 따라 바뀐다.
+                      여기서도 체크를 풀면 그 약품은 지금 값을 지킨다(0 목록과 같은 keep 을 쓴다). */}
+                {stockShown.length > 0 && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>
+                      ⚑ 안전재고·최대재고가 바뀌는 약품 {badge(stockShown.length.toLocaleString() + '종', t.amberL, t.amber)}
+                      <span style={{ fontWeight: 500, color: t.textM }}> · 월평균이 다시 계산되어 발주 기준이 바뀝니다</span>
+                    </div>
+                    <div style={{ maxHeight: 190, overflowY: 'auto', border: `1px solid ${t.border}`, borderRadius: 8 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead><tr>
+                          <th style={{ ...th, width: 34, textAlign: 'center' }}>
+                            <input type="checkbox" checked={stockShown.every(x => !keep.has(x.code))}
+                              onChange={e => setKeep(p => {
+                                const n = new Set(p)
+                                for (const x of parsed.stockChanges) e.target.checked ? n.delete(x.code) : n.add(x.code)
+                                return n
+                              })} />
+                          </th>
+                          <th style={th}>약품코드</th><th style={th}>약품명</th>
+                          <th style={{ ...th, textAlign: 'right' }}>월평균</th>
+                          <th style={{ ...th, textAlign: 'right' }}>안전재고</th>
+                          <th style={{ ...th, textAlign: 'right' }}>최대재고</th>
+                        </tr></thead>
+                        <tbody>
+                          {parsed.stockChanges.slice(0, PREVIEW_MAX).map(x => (
+                            <tr key={x.code}>
+                              <td style={{ ...td, textAlign: 'center' }}>
+                                <input type="checkbox" checked={!keep.has(x.code)} onChange={() => setKeep(p => {
+                                  const n = new Set(p); n.has(x.code) ? n.delete(x.code) : n.add(x.code); return n
+                                })} />
+                              </td>
+                              <td style={{ ...td, textAlign: 'left' }}>{x.code}</td>
+                              <td style={{ ...td, textAlign: 'left', color: t.text, fontWeight: 500 }}>{x.name}</td>
+                              <td style={{ ...td, textAlign: 'right' }}>
+                                {x.maBefore == null ? '-' : x.maBefore.toLocaleString()}
+                                <span style={{ color: t.textL }}> → </span>
+                                <b style={{ color: t.accent }}>{x.maAfter.toLocaleString()}</b></td>
+                              <td style={{ ...td, textAlign: 'right' }}>
+                                {x.safetyBefore == null ? '-' : x.safetyBefore.toLocaleString()}
+                                <span style={{ color: t.textL }}> → </span>
+                                <b style={{ color: t.accent }}>{x.safetyAfter.toLocaleString()}</b></td>
+                              <td style={{ ...td, textAlign: 'right' }}>
+                                {x.maxBefore == null ? '-' : x.maxBefore.toLocaleString()}
+                                <span style={{ color: t.textL }}> → </span>
+                                <b style={{ color: t.accent }}>{x.maxAfter.toLocaleString()}</b></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {parsed.stockChanges.length > PREVIEW_MAX && (
+                        <div style={{ padding: '8px 10px', fontSize: 11, color: t.textM }}>
+                          … 그 밖 {(parsed.stockChanges.length - PREVIEW_MAX).toLocaleString()}종
+                        </div>)}
+                    </div>
+                  </div>
+                )}
 
                 {parsed.dateLike.length > 0 && (
                   <div style={{ background: t.redL, border: `1px solid ${t.red}`, borderRadius: 8, padding: '8px 12px',

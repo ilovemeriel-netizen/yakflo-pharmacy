@@ -10,6 +10,7 @@ import { resolve } from 'node:path'
 import {
   normCode, findHeaderRow, mapColumns, looksLikeDate, toNum,
   readSheet, mergeRows, buildPreview, confirmText, FIELD_LABEL,
+  calcStock, SAFETY_FACTOR, MAX_FACTOR,
 } from './usageParse.js'
 
 describe('약품코드 다듬기 — App.jsx 와 같은 규칙', () => {
@@ -220,5 +221,47 @@ describe('0108 app_save_usage_bulk — 소스로 못 박는다', () => {
   it('실행 권한을 좁힌다 — anon 회수 · authenticated 유지', () => {
     expect(CODE).toContain('from anon')
     expect(CODE).toContain('to authenticated')
+  })
+})
+
+/* ── 안전재고·최대재고가 바뀌는 약품 (2026-11-04 결정 3) ────────────────── */
+describe('안전재고·최대재고 변경 묶음', () => {
+  const drugs = [
+    { drug_code: 'A', drug_name: '가', status: '사용', recent_3m_usage: 300, monthly_avg: 100, safety_stock: 120, max_stock: 300 },
+    { drug_code: 'B', drug_name: '나', status: '사용', recent_3m_usage: 60, monthly_avg: 20, safety_stock: 24, max_stock: 60 },
+  ]
+  it('★ 직전1개월을 올릴 때는 빈 배열 — 그 칸은 월평균을 건드리지 않는다', () => {
+    const p = buildPreview(drugs, [{ code: 'A', value: 50, parts: 1 }], 'recent_1m_usage')
+    expect(p.stockChanges).toEqual([])
+  })
+  it('★ 최근3개월을 올리면 바뀌는 약품만 모은다', () => {
+    const p = buildPreview(drugs, [{ code: 'A', value: 600, parts: 1 }], 'recent_3m_usage')
+    const a = p.stockChanges.find(x => x.code === 'A')
+    expect(a, 'A 는 월평균 100→200 이라 바뀐다').toBeTruthy()
+    expect([a.maBefore, a.maAfter]).toEqual([100, 200])
+    expect([a.safetyBefore, a.safetyAfter], 'ceil(×1.2)').toEqual([120, 240])
+    expect([a.maxBefore, a.maxAfter], 'round(×3)').toEqual([300, 600])
+  })
+  it('값이 같으면 목록에 넣지 않는다', () => {
+    const p = buildPreview(drugs, [{ code: 'A', value: 300, parts: 1 }], 'recent_3m_usage')
+    expect(p.stockChanges.find(x => x.code === 'A'), '300 → 월평균 100 그대로').toBeFalsy()
+  })
+  it('★ 0 이 될 약품도 넣는다 — 월평균이 0 이 되면 발주 기준이 사라진다', () => {
+    const p = buildPreview(drugs, [{ code: 'A', value: 300, parts: 1 }], 'recent_3m_usage')
+    const b = p.stockChanges.find(x => x.code === 'B')
+    expect(b, 'B 는 파일에 없어 0 이 된다').toBeTruthy()
+    expect([b.maBefore, b.maAfter]).toEqual([20, 0])
+    expect([b.safetyAfter, b.maxAfter]).toEqual([0, 0])
+  })
+  it('전년을 올리면 ÷12 로 센다', () => {
+    const p = buildPreview(drugs, [{ code: 'A', value: 2400, parts: 1 }], 'prev_year_usage')
+    const a = p.stockChanges.find(x => x.code === 'A')
+    expect(a.maAfter, 'round(2400/12)').toBe(200)
+  })
+  it('계산식은 화면·DB 와 같은 값이다', () => {
+    expect(SAFETY_FACTOR).toBe(1.2)
+    expect(MAX_FACTOR).toBe(3)
+    expect(calcStock(100)).toEqual({ safety: 120, max: 300 })
+    expect(calcStock(null)).toEqual({ safety: null, max: null })
   })
 })
