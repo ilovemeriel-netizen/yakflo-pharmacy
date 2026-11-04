@@ -23,7 +23,10 @@ import { buildNarcoticPreview, calendarWindow } from './lib/narcoticUsagePreview
 
 const num = v => (v == null ? '—' : Number(v).toLocaleString())
 
-export default function NarcoticUsageModal({ t, drugs, onClose }) {
+/* ★ Confirm = 부모가 넘겨 주는 `CountConfirmModal`(App.jsx:5676).
+     import 하지 않고 prop 으로 받는다 — App.jsx 가 이 파일을 import 하므로
+     거꾸로 import 하면 **순환 import** 가 된다. 부품은 같은 것을 그대로 쓴다. */
+export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager, onReload, Confirm }) {
   const now = new Date()
   /* 기준월 기본값 = 지난달. 월마감을 매월 초에 전달 것으로 하므로 그 달이 궁금한 달이다. */
   const [year, setYear] = useState(() => (now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()))
@@ -59,7 +62,26 @@ export default function NarcoticUsageModal({ t, drugs, onClose }) {
 
   const ready = loaded != null && loaded.key === key
   const txns = ready ? loaded.rows : null
-  const err = ready ? loaded.err : ''
+  const readErr = ready ? loaded.err : ''
+
+  /* ── 적용 (B-2) — 이 창에서 **버튼을 눌러야만** 돈다. 출고를 입력할 때 저절로 돌지 않는다. ── */
+  const [confirming, setConfirming] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [applyErr, setApplyErr] = useState('')
+  const [result, setResult] = useState(null)
+  const err = readErr || applyErr
+
+  async function apply() {
+    setConfirming(false); setApplying(true); setApplyErr(''); setResult(null)
+    const { data, error } = await supabase.rpc('app_recompute_usage', {
+      p_overwrite_manual: false, p_scope: 'narcotic', p_year: year, p_month: month,
+    })
+    setApplying(false)
+    if (error) { setApplyErr('적용하지 못했습니다: ' + error.message); return }
+    setResult(Number(data || 0))
+    /* 약품 목록을 다시 읽으면 위 표가 저절로 「달라지는 약품 0종」이 된다 */
+    onReload?.()
+  }
 
   const p = useMemo(
     () => (txns == null ? null : buildNarcoticPreview(drugs, txns, year, month)),
@@ -221,17 +243,56 @@ export default function NarcoticUsageModal({ t, drugs, onClose }) {
           </table>
         </div>
 
+        {/* 적용 결과 — 기존 초록 안내 띠와 같은 모양 */}
+        {result != null && (
+          <div style={{ marginTop: 14, background: t.greenL, border: `1px solid ${t.green}`, borderRadius: 8,
+            padding: '10px 14px', color: t.green, fontSize: 12, fontWeight: 600, lineHeight: 1.7 }}>
+            적용 완료 — {year}년 {month}월 기준으로 <b>{num(result)}종</b>을 다시 셌습니다.
+            {result === 0 ? ' 바뀐 것이 없습니다(이미 같은 값입니다).' : ' 위 표가 다시 계산됐습니다.'}
+          </div>
+        )}
+
         <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between',
           alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 11, color: t.textM, lineHeight: 1.7 }}>
-            이 숫자를 실제로 넣으려면 <b>따로 승인</b>이 필요합니다 — 안전재고·최대재고가 바뀌면
-            발주 기준이 함께 바뀌기 때문입니다.
+            {isTenantManager
+              ? <>안전재고·최대재고가 바뀌면 <b>발주 기준</b>이 함께 바뀝니다. 적용하기 전에 위 숫자를 봐 주십시오.
+                  <br />출고를 입력할 때는 <b>저절로 계산되지 않습니다</b> — 이 단추로만 돕니다.</>
+              : <>이 숫자를 실제로 넣는 것은 <b>관리자만</b> 할 수 있습니다.</>}
           </div>
-          <button onClick={onClose} style={{ padding: '8px 16px', borderRadius: 8,
-            border: `1px solid ${t.border}`, background: 'transparent', color: t.textM,
-            cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>닫기</button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {/* ★ owner·admin 에게만 **DOM 에도** 둔다 — 사용량 단추 5곳과 같은 기준 */}
+            {isTenantManager && (
+              <button onClick={() => setConfirming(true)} disabled={applying || !p.rows.length}
+                style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${t.accent}`,
+                  background: t.accent, color: '#fff', cursor: (applying || !p.rows.length) ? 'default' : 'pointer',
+                  fontSize: 12, fontWeight: 700, opacity: (applying || !p.rows.length) ? 0.5 : 1 }}>
+                {applying ? '적용 중…' : `${year}년 ${month}월 기준으로 적용`}
+              </button>
+            )}
+            <button onClick={onClose} style={{ padding: '8px 16px', borderRadius: 8,
+              border: `1px solid ${t.border}`, background: 'transparent', color: t.textM,
+              cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>닫기</button>
+          </div>
         </div>
       </>}
+
+      {/* ★ 확인 창 — 부모가 넘긴 기존 CountConfirmModal 을 그대로 쓴다(새 모양·새 색 없음).
+            되돌릴 수 없는 조작이므로 escClose·focusCancel 을 켠다(실사 삭제와 같은 취급). */}
+      {confirming && p && Confirm && (
+        <Confirm t={t} title="마약·향정 사용량 적용" tone={t.purple} busy={applying}
+          head={`${year}년 ${month}월 기준으로 ${num(p.rows.length)}종을 다시 셉니다`}
+          meta={`직전1개월 ${p.label.m1} · 최근3개월 ${p.label.m3}`}
+          strong={`값이 바뀌는 약품 ${num(p.moved.length)}종`}
+          body={<>
+            마약·향정의 직전1개월·최근3개월을 <b>약플로 출고</b>로 다시 적습니다.
+            전년사용량과 한외마약은 바뀌지 않습니다.
+            {p.lost.length > 0 && <><br /><b>값이 0 이 되는 약품 {num(p.lost.length)}종</b>이 있습니다.</>}
+            <br />안전재고·최대재고가 함께 바뀌어 <b>발주 기준</b>이 달라집니다. 계속할까요?
+          </>}
+          confirm="적용" escClose focusCancel
+          onClose={() => setConfirming(false)} onConfirm={apply} />
+      )}
     </div>
   </div>
 }

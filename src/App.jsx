@@ -2411,7 +2411,8 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
         onConfirm={()=>{setRecomfirm(false);recomputeUsage()}} />}
       {uOpen&&<UsageUploadModal t={t} isTenantManager={isTenantManager} drugs={drugs}
         onClose={()=>setUOpen(false)} onReload={onReload} onBulkFile={f=>uploadUsage(f)} />}
-      {npOpen&&<NarcoticUsageModal t={t} drugs={drugs} onClose={()=>setNpOpen(false)} />}
+      {npOpen&&<NarcoticUsageModal t={t} drugs={drugs} onClose={()=>setNpOpen(false)}
+        isTenantManager={isTenantManager} onReload={onReload} Confirm={CountConfirmModal} />}
     </div><Ft/>
   </div>
 }
@@ -5684,7 +5685,9 @@ function InventoryCountDetail({ t, r, items, drugMap, bookOf, q, onQ, found, sea
 
 /* 실사 확인 모달 — 반영·되돌리기·삭제가 함께 쓴다. 훅A(useDraggableModal · 함정 #13).
    reason 이 넘어오면 사유 입력칸을 보여준다 — ★ 선택 입력이라 비워도 저장된다. */
-function CountConfirmModal({ t, title, tone, head, meta, strong, body, confirm, busy, onClose, onConfirm, reason, setReason, escClose, focusCancel, altLabel, onAlt }) {
+/* ★ export — NarcoticUsageModal 이 **이 부품 그대로** 쓰도록 부모가 prop 으로 넘긴다.
+   (그 파일이 직접 import 하면 순환 import 가 된다. 시험도 이 진짜 부품을 쓴다.) */
+export function CountConfirmModal({ t, title, tone, head, meta, strong, body, confirm, busy, onClose, onConfirm, reason, setReason, escClose, focusCancel, altLabel, onAlt }) {
   /* ★ escClose·focusCancel 은 **덧붙인 선택지**다 — 넘기지 않으면 기존 3곳(재고반영·되돌리기·
      실사 삭제)은 한 글자도 달라지지 않는다. 되돌릴 수 없는 조작에만 켠다. */
   const _cancel = useRef(null)

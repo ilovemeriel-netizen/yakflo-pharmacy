@@ -48,16 +48,26 @@ const TX = [
   { drug_code: 'CHNS', type: '출고', transaction_date: '2026-10-31', quantity: 768 },
 ]
 
-let Modal
+/* ★ 확인 창은 **진짜 부품**(App.jsx 의 CountConfirmModal)을 쓴다 — 흉내낸 것을 쓰면
+     「취소를 누르면 안 돈다」 같은 것이 실제로 지켜지는지 확인하지 못한다. */
+vi.mock('./lib/theme', async (orig) => {
+  const real = await orig()
+  return { ...real, useTheme: () => ({ t: T, dark: false, setTheme: () => {}, memberRole: 'owner', profile: { role: 'user' } }) }
+})
+
+let Modal, Confirm
 beforeEach(async () => {
   calls.length = 0
   vi.setSystemTime(new Date('2026-11-04T09:00:00+09:00'))
-  if (!Modal) Modal = (await import('./NarcoticUsageModal.jsx')).default
+  if (!Modal) {
+    Modal = (await import('./NarcoticUsageModal.jsx')).default
+    Confirm = (await import('./App.jsx')).CountConfirmModal
+  }
 })
 afterEach(() => { cleanup(); vi.useRealTimers() })
 
-const open = async () => {
-  render(<Modal t={T} drugs={DRUGS} onClose={() => {}} />)
+const open = async (props = {}) => {
+  render(<Modal t={T} drugs={DRUGS} onClose={() => {}} Confirm={Confirm} {...props} />)
   await screen.findByText(/달력 기준으로 다시 세면/)
 }
 
@@ -160,17 +170,73 @@ describe('★ 잣대가 섞이는 약품', () => {
   })
 })
 
-describe('적용은 따로', () => {
-  it('이 창에는 적용 단추가 없다 — 닫기뿐이다', async () => {
-    await open()
+/* ═══ B-2 — 적용 단추 ═══
+   ★ 여기서 보는 것은 「눌러야만 돈다」와 「누구에게 보이나」다.
+     B-1 때는 이 창에 적용 단추가 **없었다**. 2026-11-04 이정화 님 승인으로 더했고,
+     그래서 위쪽 「★ 쓰지 않는다」 묶음은 **단추를 누르지 않은 상태**를 지킨다. */
+const CONFIRM_LABEL = '적용'
+describe('B-2 — 적용 단추', () => {
+  it('★ 일반 직원에게는 DOM 에도 없다', async () => {
+    await open({ isTenantManager: false })
     const labels = [...document.querySelectorAll('button')].map(b => b.textContent.trim())
-    expect(labels).not.toContain('적용')
-    expect(labels).not.toContain('등록')
-    expect(labels).not.toContain('저장')
+    expect(labels.some(x => /기준으로 적용$/.test(x))).toBe(false)
     expect(labels).toContain('닫기')
+    expect(document.body.textContent).toMatch(/관리자만/)
   })
-  it('따로 승인이 필요하다고 적는다', async () => {
-    await open()
-    expect(screen.getByText(/따로 승인/)).toBeTruthy()
+  it('관리자에게는 기준월이 적힌 단추가 보인다', async () => {
+    await open({ isTenantManager: true })
+    expect(screen.getByText('2026년 10월 기준으로 적용')).toBeTruthy()
+  })
+  it('★ 누르기 전에는 RPC 가 나가지 않는다', async () => {
+    await open({ isTenantManager: true })
+    expect(calls.filter(c => c[0] === 'rpc')).toEqual([])
+  })
+  it('★ 한 번 더 묻는다 — 바로 돌지 않는다', async () => {
+    await open({ isTenantManager: true })
+    fireEvent.click(screen.getByText('2026년 10월 기준으로 적용'))
+    expect(screen.getByText('마약·향정 사용량 적용')).toBeTruthy()
+    /* 이 표본의 마약·향정은 3종이다(운영은 29종) — 수를 화면이 세어 적는지를 본다 */
+    expect(screen.getByText('2026년 10월 기준으로 3종을 다시 셉니다')).toBeTruthy()
+    expect(screen.getByText('값이 바뀌는 약품 1종')).toBeTruthy()
+    expect(screen.getByText(/직전1개월 2026-10-01 ~ 2026-10-31/)).toBeTruthy()
+    expect(calls.filter(c => c[0] === 'rpc'), '아직 안 돈다').toEqual([])
+  })
+  it('확인 창에서 취소하면 돌지 않는다', async () => {
+    await open({ isTenantManager: true })
+    fireEvent.click(screen.getByText('2026년 10월 기준으로 적용'))
+    fireEvent.click(screen.getByText('취소'))
+    expect(calls.filter(c => c[0] === 'rpc')).toEqual([])
+    expect(screen.queryByText('마약·향정 사용량 적용')).toBeNull()
+  })
+  it('★ 확인하면 고른 기준월로 narcotic 범위만 부른다', async () => {
+    await open({ isTenantManager: true })
+    fireEvent.click(screen.getByText('2026년 10월 기준으로 적용'))
+    fireEvent.click(screen.getByText(CONFIRM_LABEL))
+    await waitFor(() => expect(calls.filter(c => c[0] === 'rpc').length).toBe(1))
+    const [, name, args] = calls.find(c => c[0] === 'rpc')
+    expect(name).toBe('app_recompute_usage')
+    expect(args).toEqual({ p_overwrite_manual: false, p_scope: 'narcotic', p_year: 2026, p_month: 10 })
+  })
+  it('기준월을 바꾸면 그 달로 부른다', async () => {
+    await open({ isTenantManager: true })
+    fireEvent.change(screen.getByDisplayValue('10월'), { target: { value: '9' } })
+    await waitFor(() => expect(screen.getByText('2026년 9월 기준으로 적용')).toBeTruthy())
+    fireEvent.click(screen.getByText('2026년 9월 기준으로 적용'))
+    fireEvent.click(screen.getByText(CONFIRM_LABEL))
+    await waitFor(() => expect(calls.filter(c => c[0] === 'rpc').length).toBe(1))
+    expect(calls.find(c => c[0] === 'rpc')[2].p_month).toBe(9)
+  })
+  it('끝나면 결과를 알리고 약품 목록을 다시 읽는다', async () => {
+    const onReload = vi.fn()
+    await open({ isTenantManager: true, onReload })
+    fireEvent.click(screen.getByText('2026년 10월 기준으로 적용'))
+    fireEvent.click(screen.getByText(CONFIRM_LABEL))
+    await screen.findByText(/적용 완료/)
+    expect(document.body.textContent).toMatch(/2026년 10월 기준으로/)
+    expect(onReload).toHaveBeenCalledTimes(1)
+  })
+  it('출고를 입력할 때는 저절로 돌지 않는다고 적는다', async () => {
+    await open({ isTenantManager: true })
+    expect(document.body.textContent.replace(/\s+/g, ' ')).toMatch(/저절로 계산되지 않습니다/)
   })
 })
