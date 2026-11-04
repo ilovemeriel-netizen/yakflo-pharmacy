@@ -11,7 +11,7 @@
 
    ★ 저장은 DB 함수 하나(app_save_usage_bulk)로 **한 번에** 한다.
      지금처럼 줄마다 저장하면 중간에 끊겼을 때 절반만 들어간 상태가 남는다. */
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import {
   readSheet, mergeRows, buildPreview, confirmText, FIELD_LABEL,
@@ -34,12 +34,28 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
   /* 원내 코드 → 약플로 코드. 고치면 **0 목록 계산 앞에** 반영되어 그 약품이 0 에서 빠진다. */
   const [remap, setRemap] = useState({})
   const [draft, setDraft] = useState({})
+  /* 저장해 둔 코드 짝 — 올릴 때 **자동으로** 연결된다(usage_code_alias) */
+  const [alias, setAlias] = useState(null)        /* { 원내코드: 약플로코드 } · null = 아직 안 읽음 */
+  const [rememberOff, setRememberOff] = useState(() => new Set())  /* 「다음에도 기억」을 끈 원내코드 */
   const [year, setYear] = useState(() => new Date().getFullYear())
   const [month, setMonth] = useState(() => new Date().getMonth() || 12)
   const [applying, setApplying] = useState(false)
   const [result, setResult] = useState(null)
   const [confirming, setConfirming] = useState(false)
   const fRef = useRef(), bRef = useRef()
+
+  /* 저장해 둔 짝을 한 번 읽는다. 못 읽어도 화면은 돌아간다(빈 짝으로 둔다). */
+  useEffect(() => {
+    let dead = false
+    supabase.from('usage_code_alias').select('alias_code,drug_code').then(({ data, error }) => {
+      if (dead) return
+      if (error) { setAlias({}); return }
+      const m = {}
+      for (const r of (data || [])) m[String(r.alias_code).trim().toUpperCase()] = r.drug_code
+      setAlias(m)
+    })
+    return () => { dead = true }
+  }, [])
 
   const parsed = useMemo(() => {
     if (!files.length) return null
@@ -48,9 +64,13 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
     const m = mergeRows(good.map(f => ({ label: f.name, rows: f.rows })))
     /* ★ 고친 코드를 **먼저** 반영한 뒤 미리보기를 만든다 — 순서가 뒤집히면
        방금 짝지은 약품이 「0 으로 바뀔 목록」에 남는다. */
-    const merged = applyRemap(m.merged, remap)
-    return { ...m, merged, ...buildPreview(drugs, merged, field) }
-  }, [files, drugs, field, remap])
+    /* ★ 저장된 짝을 **먼저** 붙이고, 이번에 손으로 고친 것을 그 위에 얹는다.
+       손으로 고친 쪽이 이겨야 「이번만 다르게」가 된다. */
+    const auto = alias || {}
+    const hit = m.merged.filter(x => auto[x.code] && !remap[x.code]).length
+    const merged = applyRemap(m.merged, { ...auto, ...remap })
+    return { ...m, merged, autoCount: hit, ...buildPreview(drugs, merged, field) }
+  }, [files, drugs, field, remap, alias])
 
   const zeroTargets = useMemo(
     () => (parsed ? parsed.zeros.filter(z => !keep.has(z.code)) : []),
@@ -89,6 +109,15 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
     setConfirming(false); setApplying(true); setErr('')
     const rowKey = field === 'prev_year_usage' ? 'py' : field === 'recent_3m_usage' ? 'r3' : 'r1'
     const rows = parsed.changes.map(c => ({ code: c.code, [rowKey]: c.after }))
+    /* ★ 이번에 손으로 고친 짝 중 「다음에도 기억」이 켜진 것을 먼저 저장한다.
+       실패해도 등록은 이어 간다 — 짝은 다음에 다시 지으면 되지만 사용량은 지금 넣어야 한다. */
+    const toRemember = Object.entries(remap).filter(([a]) => !rememberOff.has(a))
+    if (toRemember.length) {
+      const { error: aErr } = await supabase.from('usage_code_alias')
+        .upsert(toRemember.map(([alias_code, drug_code]) => ({ alias_code, drug_code })),
+          { onConflict: 'tenant_id,alias_code' })
+      if (aErr) setErr('코드 짝을 저장하지 못했습니다(사용량 등록은 이어 갑니다): ' + aErr.message)
+    }
     const { data, error } = await supabase.rpc('app_save_usage_bulk', {
       p_fields: [field],
       p_rows: rows,
@@ -194,6 +223,7 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
                   <div style={{ fontSize: 12, fontWeight: 700, color: t.text }}>③ 미리보기</div>
                   {badge('변경 ' + parsed.changes.length.toLocaleString() + '종', t.blueL, t.blue)}
                   {zeroTargets.length > 0 && badge('0 으로 ' + zeroTargets.length.toLocaleString() + '종', t.amberL, t.amber)}
+                  {parsed.autoCount > 0 && badge('자동 연결 ' + parsed.autoCount.toLocaleString() + '건', t.greenL, t.green)}
                   {parsed.mergedCount > 0 && badge('중복 합산 ' + parsed.mergedCount.toLocaleString(), t.purpleL, t.purple)}
                   {parsed.unmatched.length > 0 && badge('없는 코드 ' + parsed.unmatched.length.toLocaleString(), t.redL, t.red)}
                   {parsed.bad.length > 0 && badge('숫자 아님 ' + parsed.bad.length.toLocaleString(), t.redL, t.red)}
@@ -233,7 +263,11 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
                                       borderRadius: 6, fontSize: 11, background: t.bg, color: t.text, outline: 'none' }} />
                                   {sg[0] && <span style={{ fontSize: 10, color: t.textM, marginLeft: 6 }}>{sg[0].name}</span>}
                                 </td>
-                                <td style={{ ...td, textAlign: 'center' }}>
+                                <td style={{ ...td, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                  <label style={{ fontSize: 10, color: t.textM, marginRight: 6, cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={!rememberOff.has(u.code)} onChange={() => setRememberOff(p => {
+                                      const n = new Set(p); n.has(u.code) ? n.delete(u.code) : n.add(u.code); return n
+                                    })} /> 다음에도 기억</label>
                                   <button onClick={() => {
                                     const v = String(draft[u.code] ?? (sg[0] ? sg[0].code : '')).trim()
                                     if (v) setRemap(p => ({ ...p, [u.code]: v }))

@@ -8,7 +8,15 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const rpc = vi.fn(async () => ({ data: { saved: 2, zeroed: 3, unmatched: [] }, error: null }))
-vi.mock('./lib/supabase', () => ({ supabase: { rpc: (...a) => rpc(...a) } }))
+const aliasRows = []
+const upsert = vi.fn(async () => ({ error: null }))
+vi.mock('./lib/supabase', () => ({ supabase: {
+  rpc: (...a) => rpc(...a),
+  from: () => ({
+    select: () => Promise.resolve({ data: aliasRows, error: null }),
+    upsert: (...a) => upsert(...a),
+  }),
+} }))
 
 const T = {
   bg: '#F7F6F3', card: '#FFF', cardSolid: '#FFF', border: '#E8E6E1', borderH: '#D7D7D7',
@@ -170,5 +178,63 @@ describe('⑥ 새 색을 들이지 않았다', () => {
     const seg = src.slice(i, i + 320)
     expect(seg).not.toContain('p_year')
     expect(seg).not.toContain('p_month')
+  })
+})
+
+/* ── 코드 짝 기억하기 (0110) ─────────────────────────────────────────────── */
+describe('⑦ 저장된 코드 짝', () => {
+  const AOA = [['약품코드', '약 품 명', '실사용량'], ['2-APR', '알프람정0.25mg(알프라졸람)', '12']]
+  const DRUGS2 = [
+    { drug_code: 'APR2', drug_name: '알프람정0.25mg', status: '사용', recent_1m_usage: 5 },
+    { drug_code: 'B', drug_name: '나', status: '사용', recent_1m_usage: 9 },
+  ]
+  beforeEach(() => { aliasRows.length = 0; upsert.mockClear() })
+
+  it('★ 저장된 짝이 있으면 자동으로 연결되고 뱃지가 뜬다', async () => {
+    aliasRows.push({ alias_code: '2-APR', drug_code: 'APR2' })
+    render(<Modal t={T} isTenantManager drugs={DRUGS2} onClose={() => {}} onReload={() => {}} onBulkFile={() => {}} />)
+    await pickFile(AOA)
+    expect(screen.getByText('자동 연결 1건')).toBeTruthy()
+    expect(screen.queryByText(/약품목록에 없는 코드/), '고칠 것이 없다').toBeFalsy()
+    expect(screen.getByText('변경 1종')).toBeTruthy()
+  })
+  it('★ 저장된 짝이 없으면 고치기 칸이 뜬다 — 「다음에도 기억」은 기본 켬', async () => {
+    render(<Modal t={T} isTenantManager drugs={DRUGS2} onClose={() => {}} onReload={() => {}} onBulkFile={() => {}} />)
+    await pickFile(AOA)
+    expect(screen.queryByText('자동 연결 1건')).toBeFalsy()
+    const box = screen.getByText('다음에도 기억').querySelector('input')
+    expect(box.checked, '기본 켬').toBe(true)
+  })
+  it('★ 고친 짝을 등록하면 usage_code_alias 에 저장된다', async () => {
+    render(<Modal t={T} isTenantManager drugs={DRUGS2} onClose={() => {}} onReload={() => {}} onBulkFile={() => {}} />)
+    await pickFile(AOA)
+    fireEvent.click(screen.getByText('고치기'))
+    fireEvent.click(screen.getByText('등록'))
+    const dlg = screen.getByText(/직전1개월사용량을 등록합니다/).closest('div').parentElement
+    fireEvent.click(within(dlg).getByText('등록'))
+    await screen.findByText(/등록 완료/)
+    expect(upsert).toHaveBeenCalledTimes(1)
+    expect(upsert.mock.calls[0][0]).toEqual([{ alias_code: '2-APR', drug_code: 'APR2' }])
+  })
+  it('★ 「다음에도 기억」을 끄면 저장하지 않는다 — 이번만 쓴다', async () => {
+    render(<Modal t={T} isTenantManager drugs={DRUGS2} onClose={() => {}} onReload={() => {}} onBulkFile={() => {}} />)
+    await pickFile(AOA)
+    fireEvent.click(screen.getByText('다음에도 기억').querySelector('input'))
+    fireEvent.click(screen.getByText('고치기'))
+    fireEvent.click(screen.getByText('등록'))
+    const dlg = screen.getByText(/직전1개월사용량을 등록합니다/).closest('div').parentElement
+    fireEvent.click(within(dlg).getByText('등록'))
+    await screen.findByText(/등록 완료/)
+    expect(upsert, '짝은 저장하지 않는다').not.toHaveBeenCalled()
+    expect(rpc, '사용량은 그래도 등록한다').toHaveBeenCalled()
+  })
+  it('★ 이번에 손으로 고친 쪽이 저장된 짝을 이긴다', async () => {
+    aliasRows.push({ alias_code: '2-APR', drug_code: 'B' })
+    render(<Modal t={T} isTenantManager drugs={DRUGS2} onClose={() => {}} onReload={() => {}} onBulkFile={() => {}} />)
+    await pickFile(AOA)
+    /* 자동으로 B 에 붙었지만 이번엔 APR2 로 바꾼다 — 고치기 칸이 없으므로 미리보기로 확인 */
+    expect(screen.getByText('자동 연결 1건')).toBeTruthy()
+    const row = screen.getByText('나').closest('tr')
+    expect(within(row).getByText('12'), 'B 에 붙었다').toBeTruthy()
   })
 })
