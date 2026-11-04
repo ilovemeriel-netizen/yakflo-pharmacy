@@ -187,9 +187,12 @@ describe('③ 조건을 소스로 못 박는다', () => {
     expect(line, "profile?.role 을 보면 DB 기준과 어긋난다").not.toContain('profile')
   })
 
+  /* ★ 2026-11-04 — 「사용량 올리기」가 파일 입력을 바로 여는 대신 **등록 모달**을 연다.
+       묶인 조건(isTenantManager)은 그대로다. 모달 안의 「등록」 단추도 같은 조건을 보고,
+       DB(0108)가 다시 판정하므로 화면만 숨기는 것이 아니다. */
   it('★ 사용량 단추 2곳이 isTenantManager 로 묶였다', () => {
     expect(APP).toContain('{isTenantManager&&<button onClick={dlUsageTemplate}')
-    expect(APP).toContain('{isTenantManager&&<button onClick={()=>uRef.current.click()}')
+    expect(APP).toContain('{isTenantManager&&<button onClick={()=>setUOpen(true)}')
   })
 
   it('★ 출고관리 canDel 은 **그대로** 두고 탭별로 갈랐다', () => {

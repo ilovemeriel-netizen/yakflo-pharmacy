@@ -23,6 +23,7 @@ import EmergencyDispense from './EmergencyDispense'
 /* ★ 지연 로드 — 직접 import 하면 백신 화면이 전 사용자 초기 번들에 실린다. */
 const VaccineManage = lazy(() => import('./VaccineManage'))
 import BulkUploadModal from './BulkUploadModal'
+import UsageUploadModal from './UsageUploadModal'
 import ColumnSelector from './ColumnSelector'
 import GnbSearch from './GnbSearch'
 import { useDraggableModal } from './useDraggableModal'
@@ -2225,7 +2226,7 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
   const[surge,setSurge]=useState(SURGE_ALL)   /* 급변 필터 — 머리글 메뉴와 칩이 **이 하나**를 같이 쓴다 */
   const[xlAsk,setXlAsk]=useState(false)              /* 엑셀 범위 선택 창 */
-  const[uMsg,setUMsg]=useState(null);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});const[uBusy,setUBusy]=useState(false)
+  const[uMsg,setUMsg]=useState(null);const[uOpen,setUOpen]=useState(false);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});const[uBusy,setUBusy]=useState(false)
   /* ★ 아직 저장 안 한 값이 있으면 새 배포 자동 적용을 미룬다(화면에 그리는 것은 없다) */
   useBusy('stock-drafts', Object.keys(drafts).length > 0)
   useEffect(()=>{if(nf?.filter){setFilter(nf.filter);setPage(1)}},[nf])
@@ -2264,7 +2265,8 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
   function dlAsk(){if(surge===SURGE_ALL){dl('view');return}setXlAsk(true)}
   /* 대량등록: 파싱→검증(숫자·매칭)→검토(미반영)→확정 시 RLS 일괄 UPDATE. 연쇄계산은 saveUsage와 동일. */
   async function uploadUsage(e){
-    const file=e.target.files[0];if(!file)return;setURep(null)
+    /* ★ 모달의 [일괄 등록] 탭은 File 을 그대로 넘긴다. 기존 <input onChange> 는 이벤트를 준다. */
+    const file=(e&&e.target&&e.target.files)?e.target.files[0]:e;if(!file)return;setURep(null)
     const reader=new FileReader();reader.onload=ev=>{
       try{
         const wb=XLSX.read(ev.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:false,blankrows:true})
@@ -2338,7 +2340,7 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
         <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} placeholder="검색..." style={{flex:1,minWidth:120,padding:'8px 12px',border:`1px solid ${t.border}`,borderRadius:8,fontSize:12,outline:'none',background:t.bg,color:t.text}}/>
         <button onClick={dlAsk} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>
         {isTenantManager&&<button onClick={dlUsageTemplate} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 양식</button>}
-        {isTenantManager&&<button onClick={()=>uRef.current.click()} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 업로드</button>}
+        {isTenantManager&&<button onClick={()=>setUOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 업로드</button>}
         {canRecompute&&<button onClick={()=>setRecomfirm(true)} disabled={uBusy} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.purpleL,color:t.purple,cursor:uBusy?'default':'pointer',fontSize:11,fontWeight:600,opacity:uBusy?0.6:1}}>{uBusy?'집계 중…':'출고 자동집계'}</button>}
         <input ref={uRef} type="file" accept=".xlsx,.xls" onChange={uploadUsage} style={{display:'none'}}/>
       </div>
@@ -2382,6 +2384,8 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
         body="계속할까요?" confirm="계속" escClose focusCancel
         onClose={()=>setRecomfirm(false)}
         onConfirm={()=>{setRecomfirm(false);recomputeUsage()}} />}
+      {uOpen&&<UsageUploadModal t={t} isTenantManager={isTenantManager} drugs={drugs}
+        onClose={()=>setUOpen(false)} onReload={onReload} onBulkFile={f=>uploadUsage(f)} />}
     </div><Ft/>
   </div>
 }
