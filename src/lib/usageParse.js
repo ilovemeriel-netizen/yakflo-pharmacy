@@ -269,6 +269,34 @@ export function buildStockChanges(drugs, changes, zeros, field) {
   return out
 }
 
+/* ── 마약·향정은 원내 파일로 덮지 않는다 ──────────────────────────────────
+   확정 업무 규칙 9 (2026-11-04 이정화 님) — 마약·향정의 **출고는 NIMS 거래량으로** 입력한다.
+   그래서 직전1개월·최근3개월의 **정본은 약플로 출고**이고 원내(EMR) 파일이 아니다.
+
+   ★ 왜 「마약·향정」만인가 — **한외마약은 뺀다.** NIMS 보고 대상이 아니고, 2026-10 실측에서
+     원내 값과 출고가 **차이 0종**이었다(코포나시럽 768=768 · 코푸정 12=12).
+     일반약과 똑같이 원내 값으로 처리한다.
+   ★ 왜 두 칸만인가 — **전년사용량은 원내 값을 쓴다**(이정화 님 결정 3). NIMS 에서 1년분을
+     눈으로 보기 어렵기 때문이다. 다만 파일에 없을 때 0 으로 만들지는 않는다(keep).
+   ★ 판정은 `drugs.narcotic_type` 하나로 한다 — 약품명·`category` 로 추측하지 않는다
+     (확정 업무 규칙 5). */
+export const NARC_SKIP_TYPES = ['마약', '향정']
+export const NARC_SKIP_FIELDS = ['recent_1m_usage', 'recent_3m_usage']
+export const isNarcSkip = drug => NARC_SKIP_TYPES.includes(String(drug?.narcotic_type ?? '').trim())
+/* 0 방지용 — **칸과 무관하게** 늘 지킨다(전년을 올릴 때도 마약·향정은 0 이 되지 않는다) */
+export function narcCodes(drugs) {
+  return (drugs || []).filter(isNarcSkip).map(d => normCode(d.drug_code))
+}
+/* 고른 칸이 건너뛰는 칸이면 changes 를 둘로 가른다 → { rows, skipped }
+   rows = 저장할 것 · skipped = 「마약·향정 N종 건너뜀(출고 기준)」에 보여 줄 것 */
+export function splitNarcotic(drugs, changes, field) {
+  if (!NARC_SKIP_FIELDS.includes(field)) return { rows: changes || [], skipped: [] }
+  const narc = new Set(narcCodes(drugs))
+  const rows = [], skipped = []
+  for (const c of (changes || [])) (narc.has(c.code) ? skipped : rows).push(c)
+  return { rows, skipped }
+}
+
 /* 확인 문구 — 「2026년 10월분 직전1개월사용량을 등록합니다. 357종 변경, 355종 0으로.」 */
 export const FIELD_LABEL = {
   prev_year_usage: '전년사용량',

@@ -24,6 +24,8 @@ import EmergencyDispense from './EmergencyDispense'
 const VaccineManage = lazy(() => import('./VaccineManage'))
 import BulkUploadModal from './BulkUploadModal'
 import UsageUploadModal from './UsageUploadModal'
+/* 마약·향정 판정은 모달과 **같은 함수 하나**를 쓴다 — 두 곳이 갈리면 탭마다 답이 달라진다 */
+import { narcCodes } from './lib/usageParse'
 import ColumnSelector from './ColumnSelector'
 import GnbSearch from './GnbSearch'
 import { useDraggableModal } from './useDraggableModal'
@@ -2271,8 +2273,11 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
       try{
         const wb=XLSX.read(ev.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:false,blankrows:true})
         const codes=new Set(drugs.map(d=>d.drug_code))
+        /* ★ 마약·향정은 1개월·3개월을 파일 값으로 덮지 않는다(확정 업무 규칙 9) — 개별 등록과 같은 규칙.
+           정본은 NIMS 거래량으로 넣은 출고다. 전년은 원내 값을 쓴다. 한외마약은 해당 없다. */
+        const narc=new Set(narcCodes(drugs))
         const num=v=>{const x=String(v).trim();if(x==='')return undefined;const n=Number(x.replace(/,/g,''));return (Number.isFinite(n)&&n>=0)?n:NaN}
-        const updates=[],unmatched=[],invalid=[]
+        const updates=[],unmatched=[],invalid=[],narcSkipped=[]
         rows.forEach((r,i)=>{
           const ln=i+2
           const code=normDrugCode(r['약품코드']??r['drug_code']);if(!code)return
@@ -2286,16 +2291,25 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
           if(Number.isNaN(r3)){invalid.push({ln,code,name,col:'최근3개월사용량',val:String(r3Raw),pyRaw:String(pyRaw),r3Raw:String(r3Raw)});return}
           if(!Number.isFinite(py)&&!Number.isFinite(r3)&&!Number.isFinite(r1))return
           if(!codes.has(code)){unmatched.push({code,name,py:py===undefined?null:py,r3:r3===undefined?null:r3});return}
+          /* ★ 마약·향정이면 1개월·3개월은 **처음부터 안 담는다**. 담았다가 지우는 게 아니라
+             담지 않으므로, 아래 월평균 계산식은 「3개월이 없는 줄」과 똑같이 흘러간다(식 무변경). */
+          const _skip=narc.has(code)
+          const _r3=_skip?undefined:r3, _r1=_skip?undefined:r1
+          if(_skip&&(Number.isFinite(r3)||Number.isFinite(r1)))narcSkipped.push({code,name,r3:Number.isFinite(r3)?r3:null,r1:Number.isFinite(r1)?r1:null})
+          if(!Number.isFinite(py)&&!Number.isFinite(_r3)&&!Number.isFinite(_r1))return  /* 건너뛰고 나니 넣을 값이 없다 */
           const _upd={usage_source:'manual'}
           if(Number.isFinite(py))_upd.prev_year_usage=py
-          if(Number.isFinite(r3))_upd.recent_3m_usage=r3
-          if(Number.isFinite(r1))_upd.recent_1m_usage=r1
-          if(Number.isFinite(py)||Number.isFinite(r3)){const _rv=Number.isFinite(r3)?r3:null,_pv=Number.isFinite(py)?py:null;let m=null;if(_rv!=null)m=Math.round(_rv/3);else if(_pv!=null)m=Math.round(_pv/12);_upd.monthly_avg=m;_upd.safety_stock=m!=null?Math.ceil(m*SAFETY_FACTOR):null;_upd.max_stock=m!=null?Math.round(m*3):null}
+          if(Number.isFinite(_r3))_upd.recent_3m_usage=_r3
+          if(Number.isFinite(_r1))_upd.recent_1m_usage=_r1
+          if(Number.isFinite(py)||Number.isFinite(_r3)){const _rv=Number.isFinite(_r3)?_r3:null,_pv=Number.isFinite(py)?py:null;let m=null;if(_rv!=null)m=Math.round(_rv/3);else if(_pv!=null)m=Math.round(_pv/12);_upd.monthly_avg=m;_upd.safety_stock=m!=null?Math.ceil(m*SAFETY_FACTOR):null;_upd.max_stock=m!=null?Math.round(m*3):null}
           updates.push({code,upd:_upd})
         })
-        setURep({phase:'review',updates,unmatched,invalid})
+        setURep({phase:'review',updates,unmatched,invalid,narcSkipped})
       }catch(err){setURep({phase:'error',msg:err.message,updates:[],unmatched:[],invalid:[]})}
-    };reader.readAsArrayBuffer(file);e.target.value=''
+    /* ★ 모달의 [일괄 등록] 탭은 File 을 그대로 넘긴다 — 그때는 e.target 이 없다.
+       가드 없이 e.target.value 를 적으면 「Cannot set properties of undefined」가 난다
+       (파일 읽기는 이미 시작됐으므로 화면은 뜨지만, 누를 때마다 예외가 쌓인다). */
+    };reader.readAsArrayBuffer(file);if(e&&e.target)e.target.value=''
   }
   async function applyUsage(){
     if(!uRep||!uRep.updates.length)return
@@ -2306,10 +2320,10 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
     setURep({phase:'done',ok,failed,unmatched:uRep.unmatched,invalid:uRep.invalid,updates:uRep.updates,counts:{py:cPy,r3:cR3,r1:cR1}})
   }
   function setUnmatchedCode(i,v){setURep(p=>({...p,unmatched:p.unmatched.map((x,j)=>j===i?{...x,newCode:v,err:null}:x)}))}
-  function remapUnmatched(i){setURep(p=>{const it=p.unmatched[i];const nc=String(it.newCode??it.code).trim();const cs=new Set(drugs.map(d=>d.drug_code));if(!cs.has(nc))return{...p,unmatched:p.unmatched.map((x,j)=>j===i?{...x,err:'여전히 미매칭'}:x)};const pv=it.py??null,rv=it.r3??null;let m=null;if(rv!=null)m=Math.round(rv/3);else if(pv!=null)m=Math.round(pv/12);const upd={prev_year_usage:pv,recent_3m_usage:rv,monthly_avg:m,safety_stock:m!=null?Math.ceil(m*SAFETY_FACTOR):null,max_stock:m!=null?Math.round(m*3):null,usage_source:'manual'};return{...p,updates:[...p.updates,{code:nc,upd}],unmatched:p.unmatched.filter((_,j)=>j!==i)}})}
+  function remapUnmatched(i){setURep(p=>{const it=p.unmatched[i];const nc=String(it.newCode??it.code).trim();const cs=new Set(drugs.map(d=>d.drug_code));if(!cs.has(nc))return{...p,unmatched:p.unmatched.map((x,j)=>j===i?{...x,err:'여전히 미매칭'}:x)};/* ★ 고쳐 붙인 코드가 마약·향정이면 3개월은 담지 않는다(확정 업무 규칙 9) */const _nq=new Set(narcCodes(drugs));const pv=it.py??null,rv=_nq.has(nc)?null:(it.r3??null);let m=null;if(rv!=null)m=Math.round(rv/3);else if(pv!=null)m=Math.round(pv/12);const upd={prev_year_usage:pv,recent_3m_usage:rv,monthly_avg:m,safety_stock:m!=null?Math.ceil(m*SAFETY_FACTOR):null,max_stock:m!=null?Math.round(m*3):null,usage_source:'manual'};return{...p,updates:[...p.updates,{code:nc,upd}],unmatched:p.unmatched.filter((_,j)=>j!==i)}})}
   function cancelRow(kind,i){setURep(p=>({...p,[kind]:p[kind].filter((_,j)=>j!==i)}))}
   function setInvalidVal(i,field,v){setURep(p=>({...p,invalid:p.invalid.map((x,j)=>j===i?{...x,[field]:v,err2:null}:x)}))}
-  function revalidateInvalid(i){setURep(p=>{const it=p.invalid[i];const nm=v=>{const x=String(v).trim();if(x==='')return undefined;const n=Number(x.replace(/,/g,''));return(Number.isFinite(n)&&n>=0)?n:NaN};const py=nm(it.pyRaw),r3=nm(it.r3Raw);if(Number.isNaN(py)||Number.isNaN(r3))return{...p,invalid:p.invalid.map((x,j)=>j===i?{...x,err2:'숫자(0 이상)만'}:x)};if(py===undefined&&r3===undefined)return{...p,invalid:p.invalid.map((x,j)=>j===i?{...x,err2:'값 없음'}:x)};const cs=new Set(drugs.map(d=>d.drug_code));if(!cs.has(it.code))return{...p,invalid:p.invalid.map((x,j)=>j===i?{...x,err2:'코드 미매칭'}:x)};const pv=py===undefined?null:py,rv=r3===undefined?null:r3;let m=null;if(rv!=null)m=Math.round(rv/3);else if(pv!=null)m=Math.round(pv/12);const upd={prev_year_usage:pv,recent_3m_usage:rv,monthly_avg:m,safety_stock:m!=null?Math.ceil(m*SAFETY_FACTOR):null,max_stock:m!=null?Math.round(m*3):null,usage_source:'manual'};return{...p,updates:[...p.updates,{code:it.code,upd}],invalid:p.invalid.filter((_,j)=>j!==i)}})}
+  function revalidateInvalid(i){setURep(p=>{const it=p.invalid[i];const nm=v=>{const x=String(v).trim();if(x==='')return undefined;const n=Number(x.replace(/,/g,''));return(Number.isFinite(n)&&n>=0)?n:NaN};const py=nm(it.pyRaw),r3=nm(it.r3Raw);if(Number.isNaN(py)||Number.isNaN(r3))return{...p,invalid:p.invalid.map((x,j)=>j===i?{...x,err2:'숫자(0 이상)만'}:x)};if(py===undefined&&r3===undefined)return{...p,invalid:p.invalid.map((x,j)=>j===i?{...x,err2:'값 없음'}:x)};const cs=new Set(drugs.map(d=>d.drug_code));if(!cs.has(it.code))return{...p,invalid:p.invalid.map((x,j)=>j===i?{...x,err2:'코드 미매칭'}:x)};/* ★ 마약·향정이면 3개월은 담지 않는다(확정 업무 규칙 9) */const _nq=new Set(narcCodes(drugs));const pv=py===undefined?null:py,rv=_nq.has(it.code)?null:(r3===undefined?null:r3);let m=null;if(rv!=null)m=Math.round(rv/3);else if(pv!=null)m=Math.round(pv/12);const upd={prev_year_usage:pv,recent_3m_usage:rv,monthly_avg:m,safety_stock:m!=null?Math.ceil(m*SAFETY_FACTOR):null,max_stock:m!=null?Math.round(m*3):null,usage_source:'manual'};return{...p,updates:[...p.updates,{code:it.code,upd}],invalid:p.invalid.filter((_,j)=>j!==i)}})}
   function dlUsageTemplate(){const ws=XLSX.utils.aoa_to_sheet([['약품코드','약품명(참고용)','전년사용량','최근3개월사용량','직전1개월사용량'],['SGBRONNC10','가바로닌캡슐100mg',1592,974,320],['GRD2','게리드정2밀리그램',330,105,35]]);const _rg=XLSX.utils.decode_range(ws['!ref']);for(let R=1;R<=_rg.e.r;R++){const _a=XLSX.utils.encode_cell({r:R,c:0});if(ws[_a]){ws[_a].t='s';ws[_a].z='@'}for(const C of [2,3,4]){const _c=XLSX.utils.encode_cell({r:R,c:C});if(ws[_c]){ws[_c].t='n';ws[_c].z='0'}}}ws['!cols']=[{wch:14},{wch:22},{wch:12},{wch:16},{wch:16}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'사용량');XLSX.writeFile(wb,'사용량_업로드_양식.xlsx')}
   return<div style={{padding:'20px 24px'}}>
     <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:8,marginBottom:14}}>{[{k:'전체',c:t.text},{k:'긴급',c:t.red},{k:'주문필요',c:t.amber},{k:'재고없음',c:t.red},{k:'정상',c:t.green},{k:'과잉',c:t.blue},{k:'기준미설정',c:t.textM}].map(f2=><div key={f2.k} onClick={()=>{setFilter(f2.k);setPage(1)}} style={{background:filter===f2.k?f2.c+'15':t.card,borderRadius:12,padding:'12px 16px',border:`1px solid ${filter===f2.k?f2.c:t.border}`,cursor:'pointer',backdropFilter:'blur(12px)'}}><div style={{fontSize:10,color:t.textM}}>{f2.k}</div><div style={{fontSize:24,fontWeight:700,color:f2.c}}>{sg[f2.k]}</div></div>)}</div>
@@ -2327,6 +2341,13 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
       :<div>
         <div style={{fontWeight:700,color:t.text,marginBottom:6}}>업로드 검토 — 확정 전 미반영</div>
         <div style={{color:t.text}}>반영 대상 <b style={{color:t.green}}>{uRep.updates.length}</b>건 · 매칭실패 <b style={{color:t.amber}}>{uRep.unmatched.length}</b>건 · 형식오류 <b style={{color:t.red}}>{uRep.invalid.length}</b>건</div>
+        {/* ★ 마약·향정 건너뜀 — 개별 등록 탭과 같은 규칙(확정 업무 규칙 9).
+              직전1개월·최근3개월의 정본은 NIMS 거래량으로 넣은 **출고**다. 전년은 원내 값을 쓴다. */}
+        {uRep.narcSkipped?.length?<div style={{marginTop:8,padding:'8px 10px',border:'1px solid '+t.border,borderRadius:8,background:t.bg}}>
+          <div style={{color:t.purple,fontWeight:600,marginBottom:4}}>마약·향정 {uRep.narcSkipped.length}종 건너뜀 (출고 기준)</div>
+          <div style={{color:t.textM,fontSize:11,marginBottom:4,lineHeight:1.6}}>마약·향정의 <b>직전1개월·최근3개월</b>은 NIMS 거래량으로 넣은 출고가 정본이라 파일 값으로 덮지 않습니다. <b>전년사용량은 그대로 반영</b>됩니다. 한외마약은 해당하지 않습니다.</div>
+          <div style={{color:t.textM,fontSize:11}}>{uRep.narcSkipped.map(x=>(x.name||x.code)).join(' · ')}</div>
+        </div>:null}
         {uRep.unmatched.length?<div style={{marginTop:8}}><div style={{color:t.amber,fontWeight:600,marginBottom:4}}>매칭실패 {uRep.unmatched.length}건 — 코드 정정 후 재매핑</div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr>{['업로드코드','약품명(참고)','전년','최근3M',''].map((h,hi)=><th key={hi} style={{textAlign:(hi>=2&&hi<=3)?'right':'left',padding:'5px 8px',color:t.textM,borderBottom:'1px solid '+t.border}}>{h}</th>)}</tr></thead><tbody>{uRep.unmatched.map((x,i)=><tr key={i} style={{borderBottom:'1px solid '+t.border}}><td style={{padding:'4px 8px'}}><input value={x.newCode??x.code} onChange={e=>setUnmatchedCode(i,e.target.value)} style={{padding:'3px 8px',border:'1px solid '+(x.err?t.red:t.border),borderRadius:6,fontSize:11,background:t.bg,color:t.text,width:120}}/>{x.err?<span style={{marginLeft:6,color:t.red,fontSize:9}}>{x.err}</span>:null}</td><td style={{padding:'4px 8px',color:t.textM}}>{x.name||'-'}</td><td style={{padding:'4px 8px',textAlign:'right',color:t.textM}}>{x.py??'-'}</td><td style={{padding:'4px 8px',textAlign:'right',color:t.textM}}>{x.r3??'-'}</td><td style={{padding:'4px 8px',whiteSpace:'nowrap'}}><button onClick={()=>remapUnmatched(i)} style={{padding:'3px 10px',borderRadius:6,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:10,fontWeight:600,marginRight:4}}>재매핑</button><button onClick={()=>cancelRow('unmatched',i)} style={{padding:'3px 10px',borderRadius:6,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:10,fontWeight:600}}>취소</button></td></tr>)}</tbody></table></div></div>:null}
         {uRep.invalid.length?<div style={{marginTop:8}}><div style={{color:t.red,fontWeight:600,marginBottom:4}}>형식오류 {uRep.invalid.length}건 — 값 수정 후 재검증 또는 취소</div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr>{['코드','약품명(참고)','사유','전년(수정)','최근3M(수정)',''].map((h,hi)=><th key={hi} style={{textAlign:(hi>=3&&hi<=4)?'right':'left',padding:'5px 8px',color:t.textM,borderBottom:'1px solid '+t.border}}>{h}</th>)}</tr></thead><tbody>{uRep.invalid.map((x,i)=><tr key={i} style={{borderBottom:'1px solid '+t.border}}><td style={{padding:'4px 8px',color:t.text}}>{x.code}</td><td style={{padding:'4px 8px',color:t.textM}}>{x.name||'-'}</td><td style={{padding:'4px 8px',color:t.red,fontSize:10}}>{'행'+x.ln+' '+x.col} 오류{x.err2?' · '+x.err2:''}</td><td style={{padding:'4px 8px',textAlign:'right'}}><input value={x.pyRaw} onChange={e=>setInvalidVal(i,'pyRaw',e.target.value)} style={{padding:'3px 6px',border:'1px solid '+(x.col==='전년사용량'?t.red:t.border),borderRadius:6,fontSize:11,background:t.bg,color:t.text,width:70,textAlign:'right'}}/></td><td style={{padding:'4px 8px',textAlign:'right'}}><input value={x.r3Raw} onChange={e=>setInvalidVal(i,'r3Raw',e.target.value)} style={{padding:'3px 6px',border:'1px solid '+(x.col==='최근3개월사용량'?t.red:t.border),borderRadius:6,fontSize:11,background:t.bg,color:t.text,width:70,textAlign:'right'}}/></td><td style={{padding:'4px 8px',whiteSpace:'nowrap'}}><button onClick={()=>revalidateInvalid(i)} style={{padding:'3px 10px',borderRadius:6,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:10,fontWeight:600,marginRight:4}}>재검증</button><button onClick={()=>cancelRow('invalid',i)} style={{padding:'3px 10px',borderRadius:6,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:10,fontWeight:600}}>취소</button></td></tr>)}</tbody></table></div></div>:null}
         <div style={{display:'flex',gap:8,marginTop:10}}>

@@ -11,11 +11,11 @@
 
    ★ 저장은 DB 함수 하나(app_save_usage_bulk)로 **한 번에** 한다.
      지금처럼 줄마다 저장하면 중간에 끊겼을 때 절반만 들어간 상태가 남는다. */
-import { useState, useRef, useMemo, useEffect } from 'react'
+import { useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import { supabase } from './lib/supabase'
 import {
   readSheet, mergeRows, buildPreview, confirmText, FIELD_LABEL,
-  applyRemap, suggestCodes,
+  applyRemap, suggestCodes, narcCodes, splitNarcotic, NARC_SKIP_FIELDS,
 } from './lib/usageParse'
 
 const FIELDS = [
@@ -72,13 +72,23 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
     return { ...m, merged, autoCount: hit, ...buildPreview(drugs, merged, field) }
   }, [files, drugs, field, remap, alias])
 
+  /* ★ 마약·향정은 1개월·3개월을 파일 값으로 덮지 않는다(확정 업무 규칙 9).
+       0 방지는 **칸과 무관하게** 늘 건다 — 전년을 올릴 때도 0 이 되지 않아야 한다. */
+  const narcSet = useMemo(() => new Set(narcCodes(drugs)), [drugs])
+  const split = useMemo(
+    () => (parsed ? splitNarcotic(drugs, parsed.changes, field) : { rows: [], skipped: [] }),
+    [parsed, drugs, field])
+
+  /* 지키는 코드 = 체크를 푼 것 + 마약·향정 전부. 0 목록·재고 기준 표에서도 같이 빠진다 —
+     한쪽만 빼면 「표에는 뜨는데 실제로는 안 바뀐다」가 된다. */
+  const guarded = useCallback(c => keep.has(c) || narcSet.has(c), [keep, narcSet])
   const zeroTargets = useMemo(
-    () => (parsed ? parsed.zeros.filter(z => !keep.has(z.code)) : []),
-    [parsed, keep])
+    () => (parsed ? parsed.zeros.filter(z => !guarded(z.code)) : []),
+    [parsed, guarded])
   /* 체크를 푼 것은 지금 값을 지키므로 「바뀌는 약품」에서 뺀다 */
   const stockShown = useMemo(
-    () => (parsed ? parsed.stockChanges.filter(x => !keep.has(x.code)) : []),
-    [parsed, keep])
+    () => (parsed ? parsed.stockChanges.filter(x => !guarded(x.code)) : []),
+    [parsed, guarded])
 
   async function onPick(e) {
     const picked = [...(e.target.files || [])]; e.target.value = ''
@@ -108,7 +118,9 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
     if (!parsed) return
     setConfirming(false); setApplying(true); setErr('')
     const rowKey = field === 'prev_year_usage' ? 'py' : field === 'recent_3m_usage' ? 'r3' : 'r1'
-    const rows = parsed.changes.map(c => ({ code: c.code, [rowKey]: c.after }))
+    /* ★ 마약·향정은 1개월·3개월 줄을 **아예 보내지 않는다**(확정 업무 규칙 9).
+       보내고 나서 되돌리는 게 아니라 처음부터 빼므로, DB 함수는 한 글자도 안 고친다. */
+    const rows = split.rows.map(c => ({ code: c.code, [rowKey]: c.after }))
     /* ★ 이번에 손으로 고친 짝 중 「다음에도 기억」이 켜진 것을 먼저 저장한다.
        실패해도 등록은 이어 간다 — 짝은 다음에 다시 지으면 되지만 사용량은 지금 넣어야 한다. */
     const toRemember = Object.entries(remap).filter(([a]) => !rememberOff.has(a))
@@ -122,7 +134,8 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
       p_fields: [field],
       p_rows: rows,
       p_zero_missing: true,
-      p_keep_codes: [...keep],
+      /* 체크를 푼 것 + 마약·향정 전부. 마약·향정은 어느 칸을 올려도 0 이 되지 않는다. */
+      p_keep_codes: [...new Set([...keep, ...narcSet])],
     })
     setApplying(false)
     if (error) { setErr('등록 실패: ' + error.message); return }
@@ -221,7 +234,7 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
               <div style={{ marginTop: 18 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: t.text }}>③ 미리보기</div>
-                  {badge('변경 ' + parsed.changes.length.toLocaleString() + '종', t.blueL, t.blue)}
+                  {badge('변경 ' + split.rows.length.toLocaleString() + '종', t.blueL, t.blue)}
                   {zeroTargets.length > 0 && badge('0 으로 ' + zeroTargets.length.toLocaleString() + '종', t.amberL, t.amber)}
                   {parsed.autoCount > 0 && badge('자동 연결 ' + parsed.autoCount.toLocaleString() + '건', t.greenL, t.green)}
                   {parsed.mergedCount > 0 && badge('중복 합산 ' + parsed.mergedCount.toLocaleString(), t.purpleL, t.purple)}
@@ -278,6 +291,50 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
                         </tbody>
                       </table>
                     </div>
+                  </div>
+                )}
+
+                {/* ★ 마약·향정 건너뜀 — 「미매칭 고치기」 바로 다음, 재고 기준 표보다 **앞**에 온다.
+                      이 묶음을 보고 나서 「그래서 무엇이 바뀌나」를 읽어야 순서가 맞다.
+                      확정 업무 규칙 9 — 마약·향정의 출고는 NIMS 거래량으로 입력하므로
+                      직전1개월·최근3개월의 정본은 **약플로 출고**다. 원내 파일로 덮지 않는다. */}
+                {split.skipped.length > 0 && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>
+                      마약·향정 {badge(split.skipped.length.toLocaleString() + '종 건너뜀 (출고 기준)', t.purpleL, t.purple)}
+                    </div>
+                    <div style={{ fontSize: 11, color: t.textM, marginBottom: 6, lineHeight: 1.6 }}>
+                      마약·향정의 {FIELD_LABEL[field]}은 <b>NIMS 거래량으로 넣은 출고</b>가 정본입니다.
+                      파일에 값이 있어도 <b>덮어쓰지 않습니다</b>. 한외마약은 해당하지 않습니다.
+                    </div>
+                    <div style={{ maxHeight: 180, overflowY: 'auto', border: `1px solid ${t.border}`, borderRadius: 8 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead><tr>
+                          <th style={th}>약품코드</th><th style={th}>약품명</th>
+                          <th style={{ ...th, textAlign: 'right' }}>지금 값(유지)</th>
+                          <th style={{ ...th, textAlign: 'right' }}>파일 값(안 씀)</th>
+                        </tr></thead>
+                        <tbody>
+                          {split.skipped.slice(0, PREVIEW_MAX).map(c => (
+                            <tr key={c.code}>
+                              <td style={{ ...td, textAlign: 'left' }}>{c.code}</td>
+                              <td style={{ ...td, textAlign: 'left' }}>{c.name}</td>
+                              <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: t.text }}>
+                                {c.before == null ? '—' : Number(c.before).toLocaleString()}
+                              </td>
+                              <td style={{ ...td, textAlign: 'right', textDecoration: 'line-through' }}>
+                                {Number(c.after).toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {split.skipped.length > PREVIEW_MAX && (
+                      <div style={{ fontSize: 11, color: t.textL, marginTop: 4 }}>
+                        … 그 밖 {(split.skipped.length - PREVIEW_MAX).toLocaleString()}종
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -356,7 +413,7 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
                       <th style={{ ...th, textAlign: 'right' }}>새 값</th>
                     </tr></thead>
                     <tbody>
-                      {parsed.changes.slice(0, PREVIEW_MAX).map(c => (
+                      {split.rows.slice(0, PREVIEW_MAX).map(c => (
                         <tr key={c.code}>
                           <td style={{ ...td, textAlign: 'left' }}>{c.code}</td>
                           <td style={{ ...td, textAlign: 'left', color: t.text, fontWeight: 500 }}>{c.name}</td>
@@ -367,9 +424,9 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
                       ))}
                     </tbody>
                   </table>
-                  {parsed.changes.length > PREVIEW_MAX && (
+                  {split.rows.length > PREVIEW_MAX && (
                     <div style={{ padding: '8px 10px', fontSize: 11, color: t.textM }}>
-                      … 그 밖 {(parsed.changes.length - PREVIEW_MAX).toLocaleString()}종
+                      … 그 밖 {(split.rows.length - PREVIEW_MAX).toLocaleString()}종
                     </div>)}
                 </div>
 
@@ -438,9 +495,9 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
 
                 <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                   <button onClick={onClose} style={btn('transparent', t.textM, t.border)}>닫기</button>
-                  <button disabled={!isTenantManager || applying || !parsed.changes.length}
+                  <button disabled={!isTenantManager || applying || !split.rows.length}
                     onClick={() => setConfirming(true)}
-                    style={{ ...btn(t.accent, '#fff'), opacity: (!isTenantManager || applying || !parsed.changes.length) ? 0.5 : 1 }}>
+                    style={{ ...btn(t.accent, '#fff'), opacity: (!isTenantManager || applying || !split.rows.length) ? 0.5 : 1 }}>
                     {applying ? '등록 중…' : '등록'}
                   </button>
                 </div>
@@ -472,7 +529,7 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
               maxWidth: 420, width: '100%', border: `1px solid ${t.border}`, boxShadow: t.shadowH, boxSizing: 'border-box' }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 10 }}>사용량 등록</div>
               <div style={{ fontSize: 12, color: t.textM, lineHeight: 1.6, whiteSpace: 'pre-line', marginBottom: 18 }}>
-                {confirmText({ year, month, field, changeCount: parsed.changes.length, zeroCount: zeroTargets.length })}
+                {confirmText({ year, month, field, changeCount: split.rows.length, zeroCount: zeroTargets.length })}
                 {'\n\n'}한 번에 저장합니다. 중간에 끊겨도 절반만 들어가지 않습니다.
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
