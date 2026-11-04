@@ -26,6 +26,8 @@ import BulkUploadModal from './BulkUploadModal'
 import UsageUploadModal from './UsageUploadModal'
 /* 마약·향정 판정은 모달과 **같은 함수 하나**를 쓴다 — 두 곳이 갈리면 탭마다 답이 달라진다 */
 import { narcCodes } from './lib/usageParse'
+/* B-1 — 마약·향정 사용량을 달력 기준으로 계산해 보여 주기만 하는 창(DB 쓰기 없음) */
+import NarcoticUsageModal from './NarcoticUsageModal'
 import ColumnSelector from './ColumnSelector'
 import GnbSearch from './GnbSearch'
 import { useDraggableModal } from './useDraggableModal'
@@ -2228,7 +2230,7 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
   const[surge,setSurge]=useState(SURGE_ALL)   /* 급변 필터 — 머리글 메뉴와 칩이 **이 하나**를 같이 쓴다 */
   const[xlAsk,setXlAsk]=useState(false)              /* 엑셀 범위 선택 창 */
-  const[uMsg,setUMsg]=useState(null);const[uOpen,setUOpen]=useState(false);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});const[uBusy,setUBusy]=useState(false)
+  const[uMsg,setUMsg]=useState(null);const[uOpen,setUOpen]=useState(false);const[npOpen,setNpOpen]=useState(false);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});const[uBusy,setUBusy]=useState(false)
   /* ★ 아직 저장 안 한 값이 있으면 새 배포 자동 적용을 미룬다(화면에 그리는 것은 없다) */
   useBusy('stock-drafts', Object.keys(drafts).length > 0)
   useEffect(()=>{if(nf?.filter){setFilter(nf.filter);setPage(1)}},[nf])
@@ -2363,6 +2365,8 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
         {isTenantManager&&<button onClick={dlUsageTemplate} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 양식</button>}
         {isTenantManager&&<button onClick={()=>setUOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 업로드</button>}
         {canRecompute&&<button onClick={()=>setRecomfirm(true)} disabled={uBusy} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.purpleL,color:t.purple,cursor:uBusy?'default':'pointer',fontSize:11,fontWeight:600,opacity:uBusy?0.6:1}}>{uBusy?'집계 중…':'출고 자동집계'}</button>}
+        {/* ★ B-1 — 달력 기준으로 **계산해 보여 주기만** 한다. DB 에 쓰지 않는다(확정 업무 규칙 9). */}
+        {canRecompute&&<button onClick={()=>setNpOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.bg,color:t.purple,cursor:'pointer',fontSize:11,fontWeight:600}}>마약·향정 사용량 보기</button>}
         <input ref={uRef} type="file" accept=".xlsx,.xls" onChange={uploadUsage} style={{display:'none'}}/>
       </div>
       <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
@@ -2407,6 +2411,7 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
         onConfirm={()=>{setRecomfirm(false);recomputeUsage()}} />}
       {uOpen&&<UsageUploadModal t={t} isTenantManager={isTenantManager} drugs={drugs}
         onClose={()=>setUOpen(false)} onReload={onReload} onBulkFile={f=>uploadUsage(f)} />}
+      {npOpen&&<NarcoticUsageModal t={t} drugs={drugs} onClose={()=>setNpOpen(false)} />}
     </div><Ft/>
   </div>
 }
