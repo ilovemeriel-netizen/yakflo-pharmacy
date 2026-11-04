@@ -12,7 +12,10 @@
 
    ★ 범위는 `narcotic_type in ('마약','향정')` 뿐이다 — 한외마약은 뺀다(확정 업무 규칙 9).
      판정은 usageParse 의 `isNarcSkip` **하나**를 쓴다. 두 곳에 적으면 답이 갈린다. */
-import { isNarcSkip, normCode, SAFETY_FACTOR, MAX_FACTOR } from './usageParse'
+/* ★ 확장자를 붙인다 — 그래야 dryrun 스크립트가 **화면과 같은 이 파일**을 그대로 불러
+   DB 결과와 맞대 볼 수 있다(Node 는 확장자 없는 경로를 못 푼다).
+   저장소에 두 표기가 다 있다(surveyCalc.js·pwaUpdate.js 도 확장자를 쓴다). */
+import { isNarcSkip, normCode, SAFETY_FACTOR, MAX_FACTOR } from './usageParse.js'
 
 const N = v => Number(v || 0)
 
