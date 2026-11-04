@@ -363,3 +363,57 @@ describe('코드 고치기', () => {
     expect(p.changes.find(x => x.code === 'APR2')).toBeTruthy()
   })
 })
+
+/* ── 일괄 등록 회귀 — 열 이름 규칙 변경이 거기에 닿지 않는다 ─────────────── */
+describe('일괄 등록은 이 규칙과 무관하다', () => {
+  const APP = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8')
+  const seg = APP.slice(APP.indexOf('async function uploadUsage'), APP.indexOf('async function applyUsage'))
+
+  it('★ uploadUsage 는 lib/usageParse 를 쓰지 않는다', () => {
+    expect(seg).not.toMatch(/readSheet|mergeRows|buildPreview|mapColumns|VALUE_HEADERS|applyRemap/)
+  })
+  it('★ 「실사용량」 별칭이 일괄 등록에는 없다 — 옛 양식 규칙 그대로', () => {
+    expect(seg, '일괄 양식에는 그 열이 없다').not.toContain('실사용량')
+  })
+  it('일괄 등록이 보는 열 이름이 그대로다', () => {
+    for (const h of ['약품코드', '전년사용량', '최근3개월사용량', '직전1개월사용량']) {
+      expect(seg, h).toContain("'" + h + "'")
+    }
+  })
+})
+
+/* ── 0110 usage_code_alias 소스 고정 ──────────────────────────────────── */
+describe('0110 usage_code_alias — 소스로 못 박는다', () => {
+  const SQL = readFileSync(resolve(process.cwd(), 'supabase/migrations/0110_usage_code_alias.sql'), 'utf8')
+  const CODE = SQL.split(/\r?\n/).filter(l => !/^\s*--/.test(l)).join('\n')
+
+  it('칸이 다 있다 — 테넌트·원내코드·약플로코드·만든 사람·시각', () => {
+    for (const col of ['tenant_id', 'alias_code', 'drug_code', 'created_by', 'created_at', 'updated_by', 'updated_at']) {
+      expect(CODE, col).toContain(col)
+    }
+  })
+  it('★ 한 원내코드는 한 뜻만 — (tenant_id, alias_code) 가 유일하다', () => {
+    expect(CODE).toMatch(/create unique index[\s\S]*?\(tenant_id, alias_code\)/)
+  })
+  it('★ 쓰기 셋 모두 owner·admin 으로 막는다 — 한 곳만 느슨하면 거기로 샌다', () => {
+    for (const cmd of ['insert', 'update', 'delete']) {
+      const i = CODE.indexOf('usage_code_alias_' + cmd + ' on public.usage_code_alias')
+      expect(i, cmd + ' 정책이 없다').toBeGreaterThan(0)
+      const seg = CODE.slice(i, i + 420)
+      expect(seg, cmd + ' 에 역할 검사가 없다').toContain("tm.role in ('owner', 'admin')")
+    }
+  })
+  it('읽기는 같은 약국이면 된다', () => {
+    const i = CODE.indexOf('usage_code_alias_select on public.usage_code_alias')
+    expect(CODE.slice(i, i + 200)).toContain('current_tenant_ids()')
+  })
+  it('anon 은 아무것도 못 한다', () => {
+    expect(CODE).toMatch(/revoke all on public\.usage_code_alias from anon/)
+  })
+  it('★ drugs 를 건드리지 않는다 — 이 파일에 drugs 가 나오지 않는다', () => {
+    expect(CODE, '약품 표를 손대면 마감·재고에 번진다').not.toMatch(/\bpublic\.drugs\b/)
+  })
+  it('PostgREST 캐시 갱신을 빠뜨리지 않았다 (함정 #22)', () => {
+    expect(SQL).toMatch(/notify pgrst, 'reload schema'/)
+  })
+})
