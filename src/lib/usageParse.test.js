@@ -5,6 +5,8 @@
      「머리글이 2행에 있으면?」「같은 코드가 두 번 나오면?」을 확인할 길이 없었다.
      여기서 **운영에서 실제로 걸린 모양**을 고정한다. */
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   normCode, findHeaderRow, mapColumns, looksLikeDate, toNum,
   readSheet, mergeRows, buildPreview, confirmText, FIELD_LABEL,
@@ -170,5 +172,53 @@ describe('확인 문구', () => {
   })
   it('칸 이름 세 가지', () => {
     expect(Object.keys(FIELD_LABEL)).toEqual(['prev_year_usage', 'recent_3m_usage', 'recent_1m_usage'])
+  })
+})
+
+/* ── 0108 RPC 소스 고정 — dryrun 에서 걸린 것을 되돌아가지 않게 ──────────── */
+describe('0108 app_save_usage_bulk — 소스로 못 박는다', () => {
+  const SQL = readFileSync(resolve(process.cwd(), 'supabase/migrations/0108_save_usage_bulk.sql'), 'utf8')
+  const CODE = SQL.split(/\r?\n/).filter(l => !/^\s*--/.test(l)).join('\n')
+
+  /* ★ 2026-11-04 dryrun 에서 걸린 것 — 한 트랜잭션에서 두 번 부르면
+       `relation "_in" already exists` 로 통째로 실패했다. */
+  it('★ 임시 표를 만들기 전에 지운다 — 두 번 불러도 터지지 않게', () => {
+    const i = CODE.indexOf('drop table if exists _in')
+    const j = CODE.indexOf('create temporary table _in')
+    expect(i, 'drop 이 없다').toBeGreaterThan(0)
+    expect(j, 'create 가 없다').toBeGreaterThan(i)
+  })
+  it('권한은 0105c·0107 과 같은 판정', () => {
+    expect(CODE).toContain("tm.role in ('owner', 'admin')")
+    expect(CODE).toContain('session_user')
+    expect(CODE).toContain('auth.uid()')
+    expect(CODE, 'DEFINER 함정을 부르는 current_user 는 쓰지 않는다').not.toContain('current_user')
+  })
+  it('거절 문구에 진단값 · 비밀값 없음', () => {
+    expect(CODE).toContain('[진단: uid=%, member_role=%, guc_role=%]')
+    expect(CODE).toContain('left(auth.uid()::text, 8)')
+    expect(CODE).not.toMatch(/service_role_key|password|Bearer/i)
+  })
+  it('★ 1개월만이면 월평균 계열을 건드리지 않는다 — 조건이 전년·3개월에만 걸려 있다', () => {
+    for (const col of ['monthly_avg', 'safety_stock', 'max_stock']) {
+      const i = CODE.indexOf(col + ' = case when')
+      expect(i, col + ' 재계산 분기가 없다').toBeGreaterThan(0)
+      const seg = CODE.slice(i, i + 120)
+      expect(seg, col + ' 이 1개월에도 걸리면 안 된다').not.toContain('v_do_r1')
+    }
+  })
+  it('계산식이 지금 화면과 같다 (÷3 · ÷12 · ×1.2 · ×3)', () => {
+    expect(CODE).toContain('round(i.r3 / 3)')
+    expect(CODE).toContain('round(i.py / 12)')
+    expect(CODE).toContain('* 1.2')
+    expect(CODE).toContain('* 3)')
+  })
+  it('SECURITY INVOKER — DEFINER 로 만들면 0105 트리거 판정이 무력해진다', () => {
+    expect(CODE).toContain('security invoker')
+    expect(CODE).not.toContain('security definer')
+  })
+  it('실행 권한을 좁힌다 — anon 회수 · authenticated 유지', () => {
+    expect(CODE).toContain('from anon')
+    expect(CODE).toContain('to authenticated')
   })
 })

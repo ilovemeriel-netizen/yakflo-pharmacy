@@ -73,6 +73,12 @@ begin
   end if;
 
   -- 올라온 줄을 표로 편다. code 는 화면과 같은 규칙으로 다듬는다(trim·쉼표 제거·대문자).
+  --
+  -- ★ 먼저 지운다 — `on commit drop` 은 **트랜잭션이 끝날 때** 지운다. 그래서 한 트랜잭션 안에서
+  --   이 함수를 두 번 부르면 두 번째가 `relation "_in" already exists` 로 **통째로 실패**한다.
+  --   (2026-11-04 dryrun 에서 실제로 걸렸다. PostgREST 는 호출마다 트랜잭션이 끝나 운영에서는
+  --    잘 드러나지 않지만, 배치·재시도·다른 함수 안에서 부르면 바로 터진다.)
+  drop table if exists _in;
   create temporary table _in (
     code text primary key,
     py   numeric,
