@@ -10,7 +10,7 @@ import { resolve } from 'node:path'
 import {
   normCode, findHeaderRow, mapColumns, looksLikeDate, toNum,
   readSheet, mergeRows, buildPreview, confirmText, FIELD_LABEL,
-  calcStock, SAFETY_FACTOR, MAX_FACTOR,
+  calcStock, SAFETY_FACTOR, MAX_FACTOR, applyRemap, suggestCodes,
 } from './usageParse.js'
 
 describe('약품코드 다듬기 — App.jsx 와 같은 규칙', () => {
@@ -263,5 +263,103 @@ describe('안전재고·최대재고 변경 묶음', () => {
     expect(MAX_FACTOR).toBe(3)
     expect(calcStock(100)).toEqual({ safety: 120, max: 300 })
     expect(calcStock(null)).toEqual({ safety: null, max: null })
+  })
+})
+
+/* ── 실제 원본 파일 머리글 (2026-11-04 실측) ───────────────────────────────
+     No. · 약품코드 · 약 품 명 · 입고량 · 사용량 · 반납량 · 실사용량 · 단가
+   ★ 세 칸(1개월·3개월·전년) 파일이 **모두 같은 머리글**이다. */
+describe('원내 원본 파일 — 실사용량이 맞다', () => {
+  const REAL = ['No.', '약품코드', '약 품 명', '입고량', '사용량', '반납량', '실사용량', '단가']
+
+  it('★★ 「사용량」(5열)이 아니라 「실사용량」(7열)을 고른다', () => {
+    /* 출고 기록과 맞춰 보면 실사용량이 맞다 — 실사용량만 일치 123종 vs 사용량만 1종.
+       사용량으로 읽으면 반납량만큼 많이 들어간다. */
+    expect(mapColumns(REAL, 'recent_1m_usage').value, '직전1개월').toBe(6)
+    expect(mapColumns(REAL, 'recent_3m_usage').value, '최근3개월').toBe(6)
+    expect(mapColumns(REAL, 'prev_year_usage').value, '전년').toBe(6)
+  })
+  it('★ 세 칸이 모두 값 열을 찾는다 — 한쪽만 되면 안 된다', () => {
+    /* 고치기 전: 최근3개월이 값 열을 못 찾아 453종이 0 으로 계산됐다 */
+    for (const f of ['prev_year_usage', 'recent_3m_usage', 'recent_1m_usage']) {
+      expect(mapColumns(REAL, f).value, f).toBeGreaterThan(0)
+    }
+  })
+  it('★ 「약 품 명」처럼 띄어 쓴 머리글도 찾는다', () => {
+    expect(mapColumns(REAL, 'recent_1m_usage').name).toBe(2)
+  })
+  it('약품코드 열도 맞게 잡는다', () => {
+    expect(mapColumns(REAL, 'recent_1m_usage').code).toBe(1)
+  })
+  it('★ 이름 순서가 열 순서를 이긴다 — 뒤에 있어도 실사용량이 먼저다', () => {
+    /* 예전 방식(findIndex)이면 먼저 나오는 「사용량」이 이겼다 */
+    const i = REAL.indexOf('사용량'), j = REAL.indexOf('실사용량')
+    expect(i, '사용량이 파일에서 더 앞에 있다').toBeLessThan(j)
+    expect(mapColumns(REAL, 'recent_1m_usage').value, '그래도 실사용량을 고른다').toBe(j)
+  })
+  it('정확한 이름이 있으면 그쪽이 더 먼저다', () => {
+    const H = ['약품코드', '직전1개월사용량', '실사용량']
+    expect(mapColumns(H, 'recent_1m_usage').value).toBe(1)
+  })
+  it('실제 줄을 읽어 본다', () => {
+    const aoa = [REAL,
+      ['1', 'GRD2', '게리드정2mg(글리메피리드)', '0', '60', '9.5', '50.5', '157']]
+    const r = readSheet(aoa, 'recent_1m_usage')
+    expect(r.badHeader).toBeNull()
+    expect(r.rows[0]).toMatchObject({ code: 'GRD2', value: 50.5 })
+  })
+})
+
+/* ── 원내 코드 ≠ 약플로 코드 (2026-11-04 실측 12건) ───────────────────── */
+describe('코드 고치기', () => {
+  const drugs = [
+    { drug_code: 'APR2', drug_name: '알프람정0.25mg', status: '사용', narcotic_type: '향정', recent_1m_usage: 50 },
+    { drug_code: 'CHLCRT', drug_name: '콜린세레이트정', status: '사용', recent_1m_usage: 30 },
+    { drug_code: 'CFO', drug_name: '칼페온정', status: '사용', recent_1m_usage: 10 },
+  ]
+  it('★ 이름으로 후보를 권한다 — 괄호 안 설명은 떼고 견준다', () => {
+    expect(suggestCodes(drugs, '알프람정0.25mg(알프라졸람)')[0])
+      .toMatchObject({ code: 'APR2', score: 100 })
+    expect(suggestCodes(drugs, '(본부80)콜린세레이트정(콜린알포세레이트)')[0])
+      .toMatchObject({ code: 'CHLCRT' })
+    expect(suggestCodes(drugs, '칼페온정(비급여)')[0]).toMatchObject({ code: 'CFO' })
+  })
+  it('닮은 것이 없으면 빈 배열 — 지어내지 않는다', () => {
+    expect(suggestCodes(drugs, '독감-직원가족&간병사')).toEqual([])
+  })
+  it('고친 코드가 반영된다', () => {
+    const merged = [{ code: '2-APR', name: '알프람정0.25mg(알프라졸람)', value: 103.5, parts: 1 }]
+    expect(applyRemap(merged, { '2-APR': 'APR2' })).toEqual([
+      { code: 'APR2', name: '알프람정0.25mg(알프라졸람)', value: 103.5, parts: 1 }])
+  })
+  it('고친 뒤 같은 코드가 되면 더한다', () => {
+    const merged = [
+      { code: '2-APR', name: 'x', value: 10, parts: 1 },
+      { code: 'APR2', name: 'y', value: 5, parts: 1 },
+    ]
+    const out = applyRemap(merged, { '2-APR': 'APR2' })
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ code: 'APR2', value: 15, parts: 2 })
+  })
+
+  /* ★★ 순서가 핵심이다 — 고치기가 0 목록 계산보다 **먼저** 와야 한다 */
+  it('★★ 고치기 전에는 그 약품이 0 목록에 있다', () => {
+    const merged = [{ code: '2-APR', name: '알프람정0.25mg(알프라졸람)', value: 103.5, parts: 1 }]
+    const p = buildPreview(drugs, merged, 'recent_1m_usage')
+    expect(p.unmatched.map(x => x.code)).toEqual(['2-APR'])
+    expect(p.zeros.map(x => x.code), 'APR2 가 0 이 될 처지다').toContain('APR2')
+  })
+  it('★★ 고치면 0 목록에서 **자동으로 빠지고** 변경으로 옮겨 간다', () => {
+    const merged = [{ code: '2-APR', name: '알프람정0.25mg(알프라졸람)', value: 103.5, parts: 1 }]
+    const p = buildPreview(drugs, applyRemap(merged, { '2-APR': 'APR2' }), 'recent_1m_usage')
+    expect(p.unmatched, '없는 코드가 사라진다').toEqual([])
+    expect(p.zeros.map(x => x.code), 'APR2 는 더 이상 0 대상이 아니다').not.toContain('APR2')
+    expect(p.changes.find(x => x.code === 'APR2')).toMatchObject({ before: 50, after: 103.5 })
+  })
+  it('★ 향정·마약도 같은 길로 고친다 — 따로 막지 않는다', () => {
+    const p = buildPreview(drugs, applyRemap(
+      [{ code: '2-APR', name: '알프람정0.25mg(알프라졸람)', value: 1, parts: 1 }], { '2-APR': 'APR2' }),
+      'recent_1m_usage')
+    expect(p.changes.find(x => x.code === 'APR2')).toBeTruthy()
   })
 })

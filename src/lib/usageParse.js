@@ -26,17 +26,47 @@ export function findHeaderRow(aoa, limit = 10) {
   return -1
 }
 
-/* 열 이름 → 자리. 같은 뜻의 이름을 여럿 받는다(지금 파서와 같은 별칭 + 몇 가지 더) */
+/* ── 열 이름 → 자리 ────────────────────────────────────────────────────────
+   ★★ 「실사용량」이 약플로의 사용량이다 — 「사용량」이 아니다 (2026-11-04 실측).
+     원내 프로그램이 뽑아 주는 파일은 한 줄에 **사용량 · 반납량 · 실사용량**을 같이 적는다.
+       실사용량 = 사용량 − 반납량
+     약플로의 **출고 기록과 맞춰 보면 실사용량이 맞다**:
+       10월 파일 372종 중 — 실사용량만 일치 **123종** · 사용량만 일치 **1종** ·
+       반납이 0 이라 구분 안 되는 것 210종.
+       (예: 게리드정2mg 사용량 60 − 반납 9.5 = 실사용 50.5 ← 약플로 출고 50.5)
+     「사용량」으로 읽으면 **반납량만큼 많이** 들어간다(그 123종만 해도 2,105 과다).
+
+   ★★ 그래서 **이름 우선순위**로 찾는다 — 파일의 열 순서가 아니라.
+     예전처럼 `findIndex(c => names.includes(c))` 로 하면 **먼저 나오는 열**이 이겨서
+     5번째 「사용량」이 7번째 「실사용량」을 가로챈다. 아래 find() 는 배열 순서대로 본다.
+
+   ★ 세 칸이 **같은 별칭**을 쓴다 — 원내 파일은 어느 기간이든 머리글이 같고
+     (No. · 약품코드 · 약 품 명 · 입고량 · 사용량 · 반납량 · 실사용량 · 단가),
+     어느 기간인지는 **사용자가 칸을 골라서** 정한다. 한쪽에만 별칭을 두면
+     같은 양식인데 칸에 따라 되기도 하고 안 되기도 한다(실제로 최근3개월이 그랬다 —
+     값 열을 못 찾아 **453종이 0 으로** 계산됐다). */
+const COMMON_VALUE = ['실사용량', '순사용량', '사용량', '총사용량']
 export const VALUE_HEADERS = {
-  prev_year_usage: ['전년사용량', '전년도사용량', 'prev_year_usage', '전년'],
-  recent_3m_usage: ['최근3개월사용량', '최근3개월', 'recent_3m_usage', '3개월'],
-  recent_1m_usage: ['직전1개월사용량', '직전1개월', 'recent_1m_usage', '1개월', '사용량', '총사용량'],
+  prev_year_usage: ['전년사용량', '전년도사용량', 'prev_year_usage', '전년', ...COMMON_VALUE],
+  recent_3m_usage: ['최근3개월사용량', '최근3개월', 'recent_3m_usage', '3개월', ...COMMON_VALUE],
+  recent_1m_usage: ['직전1개월사용량', '직전1개월', 'recent_1m_usage', '1개월', ...COMMON_VALUE],
 }
+/* 「약 품 명」처럼 글자 사이를 띄운 머리글이 있다 — 공백을 떼고도 맞춰 본다 */
 export const NAME_HEADERS = ['약품명(참고용)', '약품명', 'drug_name', '품명']
 
 export function mapColumns(headerRow, field) {
   const cells = (headerRow || []).map(c => String(c ?? '').trim())
-  const find = names => cells.findIndex(c => names.includes(c))
+  const tight = cells.map(c => c.replace(/\s+/g, ''))
+  /* ★ 배열에 적은 **순서대로** 찾는다 — 앞에 적은 이름이 이긴다 */
+  const find = names => {
+    for (const n of names) {
+      const i = cells.indexOf(n)
+      if (i >= 0) return i
+      const j = tight.indexOf(n.replace(/\s+/g, ''))
+      if (j >= 0) return j
+    }
+    return -1
+  }
   return {
     code: find(CODE_HEADERS),
     name: find(NAME_HEADERS),
@@ -119,6 +149,54 @@ export function mergeRows(fileRows) {
     dateLike,
     mergedCount: [...sum.values()].filter(x => x.parts > 1).length,
   }
+}
+
+/* ── 원내 코드 ≠ 약플로 코드 ──────────────────────────────────────────────
+   원내 프로그램 코드와 약플로 코드가 다른 약품이 있다(2026-10 실측 12건).
+     2-APR 알프람정0.25mg(알프라졸람)  →  APR2 알프람정0.25mg  ★ 향정
+     CHLCRT8 (본부80)콜린세레이트정    →  CHLCRT 콜린세레이트정
+     CFOB 칼페온정(비급여)             →  CFO 칼페온정
+   코드로는 못 찾으니 **이름으로 후보를 권한다**. 고르는 것은 사용자다 — 자동으로 바꾸지 않는다.
+
+   ★ 괄호 안(성분·비급여·직원가 따위)과 공백·기호를 떼고 견준다.
+     「(본부80)콜린세레이트정(콜린알포세레이트)」와 「콜린세레이트정」이 같아지도록. */
+export function normName(s) {
+  return String(s || '')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/[\s·.,/_-]/g, '')
+    .toLowerCase()
+}
+export function suggestCodes(drugs, name, limit = 3) {
+  const want = normName(name)
+  if (!want) return []
+  const out = []
+  for (const d of (drugs || [])) {
+    const n = normName(d.drug_name)
+    if (!n) continue
+    let score = 0
+    if (n === want) score = 100
+    else if (n.includes(want) || want.includes(n)) score = 80
+    else if (n.slice(0, 6) && n.slice(0, 6) === want.slice(0, 6)) score = 60
+    if (score) out.push({ code: normCode(d.drug_code), name: d.drug_name, status: d.status || '', score })
+  }
+  return out.sort((a, b) => b.score - a.score).slice(0, limit)
+}
+
+/* ── 고친 코드를 반영 ─────────────────────────────────────────────────────
+   remap = { 원내코드: 약플로코드 }. 바꾼 뒤 같은 코드가 되면 **더한다**.
+   ★ 이것을 buildPreview **앞에** 돌려야 고친 약품이 「0 으로 바뀔 목록」에서 빠진다.
+     순서가 뒤집히면 방금 짝지은 약품이 0 이 되어 버린다. */
+export function applyRemap(merged, remap) {
+  if (!remap || !Object.keys(remap).length) return merged
+  const out = new Map()
+  for (const m of (merged || [])) {
+    const code = normCode(remap[m.code] || m.code)
+    const cur = out.get(code)
+    if (cur) { cur.value += m.value; cur.parts += m.parts; if (!cur.name && m.name) cur.name = m.name }
+    else out.set(code, { ...m, code })
+  }
+  return [...out.values()]
 }
 
 /* ── 미리보기 만들기 ──────────────────────────────────────────────────────

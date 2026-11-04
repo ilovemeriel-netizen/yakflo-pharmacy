@@ -15,6 +15,7 @@ import { useState, useRef, useMemo } from 'react'
 import { supabase } from './lib/supabase'
 import {
   readSheet, mergeRows, buildPreview, confirmText, FIELD_LABEL,
+  applyRemap, suggestCodes,
 } from './lib/usageParse'
 
 const FIELDS = [
@@ -30,6 +31,9 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
   const [files, setFiles] = useState([])            /* [{name, rows, badHeader}] */
   const [err, setErr] = useState('')
   const [keep, setKeep] = useState(() => new Set()) /* 0 으로 만들지 **않을** 약품코드 */
+  /* 원내 코드 → 약플로 코드. 고치면 **0 목록 계산 앞에** 반영되어 그 약품이 0 에서 빠진다. */
+  const [remap, setRemap] = useState({})
+  const [draft, setDraft] = useState({})
   const [year, setYear] = useState(() => new Date().getFullYear())
   const [month, setMonth] = useState(() => new Date().getMonth() || 12)
   const [applying, setApplying] = useState(false)
@@ -42,8 +46,11 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
     const good = files.filter(f => !f.badHeader)
     if (!good.length) return null
     const m = mergeRows(good.map(f => ({ label: f.name, rows: f.rows })))
-    return { ...m, ...buildPreview(drugs, m.merged, field) }
-  }, [files, drugs, field])
+    /* ★ 고친 코드를 **먼저** 반영한 뒤 미리보기를 만든다 — 순서가 뒤집히면
+       방금 짝지은 약품이 「0 으로 바뀔 목록」에 남는다. */
+    const merged = applyRemap(m.merged, remap)
+    return { ...m, merged, ...buildPreview(drugs, merged, field) }
+  }, [files, drugs, field, remap])
 
   const zeroTargets = useMemo(
     () => (parsed ? parsed.zeros.filter(z => !keep.has(z.code)) : []),
@@ -73,7 +80,7 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
         }
         out.push({ name: file.name, sheet: best?.sheet || '', rows: best?.rows || [], badHeader: best?.badHeader || null })
       }
-      setFiles(out); setKeep(new Set())
+      setFiles(out); setKeep(new Set()); setRemap({}); setDraft({})
     } catch (ex) { setErr('파일 읽기 오류: ' + (ex && ex.message)) }
   }
 
@@ -151,7 +158,7 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
             <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 8 }}>① 어느 칸을 올릴까요?</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 16 }}>
               {FIELDS.map(f => (
-                <div key={f.k} onClick={() => { setField(f.k); setFiles([]); setKeep(new Set()); setResult(null) }}
+                <div key={f.k} onClick={() => { setField(f.k); setFiles([]); setKeep(new Set()); setRemap({}); setDraft({}); setResult(null) }}
                   style={{ cursor: 'pointer', borderRadius: 10, padding: '12px 14px',
                     border: `1px solid ${field === f.k ? t.accent : t.border}`,
                     background: field === f.k ? t.accentL : 'transparent' }}>
@@ -192,6 +199,53 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
                   {parsed.bad.length > 0 && badge('숫자 아님 ' + parsed.bad.length.toLocaleString(), t.redL, t.red)}
                   {parsed.dateLike.length > 0 && badge('날짜로 바뀐 코드 ' + parsed.dateLike.length.toLocaleString(), t.redL, t.red)}
                 </div>
+
+                {/* ★ 약품목록에 없는 코드 고치기 — **0 목록보다 먼저** 온다.
+                      원내 프로그램 코드와 약플로 코드가 다른 약품이 있다(2026-10 실측 12건).
+                      고치면 그 약품은 「파일에 있는 것」이 되어 **0 목록에서 자동으로 빠진다**.
+                      기존 검토 화면과 같은 모양(칸 + 「고치기」)이다. */}
+                {parsed.unmatched.length > 0 && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>
+                      ⓘ 약품목록에 없는 코드 {badge(parsed.unmatched.length.toLocaleString() + '건', t.redL, t.red)}
+                      <span style={{ fontWeight: 500, color: t.textM }}> · 고치면 그 약품은 0 목록에서 빠집니다</span>
+                    </div>
+                    <div style={{ maxHeight: 200, overflowY: 'auto', border: `1px solid ${t.border}`, borderRadius: 8 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead><tr>
+                          <th style={th}>원내 코드</th><th style={th}>약품명</th>
+                          <th style={{ ...th, textAlign: 'right' }}>값</th>
+                          <th style={th}>약플로 코드</th><th style={{ ...th, width: 64 }}></th>
+                        </tr></thead>
+                        <tbody>
+                          {parsed.unmatched.map(u => {
+                            const sg = suggestCodes(drugs, u.name)
+                            return (
+                              <tr key={u.code}>
+                                <td style={{ ...td, textAlign: 'left', fontWeight: 600, color: t.text }}>{u.code}</td>
+                                <td style={{ ...td, textAlign: 'left' }}>{u.name || '(이름 없음)'}</td>
+                                <td style={{ ...td, textAlign: 'right' }}>{Number(u.value || 0).toLocaleString()}</td>
+                                <td style={{ ...td, textAlign: 'left' }}>
+                                  <input value={draft[u.code] ?? (sg[0] ? sg[0].code : '')}
+                                    onChange={e => setDraft(p => ({ ...p, [u.code]: e.target.value }))}
+                                    placeholder="약품코드"
+                                    style={{ width: 120, padding: '4px 8px', border: `1px solid ${t.border}`,
+                                      borderRadius: 6, fontSize: 11, background: t.bg, color: t.text, outline: 'none' }} />
+                                  {sg[0] && <span style={{ fontSize: 10, color: t.textM, marginLeft: 6 }}>{sg[0].name}</span>}
+                                </td>
+                                <td style={{ ...td, textAlign: 'center' }}>
+                                  <button onClick={() => {
+                                    const v = String(draft[u.code] ?? (sg[0] ? sg[0].code : '')).trim()
+                                    if (v) setRemap(p => ({ ...p, [u.code]: v }))
+                                  }} style={{ ...btn(t.blueL, t.blue), padding: '4px 10px', fontSize: 11 }}>고치기</button>
+                                </td>
+                              </tr>)
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
                 {/* ★ 안전재고·최대재고가 바뀌는 약품 — 최근3개월·전년을 올릴 때만 뜬다.
                       그 두 칸은 월평균을 다시 계산하고, 월평균이 바뀌면 **발주 기준**이 따라 바뀐다.
@@ -327,10 +381,10 @@ export default function UsageUploadModal({ t, isTenantManager, drugs, onClose, o
                 )}
 
                 {/* 못 넣은 줄 사유 */}
-                {(parsed.bad.length > 0 || parsed.unmatched.length > 0) && (
+                {parsed.bad.length > 0 && (
                   <div style={{ marginTop: 12, fontSize: 11, color: t.textM, lineHeight: 1.7 }}>
                     {parsed.bad.length > 0 && <div><b style={{ color: t.red }}>숫자가 아니라 넣지 않은 약품</b> — {parsed.bad.slice(0, 6).map(b => b.code).join(' · ')}{parsed.bad.length > 6 ? ' …' : ''}</div>}
-                    {parsed.unmatched.length > 0 && <div><b style={{ color: t.red }}>약품목록에 없는 코드</b> — {parsed.unmatched.slice(0, 6).map(u => u.code).join(' · ')}{parsed.unmatched.length > 6 ? ' …' : ''}</div>}
+
                   </div>
                 )}
 
