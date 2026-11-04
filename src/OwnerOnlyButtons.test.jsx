@@ -69,26 +69,28 @@ const openTx = async () => {
   await waitFor(() => expect(document.body.textContent).toContain('이력'))
 }
 
-const 사용량단추 = ['사용량 양식', '사용량 업로드', '출고 자동집계']
+/* ★ 2026-11-04 B-1 — 「마약·향정 사용량 보기」도 같은 기준이다.
+   이 창은 DB 에 쓰지 않지만, **누가 얼마나 쓰는지**가 그대로 드러나므로 사용량 단추와 같이 묶는다. */
+const 사용량단추 = ['사용량 양식', '사용량 업로드', '출고 자동집계', '마약·향정 사용량 보기']
 
-describe('① 재고현황 — 사용량 단추 3곳', () => {
-  it('owner — 셋 다 보인다', async () => {
+describe('① 재고현황 — 사용량 단추 4곳', () => {
+  it('owner — 넷 다 보인다', async () => {
     ROLE = { memberRole: 'owner', profile: { role: 'user' } }
     await openStock()
     for (const s of 사용량단추) expect(byText(s), s).toBeTruthy()
   })
-  it('★ admin — 셋 다 보인다 (이 약국의 관리자다)', async () => {
+  it('★ admin — 넷 다 보인다 (이 약국의 관리자다)', async () => {
     ROLE = { memberRole: 'admin', profile: { role: 'user' } }
     await openStock()
     for (const s of 사용량단추) expect(byText(s), s).toBeTruthy()
   })
   /* ★ 전역 프로필의 admin 은 **이 약국의 멤버가 아니다** — DB(tenant_members)가 보는 기준과 맞춘다 */
-  it('★ profiles.role=admin 뿐인 사람 — 셋 다 없다', async () => {
+  it('★ profiles.role=admin 뿐인 사람 — 넷 다 없다', async () => {
     ROLE = { memberRole: 'member', profile: { role: 'admin' } }
     await openStock()
     for (const s of 사용량단추) expect(byText(s), s).toBeFalsy()
   })
-  it('★ 일반 직원 — 셋 다 없다', async () => {
+  it('★ 일반 직원 — 넷 다 없다', async () => {
     ROLE = { memberRole: 'member', profile: { role: 'user' } }
     await openStock()
     for (const s of 사용량단추) expect(byText(s), s).toBeFalsy()
