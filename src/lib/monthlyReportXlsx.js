@@ -15,6 +15,10 @@
      열 너비·행 높이·숫자 형식은 컬러판과 한 글자도 다르지 않다. */
 
 const BLACK = 'FF000000'
+/* 바닥글(작성 시각·저작권) 회색 — **화면·PDF 가 이미 쓰는 #999 와 같은 색**이다(새 색 아님).
+   흰 바탕에서 또렷함 2.85:1 — 연하지만 종이로 뽑아도 읽힌다.
+   ※ 더 연한 #D1D5DB(1.47:1)는 인쇄하면 거의 사라져 법적 고지로 쓰기 어렵다(2026-11-04 비교). */
+const GRAY = 'FF999999'
 
 /* ★ 글꼴 이름 — 기준 양식 실측: styles.xml 의 글꼴 16개 중 15개가 「맑은 고딕」이고
    저마다 이름을 **명시**한다(테마의 minor 는 Calibri 지만 이름이 이기므로 무관).
@@ -104,9 +108,14 @@ export const SUMMARY_CELLS = {
   E23: { label: '확인(90일)', numFmt: GEN, h: 'center', v: 'center', border: ALL, fill: 'FF016033', fontColor: 'FFFFFFFF', bold: true, size: 11 },
   F23: { key: 'expCheck90', numFmt: CNT, h: 'center', v: 'center', border: ALL, fill: null, fontColor: BLACK, bold: true, size: 14 },
 
-  /* ★ 보정⑤ — 작성 시각과 새 저작권 문구 */
-  B25: { key: '_stamp', numFmt: GEN, h: null, v: null, border: [], fill: null, fontColor: null, bold: false, size: 12 },
-  B26: { key: '_copyright', numFmt: GEN, h: null, v: null, border: [], fill: null, fontColor: null, bold: false, size: 12 },
+  /* ★ 보정⑤ — 작성 시각과 새 저작권 문구
+     ★ 2026-11-04 이정화 님 승인 — 글자색을 **화면·PDF 와 같은 회색**(#999999)으로 맞춘다.
+       보고서 화면 바닥글이 이미 `color:'#999'` 다(App.jsx). 엑셀만 검정이라 혼자 튀었다.
+       새 색이 아니라 **이미 쓰던 색**을 가져온 것이다.
+     ★ `monoKeep` 이 붙은 칸은 흑백본에서도 이 색을 지킨다 — 회색은 흑백에서도 회색이고,
+       법적 고지를 검정으로 되돌리면 컬러본과 흑백본이 달라진다(이정화 님 결정: 둘 다 회색). */
+  B25: { key: '_stamp', numFmt: GEN, h: null, v: null, border: [], fill: null, fontColor: GRAY, monoKeep: true, bold: false, size: 12 },
+  B26: { key: '_copyright', numFmt: GEN, h: null, v: null, border: [], fill: null, fontColor: GRAY, monoKeep: true, bold: false, size: 12 },
 }
 
 /* ★ 보정② — 기준 양식에 있던 숨은 흰 글씨. 배경 없는 칸에 흰 글자라 화면에도 인쇄에도
@@ -134,13 +143,43 @@ export const LIST_FREEZE_X = 1          /* A열 고정 */
 const LIST_KEYS = ['code', 'name', 'category', 'openingQty', 'openingAmount', 'inQty', 'inAmount',
   'outQty', 'outAmount', 'dispQty', 'retQty', 'closingQty', 'closingAmount', 'expiry', 'status']
 
+/* ── 수식의 계산된 값 ───────────────────────────────────────────────────
+   요약 시트의 수식은 **「어느 칸 빼기 어느 칸」** 두 개뿐이다(C11-C12 · F11-F12).
+   그 두 칸의 값을 이미 손에 쥐고 있으므로 여기서 같은 뺄셈을 해 둔다.
+
+   ★ 엑셀 수식 해석기를 만드는 게 아니다 — `A12-B34` 모양만 알아본다.
+     모양이 다르면 null 을 돌려주고, 부르는 쪽이 **지금처럼 수식만** 넣는다(안전한 쪽으로 넘어간다).
+   ★ 계산식을 바꾸는 것이 아니다. 엑셀이 열 때 하는 계산과 **같은 답**을 미리 적어 둘 뿐이다.
+
+   ⚠ **답이 정확히 0 이면 exceljs 가 그 값을 버린다** — `lib/doc/cell.js` 의 모델 복사가
+     `if (value) copy[name] = value` 라 0·빈문자 같은 falsy 를 떨어뜨린다. 그래서 순입고가
+     0 인 달(예: 2026-11, 입고 0·출고 0)은 **고친 뒤에도 미리보기에서 빈 칸으로 보인다.**
+     엑셀로 열면 스스로 계산해 「0건」이 나오므로 결재본 숫자에는 영향이 없다.
+     0 인 달까지 미리보기에서 보이게 하려면 수식 대신 숫자를 적어야 하는데, 그러면
+     「셀을 고치면 아래가 따라온다」(보정④)가 그 달만 깨진다 — **이정화 님 판단 사항**이다. */
+export function formulaResult(formula, vals) {
+  const m = /^([A-F]\d+)-([A-F]\d+)$/.exec(String(formula || '').trim())
+  if (!m) return null
+  const pick = addr => {
+    const c = SUMMARY_CELLS[addr]
+    if (!c || !c.key) return null
+    const v = vals[c.key]
+    return typeof v === 'number' && Number.isFinite(v) ? v : null
+  }
+  const a = pick(m[1]), b = pick(m[2])
+  if (a == null || b == null) return null
+  return a - b
+}
+
 /* ── 그리기 도우미 ─────────────────────────────────────────────────────── */
 function paint(cell, s, mono) {
   if (s.fill && !mono) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: s.fill } }
   const font = { name: FONT_NAME }
   if (s.bold) font.bold = true
   if (s.size) font.size = s.size
-  const color = mono ? (s.fontColor ? BLACK : null) : s.fontColor
+  /* 흑백본은 색 있는 글자를 검정으로 되돌린다 — 단 `monoKeep` 은 그대로 둔다.
+     회색은 흑백에서도 회색이라 「흑백」을 깨지 않고, 두 파일의 바닥글이 같아진다. */
+  const color = (mono && !s.monoKeep) ? (s.fontColor ? BLACK : null) : s.fontColor
   if (color) font.color = { argb: color }
   cell.font = font
   if (s.numFmt && s.numFmt !== 'General') cell.numFmt = s.numFmt
@@ -178,7 +217,14 @@ function buildSummary(ws, dto, mono) {
   }
   for (const [addr, s] of Object.entries(SUMMARY_CELLS)) {
     const cell = ws.getCell(addr)
-    if (s.formula) cell.value = { formula: s.formula }
+    /* ★ 수식에는 **계산된 값도 같이** 넣는다(result).
+       엑셀은 파일을 열 때 스스로 계산하지만, 미리보기·구글시트·웹 뷰어처럼
+       계산을 하지 않는 곳에서는 **빈 칸으로 보인다**(2026-11-04 이정화 님 사진으로 확인 —
+       순입고 C13·F13 이 비어 있었다). 수식은 그대로 두므로 칸을 고치면 여전히 따라온다. */
+    if (s.formula) {
+      const r = formulaResult(s.formula, vals)
+      cell.value = r == null ? { formula: s.formula } : { formula: s.formula, result: r }
+    }
     else if (s.key) { const v = vals[s.key]; if (v !== undefined && v !== null) cell.value = v }
     else if (s.label != null) cell.value = s.label
     paint(cell, s, mono)
