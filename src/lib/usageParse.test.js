@@ -417,3 +417,82 @@ describe('0110 usage_code_alias — 소스로 못 박는다', () => {
     expect(SQL).toMatch(/notify pgrst, 'reload schema'/)
   })
 })
+
+/* ── 0112 사용량 감사표에 안전재고·최대재고 — 소스로 못 박는다 ─────────────── */
+describe('0112 log_drugs_usage — 안전재고·최대재고도 적는다', () => {
+  const SQL = readFileSync(resolve(process.cwd(), 'supabase/migrations/0112_usage_audit_add_stock_cols.sql'), 'utf8')
+  const CODE = SQL.split(/\r?\n/).filter(l => !/^\s*--/.test(l)).join('\n')
+
+  /* ★ 왜 — 2026-11-05 마약·향정 적용에서 안전 1,060→1,035 · 최대 2,628→2,568 이
+       바뀌었는데 감사표에는 사용량 칸만 36줄 남고 그 둘은 흔적이 없었다. */
+  it('★ 새 칸 둘을 적는다', () => {
+    expect(CODE, 'safety_stock 블록이 없다').toContain("'safety_stock'")
+    expect(CODE, 'max_stock 블록이 없다').toContain("'max_stock'")
+    expect(CODE).toContain('new.safety_stock is distinct from old.safety_stock')
+    expect(CODE).toContain('new.max_stock is distinct from old.max_stock')
+  })
+
+  it('★ 기존 5칸을 하나도 빼지 않는다 — 빼면 그 칸의 이력이 끊긴다', () => {
+    for (const f of ['prev_year_usage', 'recent_3m_usage', 'recent_1m_usage',
+      'monthly_avg', 'usage_source']) {
+      expect(CODE, f + ' 블록이 사라졌다').toContain("'" + f + "'")
+    }
+  })
+
+  it('★ 가드 함수는 손대지 않는다 — 「무엇을 막을지」와 「무엇을 적을지」를 섞지 않는다', () => {
+    expect(CODE, '가드 함수를 함께 바꾸면 안 된다').not.toContain('enforce_usage_edit_owner')
+  })
+
+  it('★ 트리거 배선을 다시 걸지 않는다 — 함수 본문만 갈아 끼운다', () => {
+    expect(CODE).not.toMatch(/drop trigger/i)
+    expect(CODE).not.toMatch(/create trigger/i)
+  })
+
+  it('★ 지난 기록을 소급해 채우지 않는다 — 없던 기록을 만들면 감사표가 거짓이 된다', () => {
+    expect(CODE, '감사표에 직접 INSERT 하는 백필이 있다')
+      .not.toMatch(/insert into public\.drug_usage_audit[\s\S]{0,200}select[\s\S]{0,200}from public\.drugs/i)
+  })
+
+  it('★ drugs 의 값을 바꾸지 않는다 — 기록만 더하는 파일이다', () => {
+    expect(CODE).not.toMatch(/update public\.drugs/i)
+  })
+
+  it('0105 틀 유지 — security definer · search_path', () => {
+    expect(CODE).toContain('security definer')
+    expect(CODE).toMatch(/set search_path to 'public'/)
+  })
+
+  it('누가 바꿨는지는 auth.uid() 로 적는다 (current_user 함정 금지)', () => {
+    expect(CODE).toContain('auth.uid()')
+    expect(CODE, 'DEFINER 안에서 current_user 는 함수 소유자가 된다').not.toContain('current_user')
+  })
+
+  it('★ field 허용 목록(CHECK)이 있으면 먼저 넓힌다 — 좁은 채로 두면 저장 자체가 막힌다', () => {
+    /* 권한 규칙과 **같은 방향**: 넓히는 변경은 배포보다 먼저. (운영에는 CHECK 가 없었다) */
+    expect(CODE).toMatch(/contype = 'c'/)
+    expect(CODE).toMatch(/drop constraint/)
+    expect(CODE).toMatch(/check \(field in \(/)
+    const i = CODE.indexOf('check (field in (')
+    const seg = CODE.slice(i, i + 400)
+    for (const f of ['prev_year_usage', 'recent_3m_usage', 'recent_1m_usage', 'monthly_avg',
+      'usage_source', 'safety_stock', 'max_stock']) {
+      expect(seg, '허용 목록에 ' + f + ' 가 빠졌다').toContain(f)
+    }
+  })
+
+  it('PostgREST 캐시 갱신을 빠뜨리지 않았다 (함정 #22)', () => {
+    expect(SQL).toMatch(/notify pgrst, 'reload schema'/)
+  })
+
+  /* ★ 2026-11-05 dryrun 정정 — 「회원 아닌 사람이 사용량을 바꾸면 **오류가 난다**」로
+       시험했다가 거짓 실패가 났다. 실제로는 RLS 가 **줄을 먼저 숨겨** UPDATE 가
+       **0줄**이 되고 트리거는 아예 돌지 않는다(0112 없이도 같다). 가드는 뚫리지 않았다.
+       그래서 dryrun 의 판정은 「오류」가 아니라 **「0줄」**로 적어 둔다. */
+  it('★ dryrun 스크립트가 「0줄이어야 한다」로 검사한다 — 「오류가 나야 한다」가 아니다', () => {
+    const DRY = readFileSync(resolve(process.cwd(), 'scripts/dryrun_0112.mjs'), 'utf8')
+    expect(DRY, '바뀐 줄 수를 읽지 않는다').toMatch(/rowCount/)
+    expect(DRY, '0줄 판정이 없다').toMatch(/=== 0/)
+    expect(DRY, '아직 「오류가 나야 한다」로 되어 있다').not.toContain('가드가 뚫렸다')
+    expect(DRY, 'dryrun 은 반드시 되돌린다').toContain('rollback')
+  })
+})
