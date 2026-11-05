@@ -27,6 +27,9 @@ const EXCEPTIONS = {
   F13: '보정④ =F11-F12 수식 (스펙은 값 9617568 — 값은 같다)',
   B25: '보정⑤ 작성 시각을 그때그때 적는다',
   B26: '보정⑤ 새 저작권 문구',
+  /* 보정⑥ (2026-11-05 이정화 님 요청) — 합계 줄 가운데 빈 칸의 **위·아래 선만** 뺀다.
+     보라 배경과 좌·우 선은 그대로라 띠가 끊기지 않는다. 아래 따로 확인한다. */
+  D18: '보정⑥ 위·아래 선 제거(좌·우 선·보라 배경은 그대로)',
 }
 /* 약품목록 쪽 승인 보정 */
 const LIST_EXCEPTIONS = [
@@ -328,12 +331,22 @@ describe('흑백판 — 배경 없음·글자 검정, 나머지는 컬러판과 
       ws.eachRow(row => row.eachCell(c => { expect(fillOf(c), name + ' ' + c.address + ' 배경').toBe(null) }))
     }
   })
-  it('글자색은 모두 검정이거나 지정 없음', () => {
+  /* ★ 2026-11-04 이정화 님 승인 — 바닥글 두 줄(작성 시각·저작권)은 **흑백본에서도 회색**이다.
+     회색은 흑백에서도 회색이라 「흑백」을 깨지 않고, 검정으로 되돌리면 컬러본과 흑백본의
+     바닥글이 달라진다. 그 두 칸 말고는 예전과 똑같이 검정이거나 색 없음이어야 한다. */
+  const MONO_GRAY_OK = { B25: '작성 시각', B26: '저작권' }
+  it('글자색은 모두 검정이거나 지정 없음 — 바닥글 두 줄만 회색', () => {
     const ws = mono.getWorksheet('요약')
+    const gray = []
     ws.eachRow(row => row.eachCell(c => {
       const col = colorOf(c)
+      if (MONO_GRAY_OK[c.address]) {
+        expect(col, c.address + '(' + MONO_GRAY_OK[c.address] + ') 는 회색이어야 한다').toBe('FF999999')
+        gray.push(c.address); return
+      }
       expect(col === null || col === 'FF000000', c.address + ' 글자색 ' + col).toBe(true)
     }))
+    expect(gray.sort(), '회색인 칸은 이 둘뿐이다').toEqual(['B25', 'B26'])
   })
   it('흰 글자가 하나도 남지 않는다 — 흑백에서 사라지는 글자가 없다', () => {
     const ws = mono.getWorksheet('요약')
@@ -530,8 +543,9 @@ describe('글꼴 — 모든 칸이 맑은 고딕', () => {
 })
 
 describe('스펙 비교에서 빼 둔 항목이 문서로 남아 있다', () => {
-  it('요약 보정은 5종 9칸뿐', () => {
-    expect(Object.keys(EXCEPTIONS).sort()).toEqual(['B10', 'B21', 'B25', 'B26', 'B5', 'B9', 'C18', 'C6', 'F13'])
+  /* 보정⑥(D18 위·아래 선 제거)은 2026-11-05 이정화 님 요청으로 더했다 */
+  it('요약 보정은 6종 10칸뿐', () => {
+    expect(Object.keys(EXCEPTIONS).sort()).toEqual(['B10', 'B21', 'B25', 'B26', 'B5', 'B9', 'C18', 'C6', 'D18', 'F13'])
   })
   it('약품목록 보정은 3종뿐 — K열 너비는 예외가 아니다', () => {
     expect(LIST_EXCEPTIONS.length).toBe(3)
