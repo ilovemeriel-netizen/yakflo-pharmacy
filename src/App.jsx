@@ -32,6 +32,8 @@ import ColumnSelector from './ColumnSelector'
 import GnbSearch from './GnbSearch'
 import { useDraggableModal } from './useDraggableModal'
 import SnapshotUploadModal from './SnapshotUploadModal'
+import { selectAll } from './lib/selectAll'
+import { TREND_MONTHS, amountMap } from './lib/usageTrend'
 /* XLSX는 동적 import로 별도 청크 분리(초기 번들 축소). 모든 사용은 사용자 액션 핸들러 내부뿐 → 로드 시점 안전 */
 let XLSX; import('xlsx').then(m => { XLSX = m })
 
@@ -1375,7 +1377,7 @@ function Ordering({ drugs, onAdjust }) {
     const { data: sup } = await supabase.from('suppliers').select('*').order('name'); setSuppliers(sup || []);
     const { data: po } = await supabase.from('purchase_orders').select('*, suppliers(name)').order('created_at', { ascending: false }).limit(20); setOrders(po || []);
   }
-  useEffect(() => { let on = true; (async () => { const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle(); if (!on) return; setTid(tm?.tenant_id || null); const { data: sup } = await supabase.from('suppliers').select('*').order('name'); if (on) setSuppliers(sup || []); const { data: po } = await supabase.from('purchase_orders').select('*, suppliers(name)').order('created_at', { ascending: false }).limit(20); if (on) setOrders(po || []); const { data: fcd } = await supabase.rpc('drug_change_forecast', { p_weeks: 12 }); if (on) setFc(fcd || []); const { data: utd } = await supabase.rpc('usage_monthly_trend', { p_months: 6 }); if (on) setUt(utd || []); const { data: msRows } = await supabase.from('monthly_snapshots').select('snap_year,snap_month,total_out_amount'); if (on) { const _amt = {}; (msRows || []).forEach(r => { const _ym = r.snap_year + '-' + String(r.snap_month).padStart(2, '0'); _amt[_ym] = (_amt[_ym] || 0) + Number(r.total_out_amount || 0); }); setUtAmt(_amt); } })(); return () => { on = false } }, []);
+  useEffect(() => { let on = true; (async () => { const { data: tm } = await supabase.from('tenant_members').select('tenant_id').limit(1).maybeSingle(); if (!on) return; setTid(tm?.tenant_id || null); const { data: sup } = await supabase.from('suppliers').select('*').order('name'); if (on) setSuppliers(sup || []); const { data: po } = await supabase.from('purchase_orders').select('*, suppliers(name)').order('created_at', { ascending: false }).limit(20); if (on) setOrders(po || []); const { data: fcd } = await supabase.rpc('drug_change_forecast', { p_weeks: 12 }); if (on) setFc(fcd || []); const { data: utd } = await supabase.rpc('usage_monthly_trend', { p_months: TREND_MONTHS }); if (on) setUt(utd || []); const { data: amtRows } = await supabase.rpc('usage_monthly_amount', { p_months: TREND_MONTHS }); if (on) setUtAmt(amountMap(amtRows))  /* ★ 달별 합계를 DB 에서 받는다 — 줄 단위로 전부 받으면 11,014줄이 1,000줄로 잘려 대부분의 달이 0원으로 보였다(2026-11-05) */ })(); return () => { on = false } }, []);
   const cand = drugs.filter(d => MAIN_STATS.includes(d.status) && (stockStat(d) === '긴급' || stockStat(d) === '주문필요')).sort((a, b) => (stockStat(a) === '긴급' ? 0 : 1) - (stockStat(b) === '긴급' ? 0 : 1));
   const supName = id => (suppliers.find(s => s.id === id) || {}).name || '미지정 도매사';
   const effSup = d => (d.drug_code in supAssign ? supAssign[d.drug_code] : d.supplier_id) || '__none';
@@ -5046,7 +5048,8 @@ function InventoryCount({ drugs, onReload }) {
     const [s, i, m] = await Promise.all([
       supabase.from('inventory_counts').select('*').order('count_date', { ascending: false }),
       supabase.from('inventory_count_items').select('*').order('created_at'),
-      supabase.from('monthly_snapshots').select('snap_year,snap_month'),
+      /* ★ 11,014줄이라 한 번에 받으면 1,000줄에서 잘려 마감된 달이 빠진다(2026-11-05) */
+      selectAll(() => supabase.from('monthly_snapshots').select('snap_year,snap_month').order('id', { ascending: true })),
     ])
     setSess(s.data || []); setItems(i.data || [])
     const seen = new Set(); const cm = []
@@ -7822,7 +7825,7 @@ function Schedule({ drugs, onNav }) {
     } catch (e) { if (manual) setHidMsg('갱신 오류: ' + e.message) } finally { setHidBusy(false); if (manual) setTimeout(() => setHidMsg(null), 4000) }
   }
   async function loadHolidays(yr) { const { data } = await supabase.from('holidays').select('date,name').eq('year', yr); setHolidays(data || []); if ((!data || !data.length) && !_hidTried.current[yr]) { _hidTried.current[yr] = true; syncHolidays(yr, false) } }
-  useEffect(() => { loadEvents(); supabase.from('drug_change_plans').select('from_drug_code,plan_status,weekly_usage,base_date').then(({ data }) => setPlans(data || [])); supabase.from('monthly_snapshots').select('snap_year,snap_month').then(({ data }) => { const s = new Set(); (data || []).forEach(r => s.add(r.snap_year + '-' + r.snap_month)); setClosed(s) }) }, []);
+  useEffect(() => { loadEvents(); supabase.from('drug_change_plans').select('from_drug_code,plan_status,weekly_usage,base_date').then(({ data }) => setPlans(data || [])); selectAll(() => supabase.from('monthly_snapshots').select('snap_year,snap_month').order('id', { ascending: true })).then(({ data }) => { const s = new Set(); (data || []).forEach(r => s.add(r.snap_year + '-' + r.snap_month)); setClosed(s) })  /* ★ 11,014줄 — 쪽 나눠 끝까지 */ }, []);
   useEffect(() => { loadHolidays(y) }, [y]); // 연도 전환 시 조회(없으면 자동 동기화 1회)
   const dmap = {}; drugs.forEach(d => { dmap[d.drug_code] = d });
   const monthPrefix = y + '-' + pad(m);
@@ -8371,7 +8374,8 @@ export default function App() {
   async function load() {
     const d = await fetchAll()
     setDrugs(d)
-    const { data: invData } = await supabase.from('inventory_stock').select('*')
+    /* ★ 1,141줄이라 한 번에 받으면 1,000줄에서 조용히 잘린다 — 141줄이 사라졌다(2026-11-05) */
+    const { data: invData } = await selectAll(() => supabase.from('inventory_stock').select('*').order('id', { ascending: true }))
     setInv(invData || [])
     const { data: txData } = await supabase.from('transactions').select('*').order('transaction_date', { ascending: false }).limit(500)
     setTxns(txData || [])
