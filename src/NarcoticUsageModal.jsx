@@ -20,6 +20,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from './lib/supabase'
 import { buildNarcoticPreview, calendarWindow } from './lib/narcoticUsagePreview'
+import { narcCodes } from './lib/usageParse'
+import { checkRowLimit } from './lib/rowLimit'
 
 const num = v => (v == null ? '—' : Number(v).toLocaleString())
 
@@ -40,29 +42,50 @@ export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager,
   const key = year + '-' + month
   const [loaded, setLoaded] = useState(null)   /* { key, rows, err } */
 
-  /* 거래를 읽는다 — **읽기만** 한다. 창(3개월) 밖은 애초에 가져오지 않는다. */
+  /* ★ 마약·향정 코드만 추린다 — 이 목록으로 **읽기 범위를 좁힌다.**
+     판정은 usageParse 의 `isNarcSkip` 하나를 쓴다(두 곳에 적으면 답이 갈린다). */
+  const narcCodeList = useMemo(() => narcCodes(drugs), [drugs])
+
+  /* 거래를 읽는다 — **읽기만** 한다. 창(3개월) 밖은 애초에 가져오지 않는다.
+
+     ★ 2026-11-05 수정 — 마약·향정 코드만 `.in()` 으로 받는다.
+       전에는 **모든 약의 출고**를 받아 와서 그 중 마약·향정만 골라냈다. 그런데 3개월 창의
+       출고가 1,079건이라 Supabase 기본 한도 1,000줄에 걸려 **79건이 조용히 잘렸고**,
+       그 안에 졸피드정10mg 10-31 출고 63이 있었다(1개월 707→644, 3개월 2,300→2,237).
+       29종만 집어 받으면 1,079건 → 29건이 되어 한도에 닿을 일이 없어진다.
+
+     ★ 그래도 **안전장치를 함께 둔다** — `{ count: 'exact' }` 로 전체 줄 수를 받아
+       받은 줄과 비교한다. 다음에 또 잘리면 조용히 틀리지 않고 화면에 경고가 뜬다. */
   useEffect(() => {
     let dead = false
+    /* 약품이 아직 안 왔으면 읽지 않는다 — 빈 목록으로 `.in()` 하면 0건이 와서
+       「출고가 없다」로 보인다(조용히 틀리는 쪽). 「읽는 중」으로 남겨 둔다. */
+    if (!narcCodeList.length) return () => { dead = true }
     const w = calendarWindow(year, month)
     supabase.from('transactions')
-      .select('drug_code,type,transaction_date,quantity')
+      .select('drug_code,type,transaction_date,quantity', { count: 'exact' })
       .eq('type', '출고')
+      .in('drug_code', narcCodeList)
       .gte('transaction_date', w.m3From)
       .lt('transaction_date', w.toExclusive)
-      .then(({ data, error }) => {
+      .then(({ data, error, count }) => {
         if (dead) return
+        const lim = checkRowLimit(data, count)
         setLoaded({
           key: year + '-' + month,
           rows: data || [],
           err: error ? '거래를 읽지 못했습니다: ' + error.message : '',
+          cutMsg: error ? '' : lim.message,
         })
       })
     return () => { dead = true }
-  }, [year, month])
+  }, [year, month, narcCodeList])
 
   const ready = loaded != null && loaded.key === key
   const txns = ready ? loaded.rows : null
   const readErr = ready ? loaded.err : ''
+  /* 잘렸다는 경고 — 오류와 **따로** 띄운다. 표는 그대로 보여 주되 적용은 막는다. */
+  const cutMsg = ready ? (loaded.cutMsg || '') : ''
 
   /* ── 적용 (B-2) — 이 창에서 **버튼을 눌러야만** 돈다. 출고를 입력할 때 저절로 돌지 않는다. ── */
   const [confirming, setConfirming] = useState(false)
@@ -145,6 +168,10 @@ export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager,
       </div>
 
       {err && <div style={{ color: t.red, fontSize: 12, marginBottom: 10 }}>{err}</div>}
+      {/* ★ 조용한 절단 경고 — 기존 오류 줄과 **똑같은 모양·색**이다(새 색 없음).
+          숫자가 틀렸을 수 있으므로 표는 보여 주되 적용 단추는 막는다. */}
+      {cutMsg && <div data-testid="narc-cut-warn"
+        style={{ color: t.red, fontSize: 12, marginBottom: 10 }}>{cutMsg}</div>}
       {!p && !err && <div style={{ color: t.textM, fontSize: 12, padding: '20px 0' }}>거래를 읽는 중…</div>}
 
       {p && <>
@@ -262,11 +289,16 @@ export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager,
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {/* ★ owner·admin 에게만 **DOM 에도** 둔다 — 사용량 단추 5곳과 같은 기준 */}
+            {/* ★ 거래가 잘렸으면 **적용을 막는다**(cutMsg). 보여 준 숫자가 틀렸는데 적용되면
+                틀린 발주 기준이 저장된다 — 멈추는 쪽이 옳다. 모양은 기존 「끌 때」와 같다. */}
             {isTenantManager && (
-              <button onClick={() => setConfirming(true)} disabled={applying || !p.rows.length}
+              <button onClick={() => setConfirming(true)}
+                disabled={applying || !p.rows.length || !!cutMsg}
+                title={cutMsg ? '거래를 다 읽지 못해 숫자를 믿을 수 없습니다' : undefined}
                 style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${t.accent}`,
-                  background: t.accent, color: '#fff', cursor: (applying || !p.rows.length) ? 'default' : 'pointer',
-                  fontSize: 12, fontWeight: 700, opacity: (applying || !p.rows.length) ? 0.5 : 1 }}>
+                  background: t.accent, color: '#fff',
+                  cursor: (applying || !p.rows.length || cutMsg) ? 'default' : 'pointer',
+                  fontSize: 12, fontWeight: 700, opacity: (applying || !p.rows.length || cutMsg) ? 0.5 : 1 }}>
                 {applying ? '적용 중…' : `${year}년 ${month}월 기준으로 적용`}
               </button>
             )}
