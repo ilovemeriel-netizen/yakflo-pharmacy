@@ -10,6 +10,7 @@ import {
   writeMonthlyReportXlsx, monthlyReportFileName,
   SUMMARY_CELLS, SUMMARY_MERGES, SUMMARY_DROPPED,
   LIST_HEADERS, QTY_FMT, QTY_COLS, AMT_FMT, AMT_COLS, V_ALIGN,
+  LIST_FILTER_LAST_COL,
   FONT_NAME, DEFAULT_FONT,
 } from './monthlyReportXlsx.js'
 
@@ -36,6 +37,9 @@ const LIST_EXCEPTIONS = [
   '수량 6열(D·F·H·J·K·L) 형식은 #,##0.00;(#,##0.00) — 스펙 numFmt_D_M 은 금액 4열에만 적용',
   '데이터 칸 테두리 · 세로 가운데 정렬 · 약품명(B열) 줄바꿈 추가 — 열 너비는 스펙 그대로',
   '머리글(1행)에도 같은 테두리 — 글자·굵기·크기·색·정렬은 기준 양식 그대로(서식 없음)',
+  /* 2026-11-05 이정화 님 요청 — 기준 양식은 14열이라 자동필터가 A1:N{last} 다.
+     O열 「상태」를 붙였으니 범위도 O 까지 넓혀 상태 칸에도 필터 단추가 보이게 한다. */
+  '자동필터 범위를 A1:O{last} 로 — 기준 양식 A1:N{last} 에 O열 「상태」를 더한 만큼만 넓힘',
 ]
 
 /* ── 재료 — 2026년 9월 마감값 ───────────────────────────────────────────── */
@@ -235,13 +239,37 @@ describe('약품목록 시트', () => {
     }
     expect(D.widths.K).toBe(9.78)
   })
-  it('A열이 고정되고 1행에 자동 필터가 걸린다', () => {
+  it('A열이 고정되고 1행에 자동 필터가 걸린다 — 상태(O열)까지', () => {
     const v = (ws().views || [])[0] || {}
     expect(v.state).toBe('frozen')
     expect(v.xSplit).toBe(1)
     const af = ws().autoFilter
     const text = typeof af === 'string' ? af : (af && af.from && af.to ? af.from + ':' + af.to : '')
-    expect(String(text).replace(/\$/g, '')).toBe(D.autofilter.replace('{last}', String(dto.list.length + 1)))
+    /* ★ 기준 양식 스펙은 14열 시절의 A1:N{last} 다. O열 「상태」를 더했으니 범위도 O 까지다
+       (LIST_EXCEPTIONS 에 적어 둔 승인 보정). 스펙의 끝 열만 N→O 로 바꿔 맞춘다. */
+    const want = D.autofilter.replace('N', LIST_FILTER_LAST_COL)
+      .replace('{last}', String(dto.list.length + 1))
+    expect(want).toBe('A1:O' + (dto.list.length + 1))
+    expect(String(text).replace(/\$/g, '')).toBe(want)
+  })
+  it('자동필터 끝 열은 **열 수에서 뽑는다** — 열이 늘면 범위가 따라온다', () => {
+    /* 글자로 'N' 이라 박아 두었더니 O열을 붙일 때 범위가 안 따라왔다(2026-11-05 정정) */
+    expect(LIST_FILTER_LAST_COL).toBe('O')
+    expect(LIST_FILTER_LAST_COL).toBe(String.fromCharCode(64 + LIST_HEADERS.length))
+    expect(LIST_HEADERS[LIST_HEADERS.length - 1]).toBe('상태')
+  })
+  it('상태(O1) 머리글 서식이 다른 머리글과 똑같다', () => {
+    const o1 = ws().getCell('O1')
+    expect(o1.value).toBe('상태')
+    const keyOf = c => JSON.stringify({
+      font: c.font || null, border: c.border || null,
+      align: c.alignment || null, fill: c.fill || null, numFmt: c.numFmt || null,
+    })
+    /* A1~N1 이 모두 한 가지 모양이고, O1 도 그 모양이어야 한다 */
+    const others = [...new Set(LIST_HEADERS.slice(0, 14)
+      .map((_, i) => keyOf(ws().getCell(1, i + 1))))]
+    expect(others).toHaveLength(1)
+    expect(keyOf(o1)).toBe(others[0])
   })
   it('유효기한 오름차순이고 빈 값은 맨 뒤다', () => {
     const col = ws().getColumn('N').values.slice(2).filter(v => v !== undefined)
@@ -547,9 +575,10 @@ describe('스펙 비교에서 빼 둔 항목이 문서로 남아 있다', () => 
   it('요약 보정은 6종 10칸뿐', () => {
     expect(Object.keys(EXCEPTIONS).sort()).toEqual(['B10', 'B21', 'B25', 'B26', 'B5', 'B9', 'C18', 'C6', 'D18', 'F13'])
   })
-  it('약품목록 보정은 3종뿐 — K열 너비는 예외가 아니다', () => {
-    expect(LIST_EXCEPTIONS.length).toBe(3)
+  it('약품목록 보정은 4종뿐 — K열 너비는 예외가 아니다', () => {
+    expect(LIST_EXCEPTIONS.length).toBe(4)
     expect(LIST_EXCEPTIONS.join(' ')).not.toContain('K열')
     expect(LIST_EXCEPTIONS.join(' ')).toContain('머리글(1행)에도 같은 테두리')
+    expect(LIST_EXCEPTIONS.join(' ')).toContain('자동필터 범위를 A1:O{last} 로')
   })
 })

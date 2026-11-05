@@ -143,6 +143,10 @@ export const QTY_COLS = ['D', 'F', 'H', 'J', 'K', 'L']
 export const AMT_FMT = '#,##0;\\(#,##0\\)'
 export const AMT_COLS = ['E', 'G', 'I', 'M']
 export const LIST_FREEZE_X = 1          /* A열 고정 */
+/* 자동필터 마지막 열 — **열 수에서 뽑는다.** 글자로 'N' 이라 적어 두었더니 2026-11-03 에
+   O열 「상태」를 붙일 때 범위가 따라오지 않아 상태 칸에만 필터 단추가 없었다(2026-11-05 정정).
+   열 수에서 뽑으면 다음에 열이 늘어도 범위가 저절로 따라온다. */
+export const LIST_FILTER_LAST_COL = String.fromCharCode(64 + LIST_HEADERS.length)
 
 const LIST_KEYS = ['code', 'name', 'category', 'openingQty', 'openingAmount', 'inQty', 'inAmount',
   'outQty', 'outAmount', 'dispQty', 'retQty', 'closingQty', 'closingAmount', 'expiry', 'status']
@@ -271,7 +275,7 @@ function buildList(ws, dto, mono) {
   }
 
   ws.views = [{ state: 'frozen', xSplit: LIST_FREEZE_X }]
-  ws.autoFilter = { from: 'A1', to: 'N' + Math.max(last, 1) }
+  ws.autoFilter = { from: 'A1', to: LIST_FILTER_LAST_COL + Math.max(last, 1) }
   if (mono) { /* 약품목록에는 배경·글자색이 없어 흑백판과 컬러판이 같다 */ }
 }
 
