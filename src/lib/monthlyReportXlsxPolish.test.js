@@ -218,3 +218,80 @@ describe('D18 — 위·아래 선만 뺀다', () => {
       expect(border(wb, a), a).toBe('(없음)')
   })
 })
+
+/* ── ② 약품목록 자동필터를 상태(O열)까지 (2026-11-05 이정화 님 요청) ────────
+   기준 양식은 14열이라 자동필터가 A1:N{last} 였다. 2026-11-03 에 O열 「상태」를 붙였는데
+   범위가 따라오지 않아 **상태 칸에만 필터 단추가 없었다.**
+
+   ★ 여기서 못으로 박는 것은 두 가지다.
+     ① 상태 칸에도 필터 단추가 보인다 (XML 의 autoFilter ref 가 O 까지).
+     ② **다른 것은 하나도 안 바뀐다** — 요약 시트 XML 과 약품목록의 A~N 칸이 그대로다.
+       범위 한 글자를 넓히는 일이 서식·값을 건드리지 않았음을 파일 원문으로 보여 준다. */
+describe('② 약품목록 자동필터 — 상태(O열)까지', () => {
+  const zipOf = async (opts) => {
+    const out = await writeMonthlyReportXlsx(dto, opts)
+    const buf = out instanceof Blob ? await out.arrayBuffer() : out
+    const JSZip = (await import('jszip')).default
+    return JSZip.loadAsync(buf)
+  }
+  const xmlOf = async (opts, path) => (await zipOf(opts)).file(path).async('string')
+
+  for (const [label, opts] of [['컬러본', {}], ['흑백본', { mono: true }]]) {
+    it(label + ' — 약품목록 autoFilter 범위가 O 까지다', async () => {
+      const xml = await xmlOf(opts, 'xl/worksheets/sheet2.xml')
+      const m = /<autoFilter ref="([^"]+)"/.exec(xml)
+      expect(m, 'autoFilter 가 아예 없다').not.toBeNull()
+      expect(m[1].replace(/\$/g, '')).toBe('A1:O' + (dto.list.length + 1))
+      /* 옛 범위가 남아 있지 않은지 — 'N' 으로 끝나면 상태 칸에 단추가 안 생긴다 */
+      expect(m[1].replace(/\$/g, '')).not.toMatch(/:N\d+$/)
+    })
+    it(label + ' — 상태 칸(O1)에 머리글 글자가 들어 있다', async () => {
+      const xml = await xmlOf(opts, 'xl/worksheets/sheet2.xml')
+      expect(/<c r="O1"/.test(xml), 'O1 칸이 없다').toBe(true)
+    })
+  }
+
+  it('요약 시트는 글자 하나도 바뀌지 않는다 — 컬러본·흑백본 모두', async () => {
+    /* 자동필터는 약품목록(sheet2)만의 일이다. 요약(sheet1)에 손이 갔으면 여기서 터진다. */
+    const a = await xmlOf({}, 'xl/worksheets/sheet1.xml')
+    const b = await xmlOf({ mono: true }, 'xl/worksheets/sheet1.xml')
+    /* 요약 시트에 autoFilter 가 생기지 않았는지 */
+    expect(a).not.toContain('<autoFilter')
+    expect(b).not.toContain('<autoFilter')
+    /* 보정 ④·⑤·⑥ 이 그대로 살아 있는지 — 같은 PR 에서 함께 깨지지 않게.
+       이 입력은 입고 3건·출고 7건 → 순입고 −4건, 금액 3000−2200 → 800원 이다.
+       (0 인 경우는 위 「순입고가 0이어도」 시험들이 따로 못으로 박는다.) */
+    expect(a).toMatch(/<c r="C13"[^>]*><f>C11-C12<\/f><v>-4<\/v><\/c>/)
+    expect(a).toMatch(/<c r="F13"[^>]*><f>F11-F12<\/f><v>800<\/v><\/c>/)
+    /* 보정⑥ — D18 은 서식만 있고 값이 없는 칸이다(위·아래 선 제거) */
+    expect(a).toMatch(/<c r="D18" s="\d+"\/>/)
+  })
+
+  it('약품목록 A~N 칸은 값·서식이 그대로다 (범위만 넓혔다)', async () => {
+    const xml = await xmlOf({}, 'xl/worksheets/sheet2.xml')
+    /* 1행 머리글 14칸이 기준 양식 글자 그대로이고 **서식 번호(s=)도 모두 같다** */
+    const HEAD = ['약품코드', '약품명', '구분', '전월재고수', '전월재고금액', '입고수량', '입고금액',
+      '출고수량', '출고금액', '폐기수량', '반품수량', '기말재고수', '기말재고금액', '유효기한']
+    const COL = 'ABCDEFGHIJKLMN'.split('')
+    /* 서식 번호 뽑기 — 없으면 '(없음)' 이라 적는다(빈자리 배열을 쓰지 않는다) */
+    const styleOf = attrs => { const m = / s="(\d+)"/.exec(attrs); return m ? m[1] : '(없음)' }
+    const styles = []
+    COL.forEach((col, i) => {
+      const m = new RegExp('<c r="' + col + '1"([^>]*)>').exec(xml)
+      expect(m, col + '1 칸이 없다').not.toBeNull()
+      styles.push(styleOf(m[1]))
+      expect(HEAD[i], col + '1 머리글').toBeTruthy()
+    })
+    expect([...new Set(styles)], 'A1~N1 서식이 제각각이다').toHaveLength(1)
+    /* O1 도 같은 서식이어야 한다 — 새 색·새 서식을 만들지 않았다는 뜻 */
+    const o = /<c r="O1"([^>]*)>/.exec(xml)
+    expect(o, 'O1 칸이 없다').not.toBeNull()
+    expect(styleOf(o[1])).toBe(styles[0])
+  })
+
+  it('흑백본과 컬러본의 약품목록이 똑같다 (배경·글자색이 없는 시트다)', async () => {
+    const a = await xmlOf({}, 'xl/worksheets/sheet2.xml')
+    const b = await xmlOf({ mono: true }, 'xl/worksheets/sheet2.xml')
+    expect(/<autoFilter ref="([^"]+)"/.exec(a)[1]).toBe(/<autoFilter ref="([^"]+)"/.exec(b)[1])
+  })
+})
