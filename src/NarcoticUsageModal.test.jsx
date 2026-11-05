@@ -14,6 +14,8 @@ vi.mock('./lib/supabase', () => {
   const q = {
     select: (...a) => { calls.push(['select', ...a]); return q },
     eq: () => q, gte: () => q, lt: () => q, order: () => q,
+    /* ★ 2026-11-05 — 창이 마약·향정 코드만 `.in()` 으로 받도록 좁혔다(1,000줄 절단 막기) */
+    in: (...a) => { calls.push(['in', ...a]); return q },
     update: (...a) => { calls.push(['update', ...a]); return q },
     insert: (...a) => { calls.push(['insert', ...a]); return q },
     upsert: (...a) => { calls.push(['upsert', ...a]); return q },
