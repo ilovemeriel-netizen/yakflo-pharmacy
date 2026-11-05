@@ -12,6 +12,7 @@
 import { useState, useMemo, useRef } from 'react'
 import { useDraggableModal } from './useDraggableModal'
 import { supabase } from './lib/supabase'
+import { selectAll } from './lib/selectAll'
 
 const CHUNK = 500
 const CONC = 10
@@ -136,8 +137,11 @@ export default function SnapshotUploadModal({ t, isOwner, onClose, onReload }) {
       const map = new Map()
       for (const p of pairs) {
         const [y, m] = p.split('-').map(Number)
-        const { data, error } = await supabase.from('monthly_snapshots')
+        /* ★ 한 달이 1,065~1,133줄이라 **한 번에 받으면 1,000줄에서 조용히 잘린다**.
+           잘리면 이미 있는 줄을 「신규」로 잘못 세어 올리기가 실패한다(2026-11-05). */
+        const { data, error } = await selectAll(() => supabase.from('monthly_snapshots')
           .select('id,drug_code,snap_year,snap_month').eq('snap_year', y).eq('snap_month', m)
+          .order('id', { ascending: true }))
         if (error) throw error
         ;(data || []).forEach((s) => map.set(`${String(s.drug_code)}|${s.snap_year}|${s.snap_month}`, s))
       }
