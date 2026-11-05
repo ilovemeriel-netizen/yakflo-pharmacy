@@ -236,7 +236,10 @@ describe('입출고 화면 — 단건 저장·엑셀 일괄의 배선', () => {
        **색 분기**를 보는 시험이므로 className 은 건너뛰고 style 부터 본다 —
        글자 그대로 비교하면 인쇄 속성 하나 붙을 때마다 여기가 깨진다. */
     expect(SRC).toContain("{dropped.length>0&&<div className=\"no-print\" style={{background:PARTIAL_BG,borderRadius:6,padding:'6px 10px',marginBottom:6,color:PARTIAL_FG,fontSize:11,fontWeight:600}}>{partialText(dropped,txColLabel)}</div>}")
-    expect(SRC).toMatch(/\{dropped\.length===0&&msg&&<div [^>]*style=\{\{background:msg\.includes\('완료'\)\?t\.greenL:t\.redL/)
+    /* ★ 2026-11-05: 색 분기가 `msg.includes('완료')` → `msgIsGood(msg)` 로 바뀌었다.
+       「완료」가 들어 있어도 실패 낱말이 있으면 **빨강**이 되게 한 것이다(lib/msgTone.js).
+       연보라(dropped)가 따로 있어야 하는 이유는 그대로다 — 「완료」가 없는 문구는 빨강이 된다. */
+    expect(SRC).toMatch(/\{dropped\.length===0&&msg&&<div [^>]*style=\{\{background:msgIsGood\(msg\)\?t\.greenL:t\.redL/)
   })
 
   it('④ 엑셀 일괄이 행마다 집계하고, 기존 건수 줄은 그대로다', () => {

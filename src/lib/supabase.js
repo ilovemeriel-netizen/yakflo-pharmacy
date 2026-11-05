@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { makeGuardedFetch } from './session'
 
 /* 환경변수에서 Supabase 설정 로드 (보안 분리)
    - 로컬: .env 파일 (반드시 .gitignore에 포함)
@@ -13,4 +14,10 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   )
 }
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+/* ★ 쓰기 요청 바로 앞에서 로그인표를 되살린다 (lib/session.js).
+   읽기·로그인 경로·비로그인 사용자는 건드리지 않는다. 자세한 이유는 그 파일 머리말에. */
+const guardedFetch = makeGuardedFetch({ getAuth: () => supabase && supabase.auth })
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  global: { fetch: guardedFetch },
+})
