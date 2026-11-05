@@ -94,7 +94,11 @@ export const SUMMARY_CELLS = {
   F17: { key: 'retAmount', numFmt: WON, h: 'center', v: 'center', border: ALL, fill: null, fontColor: 'FF804A87', bold: true, size: 14 },
   B18: { label: '합계', numFmt: GEN, h: 'center', v: 'center', border: ALL, fill: 'FF804A87', fontColor: 'FFFFFFFF', bold: true, size: 11 },
   C18: { key: '_lossCount', numFmt: CNT, h: 'center', v: 'center', border: ALL, fill: 'FF804A87', fontColor: 'FFFFFFFF', bold: true, size: 11 },
-  D18: { label: null, numFmt: GEN, h: null, v: 'center', border: ALL, fill: 'FF804A87', fontColor: null, bold: false, size: 12 },
+  /* ★ 2026-11-05 이정화 님 요청 — 합계 줄 가운데 빈 칸(D18)의 **위·아래 선만** 뺀다.
+     보라 배경과 좌·우 선은 그대로 둔다(띠가 끊기지 않는다).
+     위·아래 선은 **D18 자신**이 그리던 것이다 — D17·D19 는 테두리가 없다(실측 확인).
+     ※ 바로 옆 E18 은 손대지 않는다(이정화 님 지시). */
+  D18: { label: null, numFmt: GEN, h: null, v: 'center', border: ['left', 'right'], fill: 'FF804A87', fontColor: null, bold: false, size: 12 },
   E18: { label: null, numFmt: GEN, h: null, v: 'center', border: ALL, fill: 'FF804A87', fontColor: null, bold: false, size: 12 },
   F18: { key: '_lossAmount', numFmt: WON, h: 'center', v: 'center', border: ALL, fill: 'FF804A87', fontColor: 'FFFFFFFF', bold: true, size: 14 },
 
@@ -151,12 +155,12 @@ const LIST_KEYS = ['code', 'name', 'category', 'openingQty', 'openingAmount', 'i
      모양이 다르면 null 을 돌려주고, 부르는 쪽이 **지금처럼 수식만** 넣는다(안전한 쪽으로 넘어간다).
    ★ 계산식을 바꾸는 것이 아니다. 엑셀이 열 때 하는 계산과 **같은 답**을 미리 적어 둘 뿐이다.
 
-   ⚠ **답이 정확히 0 이면 exceljs 가 그 값을 버린다** — `lib/doc/cell.js` 의 모델 복사가
-     `if (value) copy[name] = value` 라 0·빈문자 같은 falsy 를 떨어뜨린다. 그래서 순입고가
-     0 인 달(예: 2026-11, 입고 0·출고 0)은 **고친 뒤에도 미리보기에서 빈 칸으로 보인다.**
-     엑셀로 열면 스스로 계산해 「0건」이 나오므로 결재본 숫자에는 영향이 없다.
-     0 인 달까지 미리보기에서 보이게 하려면 수식 대신 숫자를 적어야 하는데, 그러면
-     「셀을 고치면 아래가 따라온다」(보정④)가 그 달만 깨진다 — **이정화 님 판단 사항**이다. */
+   ★ 답이 **0 이어도 파일에는 제대로 들어간다** — XML 원문이 `<f>C11-C12</f><v>0</v>` 다.
+     (2026-11-05 확인. 이정화 님이 시안 파일을 뷰어로 열어 「0건」·「0원」이 보이는 것을 확인하셨고,
+      압축을 풀어 sheet XML 로도 확인했다.)
+     ※ 다만 exceljs 로 **다시 읽으면** `result` 가 비어 보인다 — `lib/doc/cell.js` 의 모델 복사가
+       `if (value)` 라 falsy 를 떨어뜨리기 때문이다. **읽을 때의 착시이지 파일 문제가 아니다.**
+       그래서 시험은 다시 읽은 값이 아니라 **XML 원문**을 본다. */
 export function formulaResult(formula, vals) {
   const m = /^([A-F]\d+)-([A-F]\d+)$/.exec(String(formula || '').trim())
   if (!m) return null

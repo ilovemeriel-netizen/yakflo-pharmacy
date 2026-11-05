@@ -126,25 +126,95 @@ describe('A — 바닥글 두 줄만 회색', () => {
   })
 })
 
-/* ⚠ exceljs 의 함정 — 답이 **정확히 0** 이면 계산된 값을 버린다.
-   lib/doc/cell.js 의 모델 복사가 `if (value)` 라 falsy 를 떨어뜨린다.
-   여기서 못 박아 두는 이유: 나중에 「0 인 달만 또 빈 칸이네」가 나왔을 때
-   코드가 잘못된 게 아니라 **알고 둔 한계**임을 바로 알 수 있게 하려는 것이다. */
-describe('⚠ 알고 둔 한계 — 답이 0 이면 계산된 값이 빠진다', () => {
-  it('순입고가 0 인 달은 수식만 남는다 (엑셀로 열면 0건으로 보인다)', async () => {
+/* ★ 답이 **0 이어도 파일에는 제대로 들어간다** (2026-11-05 이정화 님 확인으로 바로잡음).
+   앞서 「exceljs 가 0 을 버린다」고 적었던 것은 **다시 읽을 때의 착시**였다 —
+   `lib/doc/cell.js` 의 모델 복사가 `if (value)` 라 falsy 를 떨어뜨려 `result` 가 비어 보인다.
+   파일은 멀쩡하므로 시험은 **XML 원문**을 본다. 이게 뷰어·엑셀이 실제로 읽는 것이다. */
+async function sheetXml(dto, opts) {
+  const out = await writeMonthlyReportXlsx(dto, opts)
+  const buf = out instanceof Blob ? await out.arrayBuffer() : out
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(buf)
+  return zip.file('xl/worksheets/sheet1.xml').async('string')
+}
+const cellXml = (xml, addr) => (xml.match(new RegExp('<c r="' + addr + '"[^>]*>.*?</c>')) || [''])[0]
+
+describe('D — 답이 0 이어도 XML 원문에 값이 들어간다', () => {
+  it('★ 순입고가 0 인 달도 <v>0</v> 이 적힌다', async () => {
     const d0 = buildMonthlyReportDTO({ ...INPUT, live: { ...INPUT.live, inCnt: 0, outCnt: 0 } })
     expect(d0.summary.inCount - d0.summary.outCount, '답이 0 이다').toBe(0)
-    expect(formulaResult('C11-C12', d0.summary), 'lib 은 0 을 바르게 셈한다').toBe(0)
-    const ExcelJS = (await import('exceljs')).default || (await import('exceljs'))
-    const b = new ExcelJS.Workbook(); await b.xlsx.load(await writeMonthlyReportXlsx(d0, { mono: false }))
-    const v = b.getWorksheet('요약').getCell('C13').value
-    expect(v.formula, '수식은 남는다').toBe('C11-C12')
-    expect(v.result, '★ exceljs 가 0 을 버린다 — 알고 둔 한계').toBeUndefined()
+    expect(formulaResult('C11-C12', d0.summary), 'lib 이 0 을 바르게 셈한다').toBe(0)
+    const xml = await sheetXml(d0, { mono: false })
+    const c13 = cellXml(xml, 'C13')
+    expect(c13, 'C13 에 수식이 있다').toContain('<f>C11-C12</f>')
+    expect(c13, '★ 값 0 이 함께 적힌다').toContain('<v>0</v>')
   })
-  it('답이 0 이 아니면 제대로 들어간다', async () => {
+  it('★ 금액 쪽(F13)도 같다', async () => {
+    /* 건수만 0 으로 두면 **금액은 0 이 아니다** — 금액은 명세 행에서 온다. 둘 다 0 인 입력을 만든다 */
+    const d0 = buildMonthlyReportDTO({ ...INPUT, live: { ...INPUT.live, inCnt: 0, outCnt: 0 },
+      rows: INPUT.rows.map(r => ({ ...r, total_in_qty: 0, total_in_amount: 0, total_out_qty: 0, total_out_amount: 0 })) })
+    expect(d0.summary.inAmount - d0.summary.outAmount, '금액 답도 0 이다').toBe(0)
+    const f13 = cellXml(await sheetXml(d0, { mono: false }), 'F13')
+    expect(f13).toContain('<f>F11-F12</f>')
+    expect(f13).toContain('<v>0</v>')
+  })
+  it('흑백본도 같다', async () => {
+    const d0 = buildMonthlyReportDTO({ ...INPUT, live: { ...INPUT.live, inCnt: 0, outCnt: 0 } })
+    expect(cellXml(await sheetXml(d0, { mono: true }), 'C13')).toContain('<v>0</v>')
+  })
+  it('0 이 아닌 달은 그 값이 적힌다', async () => {
     const d1 = buildMonthlyReportDTO({ ...INPUT, live: { ...INPUT.live, inCnt: 5, outCnt: 2 } })
-    const ExcelJS = (await import('exceljs')).default || (await import('exceljs'))
-    const b = new ExcelJS.Workbook(); await b.xlsx.load(await writeMonthlyReportXlsx(d1, { mono: false }))
-    expect(b.getWorksheet('요약').getCell('C13').value.result).toBe(3)
+    expect(cellXml(await sheetXml(d1, { mono: false }), 'C13')).toContain('<v>3</v>')
+  })
+  it('음수도 그대로 적힌다', async () => {
+    const d2 = buildMonthlyReportDTO({ ...INPUT, live: { ...INPUT.live, inCnt: 1, outCnt: 9 } })
+    expect(cellXml(await sheetXml(d2, { mono: false }), 'C13')).toContain('<v>-8</v>')
+  })
+})
+
+/* ★ 2026-11-05 이정화 님 요청 — 합계 줄 가운데 빈 칸(D18)의 **위·아래 선만** 뺀다.
+   보라 배경과 좌·우 선은 그대로 둔다. 그 밖의 칸은 한 군데도 달라지면 안 된다. */
+describe('D18 — 위·아래 선만 뺀다', () => {
+  const border = (book, addr) => {
+    const b = book.getWorksheet('요약').getCell(addr).border
+    /* ★ exceljs 는 선이 없어도 빈 객체 {} 를 준다 — truthy 라서 키 수로 봐야 한다 */
+    const keys = b ? Object.keys(b).sort() : []
+    return keys.length ? keys.join('+') : '(없음)'
+  }
+  const fill = (book, addr) => {
+    const f = book.getWorksheet('요약').getCell(addr).fill
+    return (f && f.fgColor && f.fgColor.argb) || '(없음)'
+  }
+  it('★ D18 에 위·아래 선이 없다', () => {
+    expect(border(wb, 'D18')).toBe('left+right')
+  })
+  it('★ 흑백본에서도 다시 그려지지 않는다', () => {
+    expect(border(mono, 'D18')).toBe('left+right')
+  })
+  it('★ 보라 배경은 그대로다 (흑백본은 원래 배경이 없다)', () => {
+    expect(fill(wb, 'D18'), '컬러본').toBe('FF804A87')
+    expect(fill(mono, 'D18'), '흑백본은 어느 칸에도 배경이 없다').toBe('(없음)')
+  })
+  it('★ 이웃 칸은 선을 그리지 않는다 — 위·아래가 되살아날 길이 없다', () => {
+    expect(border(wb, 'D17'), 'D17').toBe('(없음)')
+    expect(border(wb, 'D19'), 'D19').toBe('(없음)')
+    expect(border(mono, 'D17'), '흑백 D17').toBe('(없음)')
+    expect(border(mono, 'D19'), '흑백 D19').toBe('(없음)')
+  })
+  it('★ 합계 줄의 다른 칸은 네 면 그대로다 — E18 포함', () => {
+    for (const a of ['B18', 'C18', 'E18', 'F18'])
+      expect(border(wb, a), a).toBe('bottom+left+right+top')
+  })
+  it('★ 테두리가 있는 칸 전체 목록이 D18 빼고 그대로다', () => {
+    /* 요약 시트에서 테두리가 걸린 칸은 네 묶음의 라벨·값 칸뿐이다 */
+    const want = ['B6', 'C6', 'E6', 'F6', 'B7', 'C7', 'E7', 'F7',
+      'B11', 'C11', 'E11', 'F11', 'B12', 'C12', 'E12', 'F12', 'B13', 'C13', 'E13', 'F13',
+      'B16', 'C16', 'E16', 'F16', 'B17', 'C17', 'E17', 'F17', 'B18', 'C18', 'E18', 'F18',
+      'B22', 'C22', 'E22', 'F22', 'B23', 'C23', 'E23', 'F23']
+    for (const a of want) expect(border(wb, a), a + ' 는 네 면').toBe('bottom+left+right+top')
+    expect(border(wb, 'D18'), 'D18 만 좌·우').toBe('left+right')
+    /* D 열의 나머지는 전과 같이 선이 없다 */
+    for (const a of ['D6', 'D7', 'D11', 'D12', 'D13', 'D16', 'D17', 'D22', 'D23'])
+      expect(border(wb, a), a).toBe('(없음)')
   })
 })
