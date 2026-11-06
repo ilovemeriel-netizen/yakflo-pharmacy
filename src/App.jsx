@@ -15,6 +15,7 @@ import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLab
 import { vaccineTabFromHash } from './lib/vaccineRoute'
 import { handleScan as scanHandle, decodeGs1 as scanDecode, scanCountQty, scanAddItem, saveScanMapping, deactivateBarcode, listBarcodes, gtinCheckOk, ownCodeLooksLikeGs1, OWN_CODE_WARN } from './lib/scan'
 import { dbErrorMsg, noRowMsg, bulkFailKind } from './lib/dbError'
+import { msgIsGood, msgIsBad } from './lib/msgTone'
 import { SEARCH_LIMIT, DEBOUNCE_MS, canPick, pickBlockedReason, BLOCK_TEXT, summaryText, filterByCategory, toggleCategory, isCategoryOn } from './lib/locPick'
 import { fetchMonthlyReportSource } from './lib/monthlyReportQuery'
 import { buildMonthlyReportDTO, isCountedItem } from './lib/monthlyReportDTO'
@@ -1103,8 +1104,9 @@ function LotModal({ drug: dr, onClose, onSaved }) {
   useEffect(() => { loadLots() }, [])
   async function loadLots() { setLd(true); const { data } = await supabase.from('drug_lots').select('*').eq('drug_code', dr.drug_code).order('expiry_date'); setLots(data || []); setLd(false) }
   async function addLot() { if (!nf.lot_no.trim() || !nf.expiry_date) { setMsg('LOT번호와 유효기한 필수'); return }; const { error } = await supabase.from('drug_lots').insert([{ drug_code: dr.drug_code, lot_no: nf.lot_no.trim(), expiry_date: nf.expiry_date, quantity: Number(nf.quantity) || 0, supplier: nf.supplier, memo: nf.memo, received_date: todayYmd() }]); if (error) { setMsg(error.message); return }; setMsg('추가 완료'); setNf({ lot_no: '', expiry_date: '', quantity: '', supplier: '', memo: '' }); loadLots(); onSaved?.(); setTimeout(() => setMsg(null), 2000) }
-  async function delLot(id) { await supabase.from('drug_lots').delete().eq('id', id); loadLots(); onSaved?.() }
-  async function toggleActive(lot) { await supabase.from('drug_lots').update({ is_active: !lot.is_active }).eq('id', lot.id); loadLots(); onSaved?.() }
+  /* ★ 지우지 못했는데 조용히 넘어가면 사용자는 지워진 줄 안다(2026-11-05) */
+  async function delLot(id) { const { error } = await supabase.from('drug_lots').delete().eq('id', id); if (error) { setMsg('LOT 을 지우지 못했습니다: ' + dbErrorMsg(error)); return } setMsg('LOT 을 삭제했습니다'); loadLots(); onSaved?.() }
+  async function toggleActive(lot) { const { error } = await supabase.from('drug_lots').update({ is_active: !lot.is_active }).eq('id', lot.id); if (error) { setMsg('LOT 상태를 바꾸지 못했습니다: ' + dbErrorMsg(error)); return } setMsg('LOT 상태를 바꿨습니다'); loadLots(); onSaved?.() }
   const totalQty = lots.filter(l => l.is_active).reduce((a, l) => a + (l.quantity || 0), 0)
   const ip = { width: '100%', padding: '8px 10px', border: `1px solid ${t.border}`, borderRadius: 6, fontSize: 12, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }
   return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1002, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
@@ -1114,7 +1116,7 @@ function LotModal({ drug: dr, onClose, onSaved }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ fontSize: 12, color: t.green, fontWeight: 600 }}>활성합계: {totalQty}개</span><button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${t.border}`, background: 'transparent', cursor: 'pointer', fontSize: 14, color: t.textM }}>✕</button></div>
       </div>
       <div style={{ padding: '16px 20px' }}>
-        {msg && <div className="no-print" style={{ background: msg.includes('완료') ? t.greenL : t.redL, borderRadius: 6, padding: '8px 12px', marginBottom: 10, color: msg.includes('완료') ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg}</div>}
+        {msg && <div className="no-print" style={{ background: msgIsGood(msg) ? t.greenL : t.redL, borderRadius: 6, padding: '8px 12px', marginBottom: 10, color: msgIsGood(msg) ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>{msg}</div>}
         <div style={{ background: t.bg, borderRadius: 10, padding: '14px', marginBottom: 14, border: `1px solid ${t.border}` }}>
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>새 LOT 추가</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
@@ -2331,7 +2333,7 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
   function dlUsageTemplate(){const ws=XLSX.utils.aoa_to_sheet([['약품코드','약품명(참고용)','전년사용량','최근3개월사용량','직전1개월사용량'],['SGBRONNC10','가바로닌캡슐100mg',1592,974,320],['GRD2','게리드정2밀리그램',330,105,35]]);const _rg=XLSX.utils.decode_range(ws['!ref']);for(let R=1;R<=_rg.e.r;R++){const _a=XLSX.utils.encode_cell({r:R,c:0});if(ws[_a]){ws[_a].t='s';ws[_a].z='@'}for(const C of [2,3,4]){const _c=XLSX.utils.encode_cell({r:R,c:C});if(ws[_c]){ws[_c].t='n';ws[_c].z='0'}}}ws['!cols']=[{wch:14},{wch:22},{wch:12},{wch:16},{wch:16}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'사용량');XLSX.writeFile(wb,'사용량_업로드_양식.xlsx')}
   return<div style={{padding:'20px 24px'}}>
     <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:8,marginBottom:14}}>{[{k:'전체',c:t.text},{k:'긴급',c:t.red},{k:'주문필요',c:t.amber},{k:'재고없음',c:t.red},{k:'정상',c:t.green},{k:'과잉',c:t.blue},{k:'기준미설정',c:t.textM}].map(f2=><div key={f2.k} onClick={()=>{setFilter(f2.k);setPage(1)}} style={{background:filter===f2.k?f2.c+'15':t.card,borderRadius:12,padding:'12px 16px',border:`1px solid ${filter===f2.k?f2.c:t.border}`,cursor:'pointer',backdropFilter:'blur(12px)'}}><div style={{fontSize:10,color:t.textM}}>{f2.k}</div><div style={{fontSize:24,fontWeight:700,color:f2.c}}>{sg[f2.k]}</div></div>)}</div>
-    {uMsg&&<div className="no-print" style={{background:uMsg.includes('완료')?t.greenL:uMsg.includes('오류')?t.redL:t.blueL,border:`1px solid ${uMsg.includes('완료')?t.green:uMsg.includes('오류')?t.red:t.blue}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:uMsg.includes('완료')?t.green:uMsg.includes('오류')?t.red:t.blue,fontSize:12,fontWeight:600}}>{uMsg}</div>}
+    {uMsg&&<div className="no-print" style={{background:msgIsBad(uMsg)?t.redL:msgIsGood(uMsg)?t.greenL:t.blueL,border:`1px solid ${msgIsBad(uMsg)?t.red:msgIsGood(uMsg)?t.green:t.blue}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:msgIsBad(uMsg)?t.red:msgIsGood(uMsg)?t.green:t.blue,fontSize:12,fontWeight:600}}>{uMsg}</div>}
     {uRep&&<div className="no-print" style={{background:t.card,border:'1px solid '+t.border,borderRadius:12,padding:'12px 16px',marginBottom:12,fontSize:12,backdropFilter:'blur(12px)'}}>
       {uRep.phase==='error'?<div style={{color:t.red,fontWeight:600}}>업로드 오류: {uRep.msg}</div>
       :uRep.phase==='applying'?<div style={{color:t.blue,fontWeight:600}}>반영 중...</div>
@@ -3465,7 +3467,7 @@ export function TransactionForm({drugs,onReload,navFilter}){
     const{data,error}=await _dq.select('id')
     if(error){setDelAllBusy(false);setDelAllMsg(dbErrorMsg(error));return}
     let usageMsg=''
-    if(tab==='출고'){/* 출고 전체삭제 후 재집계 → recent_1m 0 리셋(0047: 전 약품 recent_1m=coalesce(최근1개월 출고,0)). 월평균·안전재고(수기 보존)·recent_3m·prev_year 무변경. */await supabase.rpc('app_recompute_usage',{p_overwrite_manual:false});usageMsg=' · 직전1개월 재집계'}
+    if(tab==='출고'){/* 출고 전체삭제 후 재집계 → recent_1m 0 리셋(0047: 전 약품 recent_1m=coalesce(최근1개월 출고,0)). 월평균·안전재고(수기 보존)·recent_3m·prev_year 무변경. */const _rc=await supabase.rpc('app_recompute_usage',{p_overwrite_manual:false});if(_rc.error){setDelAllBusy(false);setDelAllMsg('삭제는 됐지만 사용량 재집계에 실패했습니다: '+dbErrorMsg(_rc.error));onReload?.();loadTxns();return}usageMsg=' · 직전1개월 재집계'}
     setDelAllBusy(false)
     setDelAllOpen(false);setDelAllStage(1);setBulkMsg(tab+' 이력 '+(data?data.length:0)+'건 전체 삭제 완료'+usageMsg);onReload?.();loadTxns()
     setTimeout(()=>setBulkMsg(null),4000)
@@ -3590,7 +3592,7 @@ export function TransactionForm({drugs,onReload,navFilter}){
         </>}
         <input value={form.note} onChange={e=>sf('note',e.target.value)} placeholder="비고" style={{...ip,marginBottom:10}}/>
         {dropped.length>0&&<div className="no-print" style={{background:PARTIAL_BG,borderRadius:6,padding:'6px 10px',marginBottom:6,color:PARTIAL_FG,fontSize:11,fontWeight:600}}>{partialText(dropped,txColLabel)}</div>}
-        {dropped.length===0&&msg&&<div className="no-print" style={{background:msg.includes('완료')?t.greenL:t.redL,borderRadius:6,padding:'6px 10px',marginBottom:6,color:msg.includes('완료')?t.green:t.red,fontSize:11}}>{msg}</div>}
+        {dropped.length===0&&msg&&<div className="no-print" style={{background:msgIsGood(msg)?t.greenL:t.redL,borderRadius:6,padding:'6px 10px',marginBottom:6,color:msgIsGood(msg)?t.green:t.red,fontSize:11}}>{msg}</div>}
         <button onClick={()=>submit()} disabled={saving||_selClosed} style={{width:'100%',padding:10,borderRadius:8,border:'none',background:(saving||_selClosed)?t.textL:tc[tab]?.c,color:'#fff',cursor:(saving||_selClosed)?'not-allowed':'pointer',fontSize:13,fontWeight:700}}>{_selClosed?'마감된 월 (읽기 전용)':saving?'처리 중...':tab+' 등록'}</button>
         {/* 대량등록 */}
         <div style={{borderTop:`1px solid ${t.border}`,marginTop:14,paddingTop:12}}>
@@ -3601,7 +3603,7 @@ export function TransactionForm({drugs,onReload,navFilter}){
           </div>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={xlUpload} style={{display:'none'}}/>
           {bulkPartial&&<div className="no-print" style={{marginTop:6,background:PARTIAL_BG,borderRadius:6,padding:'5px 9px',fontSize:10,fontWeight:600,color:PARTIAL_FG}}>{partialBulkText(bulkPartial.n,bulkPartial.cols,txColLabel)}</div>}
-          {bulkMsg&&<div className="no-print" style={{marginTop:6,fontSize:10,color:bulkMsg.includes('완료')?t.green:bulkMsg.includes('오류')?t.red:t.blue,fontWeight:600}}>{bulkMsg}{bulkData.some(r=>r._fail)?<button onClick={()=>setBulkMsg(null)} style={{marginLeft:6,padding:'1px 6px',borderRadius:4,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>닫기</button>:null}</div>}
+          {bulkMsg&&<div className="no-print" style={{marginTop:6,fontSize:10,color:msgIsBad(bulkMsg)?t.red:msgIsGood(bulkMsg)?t.green:t.blue,fontWeight:600}}>{bulkMsg}{bulkData.some(r=>r._fail)?<button onClick={()=>setBulkMsg(null)} style={{marginLeft:6,padding:'1px 6px',borderRadius:4,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>닫기</button>:null}</div>}
           {bulkData.some(r=>!r.found)?<div style={{marginTop:8}}><div style={{color:t.amber,fontWeight:600,fontSize:11,marginBottom:4}}>매칭실패 {bulkData.filter(r=>!r.found).length}건 — 코드 정정 후 재매핑</div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:10}}><thead><tr>{['업로드코드','약품명','수량','단가',''].map((h,hi)=><th key={hi} style={{textAlign:(hi>=2&&hi<=3)?'right':'left',padding:'4px 6px',color:t.textM,borderBottom:'1px solid '+t.border}}>{h}</th>)}</tr></thead><tbody>{bulkData.filter(r=>!r.found).map(r=><tr key={r.idx} style={{borderBottom:'1px solid '+t.border}}><td style={{padding:'3px 6px'}}><input value={r.drug_code} onChange={e=>setBulkCode(r.idx,e.target.value)} style={{padding:'2px 6px',border:'1px solid '+(r._err?t.red:t.border),borderRadius:5,fontSize:10,background:t.bg,color:t.text,width:100}}/>{r._err?<span style={{marginLeft:4,color:t.red,fontSize:9}}>{r._err}</span>:null}</td><td style={{padding:'3px 6px',color:t.textM}}>{r.drug_name||'-'}</td><td style={{padding:'3px 6px',textAlign:'right',color:t.textM}}>{r.quantity}</td><td style={{padding:'3px 6px',textAlign:'right',color:t.textM}}>{r.unit_price}</td><td style={{padding:'3px 6px',whiteSpace:'nowrap'}}><button onClick={()=>remapBulk(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:600,marginRight:3}}>재매핑</button><button onClick={()=>cancelBulk(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>취소</button></td></tr>)}</tbody></table></div></div>:null}
           {bulkData.some(r=>r.found&&!(r.quantity>0))?<div style={{marginTop:8}}><div style={{color:t.red,fontWeight:600,fontSize:11,marginBottom:4}}>수량 오류 {bulkData.filter(r=>r.found&&!(r.quantity>0)).length}건 — 수량 수정 후 재검증 또는 취소</div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:10}}><thead><tr>{['코드','약품명','수량(수정)','사유',''].map((h,hi)=><th key={hi} style={{textAlign:hi===2?'right':'left',padding:'4px 6px',color:t.textM,borderBottom:'1px solid '+t.border}}>{h}</th>)}</tr></thead><tbody>{bulkData.filter(r=>r.found&&!(r.quantity>0)).map(r=><tr key={r.idx} style={{borderBottom:'1px solid '+t.border}}><td style={{padding:'3px 6px',color:t.text}}>{r.drug_code}</td><td style={{padding:'3px 6px',color:t.textM}}>{r.drug_name||'-'}</td><td style={{padding:'3px 6px',textAlign:'right'}}><input value={r.quantity} onChange={e=>setBulkQty(r.idx,e.target.value)} style={{padding:'2px 6px',border:'1px solid '+(r._qerr?t.red:t.border),borderRadius:5,fontSize:10,background:t.bg,color:t.text,width:64,textAlign:'right'}}/></td><td style={{padding:'3px 6px',color:t.red,fontSize:9}}>수량 0 이하/비숫자{r._qerr?' · '+r._qerr:''}</td><td style={{padding:'3px 6px',whiteSpace:'nowrap'}}><button onClick={()=>revalidateBulkQty(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.green,background:t.greenL,color:t.green,cursor:'pointer',fontSize:9,fontWeight:600,marginRight:3}}>재검증</button><button onClick={()=>cancelBulk(r.idx)} style={{padding:'2px 8px',borderRadius:5,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:9,fontWeight:600}}>취소</button></td></tr>)}</tbody></table></div></div>:null}
           {/* ★ 등록 실패 사유(결함 34) — 마크업·간격·타이포는 위 두 블록과 동일. 색만 팔레트 안(t.purple)으로 처리한다. */}
@@ -3960,16 +3962,19 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
     /* 차이 0 인 항목도 「반영됨」으로 닫는다 — 거래는 만들지 않고 표시만 확정한다 */
     for (const r of rows) {
       const it = cntItems[r.code]; if (!it) continue
-      await supabase.from('inventory_count_items')
+      /* ★ 표시 확정이 실패하면 멈추고 알린다 — 「반영했습니다」로 넘어가면 안 된다 */
+      const _iu = await supabase.from('inventory_count_items')
         .update({ applied_tx_id: txByCode[r.code] || null, book_qty: r.book }).eq('id', it.id)
+      if (_iu.error) { setCntBusy(false); setApplyAsk(null); cntFlash('반영 표시를 저장하지 못했습니다: ' + dbErrorMsg(_iu.error), 'err'); await loadCnt(); return false }
     }
     /* ★ status 전이 — 항목이 **전부** 반영됐을 때만 반영완료. 하나라도 남으면 작성중 유지.
        덜 반영된 채 마감이 열리면 「반영을 잊은 채 마감」이 그대로 일어난다. */
     const doneCodes = new Set(rows.map(r => r.code))
     const remain = Object.values(cntItems).filter(x => !x.applied_tx_id && !doneCodes.has(x.drug_code)).length
     if (cntSes && remain === 0) {
-      await supabase.from('inventory_counts')
+      const _su = await supabase.from('inventory_counts')
         .update({ status: '반영완료', applied_at: new Date().toISOString(), applied_by: profile?.id || null }).eq('id', cntSes.id)
+      if (_su.error) { setCntBusy(false); setApplyAsk(null); cntFlash('세션을 반영완료로 바꾸지 못했습니다: ' + dbErrorMsg(_su.error), 'err'); await loadCnt(); return false }
     }
     setCntBusy(false); setCntSel([]); setApplyAsk(null)
     cntFlash('반영했습니다 · 조정 거래 ' + eff.length + '건' + (remain ? ' · 미반영 ' + remain + '건 남음' : ' · 세션 반영완료'))
@@ -7867,7 +7872,7 @@ function Schedule({ drugs, onNav }) {
       <button onClick={() => shift(1)} style={navBtn}>›</button>
       <button onClick={() => { setY(_now.getFullYear()); setM(_now.getMonth() + 1) }} style={{ ...navBtn, fontWeight: 600, fontSize: 12 }}>오늘</button>
       {canEdit && <button onClick={() => syncHolidays(y, true)} disabled={hidBusy} style={{ ...navBtn, fontWeight: 600, fontSize: 12, opacity: hidBusy ? 0.5 : 1, cursor: hidBusy ? 'not-allowed' : 'pointer' }} title="공공데이터포털 특일정보에서 해당 연도 공휴일을 다시 받아옵니다">{hidBusy ? '갱신 중…' : '공휴일 갱신'}</button>}
-      {hidMsg && <span style={{ fontSize: 11, fontWeight: 600, color: hidMsg.includes('완료') ? t.green : t.red }}>{hidMsg}</span>}
+      {hidMsg && <span style={{ fontSize: 11, fontWeight: 600, color: msgIsGood(hidMsg) ? t.green : t.red }}>{hidMsg}</span>}
       <div style={{ flex: 1 }} />
       <span style={{ display: 'flex', gap: 10, fontSize: 10, color: t.textM, flexWrap: 'wrap' }}>{[['유효기한', t.red], ['약품변경', t.accent], ['월마감', t.amber], ['공휴일', HOLIDAY_COLOR], ['발주', '#804A87'], ['실사', '#019748'], ['마감', '#2E4A62'], ['업무', '#A8CF5C'], ['근무', '#92C8E0'], ['입퇴원', '#F39E94'], ['휴일', '#E2A6D4'], ['기타', '#BFA6D9']].map(([lbl, c]) => <span key={lbl}>{lbl === '공휴일' ? <span style={{ color: HOLIDAY_COLOR, fontWeight: 700 }}>공휴일</span> : <><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: c, marginRight: 4, verticalAlign: 'middle' }} />{lbl}</>}</span>)}</span>
     </div>
@@ -7883,7 +7888,7 @@ function Schedule({ drugs, onNav }) {
         </div>;
       })}
     </div>
-    {msg && <div className="no-print" style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: msg.includes('완료') ? t.green : t.red }}>{msg}</div>}
+    {msg && <div className="no-print" style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: msgIsGood(msg) ? t.green : t.red }}>{msg}</div>}
 
     {/* 일자 상세 */}
     {dayDetail && <div onClick={() => setDayDetail(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>

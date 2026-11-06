@@ -22,6 +22,7 @@ import { supabase } from './lib/supabase'
 import { buildNarcoticPreview, calendarWindow } from './lib/narcoticUsagePreview'
 import { narcCodes } from './lib/usageParse'
 import { checkRowLimit } from './lib/rowLimit'
+import { dbErrorMsg } from './lib/dbError'
 
 const num = v => (v == null ? '—' : Number(v).toLocaleString())
 
@@ -74,7 +75,7 @@ export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager,
         setLoaded({
           key: year + '-' + month,
           rows: data || [],
-          err: error ? '거래를 읽지 못했습니다: ' + error.message : '',
+          err: error ? '거래를 읽지 못했습니다: ' + dbErrorMsg(error) : '',
           cutMsg: error ? '' : lim.message,
         })
       })
@@ -100,7 +101,7 @@ export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager,
       p_overwrite_manual: false, p_scope: 'narcotic', p_year: year, p_month: month,
     })
     setApplying(false)
-    if (error) { setApplyErr('적용하지 못했습니다: ' + error.message); return }
+    if (error) { setApplyErr('적용하지 못했습니다: ' + dbErrorMsg(error)); return }
     setResult(Number(data || 0))
     /* 약품 목록을 다시 읽으면 위 표가 저절로 「달라지는 약품 0종」이 된다 */
     onReload?.()

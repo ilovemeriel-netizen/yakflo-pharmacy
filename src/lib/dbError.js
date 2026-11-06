@@ -2,8 +2,25 @@
    ⚠ 트리거가 한글로 던진 메시지(마감월 거부·재고 부족)는 가공하지 않고 원문 그대로 반환한다.
       원문이 가장 정확하다. */
 
+/* ★ 로그인이 풀렸을 때 — 서버가 **문 앞에서** 거절한 것이지 값이 틀린 것이 아니다.
+   이 경우 DB 에는 요청이 닿지도 않아 기록이 전혀 남지 않는다. 그래서 「새로고침」을 안내한다.
+   (2026-11-05 마약·향정 「적용」이 이렇게 한 번 사라졌다 — lib/session.js 머리말 참고) */
+export const LOGIN_EXPIRED_MSG = '로그인이 풀렸습니다 — 화면을 새로고침한 뒤 다시 눌러 주세요.'
+
+export function isLoginExpired(error) {
+  if (!error) return false
+  const code = String(error.code || '')
+  const status = Number(error.status || error.statusCode || 0)
+  const msg = String(error.message || '')
+  /* PGRST301 = JWT 문제. ★ 42501(권한 없음)은 **로그인 문제가 아니다** — 섞지 않는다. */
+  if (code === 'PGRST301' || code === '401') return true
+  if (status === 401) return true
+  return /jwt (expired|is expired)|invalid jwt|jwserror|token is expired|refresh token/i.test(msg)
+}
+
 export function dbErrorMsg(error, fallback = '처리 중 오류가 발생했습니다.') {
   if (!error) return null
+  if (isLoginExpired(error)) return LOGIN_EXPIRED_MSG
   const code = error.code
   const msg = (error.message || '').trim()
   if (code === '23514') {
