@@ -1,0 +1,668 @@
+[
+ {
+  "code": "GODEXCP",
+  "kind": "모양",
+  "name": "고덱스캡슐",
+  "status": "사용",
+  "excel_code": "GODEXCP",
+  "excel_name": "고덱스캡슐",
+  "note": ""
+ },
+ {
+  "code": "NOPC",
+  "kind": "모양",
+  "name": "노피드캡슐",
+  "status": "사용",
+  "excel_code": "NOPC",
+  "excel_name": "노피드캡슐",
+  "note": ""
+ },
+ {
+  "code": "NCMT200",
+  "kind": "모양",
+  "name": "누코미트캡슐200mg",
+  "status": "사용",
+  "excel_code": "NCMT200",
+  "excel_name": "누코미트캡슐200mg",
+  "note": ""
+ },
+ {
+  "code": "DGX",
+  "kind": "모양",
+  "name": "디고신정",
+  "status": "사용",
+  "excel_code": "DGX",
+  "excel_name": "디고신정",
+  "note": ""
+ },
+ {
+  "code": "LSX",
+  "kind": "모양",
+  "name": "라식스정40mg",
+  "status": "사용",
+  "excel_code": "LSX",
+  "excel_name": "라식스정40mg",
+  "note": ""
+ },
+ {
+  "code": "LEGAL",
+  "kind": "모양",
+  "name": "레가론캡슐140mg",
+  "status": "사용",
+  "excel_code": "LEGAL",
+  "excel_name": "레가론캡슐140mg",
+  "note": ""
+ },
+ {
+  "code": "LVEP1000",
+  "kind": "모양",
+  "name": "레비에필정1000mg",
+  "status": "사용",
+  "excel_code": "LVEP1000",
+  "excel_name": "레비에필정1000mg",
+  "note": ""
+ },
+ {
+  "code": "LNFT",
+  "kind": "모양",
+  "name": "로나펜정",
+  "status": "사용",
+  "excel_code": "LNFT",
+  "excel_name": "로나펜정",
+  "note": ""
+ },
+ {
+  "code": "SMINOCC5",
+  "kind": "모양",
+  "name": "미노씬캡슐50mg",
+  "status": "사용",
+  "excel_code": "SMINOCC5",
+  "excel_name": "미노씬캡슐50mg",
+  "note": ""
+ },
+ {
+  "code": "MIRAP",
+  "kind": "모양",
+  "name": "미라프정0.25mg",
+  "status": "사용",
+  "excel_code": "MIRAP",
+  "excel_name": "미라프정0.25mg",
+  "note": ""
+ },
+ {
+  "code": "MIRAP0.5",
+  "kind": "모양",
+  "name": "미라프정0.5mg",
+  "status": "사용",
+  "excel_code": "MIRAP0.5",
+  "excel_name": "미라프정0.5mg",
+  "note": ""
+ },
+ {
+  "code": "B-C",
+  "kind": "모양",
+  "name": "삐콤정",
+  "status": "사용",
+  "excel_code": "B-C",
+  "excel_name": "삐콤정",
+  "note": ""
+ },
+ {
+  "code": "AMNP5",
+  "kind": "모양",
+  "name": "삼남아세트아미노펜정500mg",
+  "status": "사용",
+  "excel_code": "AMNP5",
+  "excel_name": "삼남아세트아미노펜정500mg",
+  "note": ""
+ },
+ {
+  "code": "CELMT4",
+  "kind": "모양",
+  "name": "셀메텍정40mg",
+  "status": "사용",
+  "excel_code": "CELMT4",
+  "excel_name": "셀메텍정40mg",
+  "note": ""
+ },
+ {
+  "code": "SLD",
+  "kind": "모양",
+  "name": "소론도정",
+  "status": "사용",
+  "excel_code": "SLD",
+  "excel_name": "소론도정",
+  "note": ""
+ },
+ {
+  "code": "FLACD",
+  "kind": "모양",
+  "name": "신일폴산정",
+  "status": "사용",
+  "excel_code": "FLACD",
+  "excel_name": "신일폴산정",
+  "note": ""
+ },
+ {
+  "code": "CIRT80",
+  "kind": "모양",
+  "name": "씨르탄정80mg",
+  "status": "사용",
+  "excel_code": "CIRT80",
+  "excel_name": "씨르탄정80mg",
+  "note": ""
+ },
+ {
+  "code": "CTRC150",
+  "kind": "모양",
+  "name": "씨트리카캡슐150mg",
+  "status": "사용",
+  "excel_code": "CTRC150",
+  "excel_name": "씨트리카캡슐150mg",
+  "note": ""
+ },
+ {
+  "code": "ADPM1",
+  "kind": "모양",
+  "name": "아디팜정",
+  "status": "사용",
+  "excel_code": "ADPM1",
+  "excel_name": "아디팜정",
+  "note": ""
+ },
+ {
+  "code": "ASKCJ",
+  "kind": "모양",
+  "name": "아스카신주",
+  "status": "사용",
+  "excel_code": "ASKCJ",
+  "excel_name": "아스카신주",
+  "note": ""
+ },
+ {
+  "code": "SADRT",
+  "kind": "모양",
+  "name": "알드린정",
+  "status": "사용",
+  "excel_code": "SADRT",
+  "excel_name": "알드린정",
+  "note": ""
+ },
+ {
+  "code": "ESTT",
+  "kind": "모양",
+  "name": "에스텔정",
+  "status": "사용",
+  "excel_code": "ESTT",
+  "excel_name": "에스텔정",
+  "note": ""
+ },
+ {
+  "code": "AUSTA",
+  "kind": "모양",
+  "name": "오스타렌주",
+  "status": "사용",
+  "excel_code": "AUSTA",
+  "excel_name": "오스타렌주",
+  "note": ""
+ },
+ {
+  "code": "ABRX",
+  "kind": "모양",
+  "name": "이든암브록솔염산염정",
+  "status": "사용",
+  "excel_code": "ABRX",
+  "excel_name": "이든암브록솔염산염정",
+  "note": ""
+ },
+ {
+  "code": "SIRBETE15",
+  "kind": "모양",
+  "name": "이베텔정",
+  "status": "사용",
+  "excel_code": "SIRBRTE15",
+  "excel_name": "이베텔정150mg",
+  "note": "엑셀 코드 철자 다름 — 같은 약으로 확인"
+ },
+ {
+  "code": "IPRAM",
+  "kind": "모양",
+  "name": "이프람정10mg",
+  "status": "사용",
+  "excel_code": "IPRAM",
+  "excel_name": "이프람정10mg",
+  "note": ""
+ },
+ {
+  "code": "IDOULGUTC",
+  "kind": "모양",
+  "name": "일동울굿캡슐",
+  "status": "중지",
+  "excel_code": "IDOULGUTC",
+  "excel_name": "일동울굿캡슐",
+  "note": ""
+ },
+ {
+  "code": "ZPD",
+  "kind": "모양",
+  "name": "졸피드정10mg",
+  "status": "사용",
+  "excel_code": "ZPD",
+  "excel_name": "졸피드정10mg",
+  "note": ""
+ },
+ {
+  "code": "KMRM500",
+  "kind": "모양",
+  "name": "케이마릴엠정2/500mg",
+  "status": "사용",
+  "excel_code": "KMRM500",
+  "excel_name": "케이마릴엠정2/500mg",
+  "note": ""
+ },
+ {
+  "code": "KBSTZ100",
+  "kind": "모양",
+  "name": "케이비스타졸서방캡슐100mg",
+  "status": "사용",
+  "excel_code": "KBSTZ100",
+  "excel_name": "케이비스타졸서방캡슐100mg",
+  "note": ""
+ },
+ {
+  "code": "STCNE",
+  "kind": "모양",
+  "name": "타세놀8시간이알서방정",
+  "status": "사용",
+  "excel_code": "STCNE",
+  "excel_name": "타세놀8시간이알서방정",
+  "note": ""
+ },
+ {
+  "code": "TRL5",
+  "kind": "모양",
+  "name": "트라린정50mg",
+  "status": "사용",
+  "excel_code": "TRL5",
+  "excel_name": "트라린정50mg",
+  "note": ""
+ },
+ {
+  "code": "TRMPSMI",
+  "kind": "모양",
+  "name": "트라마펜세미정",
+  "status": "사용",
+  "excel_code": "TRMPSMI",
+  "excel_name": "트라마펜세미정",
+  "note": ""
+ },
+ {
+  "code": "TRMP",
+  "kind": "모양",
+  "name": "트라마펜정",
+  "status": "사용",
+  "excel_code": "TRMP",
+  "excel_name": "트라마펜정",
+  "note": ""
+ },
+ {
+  "code": "TRST",
+  "kind": "모양",
+  "name": "트레스탄캡슐",
+  "status": "사용",
+  "excel_code": "TRST",
+  "excel_name": "트레스탄캡슐",
+  "note": ""
+ },
+ {
+  "code": "PNRM",
+  "kind": "모양",
+  "name": "페니라민정2mg",
+  "status": "사용",
+  "excel_code": "PNRM",
+  "excel_name": "페니라민정2mg",
+  "note": ""
+ },
+ {
+  "code": "SPRVIXNT",
+  "kind": "모양",
+  "name": "프라빅센정",
+  "status": "사용",
+  "excel_code": "SPRVIXNT",
+  "excel_name": "프라빅센정",
+  "note": ""
+ },
+ {
+  "code": "FRB-U",
+  "kind": "모양",
+  "name": "훼로바유서방정",
+  "status": "사용",
+  "excel_code": "FRB-U",
+  "excel_name": "훼로바유서방정",
+  "note": ""
+ },
+ {
+  "code": "NTRFRTI",
+  "kind": "발음",
+  "name": "보령니트로푸란토인캡슐",
+  "status": "중지",
+  "excel_code": "NTRFRTI",
+  "excel_name": "니트로푸란토인캡슐",
+  "note": ""
+ },
+ {
+  "code": "DPS5",
+  "kind": "발음",
+  "name": "데파스정0.5mg",
+  "status": "사용",
+  "excel_code": "DPS5",
+  "excel_name": "데파스정0.5mg",
+  "note": ""
+ },
+ {
+  "code": "LMS125",
+  "kind": "발음",
+  "name": "라미실정125mg",
+  "status": "중지",
+  "excel_code": "LMS125",
+  "excel_name": "라미실정125mg",
+  "note": ""
+ },
+ {
+  "code": "SLMT10",
+  "kind": "발음",
+  "name": "라믹탈정100mg",
+  "status": "사용",
+  "excel_code": "SLMT10",
+  "excel_name": "라믹탈정100mg",
+  "note": ""
+ },
+ {
+  "code": "MGNS",
+  "kind": "발음",
+  "name": "마그네스정",
+  "status": "사용",
+  "excel_code": "MGNS",
+  "excel_name": "마그네스정",
+  "note": ""
+ },
+ {
+  "code": "MGM",
+  "kind": "발음",
+  "name": "마그밀정",
+  "status": "사용",
+  "excel_code": "MGM",
+  "excel_name": "마그밀정",
+  "note": ""
+ },
+ {
+  "code": "NTRGLCR",
+  "kind": "발음",
+  "name": "명문니트로글리세린0.6mg설하정",
+  "status": "사용",
+  "excel_code": "NTRGLCR",
+  "excel_name": "명문니트로글리세린설하정",
+  "note": ""
+ },
+ {
+  "code": "SGBRONNC10",
+  "kind": "용량",
+  "name": "가바로닌캡슐100mg",
+  "status": "사용",
+  "excel_code": "SGBRONNC10",
+  "excel_name": "가바로닌캡슐100mg",
+  "note": ""
+ },
+ {
+  "code": "SGBRONNC30",
+  "kind": "용량",
+  "name": "가바로닌캡슐300mg",
+  "status": "사용",
+  "excel_code": "SGBRONNC30",
+  "excel_name": "가바로닌캡슐300mg",
+  "note": ""
+ },
+ {
+  "code": "VDMT50",
+  "kind": "용량",
+  "name": "빌다메트정50/1000mg",
+  "status": "사용",
+  "excel_code": "GVSMET5/100",
+  "excel_name": "가브스메트정50/1000mg",
+  "note": "가브스메트정50/1000mg → 빌다메트정50/1000mg 으로 바뀐 약"
+ },
+ {
+  "code": "GVSMT",
+  "kind": "용량",
+  "name": "가브스메트정50/850mg",
+  "status": "중지",
+  "excel_code": "GVSMT",
+  "excel_name": "가브스메트정50/850mg",
+  "note": ""
+ },
+ {
+  "code": "SRBPA10",
+  "kind": "용량",
+  "name": "라베피아정10mg",
+  "status": "사용",
+  "excel_code": "SRBPA10",
+  "excel_name": "라베피아정10mg",
+  "note": ""
+ },
+ {
+  "code": "RBPA20",
+  "kind": "용량",
+  "name": "라베피아정20mg",
+  "status": "사용",
+  "excel_code": "RBPA20",
+  "excel_name": "라베피아정20mg",
+  "note": ""
+ },
+ {
+  "code": "RVM15",
+  "kind": "용량",
+  "name": "리바마인캡슐1.5mg",
+  "status": "사용",
+  "excel_code": "RVM15",
+  "excel_name": "리바마인캡슐1.5mg",
+  "note": ""
+ },
+ {
+  "code": "RVM3",
+  "kind": "용량",
+  "name": "리바마인캡슐3mg",
+  "status": "사용",
+  "excel_code": "RVM3",
+  "excel_name": "리바마인캡슐3mg",
+  "note": ""
+ },
+ {
+  "code": "SMNTRZDHL25",
+  "kind": "용량",
+  "name": "명인트라조돈염산염정25mg",
+  "status": "사용",
+  "excel_code": "SMNTRZDHL25",
+  "excel_name": "명인트라조돈염산염정25mg",
+  "note": ""
+ },
+ {
+  "code": "SMITRZDT5",
+  "kind": "용량",
+  "name": "명인트라조돈염산염정50mg",
+  "status": "사용",
+  "excel_code": "SMITRZDT5",
+  "excel_name": "명인트라조돈염산염정50mg",
+  "note": ""
+ },
+ {
+  "code": "VANCOZIN",
+  "kind": "용량",
+  "name": "반코진캡슐125mg",
+  "status": "사용",
+  "excel_code": "VANCOZIN",
+  "excel_name": "반코진캡슐125mg",
+  "note": ""
+ },
+ {
+  "code": "VCZC",
+  "kind": "용량",
+  "name": "반코진캡슐250mg",
+  "status": "사용",
+  "excel_code": "VCZC",
+  "excel_name": "반코진캡슐250mg",
+  "note": ""
+ },
+ {
+  "code": "SLNC10",
+  "kind": "용량",
+  "name": "솔리나신정10mg",
+  "status": "사용",
+  "excel_code": "SLNC10",
+  "excel_name": "솔리나신정10mg",
+  "note": ""
+ },
+ {
+  "code": "SLNC5",
+  "kind": "용량",
+  "name": "솔리나신정5mg",
+  "status": "사용",
+  "excel_code": "SLNC5",
+  "excel_name": "솔리나신정5mg",
+  "note": ""
+ },
+ {
+  "code": "SYNRID15",
+  "kind": "용량",
+  "name": "씬지로이드정0.15mg",
+  "status": "사용",
+  "excel_code": "SSYNROD15",
+  "excel_name": "씬지로이드정0.15mg",
+  "note": "엑셀 코드가 오타 — 약플로 코드가 맞음"
+ },
+ {
+  "code": "SYNSRID",
+  "kind": "용량",
+  "name": "씬지로이드정0.1mg",
+  "status": "사용",
+  "excel_code": "SYNSRID",
+  "excel_name": "씬지로이드정0.1mg",
+  "note": ""
+ },
+ {
+  "code": "STRX25",
+  "kind": "용량",
+  "name": "씬지록신정25μg",
+  "status": "사용",
+  "excel_code": "STRX25",
+  "excel_name": "씬지록신정25μg",
+  "note": ""
+ },
+ {
+  "code": "SSYNYRXN8",
+  "kind": "용량",
+  "name": "씬지록신정88μg",
+  "status": "사용",
+  "excel_code": "SSYNYRXN8",
+  "excel_name": "씬지록신정88μg",
+  "note": ""
+ },
+ {
+  "code": "ELXB25",
+  "kind": "용량",
+  "name": "엘릭사반정2.5mg",
+  "status": "사용",
+  "excel_code": "ELXB25",
+  "excel_name": "엘릭사반정2.5mg",
+  "note": ""
+ },
+ {
+  "code": "ELXB5",
+  "kind": "용량",
+  "name": "엘릭사반정5mg",
+  "status": "사용",
+  "excel_code": "ELXB5",
+  "excel_name": "엘릭사반정5mg",
+  "note": ""
+ },
+ {
+  "code": "URS1",
+  "kind": "용량",
+  "name": "우루사정100mg",
+  "status": "사용",
+  "excel_code": "URS1",
+  "excel_name": "우루사정100mg",
+  "note": ""
+ },
+ {
+  "code": "URS2",
+  "kind": "용량",
+  "name": "우루사정200mg",
+  "status": "사용",
+  "excel_code": "URS2",
+  "excel_name": "우루사정200mg",
+  "note": ""
+ },
+ {
+  "code": "INDN1",
+  "kind": "용량",
+  "name": "인데놀정10mg",
+  "status": "사용",
+  "excel_code": "INDN1",
+  "excel_name": "인데놀정10mg",
+  "note": ""
+ },
+ {
+  "code": "INDN4",
+  "kind": "용량",
+  "name": "인데놀정40mg",
+  "status": "사용",
+  "excel_code": "INDN4",
+  "excel_name": "인데놀정40mg",
+  "note": ""
+ },
+ {
+  "code": "CONCR",
+  "kind": "용량",
+  "name": "콩코르정2.5mg",
+  "status": "사용",
+  "excel_code": "CONCR",
+  "excel_name": "콩코르정2.5mg",
+  "note": ""
+ },
+ {
+  "code": "CONCOR5",
+  "kind": "용량",
+  "name": "콩코르정5mg",
+  "status": "사용",
+  "excel_code": "CONCOR5",
+  "excel_name": "콩코르정5mg",
+  "note": ""
+ },
+ {
+  "code": "PKNT",
+  "kind": "용량",
+  "name": "퍼킨정25-100mg",
+  "status": "사용",
+  "excel_code": "PKNT",
+  "excel_name": "퍼킨정25-100mg",
+  "note": ""
+ },
+ {
+  "code": "PKNT22",
+  "kind": "용량",
+  "name": "퍼킨정25-250mg",
+  "status": "사용",
+  "excel_code": "PKNT22",
+  "excel_name": "퍼킨정25-250mg",
+  "note": ""
+ },
+ {
+  "code": "VDMT500",
+  "kind": "용량",
+  "name": "빌다메트정50/500mg",
+  "status": "사용",
+  "excel_code": "",
+  "excel_name": "",
+  "note": "★ 엑셀에 없음 — 빌다메트정 두 함량 중 짝(50/500mg). 2026-11-06 추가 승인"
+ }
+]
