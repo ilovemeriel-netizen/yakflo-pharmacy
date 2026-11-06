@@ -149,6 +149,33 @@ export function writeLastReload(win, now) {
   try { w.sessionStorage.setItem(RELOAD_KEY, String(now)) } catch { /* 무시 */ }
 }
 
-/* 갱신 확인 주기 — 탭 복귀 때마다 + 이 간격마다.
-   ★ 바뀐 것이 없으면 ETag 재검증이라 1회 0바이트(헤더 왕복)다. 실측 확인. */
-export const UPDATE_EVERY_MS = 30 * 60 * 1000
+/* ── 갱신 확인 주기 ───────────────────────────────────────────────────────
+   탭 복귀 때마다 + 이 간격마다 + **사용자가 움직일 때마다**(아래 가드로 제한).
+   ★ 바뀐 것이 없으면 ETag 재검증이라 1회 0바이트(헤더 왕복)다. 실측 확인.
+
+   ★ 2026-11-06 — 30분 → 5분으로 줄였다(B안, 이정화 님 승인).
+     왜: 탭을 **앞에 두고 계속 보고 있으면** 「탭 복귀」 계기가 생기지 않아
+     30분 타이머가 유일한 확인 수단이었다. 그래서 배포 뒤 30분 가까이
+     옛 화면이 그대로였다(2026-11-06 금액 막대가 옛 값으로 보인 일).
+     ※ 화면에 그리는 것은 **하나도 없다** — 배치·색·문구가 바뀌지 않는다. */
+export const UPDATE_EVERY_MS = 5 * 60 * 1000
+
+/* ── 사용자가 움직일 때도 확인한다 (C안) ──────────────────────────────────
+   앞에 두고 쓰는 중이면 클릭·키 입력이 계속 일어난다. 그때마다 확인하면
+   5분 타이머를 기다리지 않아도 된다.
+   ★ 다만 **1분에 한 번만** 묻는다 — 클릭마다 묻는 것은 낭비다.
+   ★ 판단만 여기 둔다(순수 함수). 실제 배선은 main.jsx 가 한다. */
+export const ACTIVITY_CHECK_GUARD_MS = 60 * 1000
+
+/* 사용자 움직임으로 보는 사건 — 갱신 확인만 한다(새로고침 판단은 shouldReload 가 따로 본다) */
+export const ACTIVITY_EVENTS = ['click', 'keyup']
+
+/* 지금 확인을 물어도 되는가 (순수)
+     lastCheckAt : 직전에 확인한 시각(없으면 0)
+     now         : 현재 시각
+     guardMs     : 간격 제한(기본 1분) */
+export function shouldCheck({ lastCheckAt, now, guardMs }) {
+  const g = guardMs == null ? ACTIVITY_CHECK_GUARD_MS : guardMs
+  if (!lastCheckAt) return true
+  return now - lastCheckAt >= g
+}

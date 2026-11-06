@@ -5,6 +5,7 @@ import './index.css'
 import Root from './Root.jsx'
 import {
   readBusy, isBusy, shouldReload, readLastReload, writeLastReload, UPDATE_EVERY_MS,
+  shouldCheck, ACTIVITY_EVENTS,
 } from './lib/pwaUpdate.js'
 
 /* ═══ 새 배포를 열린 탭에 적용한다 (1단계 · 화면에 아무것도 그리지 않는다) ═══
@@ -53,12 +54,27 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
     },
     onRegisteredSW(_url, r) {
       if (!r) return
-      /* 탭으로 돌아올 때마다 + 30분마다 확인한다.
-         ★ SPA 안에서는 탐색이 없어 브라우저가 스스로 확인할 기회가 없다. */
-      const check = () => { r.update().catch(() => { /* 오프라인 등 — 다음에 다시 */ }) }
+      /* 확인 계기 세 가지 — ① 탭 복귀 ② 주기(5분) ③ 사용자 움직임(1분 1회).
+         ★ SPA 안에서는 탐색이 없어 브라우저가 스스로 확인할 기회가 없다.
+         ★ 2026-11-06 — ③ 을 더했다. 탭을 **앞에 두고 계속 보고 있으면** ① 이
+           일어나지 않아 주기 타이머가 유일한 수단이었다(금액 막대가 옛 값으로
+           보인 일). 쓰는 중이면 클릭·키 입력이 계속 나므로 거의 즉시 받는다.
+         ★ 화면에 그리는 것은 하나도 없다. */
+      let lastCheckAt = 0
+      const check = () => {
+        lastCheckAt = Date.now()
+        r.update().catch(() => { /* 오프라인 등 — 다음에 다시 */ })
+      }
+      /* 움직임 때는 **간격 제한**을 지킨다 — 클릭마다 묻지 않는다 */
+      const checkIfDue = () => {
+        if (shouldCheck({ lastCheckAt, now: Date.now() })) check()
+      }
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') { check(); tryReload() }
       })
+      for (const ev of ACTIVITY_EVENTS) {
+        window.addEventListener(ev, checkIfDue, true)
+      }
       setInterval(check, UPDATE_EVERY_MS)
     },
   })

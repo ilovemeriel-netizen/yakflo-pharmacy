@@ -12,6 +12,7 @@ import {
   BUSY_TAGS, MODAL_MIN_Z, isBusy, readBusy, shouldReload,
   markBusy, busyKeyCount, clearBusyKeys,
   readLastReload, writeLastReload, RELOAD_KEY, RELOAD_GUARD_MS, UPDATE_EVERY_MS,
+  shouldCheck, ACTIVITY_CHECK_GUARD_MS, ACTIVITY_EVENTS,
 } from './pwaUpdate'
 
 const MAIN = readFileSync(resolve(process.cwd(), 'src/main.jsx'), 'utf8')
@@ -131,9 +132,12 @@ describe('★ reload 판단', () => {
     expect(shouldReload({ ...base, busy: false })).toBe(true)
   })
 
-  it('보호 시간은 60초 · 확인 주기는 30분', () => {
+  /* ★ 2026-11-06 — 확인 주기를 30분 → 5분으로 줄였다(B안, 이정화 님 승인).
+       탭을 앞에 두고 계속 보고 있으면 「탭 복귀」 계기가 없어 주기 타이머가
+       유일한 확인 수단이었다. 그래서 배포 뒤 옛 화면이 한참 남았다. */
+  it('보호 시간은 60초 · 확인 주기는 5분', () => {
     expect(RELOAD_GUARD_MS).toBe(60 * 1000)
-    expect(UPDATE_EVERY_MS).toBe(30 * 60 * 1000)
+    expect(UPDATE_EVERY_MS).toBe(5 * 60 * 1000)
   })
 })
 
@@ -201,5 +205,91 @@ describe('배선 — 되돌아가지 않게', () => {
     /* main.jsx 는 JSX 를 Root 렌더 말고는 쓰지 않는다 */
     const jsx = (MAIN.match(/<[A-Z][A-Za-z]*/g) || []).filter(x => x !== '<StrictMode' && x !== '<Root')
     expect(jsx, '새로 그리는 컴포넌트: ' + jsx.join(', ')).toEqual([])
+  })
+})
+
+/* ── 사용자 움직임으로도 확인한다 (C안 · 2026-11-06 이정화 님 승인) ──────── */
+describe('★ 움직임 확인 — 1분에 한 번만 묻는다', () => {
+  it('처음에는 바로 묻는다', () => {
+    expect(shouldCheck({ lastCheckAt: 0, now: 1_000_000 })).toBe(true)
+  })
+  it('방금 물었으면 안 묻는다 (1분 안)', () => {
+    expect(shouldCheck({ lastCheckAt: 1_000_000, now: 1_000_000 + 59_000 })).toBe(false)
+  })
+  it('1분이 지나면 다시 묻는다', () => {
+    expect(shouldCheck({ lastCheckAt: 1_000_000, now: 1_000_000 + 60_000 })).toBe(true)
+    expect(shouldCheck({ lastCheckAt: 1_000_000, now: 1_000_000 + 61_000 })).toBe(true)
+  })
+  it('간격을 바꿔 줄 수 있다', () => {
+    expect(shouldCheck({ lastCheckAt: 100, now: 200, guardMs: 50 })).toBe(true)
+    expect(shouldCheck({ lastCheckAt: 100, now: 140, guardMs: 50 })).toBe(false)
+  })
+  it('★ 클릭 100번에 묻는 횟수는 1번 — 낭비하지 않는다', () => {
+    let last = 0
+    let asked = 0
+    const t0 = 5_000_000
+    for (let i = 0; i < 100; i++) {
+      const now = t0 + i * 100          /* 0.1초마다 클릭 = 10초 동안 100번 */
+      if (shouldCheck({ lastCheckAt: last, now })) { asked++; last = now }
+    }
+    expect(asked).toBe(1)
+  })
+  it('★ 10분 동안 꾸준히 쓰면 10번쯤 묻는다', () => {
+    let last = 0
+    let asked = 0
+    const t0 = 5_000_000
+    for (let i = 0; i < 600; i++) {
+      const now = t0 + i * 1000          /* 1초마다 = 10분 */
+      if (shouldCheck({ lastCheckAt: last, now })) { asked++; last = now }
+    }
+    expect(asked).toBe(10)               /* 0분·1분·…·9분 = 10번 */
+  })
+  it('간격 상수는 1분 · 보는 사건은 클릭과 키 입력', () => {
+    expect(ACTIVITY_CHECK_GUARD_MS).toBe(60 * 1000)
+    expect(ACTIVITY_EVENTS).toEqual(['click', 'keyup'])
+  })
+  it('★ 확인과 새로고침은 다른 판단이다 — 움직임만으로 새로고침하지 않는다', () => {
+    /* shouldCheck 는 「새 버전 있나 물어볼까」만 정한다.
+       새로고침 여부는 shouldReload 가 입력 중·첫 설치·보호 시간을 따로 본다. */
+    expect(shouldCheck({ lastCheckAt: 0, now: 1 })).toBe(true)
+    expect(shouldReload({ hadController: true, refreshing: false, lastReloadAt: 0,
+      now: 1, busy: true })).toBe(false)
+  })
+})
+
+describe('배선 — 움직임 확인이 붙어 있나', () => {
+  it('★ 움직임 사건에 확인을 건다', () => {
+    expect(MAIN).toContain('for (const ev of ACTIVITY_EVENTS)')
+    expect(MAIN).toContain('window.addEventListener(ev, checkIfDue, true)')
+  })
+  it('★ 간격 제한을 지킨다 — 클릭마다 묻지 않는다', () => {
+    expect(MAIN).toContain('shouldCheck({ lastCheckAt, now: Date.now() })')
+    expect(MAIN).toContain('lastCheckAt = Date.now()')
+  })
+  it('★ 기존 계기 둘은 그대로다 — 탭 복귀와 주기', () => {
+    expect(MAIN).toContain("document.addEventListener('visibilitychange'")
+    expect(MAIN).toContain('setInterval(check, UPDATE_EVERY_MS)')
+  })
+  it('★ 미뤘던 것을 다시 보는 배선도 그대로다', () => {
+    expect(MAIN).toContain("for (const ev of ['focusout', 'blur', 'click', 'keyup'])")
+  })
+  it('★ 화면 변화 0건 — 그리는 것도, 색·문구도 더하지 않았다', () => {
+    /* ① main.jsx 에 새로 그리는 컴포넌트가 없다(위 시험과 같은 못이지만 여기서도 박는다) */
+    const jsx = (MAIN.match(/<[A-Z][A-Za-z]*/g) || []).filter(x => x !== '<StrictMode' && x !== '<Root')
+    expect(jsx, '새로 그리는 컴포넌트: ' + jsx.join(', ')).toEqual([])
+    /* ② 판단 파일은 **색·문구를 만들지 않는다**.
+       ★ `getAttribute('style')` 은 모달을 **알아보기 위해 읽는** 것이라 예외다 —
+         값을 쓰는 것이 아니다(readBusy). 그 한 줄만 허용하고 나머지를 막는다. */
+    const SRC = readFileSync(resolve(process.cwd(), 'src/lib/pwaUpdate.js'), 'utf8')
+    const code = SRC.split(/\r?\n/).filter(l => !/^\s*(\/\*|\*|\/\/|.*\*\/\s*$)/.test(l)).join('\n')
+    expect(code, '모달 알아보기용 style 읽기는 그대로여야 한다')
+      .toContain("n.getAttribute('style')")
+    const noStyleWrite = code.split("n.getAttribute('style')").join('')
+    for (const bad of ['className', 'rgb(', 'createElement', '.style.', 'innerHTML']) {
+      expect(noStyleWrite.includes(bad), '판단 파일에 ' + bad + ' 가 들어왔다').toBe(false)
+    }
+    /* ③ 알림 띠(2단계)는 아직 없다 */
+    expect(MAIN).not.toContain('새 버전')
+    expect(SRC).not.toContain('새 버전')
   })
 })
