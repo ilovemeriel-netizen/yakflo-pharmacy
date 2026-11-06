@@ -1,0 +1,513 @@
+[
+ {
+  "sheet": "경구제",
+  "row": 90,
+  "code": "GODEXCP",
+  "name": "고덱스캡슐",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 132,
+  "code": "NOPC",
+  "name": "노피드캡슐",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 408,
+  "code": "NCMT200",
+  "name": "누코미트캡슐200mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 192,
+  "code": "DGX",
+  "name": "디고신정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 195,
+  "code": "LSX",
+  "name": "라식스정40mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 88,
+  "code": "LEGAL",
+  "name": "레가론캡슐140mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 242,
+  "code": "LVEP1000",
+  "name": "레비에필정1000mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 38,
+  "code": "LNFT",
+  "name": "로나펜정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 19,
+  "code": "SMINOCC5",
+  "name": "미노씬캡슐50mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 246,
+  "code": "MIRAP",
+  "name": "미라프정0.25mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 247,
+  "code": "MIRAP0.5",
+  "name": "미라프정0.5mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 78,
+  "code": "B-C",
+  "name": "삐콤정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 329,
+  "code": "AMNP5",
+  "name": "삼남아세트아미노펜정500mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 151,
+  "code": "CELMT4",
+  "name": "셀메텍정40mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 401,
+  "code": "SLD",
+  "name": "소론도정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 341,
+  "code": "FLACD",
+  "name": "신일폴산정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 149,
+  "code": "CIRT80",
+  "name": "씨르탄정80mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 234,
+  "code": "CTRC150",
+  "name": "씨트리카캡슐150mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 306,
+  "code": "ADPM1",
+  "name": "아디팜정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "주사제",
+  "row": 7,
+  "code": "ASKCJ",
+  "name": "아스카신주",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 112,
+  "code": "SADRT",
+  "name": "알드린정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 262,
+  "code": "ESTT",
+  "name": "에스텔정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "주사제",
+  "row": 26,
+  "code": "AUSTA",
+  "name": "오스타렌주",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 411,
+  "code": "ABRX",
+  "name": "이든암브록솔염산염정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 152,
+  "code": "SIRBRTE15",
+  "name": "이베텔정150mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 313,
+  "code": "IPRAM",
+  "name": "이프람정10mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 105,
+  "code": "IDOULGUTC",
+  "name": "일동울굿캡슐",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 295,
+  "code": "ZPD",
+  "name": "졸피드정10mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 380,
+  "code": "KMRM500",
+  "name": "케이마릴엠정2/500mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 349,
+  "code": "KBSTZ100",
+  "name": "케이비스타졸서방캡슐100mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 330,
+  "code": "STCNE",
+  "name": "타세놀8시간이알서방정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 312,
+  "code": "TRL5",
+  "name": "트라린정50mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 332,
+  "code": "TRMPSMI",
+  "name": "트라마펜세미정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 331,
+  "code": "TRMP",
+  "name": "트라마펜정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 89,
+  "code": "TRST",
+  "name": "트레스탄캡슐",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 260,
+  "code": "PNRM",
+  "name": "페니라민정2mg",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 344,
+  "code": "SPRVIXNT",
+  "name": "프라빅센정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 339,
+  "code": "FRB-U",
+  "name": "훼로바유서방정",
+  "kind": "모양"
+ },
+ {
+  "sheet": "경구제",
+  "row": 23,
+  "code": "NTRFRTI",
+  "name": "니트로푸란토인캡슐",
+  "kind": "발음"
+ },
+ {
+  "sheet": "경구제",
+  "row": 305,
+  "code": "DPS5",
+  "name": "데파스정0.5mg",
+  "kind": "발음"
+ },
+ {
+  "sheet": "경구제",
+  "row": 33,
+  "code": "LMS125",
+  "name": "라미실정125mg",
+  "kind": "발음"
+ },
+ {
+  "sheet": "경구제",
+  "row": 237,
+  "code": "SLMT10",
+  "name": "라믹탈정100mg",
+  "kind": "발음"
+ },
+ {
+  "sheet": "경구제",
+  "row": 84,
+  "code": "MGNS",
+  "name": "마그네스정",
+  "kind": "발음"
+ },
+ {
+  "sheet": "경구제",
+  "row": 106,
+  "code": "MGM",
+  "name": "마그밀정",
+  "kind": "발음"
+ },
+ {
+  "sheet": "경구제",
+  "row": 221,
+  "code": "NTRGLCR",
+  "name": "명문니트로글리세린설하정",
+  "kind": "발음"
+ },
+ {
+  "sheet": "경구제",
+  "row": 227,
+  "code": "SGBRONNC10",
+  "name": "가바로닌캡슐100mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 228,
+  "code": "SGBRONNC30",
+  "name": "가바로닌캡슐300mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 374,
+  "code": "GVSMET5/100",
+  "name": "가브스메트정50/1000mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 379,
+  "code": "GVSMT",
+  "name": "가브스메트정50/850mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 97,
+  "code": "SRBPA10",
+  "name": "라베피아정10mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 98,
+  "code": "RBPA20",
+  "name": "라베피아정20mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 278,
+  "code": "RVM15",
+  "name": "리바마인캡슐1.5mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 279,
+  "code": "RVM3",
+  "name": "리바마인캡슐3mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 319,
+  "code": "SMNTRZDHL25",
+  "name": "명인트라조돈염산염정25mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 320,
+  "code": "SMITRZDT5",
+  "name": "명인트라조돈염산염정50mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 20,
+  "code": "VANCOZIN",
+  "name": "반코진캡슐125mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 21,
+  "code": "VCZC",
+  "name": "반코진캡슐250mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 70,
+  "code": "SLNC10",
+  "name": "솔리나신정10mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 71,
+  "code": "SLNC5",
+  "name": "솔리나신정5mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 357,
+  "code": "SSYNROD15",
+  "name": "씬지로이드정0.15mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 358,
+  "code": "SYNSRID",
+  "name": "씬지로이드정0.1mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 360,
+  "code": "STRX25",
+  "name": "씬지록신정25μg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 361,
+  "code": "SSYNYRXN8",
+  "name": "씬지록신정88μg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 354,
+  "code": "ELXB25",
+  "name": "엘릭사반정2.5mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 353,
+  "code": "ELXB5",
+  "name": "엘릭사반정5mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 91,
+  "code": "URS1",
+  "name": "우루사정100mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 92,
+  "code": "URS2",
+  "name": "우루사정200mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 174,
+  "code": "INDN1",
+  "name": "인데놀정10mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 175,
+  "code": "INDN4",
+  "name": "인데놀정40mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 179,
+  "code": "CONCR",
+  "name": "콩코르정2.5mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 180,
+  "code": "CONCOR5",
+  "name": "콩코르정5mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 254,
+  "code": "PKNT",
+  "name": "퍼킨정25-100mg",
+  "kind": "용량"
+ },
+ {
+  "sheet": "경구제",
+  "row": 255,
+  "code": "PKNT22",
+  "name": "퍼킨정25-250mg",
+  "kind": "용량"
+ }
+]
