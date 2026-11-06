@@ -125,11 +125,11 @@ describe('주의 3종 색 — 기존 팔레트만, 새 색은 yellow 하나', ()
     expect(isDark(null)).toBe(false)
   })
 
-  it('체크 표시 색 — 각 칩 바탕색, 발음만 진한 노랑', () => {
+  it('체크 표시 색 — 각 칩 바탕색, 발음만 검정', () => {
     expect(cautionCheckColor(LIGHT, 'dose')).toBe('#2E4A62')
     expect(cautionCheckColor(LIGHT, 'shape')).toBe('#C62828')
     expect(cautionCheckColor(LIGHT, 'sound')).toBe(SOUND_CHECK)
-    expect(SOUND_CHECK).toBe('#B08900')
+    expect(SOUND_CHECK).toBe('#1F1F1F')   // 검정 — 팔레트에 더하지 않는다
     expect(cautionCheckColor(DARK, 'dose')).toBe('#92C8E0')
   })
 })

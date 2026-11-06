@@ -3,9 +3,14 @@
  * 시험이 아니라 **캡처 도구**다. 그래서 src 가 아니라 scripts 에 둔다
  * (시험 묶음이 돌 때마다 파일을 쓰면 안 된다).
  *
- * 쓰는 법:
- *   npx vitest run --root . scripts/shot_modals.jsx
- *   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new  *     --force-device-scale-factor=2 --window-size=700,980  *     --screenshot=나올파일.png file:///...scripts/_shot_modals.html
+ * 쓰는 법 (시험 묶음이 scripts 를 읽지 않으므로 잠시 src 로 옮겨 돌린다):
+ *   cp scripts/shot_modals.jsx src/_shot_modals.test.jsx
+ *   npx vitest run src/_shot_modals.test.jsx
+ *   rm src/_shot_modals.test.jsx
+ *   그 다음 엣지로 찍는다:
+ *   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new \
+ *     --force-device-scale-factor=2 --window-size=700,980 \
+ *     --screenshot=나올파일.png file:///...scripts/_shot_modals.html
  *
  * 뽑는 것: 밝은 화면·어두운 화면 각각
  *   ① 약품 수정 창(수정 모드) ② 약품 수정 창(등록 모드) ③ 별도 약품 등록 화면

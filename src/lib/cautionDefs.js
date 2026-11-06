@@ -22,8 +22,9 @@
 export const HIGH_ALERT_BG = '#D9342B1A'
 export const HIGH_ALERT_FG = '#D9342B'
 
-/* 발음 체크박스만 바탕(#FFE082)이 밝아 흰 체크가 안 보인다 — 체크 표시만 진한 노랑 */
-export const SOUND_CHECK = '#B08900'
+/* 발음 체크박스만 바탕(#FFE082)이 밝아 흰 체크가 안 보인다 — 체크 표시만 검정.
+   ★ 팔레트에 색을 더하지 않는다. 체크 표시 하나에만 쓰는 값이다. (2026-11-06 이정화 님 지정) */
+export const SOUND_CHECK = '#1F1F1F'
 
 export const CAUTION_ORDER = [
   { kind: 'dose', col: 'caution_dose', label: '용량' },
