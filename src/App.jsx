@@ -24,6 +24,8 @@ import EmergencyDispense from './EmergencyDispense'
 /* ★ 지연 로드 — 직접 import 하면 백신 화면이 전 사용자 초기 번들에 실린다. */
 const VaccineManage = lazy(() => import('./VaccineManage'))
 import BulkUploadModal from './BulkUploadModal'
+import { DrugChips, HighAlertChip, CautionChip, WarnTriangle } from './CautionChips'
+import { CAUTION_ORDER, cautionCheckColor } from './lib/cautionDefs'
 import UsageUploadModal from './UsageUploadModal'
 /* 마약·향정 판정은 모달과 **같은 함수 하나**를 쓴다 — 두 곳이 갈리면 탭마다 답이 달라진다 */
 import { narcCodes } from './lib/usageParse'
@@ -44,24 +46,28 @@ let XLSX; import('xlsx').then(m => { XLSX = m })
    ═══════════════════════════════════════════════════ */
 const themes = {
   light: {
+    mode:'light',
     bg:'#F7F6F3', card:'#FFFFFF', cardSolid:'#FFFFFF', glass:'rgba(255,255,255,0.9)',
     border:'#E8E6E1', borderH:'#D7D7D7',
     text:'#2E4A62', textM:'#52524E', textL:'#A3A39E',
     accent:'#804A87', accentL:'#F5EDF6',
     green:'#019748', greenL:'#E6F7EE', red:'#C62828', redL:'#FFEBEE',
     amber:'#E65100', amberL:'#FFF3E0', blue:'#2E4A62', blueL:'#EAF0F5',
+    yellow:'#FFE082',   /* 주의 표시 — 발음 칩 바탕(글씨는 검정). 2026-11-06 추가 승인 */
     purple:'#804A87', purpleL:'#F5EDF6',
     mint:'#7FD9A8', coral:'#F39E94', lavender:'#BFA6D9', pink:'#E2A6D4',
     nav:'#2E4A62', navText:'#F7F6F3', navHi:'#BFA6D9',
     shadow:'0 2px 8px rgba(46,74,98,0.06)', shadowH:'0 8px 24px rgba(46,74,98,0.10)',
   },
   dark: {
+    mode:'dark',
     bg:'#121820', card:'#1A2332', cardSolid:'#1E2A3A', glass:'rgba(26,35,50,0.9)',
     border:'#2A3A4A', borderH:'#3A4A5A',
     text:'#E8E6E1', textM:'#A3A39E', textL:'#6B7B8B',
     accent:'#BFA6D9', accentL:'rgba(191,166,217,0.12)',
     green:'#7FD9A8', greenL:'rgba(127,217,168,0.12)', red:'#F39E94', redL:'rgba(243,158,148,0.12)',
     amber:'#FFB74D', amberL:'rgba(255,183,77,0.12)', blue:'#92C8E0', blueL:'rgba(146,200,224,0.12)',
+    yellow:'#FFE082',   /* 어두운 화면에서도 같은 값 — 바탕이 밝아 양쪽 다 또렷하다 */
     purple:'#BFA6D9', purpleL:'rgba(191,166,217,0.12)',
     mint:'#7FD9A8', coral:'#F39E94', lavender:'#BFA6D9', pink:'#E2A6D4',
     nav:'#1A2332', navText:'#E8E6E1', navHi:'#BFA6D9',
@@ -500,7 +506,7 @@ export function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   const canDelete = profile?.role === 'admin' || memberRole === 'owner' || memberRole === 'admin'
   const isNew = !!dr.__register
   const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [f, sF] = useState({ drug_code: oc, drug_name: dr.drug_name || '', category: dr.category || '', ingredient_en: dr.ingredient_en || '', ingredient_kr: dr.ingredient_kr || '', efficacy_class: dr.efficacy_class || '', efficacy: dr.efficacy || '', manufacturer: dr.manufacturer || '', specification: dr.specification || '', unit: dr.unit || '', packaging: dr.packaging || dr.unit || '', total_qty: dr.total_qty ?? '', price_unit: dr.price_unit || 0, insurance_price: dr.insurance_price || 0, purchase_price: dr.purchase_price ?? '', edi_price: dr.edi_price ?? '', insurance_code: dr.insurance_code || '', current_qty: dr.current_qty || 0, expiry_date: dr.expiry_date || '', status: dr.status || '사용', narcotic_type: (dr.narcotic_type === '한외마약' ? '한외마약' : getNT(dr)), safety_stock: dr.safety_stock || 0, max_stock: dr.max_stock || 0, lot_no: dr.lot_no || '', insurance_type: dr.insurance_type || '급여', unit_mgmt: dr.unit_mgmt || '', prescription_type: dr.prescription_type || '', atc_code: dr.atc_code || '', storage_method: dr.storage_method || '실온', storage_location: dr.storage_location || '', memo: dr.memo || '', standard_code: dr.standard_code || '', additive: dr.additive || '', compound_type: dr.compound_type || '단일제', supplier_id: dr.supplier_id || '', is_high_alert: !!dr.is_high_alert, is_public_supply: !!dr.is_public_supply })
+  const [f, sF] = useState({ drug_code: oc, drug_name: dr.drug_name || '', category: dr.category || '', ingredient_en: dr.ingredient_en || '', ingredient_kr: dr.ingredient_kr || '', efficacy_class: dr.efficacy_class || '', efficacy: dr.efficacy || '', manufacturer: dr.manufacturer || '', specification: dr.specification || '', unit: dr.unit || '', packaging: dr.packaging || dr.unit || '', total_qty: dr.total_qty ?? '', price_unit: dr.price_unit || 0, insurance_price: dr.insurance_price || 0, purchase_price: dr.purchase_price ?? '', edi_price: dr.edi_price ?? '', insurance_code: dr.insurance_code || '', current_qty: dr.current_qty || 0, expiry_date: dr.expiry_date || '', status: dr.status || '사용', narcotic_type: (dr.narcotic_type === '한외마약' ? '한외마약' : getNT(dr)), safety_stock: dr.safety_stock || 0, max_stock: dr.max_stock || 0, lot_no: dr.lot_no || '', insurance_type: dr.insurance_type || '급여', unit_mgmt: dr.unit_mgmt || '', prescription_type: dr.prescription_type || '', atc_code: dr.atc_code || '', storage_method: dr.storage_method || '실온', storage_location: dr.storage_location || '', memo: dr.memo || '', standard_code: dr.standard_code || '', additive: dr.additive || '', compound_type: dr.compound_type || '단일제', supplier_id: dr.supplier_id || '', is_high_alert: !!dr.is_high_alert, is_public_supply: !!dr.is_public_supply, caution_dose: !!dr.caution_dose, caution_shape: !!dr.caution_shape, caution_sound: !!dr.caution_sound })
   const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null); const [apiLd, setApiLd] = useState(false)
   /* 저장은 됐지만 폴백이 버린 컬럼들 — 비어 있지 않으면 성공 배너 대신 「일부 미반영」을 띄우고 모달을 닫지 않는다 */
   const [dropped, setDropped] = useState([])
@@ -724,6 +730,7 @@ export function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     const _initQty = Number(f.current_qty) || 0; const _atc = decomposeAtc(f.atc_code); const row = { drug_code: code, drug_name: f.drug_name.trim(), category: f.category, ingredient_en: f.ingredient_en || null, ingredient_kr: f.ingredient_kr || null, efficacy_class: f.efficacy_class || null, efficacy: f.efficacy || null, manufacturer: f.manufacturer || null, specification: f.specification || null, unit: f.packaging || null, packaging: f.packaging || null, total_qty: (f.total_qty === '' || f.total_qty == null) ? null : Number(f.total_qty), purchase_price: (f.purchase_price === '' || f.purchase_price == null) ? null : Number(f.purchase_price), edi_price: Number(f.insurance_price) || 0, insurance_type: f.insurance_type, insurance_code: f.insurance_code || null, standard_code: f.standard_code || null, compound_type: f.compound_type || '단일제', additive: f.additive || null, current_qty: 0, safety_stock: Number(f.safety_stock) || 0, max_stock: Number(f.max_stock) || 0, expiry_date: f.expiry_date || null, lot_no: f.lot_no || null, storage_method: f.storage_method || null, storage_location: f.storage_location || null, status: f.status, memo: f.memo || null, is_narcotic: f.narcotic_type === '향정' || f.narcotic_type === '마약', narcotic_type: f.narcotic_type === '일반' ? null : f.narcotic_type, prescription_type: f.prescription_type || null, atc_code: f.atc_code ? f.atc_code.trim().toUpperCase() : null, atc_l1: _atc.atc_l1 || null, atc_l2: _atc.atc_l2 || null, atc_l3: _atc.atc_l3 || null, supplier_id: f.supplier_id || null }
     if (memberRole === 'owner') row.is_high_alert = !!f.is_high_alert
     if (memberRole === 'owner') row.is_public_supply = !!f.is_public_supply
+    if (memberRole === 'owner') for (const x of CAUTION_ORDER) row[x.col] = !!f[x.col]
     const res = await saveWithFallback(row, p => supabase.from('drugs').insert([p]), { retries: 3, label: 'drugs INSERT' })
     setSaving(false)
     if (res.error) { setMsg(res.error.message.includes('duplicate') || res.error.message.includes('unique') ? '이미 존재하는 약품코드입니다.' : res.error.message); return } if (_initQty > 0) { const { data: _a, error: _ae } = await supabase.rpc('bulk_stock_adjust', { p_items: [{ drug_code: code, target_qty: _initQty }], p_date: todayYmd(), p_reason: '초기재고 등록' }); if (_ae) { setMsg('등록됨 · 초기재고 반영 실패: ' + _ae.message); return } if (_a && _a.ok === false) { setMsg('등록됨 · 초기재고 실패: ' + (((_a.failed||[])[0]||{}).reason || '')); return } }
@@ -752,6 +759,7 @@ export function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
     if (_has(f.compound_type)) ud.compound_type = f.compound_type
     if (memberRole === 'owner') ud.is_high_alert = !!f.is_high_alert  /* boolean: false도 저장(해제 가능)·owner 한정 */
     if (memberRole === 'owner') ud.is_public_supply = !!f.is_public_supply  /* boolean: false도 저장(해제 가능)·owner 한정 */
+    if (memberRole === 'owner') for (const x of CAUTION_ORDER) ud[x.col] = !!f[x.col]  /* 주의 표시 — false도 저장(해제 가능) */
     /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) — lib/saveWithFallback.js 단일 출처 */
     const res = await saveWithFallback(ud, p => dr.id ? supabase.from('drugs').update(p).eq('id', dr.id) : supabase.from('drugs').update(p).eq('drug_code', oc), { retries: 3, label: 'drugs UPDATE' })
     setSaving(false)
@@ -836,8 +844,9 @@ export function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><label style={lb}>보관방법</label><select value={f.storage_method} onChange={e => set('storage_method', e.target.value)} style={ip}>{STORAGE_OPTS.map(s => <option key={s}>{s}</option>)}</select></div><div><label style={lb}>보관위치</label><input value={f.storage_location} onChange={e => set('storage_location', e.target.value)} style={ip} list="loc-vocab-new" /><LocVocabDatalist id="loc-vocab-new" /></div></div>
                 <div style={{ marginBottom: 10 }}><label style={lb}>도매사</label><select value={f.supplier_id || ''} onChange={e => set('supplier_id', e.target.value)} style={ip}><option value=''>미지정</option>{edSuppliers.map(su => <option key={su.id} value={su.id}>{su.name}</option>)}</select></div>
                 <div style={{ marginBottom: 10 }}><label style={lb}>비고</label><textarea value={f.memo} onChange={e => set('memo', e.target.value)} rows={2} style={{ ...ip, resize: 'vertical' }} /></div>
-                {memberRole === 'owner' && <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }}><input type="checkbox" checked={!!f.is_high_alert} onChange={e => set('is_high_alert', e.target.checked)} style={{ width: 16, height: 16, accentColor: '#D9342B' }} /><span style={{ fontSize: 12, fontWeight: 700, color: '#D9342B' }}>⚠ 고위험 의약품으로 지정</span></label>}
+                {memberRole === 'owner' && <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }}><input type="checkbox" checked={!!f.is_high_alert} onChange={e => set('is_high_alert', e.target.checked)} style={{ width: 16, height: 16, accentColor: '#D9342B' }} /><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: '#D9342B' }}><WarnTriangle size={13} />고위험 의약품으로 지정</span></label>}
                 {memberRole === 'owner' && <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }}><input type="checkbox" checked={!!f.is_public_supply} onChange={e => set('is_public_supply', e.target.checked)} style={{ width: 16, height: 16, accentColor: t.blue }} /><span style={{ fontSize: 12, fontWeight: 700, color: t.blue }}>보건소 공급 (무상)</span></label>}
+          {memberRole === 'owner' && <div style={{ marginTop: 6 }}><label style={{ ...lb, marginBottom: 6 }}>주의 표시 (여러 개 선택 가능)</label><div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>{CAUTION_ORDER.map(x => <label key={x.kind} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={!!f[x.col]} onChange={e => set(x.col, e.target.checked)} style={{ width: 16, height: 16, accentColor: cautionCheckColor(t, x.kind) }} /><CautionChip t={t} kind={x.kind} label={x.label} /></label>)}</div></div>}
               </div>}
             </div>
           </>) : (<>
@@ -857,8 +866,9 @@ export function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
           <div><label style={lb}>마약구분</label><div style={{ display: 'flex', gap: 4 }}>{['일반', '향정', '마약', '한외마약'].map(x => { const a = f.narcotic_type === x, cl = x === '일반' ? t.green : x === '향정' ? t.purple : x === '마약' ? t.red : t.blue; return <button key={x} onClick={() => set('narcotic_type', x)} style={{ flex: 1, padding: '8px', borderRadius: 6, border: `1px solid ${a ? cl : t.border}`, cursor: 'pointer', fontSize: 12, fontWeight: 600, background: a ? cl + '18' : 'transparent', color: a ? cl : t.textL }}>{x}</button> })}</div></div>
           <div style={{ marginBottom: 10 }}><label style={lb}>분류</label><div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>{RX_TOGGLE.map(x => <button key={x} type="button" onClick={() => set('prescription_type', f.prescription_type === x ? '' : x)} style={{ flex: 1, padding: '8px', borderRadius: 6, border: '1px solid ' + (f.prescription_type === x ? t.accent : t.border), cursor: 'pointer', fontSize: 12, fontWeight: 600, background: f.prescription_type === x ? t.accent : 'transparent', color: f.prescription_type === x ? '#fff' : t.textL }}>{x}</button>)}<select value={RX_MORE.includes(f.prescription_type) ? f.prescription_type : ''} onChange={e => set('prescription_type', e.target.value)} style={{ ...ip, flex: 1 }}><option value="">기타…</option>{RX_MORE.map(x => <option key={x} value={x}>{x}</option>)}</select></div></div>
           <div style={{ marginBottom: 10 }}><label style={lb}>ATC코드</label><input value={f.atc_code} onChange={e => set('atc_code', e.target.value.toUpperCase())} placeholder="예: N02BE01" style={ip} />{(() => { const _a = decomposeAtc(f.atc_code); return (f.atc_code && (_a.atc_l1 || _a.atc_l2 || _a.atc_l3)) ? <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>{[_a.atc_l1, _a.atc_l2, _a.atc_l3].filter(Boolean).map((v, i) => <span key={i} style={{ padding: '2px 8px', borderRadius: 8, fontSize: 10, fontWeight: 700, background: t.purpleL, color: t.purple, border: '1px solid ' + t.purple + '33' }}>{v}</span>)}</div> : f.atc_code ? <div style={{ marginTop: 6, fontSize: 10, color: t.textL }}>매핑 없음 — 코드만 저장(분류 비움)</div> : null })()}</div>
-          {memberRole === 'owner' && <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }}><input type="checkbox" checked={!!f.is_high_alert} onChange={e => set('is_high_alert', e.target.checked)} style={{ width: 16, height: 16, accentColor: '#D9342B' }} /><span style={{ fontSize: 12, fontWeight: 700, color: '#D9342B' }}>⚠ 고위험 의약품으로 지정</span></label>}
+          {memberRole === 'owner' && <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }}><input type="checkbox" checked={!!f.is_high_alert} onChange={e => set('is_high_alert', e.target.checked)} style={{ width: 16, height: 16, accentColor: '#D9342B' }} /><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: '#D9342B' }}><WarnTriangle size={13} />고위험 의약품으로 지정</span></label>}
           {memberRole === 'owner' && <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }}><input type="checkbox" checked={!!f.is_public_supply} onChange={e => set('is_public_supply', e.target.checked)} style={{ width: 16, height: 16, accentColor: t.blue }} /><span style={{ fontSize: 12, fontWeight: 700, color: t.blue }}>보건소 공급 (무상)</span></label>}
+          {memberRole === 'owner' && <div style={{ marginTop: 6 }}><label style={{ ...lb, marginBottom: 6 }}>주의 표시 (여러 개 선택 가능)</label><div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>{CAUTION_ORDER.map(x => <label key={x.kind} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={!!f[x.col]} onChange={e => set(x.col, e.target.checked)} style={{ width: 16, height: 16, accentColor: cautionCheckColor(t, x.kind) }} /><CautionChip t={t} kind={x.kind} label={x.label} /></label>)}</div></div>}
           </>)}
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}><button onClick={onClose} style={{ flex: 1, padding: 11, borderRadius: 8, border: `1px solid ${t.border}`, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13, fontWeight: 600 }}>취소</button><button onClick={save} disabled={saving || regInvalid} style={{ flex: 2, padding: 11, borderRadius: 8, border: 'none', cursor: (saving || regInvalid) ? 'not-allowed' : 'pointer', background: (saving || regInvalid) ? t.textL : t.accent, color: '#fff', fontSize: 13, fontWeight: 700 }}>{saving ? '저장 중...' : (isNew ? '등록' : '저장')}</button></div>
         {/* 관리자(profiles.role=admin) 또는 테넌트 owner/admin 전용 — 절제된 텍스트 버튼 */}
@@ -1725,7 +1735,7 @@ const DRUG_COL_DEFS = [
   { key: 'drug_name', label: '약품명', width: 240, sticky: true,
     td: (d, { t }) => ({ padding: '12px 12px', fontWeight: 500, textAlign: 'left', color: t.accent, cursor: 'pointer', minWidth: 220, maxWidth: 280 }),
     tdProps: (d, { t, onEdit }) => ({ onClick: () => onEdit(d), title: d.drug_name || '', onMouseEnter: e => { e.currentTarget.style.color = t.purple }, onMouseLeave: e => { e.currentTarget.style.color = t.accent } }),
-    render: (d, { t }) => <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.3 }}>{d.is_high_alert ? <Bd bg="#D9342B1A" color="#D9342B">⚠ 고위험</Bd> : null}{d.is_high_alert ? ' ' : ''}{d.is_public_supply ? <Bd bg={t.blueL} color={t.blue}>보건소</Bd> : null}{d.is_public_supply ? ' ' : ''}{d.drug_name}</span> },
+    render: (d, { t }) => <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.3 }}><DrugChips d={d} t={t} />{d.is_public_supply ? <Bd bg={t.blueL} color={t.blue}>보건소</Bd> : null}{d.is_public_supply ? ' ' : ''}{d.drug_name}</span> },
   { key: 'standard_code', label: '품목기준코드', width: 120,
     td: (d, { t }) => ({ padding: '13px 12px', textAlign: 'left', color: t.textM, fontSize: 10, whiteSpace: 'nowrap', fontFamily: 'monospace' }),
     render: (d) => d.standard_code || '-' },
@@ -1824,7 +1834,7 @@ const DRUG_COL_DEFS = [
     render: (d) => <SB s={d.status} /> },
   { key: 'is_high_alert', label: '고위험', width: 90,
     td: () => ({ padding: '13px 12px', textAlign: 'left' }),
-    render: (d, { t }) => d.is_high_alert ? <Bd bg="#D9342B1A" color="#D9342B">⚠ 고위험</Bd> : <span style={{ color: t.textL, fontSize: 10 }}>-</span> },
+    render: (d, { t }) => d.is_high_alert ? <HighAlertChip /> : <span style={{ color: t.textL, fontSize: 10 }}>-</span> },
   { key: 'is_public_supply', label: '보건소공급', width: 90,
     td: () => ({ padding: '13px 12px', textAlign: 'left' }),
     render: (d, { t }) => d.is_public_supply ? <Bd bg={t.blueL} color={t.blue}>보건소</Bd> : <span style={{ color: t.textL, fontSize: 10 }}>-</span> },
@@ -2789,7 +2799,7 @@ function _mergeDrugMaster(prev, dm) {
 }
 function DrugRegister({onRefresh, drugs}) {
   const { memberRole, profile } = useTheme(); const isOwner = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
-  const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:'',purchase_price:'',storage_location:'',memo:'',additive:'',compound_type:'단일제',is_high_alert:false,is_public_supply:false}
+  const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:'',purchase_price:'',storage_location:'',memo:'',additive:'',compound_type:'단일제',is_high_alert:false,is_public_supply:false,caution_dose:false,caution_shape:false,caution_sound:false}
   const[form,setForm]=useState(initForm)
   const[msg,setMsg]=useState(null)
   const[saving,setSaving]=useState(false)
@@ -3050,6 +3060,7 @@ function DrugRegister({onRefresh, drugs}) {
     }
     if (isOwner) row.is_high_alert = !!form.is_high_alert
     if (isOwner) row.is_public_supply = !!form.is_public_supply
+    if (isOwner) for (const x of CAUTION_ORDER) row[x.col] = !!form[x.col]
     /* 누락 컬럼 자동 제거 후 재시도 (최대 3회) — lib/saveWithFallback.js 단일 출처 */
     const res=await saveWithFallback(row,p=>supabase.from('drugs').insert([p]),{retries:3,label:'drugs INSERT'})
     const error=res.error
@@ -3248,8 +3259,9 @@ function DrugRegister({onRefresh, drugs}) {
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}><div><label style={lbl}>첨가제</label><input value={form.additive||''} onChange={e=>set('additive',e.target.value)} placeholder="자동채움·수정 가능" style={inp}/></div><div><label style={lbl}>복합/단일</label><select value={form.compound_type||'단일제'} onChange={e=>set('compound_type',e.target.value)} style={{...inp,background:'#fff'}}>{['단일제','복합제'].map(s=><option key={s}>{s}</option>)}</select></div></div>
             <div style={{marginBottom:16}}><label style={lbl}>비고</label><textarea value={form.memo||''} onChange={e=>set('memo',e.target.value)} rows={2} style={{...inp,resize:'vertical'}}/></div>
             {isOwner && <div style={{marginBottom:16}}>
-              <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',padding:'6px 0'}}><input type="checkbox" checked={!!form.is_high_alert} onChange={e=>set('is_high_alert',e.target.checked)} style={{width:16,height:16,accentColor:'#D9342B'}}/><span style={{fontSize:12,fontWeight:700,color:'#D9342B'}}>⚠ 고위험 의약품으로 지정</span></label>
+              <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',padding:'6px 0'}}><input type="checkbox" checked={!!form.is_high_alert} onChange={e=>set('is_high_alert',e.target.checked)} style={{width:16,height:16,accentColor:'#D9342B'}}/><span style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:12,fontWeight:700,color:'#D9342B'}}><WarnTriangle size={13} />고위험 의약품으로 지정</span></label>
               <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',padding:'6px 0'}}><input type="checkbox" checked={!!form.is_public_supply} onChange={e=>set('is_public_supply',e.target.checked)} style={{width:16,height:16,accentColor:C.blue}}/><span style={{fontSize:12,fontWeight:700,color:C.blue}}>보건소 공급 (무상)</span></label>
+              <div style={{marginTop:6}}><label style={{...lbl,marginBottom:6}}>주의 표시 (여러 개 선택 가능)</label><div style={{display:'flex',flexWrap:'wrap',gap:14,alignItems:'center'}}>{CAUTION_ORDER.map(x=><label key={x.kind} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}><input type="checkbox" checked={!!form[x.col]} onChange={e=>set(x.col,e.target.checked)} style={{width:16,height:16,accentColor:cautionCheckColor(themes.light, x.kind)}}/><CautionChip t={themes.light} kind={x.kind} label={x.label} /></label>)}</div></div>
             </div>}
             <button onClick={submit} disabled={saving} style={{width:'100%',padding:12,borderRadius:10,border:'none',cursor:saving?'not-allowed':'pointer',background:saving?C.grayB:C.purple,color:'#fff',fontSize:14,fontWeight:700}}>
               {saving?'등록 중...':'약품 등록'}
