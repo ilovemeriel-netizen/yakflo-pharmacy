@@ -4,15 +4,61 @@
  * 아이콘은 화면 칩과 **같은 SVG**(`src/CautionChips.jsx`)를 그대로 쓴다.
  *
  * ★ 길이 단위를 전부 mm 로 쓴다. 인쇄물이라 화면 픽셀이 아니라 **종이 위 길이**가 기준이다.
- * ★ 인쇄 규칙(@page)은 `labelPrintCss()` 가 돌려준다. 화면에 띄울 때는 쓰지 않는다.
+ * ★ 뱃지는 **왼쪽 「약품명」 제목 칸 아래**에 둔다. 약품명 칸은 이름만 쓴다 —
+ *   예전에는 뱃지를 이름 칸 오른쪽 위에 띄워 두어 **긴 이름을 덮었다**(2026-11-06 실측).
+ * ★ 약품명은 **칸에 들어갈 때까지 글자를 줄인다.** 낱말·숫자 중간에서 끊지 않고,
+ *   말줄임(…)도 하지 않는다. 약 이름이 잘리면 위험하다.
  */
-import React from 'react'
-import { CautionIcon } from './CautionChips'
+import React, { useLayoutEffect, useRef } from 'react'
+import { CautionIcon, WarnTriangle } from './CautionChips'
 import {
-  labelBg, labelHead, badgeKinds, CAUTION_LABEL, nameSizeMm, ingredientPair,
+  labelBg, labelHead, badgeKinds, CAUTION_SHORT, ingredientPair, NAME_MM,
 } from './lib/labelDefs'
 
-export function DrugLabel({ drug, forPrint }) {
+/* 칸에 들어갈 때까지 글자를 줄인다 — 말줄임 없음 */
+export function FitName({ text, startMm = NAME_MM.start }) {
+  const boxRef = useRef(null)
+  const txtRef = useRef(null)
+  useLayoutEffect(() => {
+    const box = boxRef.current, el = txtRef.current
+    if (!box || !el) return
+    let s = startMm
+    el.style.fontSize = s + 'mm'
+    let guard = 0
+    while (guard++ < 80 && s > NAME_MM.min
+      && (el.scrollWidth > box.clientWidth + 1 || el.scrollHeight > box.clientHeight + 1)) {
+      s = Math.round((s - NAME_MM.step) * 10) / 10
+      el.style.fontSize = s + 'mm'
+    }
+  }, [text, startMm])
+  return (
+    <div ref={boxRef} style={{ position: 'relative', height: '100%', display: 'flex', alignItems: 'center', minWidth: 0 }}>
+      <div ref={txtRef} style={{
+        fontWeight: 800, fontSize: startMm + 'mm', lineHeight: 1.15,
+        wordBreak: 'keep-all', overflowWrap: 'normal',   /* 낱말·숫자를 끊지 않는다 */
+      }}>{text}</div>
+    </div>
+  )
+}
+
+/* ★ 제목 칸(17mm) 안에 들어가야 한다. 「고위험」은 세 글자라 가장 길다 —
+   글자·아이콘·여백을 그 폭에 맞춰 잡았다. 넘치면 잘리지 않고 칸을 밀어낸다. */
+function Badge({ kind }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5mm',
+      background: '#111', color: '#fff', fontWeight: 700, fontSize: '2.1mm', lineHeight: 1,
+      padding: '0.5mm 0.8mm', borderRadius: '0.5mm', whiteSpace: 'nowrap', marginTop: '0.7mm',
+      maxWidth: '100%', overflow: 'hidden',
+      WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
+    }}>
+      {kind === 'high' ? <WarnTriangle size="2.2mm" /> : <CautionIcon kind={kind} size="2.2mm" color="#fff" />}
+      {CAUTION_SHORT[kind]}
+    </span>
+  )
+}
+
+export function DrugLabel({ drug, forPrint, idOverride }) {
   const d = drug || {}
   const bg = labelBg(d)
   const head = labelHead(d)
@@ -21,20 +67,22 @@ export function DrugLabel({ drug, forPrint }) {
   const both = pair.en && pair.kr
   const only = pair.en || pair.kr
 
-  const cell = { border: '0.35mm solid #000', padding: '1.4mm 1.8mm', verticalAlign: 'middle', overflow: 'hidden' }
+  const cell = { border: '0.35mm solid #000', padding: '1.3mm 1.6mm', verticalAlign: 'middle', overflow: 'hidden' }
   /* ★ whiteSpace:nowrap — 없으면 「약품명」이 「약품/명」으로 접힌다 */
-  const th = { ...cell, width: '17mm', background: head, font: '800 3.6mm/1.2 inherit', textAlign: 'center', letterSpacing: '0.2mm', whiteSpace: 'nowrap' }
+  const th = { ...cell, width: '17mm', background: head, textAlign: 'center', whiteSpace: 'nowrap' }
+  /* ★ font 축약형에 inherit 를 넣으면 선언이 통째로 무시된다 — 따로 적는다 */
+  const thText = { fontWeight: 800, fontSize: '3.3mm', lineHeight: 1.2, letterSpacing: '0.2mm' }
 
   return (
     <div
-      id={forPrint ? 'yakflo-label' : undefined}
+      id={idOverride || (forPrint ? 'yakflo-label' : undefined)}
       style={{
         width: '85mm', height: '45mm', background: bg, color: '#000', position: 'relative',
         overflow: 'hidden', fontFamily: '"맑은 고딕","Malgun Gothic",sans-serif',
         /* 바깥 이중선 — 바깥 선은 border, 안쪽 선은 그림자로 */
         border: '0.5mm solid #000',
         boxShadow: 'inset 0 0 0 0.3mm #FFF, inset 0 0 0 0.75mm #000',
-        WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
+        WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact', flexShrink: 0,
       }}
     >
       {/* 글자는 테두리에서 2.5mm 안쪽 */}
@@ -44,29 +92,16 @@ export function DrugLabel({ drug, forPrint }) {
       }}>
         <tbody>
           <tr>
-            <th style={th}>약품명</th>
+            <th style={th}>
+              <div style={thText}>약품명</div>
+              {kinds.map(k => <Badge key={k} kind={k} />)}
+            </th>
             <td style={{ ...cell, height: '55%' }}>
-              <div style={{ position: 'relative', height: '100%', display: 'flex', alignItems: 'center' }}>
-                {kinds.length > 0 && (
-                  <span style={{
-                    position: 'absolute', top: '-0.6mm', right: '-0.6mm', display: 'inline-flex',
-                    alignItems: 'center', gap: '0.9mm', background: '#111', color: '#fff',
-                    font: '700 2.7mm/1 inherit', padding: '0.9mm 1.5mm', borderRadius: '0.8mm',
-                    WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
-                  }}>
-                    <CautionIcon kind={kinds[0]} size="3mm" color="#fff" />
-                    {CAUTION_LABEL[kinds[0]]}
-                  </span>
-                )}
-                <div style={{
-                  fontWeight: 800, fontSize: nameSizeMm(d.drug_name) + 'mm', lineHeight: 1.15,
-                  wordBreak: 'keep-all', overflowWrap: 'anywhere', paddingRight: '1mm',
-                }}>{d.drug_name || ''}</div>
-              </div>
+              <FitName text={d.drug_name || ''} />
             </td>
           </tr>
           <tr>
-            <th style={th}>성분명</th>
+            <th style={{ ...th, ...thText }}>성분명</th>
             <td style={cell}>
               <div style={{
                 display: 'flex', flexDirection: 'column', justifyContent: 'center',
