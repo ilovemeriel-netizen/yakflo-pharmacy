@@ -26,6 +26,7 @@ const VaccineManage = lazy(() => import('./VaccineManage'))
 import BulkUploadModal from './BulkUploadModal'
 import { DrugChips, HighAlertChip, CautionChip, WarnTriangle } from './CautionChips'
 import { CAUTION_ORDER, cautionCheckColor } from './lib/cautionDefs'
+import LabelPrint from './LabelPrint'
 import UsageUploadModal from './UsageUploadModal'
 /* 마약·향정 판정은 모달과 **같은 함수 하나**를 쓴다 — 두 곳이 갈리면 탭마다 답이 달라진다 */
 import { narcCodes } from './lib/usageParse'
@@ -1157,6 +1158,8 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
     { id: 'report', l: '보고서' },
     { id: 'atc', l: '조제관리', landing: 'atc', children: [{ id: 'atc', l: 'ATC편집' }, { id: 'emergency', l: '비상조제' }] },
     { id: 'schedule', l: '일정' },
+    /* 부가기능 — 업무 메뉴 뒤에 덤으로 붙는 자리. 2026-11-06 이정화 님 승인 */
+    { id: 'label', l: '부가기능', landing: 'label', children: [{ id: 'label', l: '약품식별 라벨 인쇄' }] },
   ]
   function nav(id) { sm(id); setMobileOpen(false) }
   /* ── 즐겨찾기(profiles.settings.favorites) — 화면 id 배열·상한 5. GnbNav 무관·Header 렌더 계층 ── */
@@ -7937,7 +7940,7 @@ function Schedule({ drugs, onNav }) {
   </div>;
 }
 
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'count', 'narcotic', 'nonins', 'ordering', 'ward', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive', 'locvocab', 'vaccine'];
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'count', 'narcotic', 'nonins', 'ordering', 'ward', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive', 'locvocab', 'vaccine', 'label'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); const m = h.split('/')[0]; return ROUTES.includes(m) ? m : 'dashboard'; }
 function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
 /* 입출고 월 선택: 해시 3번째 세그먼트(#transaction/out/2026-08). 없으면 현재 월(하위호환). 「전체」는 URL에 월 세그먼트 없음(→새로고침 시 현재 월로 복원). */
@@ -8551,6 +8554,7 @@ export default function App() {
           {menu === 'emergency' && <><EmergencyDispense /><div className="no-print"><Ft /></div></>}
           {menu === 'atc' && <><AtcView drugs={drugs} onReload={load} /><div className="no-print"><Ft /></div></>}
           {menu === 'schedule' && <><Schedule drugs={drugs} onNav={handleNav} /><div className="no-print"><Ft /></div></>}
+          {menu === 'label' && <><LabelPrint drugs={drugs} /><div className="no-print"><Ft /></div></>}
           {menu === 'register' && <DrugRegister onRefresh={load} drugs={drugs} />}
           {menu === 'mypage' && <MyPage profile={profile} onProfileUpdated={loadProfile} />}
           {menu === 'locvocab' && <LocationVocab />}
