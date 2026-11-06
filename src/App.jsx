@@ -846,7 +846,7 @@ export function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
                 <div style={{ marginBottom: 10 }}><label style={lb}>비고</label><textarea value={f.memo} onChange={e => set('memo', e.target.value)} rows={2} style={{ ...ip, resize: 'vertical' }} /></div>
                 {memberRole === 'owner' && <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }}><input type="checkbox" checked={!!f.is_high_alert} onChange={e => set('is_high_alert', e.target.checked)} style={{ width: 16, height: 16, accentColor: '#D9342B' }} /><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: '#D9342B' }}><WarnTriangle size={13} />고위험 의약품으로 지정</span></label>}
                 {memberRole === 'owner' && <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }}><input type="checkbox" checked={!!f.is_public_supply} onChange={e => set('is_public_supply', e.target.checked)} style={{ width: 16, height: 16, accentColor: t.blue }} /><span style={{ fontSize: 12, fontWeight: 700, color: t.blue }}>보건소 공급 (무상)</span></label>}
-          {memberRole === 'owner' && <div style={{ marginTop: 6 }}><label style={{ ...lb, marginBottom: 6 }}>주의 표시 (여러 개 선택 가능)</label><div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>{CAUTION_ORDER.map(x => <label key={x.kind} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={!!f[x.col]} onChange={e => set(x.col, e.target.checked)} style={{ width: 16, height: 16, accentColor: cautionCheckColor(t, x.kind) }} /><CautionChip t={t} kind={x.kind} label={x.label} /></label>)}</div></div>}
+                {memberRole === 'owner' && <div style={{ marginTop: 6 }}><label style={{ ...lb, marginBottom: 6 }}>주의 표시 (여러 개 선택 가능)</label><div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>{CAUTION_ORDER.map(x => <label key={x.kind} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={!!f[x.col]} onChange={e => set(x.col, e.target.checked)} style={{ width: 16, height: 16, accentColor: cautionCheckColor(t, x.kind) }} /><CautionChip t={t} kind={x.kind} label={x.label} /></label>)}</div></div>}
               </div>}
             </div>
           </>) : (<>
@@ -2797,7 +2797,7 @@ function _mergeDrugMaster(prev, dm) {
     compound_type: prev.compound_type || dm.compound_type || '단일제',
   }
 }
-function DrugRegister({onRefresh, drugs}) {
+export function DrugRegister({onRefresh, drugs}) {
   const { memberRole, profile } = useTheme(); const isOwner = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
   const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:'',purchase_price:'',storage_location:'',memo:'',additive:'',compound_type:'단일제',is_high_alert:false,is_public_supply:false,caution_dose:false,caution_shape:false,caution_sound:false}
   const[form,setForm]=useState(initForm)
