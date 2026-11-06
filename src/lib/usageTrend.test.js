@@ -152,3 +152,61 @@ describe('급한 네 곳이 쪽 나눠 읽는지 — 소스로 못 박는다', (
     expect(APP).not.toMatch(/supabase\.from\('monthly_snapshots'\)\.select\('snap_year,snap_month'\)(?!\.order|\.range)/)
   })
 })
+
+describe('0114 PUBLIC·anon 실행 권한 회수 — 소스로 못 박는다', () => {
+  const SQL = rd('supabase/migrations/0114_revoke_trend_public.sql')
+  const CODE = SQL.split(/\r?\n/).filter(l => !/^\s*--/.test(l)).join('\n')
+
+  /* ★ 왜 — `create function` 은 기본으로 PUBLIC 에 EXECUTE 를 준다. 예전 마이그레이션이
+       `grant … to authenticated` 만 하고 그 기본값을 거두지 않아 anon 도 부를 수 있었다.
+       (2026-11-05 전수 조사: public 함수 55개 중 49개가 그런 상태였다) */
+  const THREE = [
+    ['usage_monthly_trend(integer)', 'authenticated'],
+    ['drug_change_forecast(integer)', 'authenticated'],
+    ['purge_vaccine_survey_claim_attempts()', 'service_role'],
+  ]
+
+  for (const [sig, keep] of THREE) {
+    it('★ ' + sig + ' — PUBLIC·anon 을 둘 다 거둔다', () => {
+      expect(CODE, 'PUBLIC 회수가 없다')
+        .toContain('revoke all on function public.' + sig + ' from public')
+      expect(CODE, 'anon 회수가 없다')
+        .toContain('revoke all on function public.' + sig + ' from anon')
+    })
+    it(sig + ' — ' + keep + ' 에는 남긴다', () => {
+      expect(CODE).toContain('grant execute on function public.' + sig + ' to ' + keep)
+    })
+  }
+
+  it('★ 청소 함수는 authenticated 에 주지 않는다 — 화면에서 부를 일이 없다', () => {
+    expect(CODE, '청소 함수를 화면 신분에 열면 안 된다')
+      .not.toContain('purge_vaccine_survey_claim_attempts() to authenticated')
+  })
+
+  it('★ 권한만 바꾼다 — 함수 본문·트리거·데이터를 손대지 않는다', () => {
+    expect(CODE).not.toMatch(/create or replace function/i)
+    expect(CODE).not.toMatch(/drop function/i)
+    expect(CODE).not.toMatch(/\b(create|drop) trigger\b/i)
+    expect(CODE).not.toMatch(/\b(insert|update|delete|truncate)\b/i)
+  })
+
+  it('★ 공개 신청이 쓰는 함수는 건드리지 않는다', () => {
+    for (const keep of ['current_tenant_ids', 'set_tenant_id_from_user', 'handle_new_user', 'is_admin']) {
+      expect(CODE, keep + ' 를 손대면 공개 화면이 멈춘다').not.toContain(keep)
+    }
+  })
+
+  it('PostgREST 캐시 갱신을 빠뜨리지 않았다 (함정 #22)', () => {
+    expect(SQL).toMatch(/notify pgrst, 'reload schema'/)
+  })
+
+  /* ★ 청소 함수를 부르는 곳은 **서버(service_role)** 한 군데뿐이다 — 브라우저가 아니다.
+       여기가 anon 키로 바뀌면 0114 때문에 청소가 조용히 실패한다. 그래서 못 박는다. */
+  it('★ 청소를 부르는 곳이 서버 쪽 service_role 클라이언트인지', () => {
+    const F = rd('vaccine-app/netlify/functions/vaccine-survey.js')
+    expect(F).toContain("admin.rpc('purge_vaccine_survey_claim_attempts')")
+    expect(F, 'admin 이 service_role 키로 만들어져야 한다')
+      .toContain('const admin = createClient(supaUrl, supaSrv')
+    expect(F).toContain('SUPABASE_SERVICE_ROLE_KEY')
+  })
+})
