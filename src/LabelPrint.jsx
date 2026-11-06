@@ -16,6 +16,8 @@ import { CautionChip, HighAlertChip } from './CautionChips'
 import { CAUTION_ORDER } from './lib/cautionDefs'
 import { DrugLabel } from './DrugLabel'
 import { LabelSheet } from './LabelSheet'
+import MP from './MultiPick'
+import { VOCAB } from './lib/drugRules'
 import {
   LABEL_FILTERS, matchSearch, labelPrintCss, sheetPrintCss,
   SHEET_GAP_MM, SHEET_PER_PAGE, QTY_MAX, expandForSheet, paginate,
@@ -26,6 +28,8 @@ const PAGE = 50
 export function LabelPrint({ drugs }) {
   const { t } = useTheme()
   const [filter, setFilter] = useState('caution')
+  /* ★ 기본은 상태 「사용」만 — 중지·휴면 약은 라벨을 뽑을 일이 드물다 */
+  const [stats, setStats] = useState(['사용'])
   const [kw, setKw] = useState('')
   const [page, setPage] = useState(1)
   const [sel, setSel] = useState(null)
@@ -36,17 +40,22 @@ export function LabelPrint({ drugs }) {
   const [printMode, setPrintMode] = useState('one')   /* 'one' | 'sheet' */
 
   const all = useMemo(() => Array.isArray(drugs) ? drugs : [], [drugs])
+  /* ★ 상태로 **먼저** 거른다 — 거르개 숫자도 이 묶음에서 센다.
+     그래야 상태를 바꾸면 「용량 29」 같은 숫자도 함께 바뀐다. */
+  const inStat = useMemo(
+    () => all.filter(d => stats.includes(String(d.status || '').trim())),
+    [all, stats])
   const counts = useMemo(() => {
     const c = {}
-    for (const f of LABEL_FILTERS) c[f.id] = all.filter(f.test).length
+    for (const f of LABEL_FILTERS) c[f.id] = inStat.filter(f.test).length
     return c
-  }, [all])
+  }, [inStat])
 
   const rows = useMemo(() => {
     const f = LABEL_FILTERS.find(x => x.id === filter) || LABEL_FILTERS[0]
-    return all.filter(d => f.test(d) && matchSearch(d, kw))
+    return inStat.filter(d => f.test(d) && matchSearch(d, kw))
       .sort((a, b) => String(a.drug_name || '').localeCompare(String(b.drug_name || ''), 'ko'))
-  }, [all, filter, kw])
+  }, [inStat, filter, kw])
 
   const pages = Math.max(1, Math.ceil(rows.length / PAGE))
   const cur = Math.min(page, pages)
@@ -102,9 +111,15 @@ export function LabelPrint({ drugs }) {
           <div style={{ ...ptit, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <span>약품 목록</span>
             <span style={{ display: 'flex', gap: 10 }}>
-              <button type="button" onClick={pickAllShown} style={lnk}>보이는 것 모두 선택</button>
+              <button type="button" onClick={pickAllShown} style={lnk}>모두 선택</button>
               <button type="button" onClick={clearAll} style={lnk}>선택 해제</button>
             </span>
+          </div>
+
+          {/* ★ 약품목록 화면과 **같은 부품**(MultiPick)·같은 모양·같은 색을 쓴다 */}
+          <div style={{ padding: '10px 13px 0' }}>
+            <MP items={VOCAB.status} selected={stats}
+              onChange={v => { setStats(v); setPage(1) }} color={t.green} label="상태" />
           </div>
 
           <div style={{ display: 'flex', gap: 5, padding: '10px 13px', flexWrap: 'wrap', borderBottom: `1px solid ${t.border}` }}>

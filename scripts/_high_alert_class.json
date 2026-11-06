@@ -1,0 +1,6 @@
+[
+ { "code": "7NACLDH",   "class": "electrolyte_na", "why": "나트륨 전해질 — 원내 게시물 초록" },
+ { "code": "7PTSMCLDH", "class": "electrolyte_k",  "why": "칼륨 전해질 — 원내 게시물 빨강" },
+ { "code": "7HUMLGIJ",  "class": "insulin",        "why": "인슐린 — 원내 게시물 살구" },
+ { "code": "7HMLR",     "class": "insulin",        "why": "인슐린 — 원내 게시물 살구" }
+]

@@ -28,19 +28,19 @@ const T = {
 const wrap = ui => render(<ThemeCtx.Provider value={T}>{ui}</ThemeCtx.Provider>)
 
 const DRUGS = [
-  { drug_code: 'SGBRONNC10', drug_name: '가바로닌캡슐100mg', category: '경구제',
+  { drug_code: 'SGBRONNC10', drug_name: '가바로닌캡슐100mg', category: '경구제', status: '사용',
     ingredient_en: 'Gabapentin', ingredient_kr: '가바펜틴',
     caution_dose: true, caution_shape: false, caution_sound: false, is_high_alert: false },
-  { drug_code: 'DGX', drug_name: '디고신정', category: '경구제',
+  { drug_code: 'DGX', drug_name: '디고신정', category: '경구제', status: '사용',
     ingredient_en: 'Digoxin', ingredient_kr: '디곡신',
     caution_dose: false, caution_shape: true, caution_sound: false, is_high_alert: false },
-  { drug_code: 'MGM', drug_name: '마그밀정', category: '경구제',
+  { drug_code: 'MGM', drug_name: '마그밀정', category: '경구제', status: '사용',
     ingredient_en: 'Magnesium hydroxide', ingredient_kr: '수산화마그네슘',
     caution_dose: false, caution_shape: false, caution_sound: true, is_high_alert: false },
-  { drug_code: 'GRD2', drug_name: '게리드정2mg', category: '경구제',
+  { drug_code: 'GRD2', drug_name: '게리드정2mg', category: '경구제', status: '사용',
     ingredient_en: 'Glimepiride', ingredient_kr: '글리메피리드',
     caution_dose: false, caution_shape: false, caution_sound: false, is_high_alert: false },
-  { drug_code: '7PTSMCLDH', drug_name: '대한염화칼륨-40', category: '주사제',
+  { drug_code: '7PTSMCLDH', drug_name: '대한염화칼륨-40', category: '주사제', status: '사용',
     ingredient_en: 'Potassium Chloride', ingredient_kr: '염화칼륨',
     caution_dose: false, caution_shape: false, caution_sound: false,
     is_high_alert: true, high_alert_class: 'electrolyte_k' },
@@ -256,7 +256,7 @@ describe('라벨 인쇄 화면', () => {
 
   it('「보이는 것 모두 선택」·「선택 해제」가 돈다', () => {
     wrap(<LabelPrint drugs={DRUGS} />)
-    fireEvent.click(screen.getByRole('button', { name: '보이는 것 모두 선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '모두 선택' }))
     expect(screen.getByText(/고른 약/).textContent).toContain('4종')
     fireEvent.click(screen.getByRole('button', { name: '선택 해제' }))
     expect(screen.getByText(/고른 약/).textContent).toContain('0종')
@@ -279,6 +279,57 @@ describe('라벨 인쇄 화면', () => {
     await act(async () => { vi.advanceTimersByTime(100) })
     expect(window.print).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
+  })
+
+  it('★ 기본 상태는 「사용」 — 중지·휴면 약은 안 보인다', () => {
+    const more = [...DRUGS,
+      { drug_code: 'STOP1', drug_name: '중지약', category: '경구제', status: '중지',
+        ingredient_en: 'X', ingredient_kr: '엑스', caution_shape: true },
+      { drug_code: 'REST1', drug_name: '휴면약', category: '경구제', status: '휴면',
+        ingredient_en: 'Y', ingredient_kr: '와이', caution_dose: true }]
+    wrap(<LabelPrint drugs={more} />)
+    expect(screen.queryByRole('button', { name: /중지약/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /휴면약/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /디고신정/ })).toBeTruthy()
+  })
+
+  it('★ 상태 칩은 여러 개를 고른다 (약품목록과 같은 동작)', () => {
+    const more = [...DRUGS,
+      { drug_code: 'STOP1', drug_name: '중지약', category: '경구제', status: '중지',
+        ingredient_en: 'X', ingredient_kr: '엑스', caution_shape: true }]
+    wrap(<LabelPrint drugs={more} />)
+    /* 「중지」를 누르면 사용에 **더해진다** — 둘 다 보인다 */
+    fireEvent.click(screen.getByRole('button', { name: '중지' }))
+    expect(screen.getByRole('button', { name: /중지약/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /디고신정/ })).toBeTruthy()
+    /* 「사용」을 빼면 중지 약만 남는다 */
+    fireEvent.click(screen.getByRole('button', { name: '사용' }))
+    expect(screen.getByRole('button', { name: /중지약/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /디고신정/ })).toBeNull()
+  })
+
+  it('★ 거르개 숫자도 상태에 맞춰 바뀐다', () => {
+    const more = [...DRUGS,
+      { drug_code: 'STOP1', drug_name: '중지약', category: '경구제', status: '중지',
+        ingredient_en: 'X', ingredient_kr: '엑스', caution_shape: true }]
+    wrap(<LabelPrint drugs={more} />)
+    expect(screen.getByRole('button', { name: '모양 1' })).toBeTruthy()   /* 사용 중 모양 = 디고신정 */
+    fireEvent.click(screen.getByRole('button', { name: '전체' }))          /* 상태 전체 */
+    expect(screen.getByRole('button', { name: '모양 2' })).toBeTruthy()   /* 중지약까지 */
+  })
+
+  it('★ 상태 칩은 약품목록과 같은 어휘다 — 전체·사용·중지·휴면', () => {
+    wrap(<LabelPrint drugs={DRUGS} />)
+    for (const l of ['전체', '사용', '중지', '휴면']) {
+      expect(screen.getByRole('button', { name: l })).toBeTruthy()
+    }
+  })
+
+  it('★ 「모두 선택」 문구다 (「보이는 것 모두 선택」 아님)', () => {
+    const { container } = wrap(<LabelPrint drugs={DRUGS} />)
+    expect(screen.getByRole('button', { name: '모두 선택' })).toBeTruthy()
+    expect(container.textContent).not.toContain('보이는 것 모두 선택')
+    expect(screen.getByRole('button', { name: '선택 해제' })).toBeTruthy()
   })
 
   it('인쇄 설정 안내가 글로 있다', () => {

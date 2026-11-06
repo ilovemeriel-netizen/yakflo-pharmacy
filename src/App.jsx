@@ -24,6 +24,7 @@ import EmergencyDispense from './EmergencyDispense'
 /* ★ 지연 로드 — 직접 import 하면 백신 화면이 전 사용자 초기 번들에 실린다. */
 const VaccineManage = lazy(() => import('./VaccineManage'))
 import BulkUploadModal from './BulkUploadModal'
+import MP from './MultiPick'
 import { DrugChips, HighAlertChip, CautionChip, WarnTriangle } from './CautionChips'
 import { CAUTION_ORDER, cautionCheckColor } from './lib/cautionDefs'
 import LabelPrint from './LabelPrint'
@@ -225,21 +226,6 @@ function Pg({ page: p, setPage: sp, tp, fl, pp, ends }) { const { t } = useTheme
 function CN({ drug: d, onEdit }) { const { t } = useTheme(); return <td style={{ padding: '8px 12px', fontWeight: 600, textAlign: 'left', color: t.accent, cursor: 'pointer' }} onClick={() => onEdit(d)} onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.color = t.purple }} onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none'; e.currentTarget.style.color = t.accent }}>{d.drug_name}</td> }
 
 /* ★ MultiPill — 최종 */
-function MP({ items, selected, onChange, color, label }) {
-  const { t, dark } = useTheme(); const allSel = selected.length === items.length
-  function tog(item) { const n = selected.includes(item) ? selected.filter(x => x !== item) : [...selected, item]; onChange(n.length ? n : [...items]) }
-  const grey = t.textM // 무채색 배경(라이트 #52524E / 다크 #A3A39E) — 배경 현행 유지
-  // [3] 참조비교(items===STATS/CATS) 대신 항목 값으로 판별 → 호출부 배열 복사/가공에도 안전
-  const CHIP = { '사용': '#019748', '중지': grey, '휴면': '#BFA6D9', '경구제': '#019748', '주사제': '#2B7BB9', '외용제': '#BFA6D9', '수액제': grey, '영양제': '#804A87', '의약외품': '#804A87' }
-  const mk = (c, txt) => ({ padding: '5px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 11, fontWeight: 600, background: c, color: txt || '#fff', border: `1.5px solid ${c}`, transition: 'all .15s' })
-  const on = mk(color)
-  const off = { padding: '5px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 11, fontWeight: 500, background: 'transparent', color: t.textM, border: `1.5px solid ${t.border}`, transition: 'all .15s' }
-  return <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-    {label && <span style={{ fontSize: 10, color: t.textL, fontWeight: 600, marginRight: 3 }}>{label}</span>}
-    <button onClick={() => onChange(allSel ? [items[0]] : [...items])} style={allSel ? { ...on, background: t.text, borderColor: t.text } : off}>전체</button>
-    {items.map(i => { const c = CHIP[i]; const ao = c ? mk(c, c === grey && dark ? t.bg : undefined) : on; return <button key={i} onClick={() => tog(i)} style={selected.includes(i) ? ao : off}>{i}</button> })}
-  </div>
-}
 
 /* ★ ColToggle — position:fixed로 부모 overflow 무시 */
 function ColToggle({ cols, visible, setVisible }) {
