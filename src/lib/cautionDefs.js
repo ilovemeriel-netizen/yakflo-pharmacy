@@ -54,6 +54,25 @@ export function isShade(d) {
   return String((d && d.storage_method) || '').includes('차광')
 }
 
+/* ── 칸 하나를 「무슨 주의」로 칠할지 ───────────────────────────────────
+ *  칩은 켜진 주의를 **다** 보여 주지만, 칸 색은 하나뿐이라 차례가 필요하다.
+ *  라벨 바탕색(`labelDefs.LABEL_PRIORITY`)과 **같은 차례**를 쓴다 —
+ *  한 약이 종이와 화면에서 다른 색이면 그게 더 헷갈린다.
+ *  (2026-11-07 이정화 님 승인 · 시안 39) */
+export const CELL_PRIORITY = ['sound', 'shape', 'dose']
+export function cellCaution(d) {
+  if (!d) return null
+  return CELL_PRIORITY.find(k => d[CAUTION_ORDER.find(x => x.kind === k).col] === true) || null
+}
+
+/* 켜진 주의를 **칩에 그려지는 차례**(용량 → 모양 → 발음) 그대로 글자로.
+   ATC 표의 「유사」 칸 정렬·필터 키다 — 칸에 보이는 것과 같아야 한다.
+   하나도 없으면 '-' (표의 빈 값 표시와 같다). */
+export function cautionKey(d) {
+  const on = CAUTION_ORDER.filter(x => d && d[x.col] === true).map(x => x.label)
+  return on.length ? on.join('·') : '-'
+}
+
 /* 화면이 어두운 쪽인지 — 팔레트가 스스로 밝힌다(themes.light/dark 의 mode) */
 export function isDark(t) { return (t && t.mode) === 'dark' }
 

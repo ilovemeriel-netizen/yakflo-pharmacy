@@ -26,7 +26,7 @@ const VaccineManage = lazy(() => import('./VaccineManage'))
 import BulkUploadModal from './BulkUploadModal'
 import MP from './MultiPick'
 import { DrugChips, HighAlertChip, CautionChip, WarnTriangle } from './CautionChips'
-import { CAUTION_ORDER, cautionCheckColor, cautionChipColors, SHADE_BG, SHADE_FG, SHADE_LABEL, isShade } from './lib/cautionDefs'
+import { CAUTION_ORDER, cautionCheckColor, cautionChipColors, SHADE_BG, SHADE_FG, SHADE_LABEL, isShade, cellCaution, cautionKey } from './lib/cautionDefs'
 import { CautionIcon, ShadeIcon } from './CautionChips'
 import LabelPrint from './LabelPrint'
 import UsageUploadModal from './UsageUploadModal'
@@ -7960,9 +7960,12 @@ function AtcView({ drugs, onReload }) {
   const cs = d => {
     if (!d) return { bg: t.card, bd: t.border, fg: t.textL };
     if (isShade(d)) return { bg: t.text, bd: t.text, fg: t.bg };
-    if (d.lasa_type === '모양') return { bg: t.coral, bd: t.coral, fg: t.text };
-    if (d.lasa_type === '용량') return { bg: t.blueL, bd: t.blue, fg: t.text };
-    if (d.lasa_type === '발음') return { bg: t.amberL, bd: t.amber, fg: t.text };
+    /* ★ 칸 색도 뱃지와 같은 자료(caution_*)를 본다. 색은 바뀌지 않았다 — 자료만 바꿨다.
+       주의가 여러 개면 발음 > 모양 > 용량 차례로 하나만 칠한다(라벨 바탕색과 같은 차례). */
+    const k = cellCaution(d);
+    if (k === 'shape') return { bg: t.coral, bd: t.coral, fg: t.text };
+    if (k === 'dose') return { bg: t.blueL, bd: t.blue, fg: t.text };
+    if (k === 'sound') return { bg: t.amberL, bd: t.amber, fg: t.text };
     return { bg: t.purpleL, bd: t.lavender, fg: t.text };
   };
   const Cell = (label, key, byMap, fluid, editable) => {
@@ -8007,7 +8010,7 @@ function AtcView({ drugs, onReload }) {
   /* 인쇄 전용 성분명: 「영문(한글)」, 복합제(구분자 '/')는 첫 성분 외 N종 축약. 개수 다르면 영문 기준. 화면·엑셀 무관 */
   const printIng = d => { const en = String((d && d.ingredient_en) || '').trim(); const kr = String((d && d.ingredient_kr) || '').trim(); const enP = en ? en.split('/').map(s => s.trim()).filter(Boolean) : []; const krP = kr ? kr.split('/').map(s => s.trim()).filter(Boolean) : []; const cnt = enP.length || krP.length; const fe = enP[0] || ''; const fk = krP[0] || ''; const first = fe && fk ? fe + '(' + fk + ')' : (fe || fk); return cnt > 1 ? first + ' 외 ' + (cnt - 1) + '종' : first; };
   /* 슬롯 정렬키(숫자): 카세트 1~80 → 확장 301~308 → FSP5~1(1001~1005). 문자열정렬 금지 */
-  const mkRow = (slot, d, fsp) => ({ slot, d, fsp, _slotkey: fsp ? 1000 + (6 - Number(String(slot).replace('FSP', ''))) : Number(slot), drug_code: d.drug_code, drug_name: d.drug_name, ingredient_kr: d.ingredient_kr || '', lasa: d.lasa_type || '-', light: isShade(d) ? '차광' : '-', kind: fsp ? 'FSP' : '카세트', r3: Number(d.recent_3m_usage) || 0, r1: d.recent_1m_usage == null ? null : Number(d.recent_1m_usage), mavg: d.monthly_avg == null ? null : Number(d.monthly_avg) });
+  const mkRow = (slot, d, fsp) => ({ slot, d, fsp, _slotkey: fsp ? 1000 + (6 - Number(String(slot).replace('FSP', ''))) : Number(slot), drug_code: d.drug_code, drug_name: d.drug_name, ingredient_kr: d.ingredient_kr || '', lasa: cautionKey(d), light: isShade(d) ? '차광' : '-', kind: fsp ? 'FSP' : '카세트', r3: Number(d.recent_3m_usage) || 0, r1: d.recent_1m_usage == null ? null : Number(d.recent_1m_usage), mavg: d.monthly_avg == null ? null : Number(d.monthly_avg) });
   const atcRows = (() => { const ent = []; assigned.filter(matches).forEach(d => { if (d.atc_slot) ent.push(mkRow(d.atc_slot, d, false)); if (d.fsp_slot) ent.push(mkRow(d.fsp_slot, d, true)); }); return ent; })();
   const _uA = arr => [...new Set(arr.filter(v => v != null && String(v).trim() !== ''))];
   const atcHf = {
@@ -8102,7 +8105,7 @@ function AtcView({ drugs, onReload }) {
   const cKeep = [...curCodes2].filter(cc => t88p.has(cc));
   /* A(신규 진입) 표 행 — aNew(0.5T FSP 적재 표기 포함) + 수기조제(top88·미배정). FSP 1T전용은 제외. 카드·헤더 건수 공용 */
   const aNewRows = [...aNew.map(d => ({ _slot: atcSlotKey(propSlotOf[d.drug_code]), slotLabel: propSlotOf[d.drug_code], name: d.drug_name, r3: usageScore(d), rank: rankFull.get(d.drug_code) || null, excl: false, reason: null, fspLoad: (d.fsp_slot && d.fsp_note) ? (d.fsp_slot + ' ' + d.fsp_note + ' 적재') : null, d })), ...manualEx.filter(d => (rankFull.get(d.drug_code) || 999) <= 88 && !curCodes2.has(d.drug_code)).map(d => ({ _slot: 9999, slotLabel: null, name: d.drug_name, r3: usageScore(d), rank: rankFull.get(d.drug_code) || null, excl: true, reason: d.atc_exclude_reason, fspLoad: null, d }))];
-  const pcs = (d, exp) => { if (!d) return { bg: t.card, bd: t.border, fg: t.textL }; if (d.atc_pinned) return { bg: t.greenL, bd: t.green, fg: t.green }; if (isShade(d)) return { bg: t.text, bd: t.text, fg: t.navText }; if (d.lasa_type === '모양') return { bg: t.coral, bd: t.coral, fg: t.text }; if (d.lasa_type === '용량') return { bg: t.blueL, bd: t.blue, fg: t.blue }; if (d.lasa_type === '발음') return { bg: t.amberL, bd: t.amber, fg: t.amber }; if (exp) return { bg: t.bg, bd: t.border, fg: t.textM }; return { bg: t.purpleL, bd: t.border, fg: t.accent }; };
+  const pcs = (d, exp) => { if (!d) return { bg: t.card, bd: t.border, fg: t.textL }; if (d.atc_pinned) return { bg: t.greenL, bd: t.green, fg: t.green }; if (isShade(d)) return { bg: t.text, bd: t.text, fg: t.navText }; const _k = cellCaution(d); if (_k === 'shape') return { bg: t.coral, bd: t.coral, fg: t.text }; if (_k === 'dose') return { bg: t.blueL, bd: t.blue, fg: t.blue }; if (_k === 'sound') return { bg: t.amberL, bd: t.amber, fg: t.amber }; if (exp) return { bg: t.bg, bd: t.border, fg: t.textM }; return { bg: t.purpleL, bd: t.border, fg: t.accent }; };
   const PCell = (slot, exp) => { const d = pIdeal[slot]; const s = pcs(d, exp); const active = q.trim() !== ''; const hit = active && d && matches(d); const dim = active && !hit; return <div key={slot} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : ''} style={{ border: hit ? '2px solid ' + t.accent : '1px solid ' + s.bd, background: s.bg, color: s.fg, borderRadius: 6, padding: '3px 5px', minHeight: 46, opacity: dim ? 0.3 : 1, cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ fontSize: 9, opacity: 0.62 }}>{slot}</div><div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflow: 'hidden' }}>{d ? d.drug_name : ''}</div></div>; };  const th = { textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' };
   const td = { padding: '5px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border };
   async function runSwaps(pairs, desc) { const { data, error } = await supabase.rpc('swap_atc_slots', { p_pairs: pairs }); if (error) { setMsg('교환 실패: ' + error.message); return; } if (data && data.ok === false) { setMsg('교환 차단 - ' + (data.failed || []).map(f => f.slot_a + '<->' + f.slot_b + '(' + f.reason + ')').join(', ')); return; } setMsg('슬롯 교환 ' + (data && data.done != null ? data.done : pairs.length) + '건 완료' + (desc ? ' - ' + desc : '')); setSelSlot(null); setPending(null); setSelPairs({}); onReload && onReload(); setTimeout(() => setMsg(null), 4000); }
