@@ -7956,7 +7956,12 @@ function AtcView({ drugs, onReload }) {
   const byAtc = {}, byFsp = {};
   assigned.forEach(d => { if (d.atc_slot) byAtc[String(d.atc_slot)] = d; if (d.fsp_slot) byFsp[String(d.fsp_slot)] = d; });
   /* ★ 칸 색 — **두 화면(현재배치 · 사용량순 제안)이 같은 값·같은 차례**를 쓴다.
-     차례: 차광 > 모양 > 용량 > 발음 > 상비 > 일반. (2026-11-07 이정화 님 지시)
+     **칸 색을 정하는 차례** : 차광 > 발음 > 모양 > 용량 > 상비 > 일반.
+     주의 3종 안쪽 차례(발음 > 모양 > 용량)는 cautionDefs.CELL_PRIORITY 가 정하고,
+     그 값은 라벨 바탕색(labelDefs.LABEL_PRIORITY)과 **같아야 한다** — 한 약이
+     종이와 화면에서 다른 색이면 그게 더 헷갈린다. 시험이 둘을 묶어 둔다.
+     ★ 범례에 **보이는 차례**는 이것과 다르다(차광 → 모양 → 용량 → 발음 → 상비 → 일반)..
+       보기 좋으라고 정한 줄 차례일 뿐, 색을 고르는 규칙이 아니다. (2026-11-07 이정화 님 지시)
      범례도 이 값을 그대로 가져다 쓴다 — 따로 적으면 범례와 칸이 어긋난다. */
   const CELL_SHADE = { bg: SHADE_BG, bd: SHADE_BG, fg: SHADE_FG };
   const CELL_SHAPE = { bg: t.coral, bd: t.coral, fg: t.text };
@@ -7972,7 +7977,8 @@ function AtcView({ drugs, onReload }) {
        (2026-11-07 이정화 님 지시 — 라벨과 같은 규칙) 색 두 가지는 이미 쓰던 값이다. */
     if (isShade(d)) return CELL_SHADE;
     /* ★ 칸 색도 뱃지와 같은 자료(caution_*)를 본다. 색은 바뀌지 않았다 — 자료만 바꿨다.
-       주의가 여러 개면 발음 > 모양 > 용량 차례로 하나만 칠한다(라벨 바탕색과 같은 차례). */
+       주의가 여러 개면 발음 > 모양 > 용량 차례로 하나만 칠한다(라벨 바탕색과 같은 차례).
+       2026-11-07 기준 주의가 2개 이상인 약은 **0종**이라 지금 화면에는 차이가 없다. */
     const k = cellCaution(d);
     if (k === 'shape') return CELL_SHAPE;
     if (k === 'dose') return CELL_DOSE;

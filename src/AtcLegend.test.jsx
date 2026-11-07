@@ -16,7 +16,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { SHADE_BG, SHADE_FG, cautionChipColors } from './lib/cautionDefs'
+import { SHADE_BG, SHADE_FG, cautionChipColors, CELL_PRIORITY, cellCaution } from './lib/cautionDefs'
+import { LABEL_PRIORITY, bgKind } from './lib/labelDefs'
 
 const APP = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8')
 const CODE = APP.split('\n').filter(l => !/^\s*\/\*|^\s*\*/.test(l)).join('\n')
@@ -95,6 +96,42 @@ describe('★ 어두운 화면 — 차광 색견본 테두리', () => {
 
   it('어두운 화면 테두리(t.border)가 색견본과 갈린다', () => {
     expect(ratio('#2A3A4A', SHADE_BG)).toBeGreaterThan(1.3)
+  })
+})
+
+describe('★ 칸 색을 정하는 차례 vs 범례에 보이는 차례 — 둘은 다르다', () => {
+  /* 2026-11-07 정정 — 제가 PR 설명에 「차광 > 모양 > 용량 > 발음」이라고 잘못 적었다.
+     그건 **범례에 보이는 줄 차례**이고, 색을 고르는 차례는 **차광 > 발음 > 모양 > 용량 > 상비** 다. */
+  it('★ 색을 고르는 차례 — 주의 3종은 발음 > 모양 > 용량', () => {
+    expect(CELL_PRIORITY).toEqual(['sound', 'shape', 'dose'])
+  })
+
+  it('★ 라벨 바탕색과 **같은 차례**다 (종이와 화면이 다른 색이면 더 헷갈린다)', () => {
+    expect(CELL_PRIORITY).toEqual(LABEL_PRIORITY)
+  })
+
+  it('두 함수(칸 색·라벨 바탕색)가 같은 답을 낸다', () => {
+    const D = o => ({ caution_dose: false, caution_shape: false, caution_sound: false, ...o })
+    for (const bits of [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 1, 1]]) {
+      const d = D({ caution_dose: !!bits[0], caution_shape: !!bits[1], caution_sound: !!bits[2] })
+      expect(cellCaution(d)).toBe(bgKind(d))
+    }
+  })
+
+  it('범례에 보이는 차례는 그것과 **다르다** (차광 → 모양 → 용량 → 발음 → 상비 → 일반)', () => {
+    const order = (CODE.match(/const LEGEND = \[([\s\S]*?)\]\];/) || [])[1] || ''
+    const names = (order.match(/'([^']+)'/g) || []).map(s => s.replace(/'/g, ''))
+    expect(names).toEqual(['차광', '모양', '용량', '발음', '상비 고정', '일반'])
+  })
+
+  it('★ 지금 운영에는 주의가 2개 이상인 약이 없어 차례가 화면을 바꾸지 않는다', () => {
+    /* 2026-11-07 운영 실측 — ATC 90종 중 0종, 약품 전체 1,133종 중에도 0종.
+       주의가 하나뿐이면 어떤 차례를 쓰든 같은 색이 나온다. */
+    const D = o => ({ caution_dose: false, caution_shape: false, caution_sound: false, ...o })
+    for (const k of ['dose', 'shape', 'sound']) {
+      const col = { dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]
+      expect(cellCaution(D({ [col]: true }))).toBe(k)
+    }
   })
 })
 
