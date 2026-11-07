@@ -49,20 +49,24 @@ describe('★ 뱃지 차례 — 상비 · 용량 → 모양 → 발음 · 차광
 
   it('차광과 0.5T(fsp_note) 가 주의 3종 **뒤**에 온다', () => {
     const iCau = DB.indexOf("['dose', 'shape', 'sound']")
-    const iLight = DB.indexOf('storage_light')
+    /* 0117 부터 차광은 storage_light 가 아니라 isShade(storage_method) 로 본다 */
+    const iShade = DB.indexOf('isShade(d)')
     const iFsp = DB.indexOf('fsp_note')
     expect(iCau).toBeGreaterThan(-1)
-    expect(iLight).toBeGreaterThan(iCau)
-    expect(iFsp).toBeGreaterThan(iLight)
+    expect(iShade).toBeGreaterThan(iCau)
+    expect(iFsp).toBeGreaterThan(iShade)
   })
 
   it('상비는 맨 앞에 그대로 있다', () => {
     expect(DB.indexOf('atc_pinned')).toBeLessThan(DB.indexOf("['dose', 'shape', 'sound']"))
   })
 
-  it('차광·0.5T 의 색은 바뀌지 않았다', () => {
-    expect(DB).toContain("{ x: '차광', bg: t.text, fg: t.navText }")
+  it('0.5T(fsp_note) 의 색은 바뀌지 않았다', () => {
     expect(DB).toContain('bg: t.greenL, fg: t.green, bd: t.green')
+  })
+
+  it('상비의 색도 바뀌지 않았다', () => {
+    expect(DB).toContain("{ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }")
   })
 })
 
@@ -73,7 +77,7 @@ describe('★ 색·아이콘은 화면 칩 부품을 그대로 쓴다', () => {
 
   it('아이콘을 새로 그리지 않고 CautionIcon 을 쓴다', () => {
     expect(CODE).toContain('<CautionIcon kind={b.kind}')
-    expect(APP).toContain("import { CautionIcon } from './CautionChips'")
+    expect(APP).toContain("import { CautionIcon, ShadeIcon } from './CautionChips'")
   })
 
   it('★ 인쇄물이라 화면 모드를 타지 않는다 (밝은 화면 값 고정)', () => {
