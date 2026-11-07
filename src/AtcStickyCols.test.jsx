@@ -81,12 +81,14 @@ describe('★ 몸통 칸도 머리글과 같은 자리', () => {
 })
 
 describe('★ 건드리지 않은 것', () => {
-  it('열 폭(colWidths)은 그대로다', () => {
-    expect(CODE).toContain('colWidths={[120, 120, 208, 220, 80, 72, 96, 96, 84]}')
+  it('★ 열 폭 — 성분명만 220 → 320px (2026-11-07), 나머지 8열은 그대로다', () => {
+    expect(CODE).toContain('colWidths={[120, 120, 208, 320, 80, 72, 96, 96, 84]}')
+    /* 고정 열이 걸린 슬롯 120 · 약품명 208 은 손대지 않았다 — 바뀌면 left 값이 어긋난다 */
   })
 
-  it('표 최소 폭도 그대로다', () => {
-    expect(CODE).toContain('minWidth={1096}')
+  it('표 최소 폭이 그만큼 늘었다 (1096 → 1196)', () => {
+    expect(CODE).toContain('minWidth={1196}')
+    expect(CODE).not.toContain('minWidth={1096}')
   })
 
   it('★ StandardTable 은 한 글자도 바꾸지 않았다', () => {
