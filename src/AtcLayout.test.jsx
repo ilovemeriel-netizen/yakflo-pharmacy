@@ -52,13 +52,13 @@ describe('★ 두 칸이 같은 뱃지를 쓴다', () => {
   const PCELL = between('const PCell = (slot, exp) =>', 'const td = {')
 
   it('현재배치 칸이 dBadges 를 그린다', () => {
-    expect(CELL).toContain('dBadges(d)')
+    expect(CELL).toContain('cellBadges(d)')
     expect(CELL).toContain('style={slotHead}')
     expect(CELL).toContain('style={badgeWrap}')
   })
 
   it('★ 사용량순 제안 칸도 dBadges 를 그린다 (예전에는 뱃지 줄이 아예 없었다)', () => {
-    expect(PCELL).toContain('dBadges(d)')
+    expect(PCELL).toContain('cellBadges(d)')
     expect(PCELL).toContain('badgeWrap')
     expect(PCELL).toContain('slotHead')
   })

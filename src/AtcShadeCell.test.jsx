@@ -74,6 +74,80 @@ describe('★ 차광 = 칸 색 (뱃지 아님)', () => {
   })
 })
 
+describe('★ 검정 칸 위 모양·용량 뱃지에만 흰 테두리 (2026-11-07 지시)', () => {
+  const OS = between('const onShade = b =>', ');')
+  const CBD = between('const cellBadges = d =>', ');')
+
+  it('모양·용량 두 가지만 대상이다', () => {
+    expect(CODE).toContain("const ON_SHADE = ['dose', 'shape'];")
+  })
+
+  it('흰 테두리를 준다', () => {
+    expect(OS).toContain("bd: '#FFFFFF'")
+  })
+
+  it('★ 검정 칸일 때만 준다 — 밝은 칸은 그대로다', () => {
+    expect(CBD).toContain('isShade(d) ? dBadges(d).map(onShade) : dBadges(d)')
+  })
+
+  it('CB 가 테두리를 실제로 그린다', () => {
+    expect(CODE).toContain('badgeStyle(b.bg, b.fg, b.bd)')
+  })
+
+  it('두 칸 모두 cellBadges 를 쓴다 (현재배치 · 사용량순 제안)', () => {
+    expect((CODE.match(/cellBadges\(d\)/g) || []).length).toBe(2)   /* 현재배치 칸 · 사용량순 제안 칸 */
+  })
+
+  it('★ 인쇄 표의 배지 칸은 흰 종이라 테두리를 주지 않는다', () => {
+    const PB = between('<td className="bd"', '</td>')
+    expect(PB).toContain('dBadges(d)')
+    expect(PB).not.toContain('cellBadges')
+  })
+
+  it('뱃지 상자 크기는 그대로다 (badgeStyle 이 이미 1px 자리를 잡아 뒀다)', () => {
+    expect(between('const badgeStyle = (bg, fg, bd) =>', '});'))
+      .toContain("border: bd ? '1px solid ' + bd : '1px solid transparent'")
+  })
+
+  it('흰 테두리가 검정 칸과 또렷이 갈린다 — 16:1 이상', () => {
+    expect(ratio('#FFFFFF', SHADE_BG)).toBeGreaterThan(16)
+  })
+
+  it.each([['모양', '#C62828', 5.0, 6.2], ['용량', '#2E4A62', 8.5, 10.0]])(
+    '%s 뱃지 안에서도 테두리가 보인다', (_n, bg, lo, hi) => {
+      const r = ratio('#FFFFFF', bg)
+      expect(r).toBeGreaterThan(lo)
+      expect(r).toBeLessThan(hi)
+    })
+})
+
+describe('★ 사용량순 제안 칸 — 차광이 1순위 (2026-11-07 지시)', () => {
+  const PCS = between('const pcs = (d, exp) =>', 'const PCell =')
+
+  it('차광이 상비보다 **먼저** 온다', () => {
+    const iShade = PCS.indexOf('isShade(d)')
+    const iPin = PCS.indexOf('atc_pinned')
+    expect(iShade).toBeGreaterThan(-1)
+    expect(iPin).toBeGreaterThan(iShade)
+  })
+
+  it('★ 현재배치 칸(cs)과 같은 차례다', () => {
+    const CS = between('const cs = d => {', 'const Cell =')
+    expect(CS.indexOf('isShade(d)')).toBeLessThan(CS.indexOf('cellCaution(d)'))
+    expect(PCS.indexOf('isShade(d)')).toBeLessThan(PCS.indexOf('cellCaution(d)'))
+  })
+
+  it('상비는 사라지지 않는다 — 색이 밀렸을 뿐 뱃지로 남는다', () => {
+    expect(PCS).toContain('{ bg: t.greenL, bd: t.green, fg: t.green }')
+    expect(between('const dBadges = d =>', 'return a; };'))
+      .toContain("{ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }")
+  })
+
+  it('제안 화면의 「FSP 고정식」 초록 블록은 그대로다', () => {
+    expect(CODE).toContain("{ bg: t.greenL, bd: t.green, fg: t.green } : { bg: t.card, bd: t.textL, fg: t.textL }")
+  })
+})
+
 describe('★ 범례', () => {
   it('차광 색견본이 칸과 같은 검정이다', () => {
     expect(CODE).toContain("['차광', SHADE_BG]")

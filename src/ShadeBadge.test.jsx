@@ -182,7 +182,7 @@ describe('★ 뱃지 그리기 — 주의 3종과 같은 틀', () => {
   })
 
   it('같은 badgeStyle 을 쓴다 (크기·둥글기가 자리마다 그대로)', () => {
-    expect(CB).toContain('badgeStyle(b.bg, b.fg)')
+    expect(CB).toContain('badgeStyle(b.bg, b.fg, b.bd)')
   })
 
   it('카세트 칸·제안 칸·인쇄 표 모두 아이콘 뱃지를 CB 로 그린다', () => {
