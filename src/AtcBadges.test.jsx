@@ -143,6 +143,6 @@ describe('★ 뱃지 크기는 다섯 가지가 모두 같다 (2026-11-07 지시
   })
 
   it('★ 범례의 상비 견본도 같은 부품(B)이다 — 따로 그리지 않는다', () => {
-    expect(CODE).toContain("{B('상비', PIN_BG, PIN_FG, PIN_BG)}")
+    expect(CODE).toContain("{B(lb, PIN_BG, PIN_FG, PIN_BG)}")
   })
 })

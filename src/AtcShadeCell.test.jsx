@@ -157,8 +157,8 @@ describe('★ 범례', () => {
 
   it('나머지 색견본은 그대로다 (상비만 색칸 → 실제 뱃지로)', () => {
     for (const s of ["['모양', CELL_SHAPE]", "['용량', CELL_DOSE]", "['발음', CELL_SOUND]",
-      "['일반', CELL_PLAIN]"]) expect(CODE).toContain(s)
-    expect(CODE).toContain("{B('상비', PIN_BG, PIN_FG, PIN_BG)}")
+      "['상비', null]", "['일반', CELL_PLAIN]"]) expect(CODE).toContain(s)
+    expect(CODE).toContain("{B(lb, PIN_BG, PIN_FG, PIN_BG)}")
   })
 })
 

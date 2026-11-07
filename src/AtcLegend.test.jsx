@@ -62,10 +62,10 @@ describe('★ 범례가 하나다', () => {
 })
 
 describe('★ 범례 항목과 차례', () => {
-  it('차광 → 모양 → 용량 → 발음 → 일반 (+ 끝에 상비 뱃지)', () => {
+  it('차광 → 모양 → 용량 → 발음 → 상비 → 일반 (2026-11-07 지시 차례)', () => {
     /* 2026-11-07 안 ⓒ — 상비는 칸 색이 아니라 **언제나 뱃지**라서 색견본 줄에서 빠졌다 */
     expect(CODE).toContain("const LEGEND = [['차광', CELL_SHADE], ['모양', CELL_SHAPE], ['용량', CELL_DOSE],")
-    expect(CODE).toContain("['발음', CELL_SOUND], ['일반', CELL_PLAIN]]")
+    expect(CODE).toContain("['발음', CELL_SOUND], ['상비', null], ['일반', CELL_PLAIN]]")
     expect(CODE).not.toContain("['상비 고정', CELL_PIN]")
   })
 
@@ -87,7 +87,7 @@ describe('★ 범례 항목과 차례', () => {
   it('★ 「상비」는 색칸이 아니라 **칸에 붙는 뱃지 그대로** 보여 준다 (2026-11-07 안 ⓒ)', () => {
     const L = between('const legend = fluid =>', '</div>;')
     /* 칸 안에서 쓰는 뱃지 부품(B) 과 **같은 색·같은 부품**이어야 한다 */
-    expect(L).toContain("{B('상비', PIN_BG, PIN_FG, PIN_BG)}")
+    expect(L).toContain("{B(lb, PIN_BG, PIN_FG, PIN_BG)}")
     expect(L).not.toContain('상비 고정')
   })
 })
@@ -130,10 +130,10 @@ describe('★ 칸 색을 정하는 차례 vs 범례에 보이는 차례 — 둘�
     }
   })
 
-  it('범례에 보이는 차례는 그것과 **다르다** (차광 → 모양 → 용량 → 발음 → 일반)', () => {
+  it('범례에 보이는 차례는 그것과 **다르다** (차광 → 모양 → 용량 → 발음 → 상비 → 일반)', () => {
     const order = (CODE.match(/const LEGEND = \[([\s\S]*?)\]\];/) || [])[1] || ''
     const names = (order.match(/'([^']+)'/g) || []).map(s => s.replace(/'/g, ''))
-    expect(names).toEqual(['차광', '모양', '용량', '발음', '일반'])
+    expect(names).toEqual(['차광', '모양', '용량', '발음', '상비', '일반'])
   })
 
   it('★ 지금 운영에는 주의가 2개 이상인 약이 없어 차례가 화면을 바꾸지 않는다', () => {

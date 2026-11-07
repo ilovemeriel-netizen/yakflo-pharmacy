@@ -8097,19 +8097,32 @@ function AtcView({ drugs, onReload }) {
        안 보인다 — 그때만 테두리를 t.border 로 준다. */
   /* ★ 범례 — 칸 색은 **칸 색 상수 그대로**, 상비는 **실제 뱃지 견본**이다.
      상비는 칸 바탕이 아니라 뱃지라 색칸으로 보이면 거짓말이 된다. */
+  /* ★ 보이는 차례 = 차광 → 모양 → 용량 → 발음 → 상비 → 일반 (2026-11-07 지시).
+     상비 자리의 `null` 은 「색칸이 아니라 **뱃지 견본**을 그려라」는 뜻이다 —
+     차례를 이 배열 **한 군데**에서만 정하려고 이렇게 둔다.
+     (칸 색을 **고르는** 차례는 이것과 다르다: 차광 > 발음 > 모양 > 용량.) */
   const LEGEND = [['차광', CELL_SHADE], ['모양', CELL_SHAPE], ['용량', CELL_DOSE],
-    ['발음', CELL_SOUND], ['일반', CELL_PLAIN]];
+    ['발음', CELL_SOUND], ['상비', null], ['일반', CELL_PLAIN]];
   const legend = fluid => <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10, fontSize: 10, color: t.textM, alignItems: 'center' }}>
-    {LEGEND.map(([lb, s]) => <span key={lb} style={{ background: s.bg, color: s.fg, padding: '1px 6px', borderRadius: 3, fontWeight: 700, border: (s.bw || 1) + 'px solid ' + (s === CELL_SHADE && isDark(t) ? t.border : s.bd) }}>{lb}</span>)}
-    {/* ★ 상비는 칸 색이 아니라 **뱃지**다 — 칸에 붙는 것과 같은 부품·같은 색으로 보여 준다 */}
-    <span style={{ display: 'inline-flex' }}>{B('상비', PIN_BG, PIN_FG, PIN_BG)}</span>
+    {LEGEND.map(([lb, s]) => (s
+      ? <span key={lb} style={{ background: s.bg, color: s.fg, padding: '1px 6px', borderRadius: 3, fontWeight: 700, border: (s.bw || 1) + 'px solid ' + (s === CELL_SHADE && isDark(t) ? t.border : s.bd) }}>{lb}</span>
+      /* ★ 상비는 칸 색이 아니라 **뱃지**다 — 칸에 붙는 것과 같은 부품·같은 색으로 보여 준다 */
+      : <span key={lb} style={{ display: 'inline-flex' }}>{B(lb, PIN_BG, PIN_FG, PIN_BG)}</span>))}
     {fluid && <span style={{ color: t.textL }}>점선 = 유동</span>}
   </div>;
   const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: PIN_BG, fg: PIN_FG, bd: PIN_BG, pin: true }); for (const k of ['dose', 'shape', 'sound']) { const col = { dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]; if (d[col] === true) a.push(cautionBadge(k)); } if (d.fsp_slot && d.fsp_note) a.push({ x: d.fsp_note, bg: t.greenL, fg: t.green, bd: t.green }); return a; };
   /* 인쇄 전용 성분명: 「영문(한글)」, 복합제(구분자 '/')는 첫 성분 외 N종 축약. 개수 다르면 영문 기준. 화면·엑셀 무관 */
   const printIng = d => { const en = String((d && d.ingredient_en) || '').trim(); const kr = String((d && d.ingredient_kr) || '').trim(); const enP = en ? en.split('/').map(s => s.trim()).filter(Boolean) : []; const krP = kr ? kr.split('/').map(s => s.trim()).filter(Boolean) : []; const cnt = enP.length || krP.length; const fe = enP[0] || ''; const fk = krP[0] || ''; const first = fe && fk ? fe + '(' + fk + ')' : (fe || fk); return cnt > 1 ? first + ' 외 ' + (cnt - 1) + '종' : first; };
+  /* ★ 화면 표의 성분명 — 영문 위 · 한글 아래 두 줄 (2026-11-07 지시).
+     긴 복합제는 영문·한글 **같은 규칙**으로 「첫 성분 외 N종」으로 줄인다.
+     ★ 성분 개수는 **영문을 기준으로** 센다 — 한글이 비었거나 개수가 달라도
+       두 줄의 「외 N종」이 서로 어긋나지 않게 하기 위해서다.
+     인쇄용 printIng 과는 쓰임이 달라 따로 둔다(인쇄는 「영문(한글)」 한 줄). */
+  const ingParts = s => String(s || '').split('/').map(x => x.trim()).filter(Boolean);
+  const ingCount = d => (ingParts(d && d.ingredient_en).length || ingParts(d && d.ingredient_kr).length);
+  const ingShort = (s, cnt) => { const p = ingParts(s); if (!p.length) return ''; return cnt > 1 ? p[0] + ' 외 ' + (cnt - 1) + '종' : p[0]; };
   /* 슬롯 정렬키(숫자): 카세트 1~80 → 확장 301~308 → FSP5~1(1001~1005). 문자열정렬 금지 */
-  const mkRow = (slot, d, fsp) => ({ slot, d, fsp, _slotkey: fsp ? 1000 + (6 - Number(String(slot).replace('FSP', ''))) : Number(slot), drug_code: d.drug_code, drug_name: d.drug_name, ingredient_kr: d.ingredient_kr || '', lasa: cautionKey(d), light: isShade(d) ? '차광' : '-', kind: fsp ? 'FSP' : '카세트', r3: Number(d.recent_3m_usage) || 0, r1: d.recent_1m_usage == null ? null : Number(d.recent_1m_usage), mavg: d.monthly_avg == null ? null : Number(d.monthly_avg) });
+  const mkRow = (slot, d, fsp) => { const _ic = ingCount(d); return ({ slot, d, fsp, _slotkey: fsp ? 1000 + (6 - Number(String(slot).replace('FSP', ''))) : Number(slot), drug_code: d.drug_code, drug_name: d.drug_name, ing_en: ingShort(d.ingredient_en, _ic), ing_kr: ingShort(d.ingredient_kr, _ic), lasa: cautionKey(d), light: isShade(d) ? '차광' : '-', kind: fsp ? 'FSP' : '카세트', r3: Number(d.recent_3m_usage) || 0, r1: d.recent_1m_usage == null ? null : Number(d.recent_1m_usage), mavg: d.monthly_avg == null ? null : Number(d.monthly_avg) }); };
   const atcRows = (() => { const ent = []; assigned.filter(matches).forEach(d => { if (d.atc_slot) ent.push(mkRow(d.atc_slot, d, false)); if (d.fsp_slot) ent.push(mkRow(d.fsp_slot, d, true)); }); return ent; })();
   const _uA = arr => [...new Set(arr.filter(v => v != null && String(v).trim() !== ''))];
   const atcHf = {
@@ -8129,7 +8142,10 @@ function AtcView({ drugs, onReload }) {
   const slot91Ga = [...slot91].sort((x, y) => (x.d.drug_name || '').localeCompare(y.d.drug_name || '', 'ko'));
   function dlXlsx(mode) {
     const src = mode === '슬롯' ? [...slot91].sort((x, y) => (Number(String(x.slot).replace('FSP', '999')) || 0) - (Number(String(y.slot).replace('FSP', '999')) || 0)) : slot91Ga;
-    const ws = XLSX.utils.json_to_sheet(src.map(({ slot, d }) => ({ 슬롯: slot, 약품코드: d.drug_code, 약품명: d.drug_name, 성분명: d.ingredient_kr || '', 유사: d.lasa_type || '', 차광: isShade(d) ? '차광' : '', 최근3개월: d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage), 직전1개월: d.recent_1m_usage == null ? '' : Number(d.recent_1m_usage) })));
+    /* ★ 엑셀은 성분명을 영문·한글 **두 칸**으로 내보낸다(2026-11-07 지시).
+       화면과 달리 **줄이지 않고 원본 그대로** 넣는다 — 엑셀은 칸 폭 제약이 없고,
+       줄여서 넣으면 뒤 성분이 사라져 자료로 못 쓴다. */
+    const ws = XLSX.utils.json_to_sheet(src.map(({ slot, d }) => ({ 슬롯: slot, 약품코드: d.drug_code, 약품명: d.drug_name, '성분명(영문)': d.ingredient_en || '', '성분명(한글)': d.ingredient_kr || '', 유사: d.lasa_type || '', 차광: isShade(d) ? '차광' : '', 최근3개월: d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage), 직전1개월: d.recent_1m_usage == null ? '' : Number(d.recent_1m_usage) })));
     if (temp) XLSX.utils.sheet_add_aoa(ws, [[], ['임시 사용량 기준 · ' + temp.file + ' · 지표: ' + metricLabel]], { origin: -1 });
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, temp ? 'ATC배치(임시)' : 'ATC배치'); XLSX.writeFile(wb, 'ATC배치_' + (temp ? '임시_' : '') + mode + '_' + new Date().toISOString().split('T')[0] + '.xlsx');
   }
@@ -8365,7 +8381,7 @@ function AtcView({ drugs, onReload }) {
         { k: '_slotkey', h: '슬롯', sticky: { left: 0, w: 120 }, th: { textAlign: 'center' } },
         { k: 'drug_code', h: '약품코드' },
         { k: 'drug_name', h: '약품명', sticky: { left: 120, w: 208 }, th: { minWidth: 200 } },
-        { k: 'ingredient_kr', h: '성분명' },
+        { k: 'ing_en', h: '성분명' },   /* ★ 정렬·필터 키는 **영문**이다(2026-11-07 지시) */
         { k: 'lasa', h: '유사' },
         { k: 'light', h: '차광' },
         { k: 'r3', h: '최근3개월', th: { textAlign: 'right' } },
@@ -8376,7 +8392,11 @@ function AtcView({ drugs, onReload }) {
           <td style={{ ...td, fontWeight: 700, color: t.accent, textAlign: 'center', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border }}><span style={{ display: 'inline-flex', gap: 3, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>{e.slot}{!e.fsp && d.atc_pinned && B('상비', t.accentL, t.accent, t.accent)}{e.fsp && d.fsp_note && B(d.fsp_note, t.greenL, t.green, t.green)}{d.atc_excluded && B('수기 조제', t.amberL, t.amber, t.amber)}</span></td>
           <td style={{ ...td, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, cursor: 'pointer', fontWeight: 600 }}>{d.drug_code}</span></td>
           <td style={{ ...td, textAlign: 'left', position: 'sticky', left: 120, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_name}</td>
-          <td style={{ ...td, textAlign: 'left', color: t.textM, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.ingredient_kr || '-'}</td>
+          {/* ★ 성분명 두 줄 — 영문(기본 글씨) 위, 한글(작은 보조 글씨) 아래 */}
+          <td style={{ ...td, textAlign: 'left', color: t.textM, overflow: 'hidden' }} title={[d.ingredient_en, d.ingredient_kr].filter(Boolean).join('\n')}>
+            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.ing_en || '-'}</div>
+            <div style={{ fontSize: 10.5, color: t.textL, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.ing_kr || '-'}</div>
+          </td>
           <td style={{ ...td, textAlign: 'left' }}>{(() => { const bs = ['dose', 'shape', 'sound'].filter(k => d[{ dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]] === true); return bs.length ? bs.map(k => <span key={k} style={{ marginRight: 3 }}>{CB(cautionBadge(k))}</span>) : <span style={{ color: t.textL }}>-</span> })()}</td>
           <td style={{ ...td, textAlign: 'left' }}>{isShade(d) ? CB(shadeBadge()) : <span style={{ color: t.textL }}>-</span>}</td>
           <td style={{ ...td, textAlign: 'right' }}>{Number(d.recent_3m_usage) || 0}</td>
