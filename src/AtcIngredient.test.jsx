@@ -166,7 +166,7 @@ describe('★ 엑셀 — 성분명 두 칸', () => {
   })
 
   it('다른 칸은 그대로다', () => {
-    for (const k of ['슬롯: slot', '약품코드: d.drug_code', '약품명: d.drug_name', '유사: d.lasa_type', '차광: isShade(d)'])
+    for (const k of ['슬롯: slot', '약품코드: d.drug_code', '약품명: d.drug_name', '유사: xlLasa(d)', '차광: isShade(d)'])
       expect(CODE).toContain(k)
   })
 })
