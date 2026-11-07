@@ -7128,7 +7128,9 @@ export function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
        ② 괄호·대괄호 **밖의** '/' 에서만 자른다. 단순 split 은 지씨플루의 [A/Victoria/…] 와
           스카이조스터의 (Strain: Oka/SK, …) 를 중간에서 끊어 괄호가 열린 채 남는다.
        ③ 영문·한글이 모두 없으면 「—」.
-   ★ 개수 표기·공백 없는 괄호 결합은 ATC 와 같게 둔다 — 「Gabapentin(가바펜틴)」·「… 외 6종」. */
+   ★ 2026-11-07 — ATC 쪽이 「영문 (한글)」(괄호 앞 빈칸)으로 바뀌었다. 여기는 **지시 밖이라
+     건드리지 않았다** — 그래서 이쪽만 빈칸 없이 「Gabapentin(가바펜틴)」이다.
+     맞출지는 이정화 님 판단을 기다린다. 개수 표기(「… 외 6종」)는 양쪽이 같다. */
 function lpSplitTop(s) {
   const out = []; let depth = 0, cur = ''
   for (const ch of String(s || '')) {
@@ -8111,18 +8113,22 @@ function AtcView({ drugs, onReload }) {
     {fluid && <span style={{ color: t.textL }}>점선 = 유동</span>}
   </div>;
   const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: PIN_BG, fg: PIN_FG, bd: PIN_BG, pin: true }); for (const k of ['dose', 'shape', 'sound']) { const col = { dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]; if (d[col] === true) a.push(cautionBadge(k)); } if (d.fsp_slot && d.fsp_note) a.push({ x: d.fsp_note, bg: t.greenL, fg: t.green, bd: t.green }); return a; };
-  /* 인쇄 전용 성분명: 「영문(한글)」, 복합제(구분자 '/')는 첫 성분 외 N종 축약. 개수 다르면 영문 기준. 화면·엑셀 무관 */
-  const printIng = d => { const en = String((d && d.ingredient_en) || '').trim(); const kr = String((d && d.ingredient_kr) || '').trim(); const enP = en ? en.split('/').map(s => s.trim()).filter(Boolean) : []; const krP = kr ? kr.split('/').map(s => s.trim()).filter(Boolean) : []; const cnt = enP.length || krP.length; const fe = enP[0] || ''; const fk = krP[0] || ''; const first = fe && fk ? fe + '(' + fk + ')' : (fe || fk); return cnt > 1 ? first + ' 외 ' + (cnt - 1) + '종' : first; };
-  /* ★ 화면 표의 성분명 — 영문 위 · 한글 아래 두 줄 (2026-11-07 지시).
-     긴 복합제는 영문·한글 **같은 규칙**으로 「첫 성분 외 N종」으로 줄인다.
-     ★ 성분 개수는 **영문을 기준으로** 센다 — 한글이 비었거나 개수가 달라도
-       두 줄의 「외 N종」이 서로 어긋나지 않게 하기 위해서다.
-     인쇄용 printIng 과는 쓰임이 달라 따로 둔다(인쇄는 「영문(한글)」 한 줄). */
+  /* ★ 성분명 — **화면 표와 인쇄 표가 같은 함수 하나**를 쓴다 (2026-11-07 지시).
+       모양 : 「영문 (한글)」 — 괄호 앞에 **빈칸 하나**.
+              예) Tiropramide HCl (티로프라미드염산염)
+       복합제(구분자 '/') : 「첫 성분 영문 (첫 성분 한글) 외 N종」
+       ★ N 은 **영문을 기준으로 한 번만** 센다 — 한글 쪽 구분자 개수가 달라도
+         같은 약이 화면과 종이에서 다른 숫자로 보이면 안 된다.
+       한쪽이 비면 있는 쪽만 쓴다(괄호도 쓰지 않는다).
+     ★ 정렬·필터 키로는 **영문만** 따로 쓴다(ingShort) — 지시대로 영문 기준이다.
+     ※ 구역별 인쇄(lpSplitTop 쪽)는 판정 기준이 달라 복제본을 그대로 둔다 — 그쪽은 빈칸이 없다. */
   const ingParts = s => String(s || '').split('/').map(x => x.trim()).filter(Boolean);
   const ingCount = d => (ingParts(d && d.ingredient_en).length || ingParts(d && d.ingredient_kr).length);
   const ingShort = (s, cnt) => { const p = ingParts(s); if (!p.length) return ''; return cnt > 1 ? p[0] + ' 외 ' + (cnt - 1) + '종' : p[0]; };
+  const ingOne = d => { const cnt = ingCount(d); const fe = ingParts(d && d.ingredient_en)[0] || ''; const fk = ingParts(d && d.ingredient_kr)[0] || ''; const first = fe && fk ? fe + ' (' + fk + ')' : (fe || fk); return cnt > 1 ? first + ' 외 ' + (cnt - 1) + '종' : first; };
+  const printIng = ingOne;   /* 인쇄 표도 같은 함수다 — 이름만 남겨 둔다 */
   /* 슬롯 정렬키(숫자): 카세트 1~80 → 확장 301~308 → FSP5~1(1001~1005). 문자열정렬 금지 */
-  const mkRow = (slot, d, fsp) => { const _ic = ingCount(d); return ({ slot, d, fsp, _slotkey: fsp ? 1000 + (6 - Number(String(slot).replace('FSP', ''))) : Number(slot), drug_code: d.drug_code, drug_name: d.drug_name, ing_en: ingShort(d.ingredient_en, _ic), ing_kr: ingShort(d.ingredient_kr, _ic), lasa: cautionKey(d), light: isShade(d) ? '차광' : '-', kind: fsp ? 'FSP' : '카세트', r3: Number(d.recent_3m_usage) || 0, r1: d.recent_1m_usage == null ? null : Number(d.recent_1m_usage), mavg: d.monthly_avg == null ? null : Number(d.monthly_avg) }); };
+  const mkRow = (slot, d, fsp) => ({ slot, d, fsp, _slotkey: fsp ? 1000 + (6 - Number(String(slot).replace('FSP', ''))) : Number(slot), drug_code: d.drug_code, drug_name: d.drug_name, ing_one: ingOne(d), ing_en: ingShort(d.ingredient_en, ingCount(d)), lasa: cautionKey(d), light: isShade(d) ? '차광' : '-', kind: fsp ? 'FSP' : '카세트', r3: Number(d.recent_3m_usage) || 0, r1: d.recent_1m_usage == null ? null : Number(d.recent_1m_usage), mavg: d.monthly_avg == null ? null : Number(d.monthly_avg) });
   const atcRows = (() => { const ent = []; assigned.filter(matches).forEach(d => { if (d.atc_slot) ent.push(mkRow(d.atc_slot, d, false)); if (d.fsp_slot) ent.push(mkRow(d.fsp_slot, d, true)); }); return ent; })();
   const _uA = arr => [...new Set(arr.filter(v => v != null && String(v).trim() !== ''))];
   const atcHf = {
@@ -8392,11 +8398,9 @@ function AtcView({ drugs, onReload }) {
           <td style={{ ...td, fontWeight: 700, color: t.accent, textAlign: 'center', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border }}><span style={{ display: 'inline-flex', gap: 3, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>{e.slot}{!e.fsp && d.atc_pinned && B('상비', t.accentL, t.accent, t.accent)}{e.fsp && d.fsp_note && B(d.fsp_note, t.greenL, t.green, t.green)}{d.atc_excluded && B('수기 조제', t.amberL, t.amber, t.amber)}</span></td>
           <td style={{ ...td, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, cursor: 'pointer', fontWeight: 600 }}>{d.drug_code}</span></td>
           <td style={{ ...td, textAlign: 'left', position: 'sticky', left: 120, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_name}</td>
-          {/* ★ 성분명 두 줄 — 영문(기본 글씨) 위, 한글(작은 보조 글씨) 아래 */}
-          <td style={{ ...td, textAlign: 'left', color: t.textM, overflow: 'hidden' }} title={[d.ingredient_en, d.ingredient_kr].filter(Boolean).join('\n')}>
-            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.ing_en || '-'}</div>
-            <div style={{ fontSize: 10.5, color: t.textL, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.ing_kr || '-'}</div>
-          </td>
+          {/* ★ 성분명 한 줄 — 「영문 (한글)」, 인쇄 표와 같은 함수(ingOne).
+              넘치면 말줄임하고, 마우스를 올리면 **줄이지 않은 원본**이 뜬다. */}
+          <td style={{ ...td, textAlign: 'left', color: t.textM, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={[d.ingredient_en, d.ingredient_kr].filter(Boolean).join('\n')}>{e.ing_one || '-'}</td>
           <td style={{ ...td, textAlign: 'left' }}>{(() => { const bs = ['dose', 'shape', 'sound'].filter(k => d[{ dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]] === true); return bs.length ? bs.map(k => <span key={k} style={{ marginRight: 3 }}>{CB(cautionBadge(k))}</span>) : <span style={{ color: t.textL }}>-</span> })()}</td>
           <td style={{ ...td, textAlign: 'left' }}>{isShade(d) ? CB(shadeBadge()) : <span style={{ color: t.textL }}>-</span>}</td>
           <td style={{ ...td, textAlign: 'right' }}>{Number(d.recent_3m_usage) || 0}</td>
