@@ -130,9 +130,9 @@ describe('★ 색은 바뀌지 않았다 — 자료만 바꿨다', () => {
     expect(PCS).toContain("{ bg: t.amberL, bd: t.amber, fg: t.amber }")
   })
 
-  it('차광 칸 색도 그대로 (두 곳 다)', () => {
-    expect(CS).toContain('if (isShade(d)) return { bg: t.text, bd: t.text, fg: t.bg }')
-    expect(PCS).toContain('if (isShade(d)) return { bg: t.text, bd: t.text, fg: t.navText }')
+  it('★ 차광 칸은 검정 바탕 + 노랑 글씨다 (두 곳 다 같은 값 · 2026-11-07 지시)', () => {
+    for (const part of [CS, PCS])
+      expect(part).toContain('if (isShade(d)) return { bg: SHADE_BG, bd: SHADE_BG, fg: SHADE_FG }')
   })
 
   it('상비·빈 칸·기본색도 그대로', () => {

@@ -136,8 +136,11 @@ describe('★ 줄바꿈이 실제로 되는가 (부품을 그려서 잰다)', ()
 })
 
 describe('★ 건드리지 않은 것', () => {
-  it('칸 최소 높이 46 그대로', () => {
-    expect((CODE.match(/minHeight: 46/g) || []).length).toBeGreaterThanOrEqual(2)
+  it('★ 칸 높이는 **한 값**을 셋이 같이 쓴다 (뱃지 개수와 상관없이 같은 높이)', () => {
+    expect(CODE).toContain('const CELL_MIN = 60;')
+    /* 현재배치 칸 · 사용량순 제안 칸 · 제안 화면 FSP 칸 = 3곳 */
+    expect((CODE.match(/minHeight: CELL_MIN/g) || []).length).toBe(3)
+    expect(CODE).not.toContain('minHeight: 46')
   })
 
   it('약품명 두 줄 자르기 그대로', () => {

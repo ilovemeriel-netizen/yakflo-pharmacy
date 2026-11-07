@@ -82,13 +82,13 @@ describe('★ 칸 색과 뱃지가 같은 자료를 본다', () => {
     expect(PCS).not.toContain('storage_light')
   })
 
-  it('뱃지(dBadges)도 isShade 를 쓴다', () => {
-    expect(DB).toContain('isShade(d)')
+  it('★ 뱃지(dBadges)에는 차광이 없다 — 칸 색으로만 보인다 (2026-11-07 지시)', () => {
+    expect(DB).not.toContain('shadeBadge()')
     expect(DB).not.toContain('storage_light')
   })
 
-  it('★ 셋이 모두 같은 함수를 부른다 (한쪽만 바뀌지 않게)', () => {
-    for (const part of [CS, PCS, DB]) expect(part).toContain('isShade(d)')
+  it('★ 칸 색 두 곳이 같은 함수를 부른다 (한쪽만 바뀌지 않게)', () => {
+    for (const part of [CS, PCS]) expect(part).toContain('isShade(d)')
   })
 
   it('화면 표 「차광」 칸도 같은 자료를 본다', () => {
