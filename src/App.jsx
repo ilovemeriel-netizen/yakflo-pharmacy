@@ -26,7 +26,7 @@ const VaccineManage = lazy(() => import('./VaccineManage'))
 import BulkUploadModal from './BulkUploadModal'
 import MP from './MultiPick'
 import { DrugChips, HighAlertChip, CautionChip, WarnTriangle } from './CautionChips'
-import { CAUTION_ORDER, cautionCheckColor, cautionChipColors, SHADE_BG, SHADE_FG, SHADE_LABEL, isShade, cellCaution, cautionKey } from './lib/cautionDefs'
+import { CAUTION_ORDER, cautionCheckColor, cautionChipColors, SHADE_BG, SHADE_FG, SHADE_LABEL, isShade, isDark, cellCaution, cautionKey } from './lib/cautionDefs'
 import { CautionIcon, ShadeIcon } from './CautionChips'
 import LabelPrint from './LabelPrint'
 import UsageUploadModal from './UsageUploadModal'
@@ -7955,20 +7955,32 @@ function AtcView({ drugs, onReload }) {
   const assigned = (drugs || []).filter(d => d.atc_slot || d.fsp_slot);
   const byAtc = {}, byFsp = {};
   assigned.forEach(d => { if (d.atc_slot) byAtc[String(d.atc_slot)] = d; if (d.fsp_slot) byFsp[String(d.fsp_slot)] = d; });
+  /* ★ 칸 색 — **두 화면(현재배치 · 사용량순 제안)이 같은 값·같은 차례**를 쓴다.
+     차례: 차광 > 모양 > 용량 > 발음 > 상비 > 일반. (2026-11-07 이정화 님 지시)
+     범례도 이 값을 그대로 가져다 쓴다 — 따로 적으면 범례와 칸이 어긋난다. */
+  const CELL_SHADE = { bg: SHADE_BG, bd: SHADE_BG, fg: SHADE_FG };
+  const CELL_SHAPE = { bg: t.coral, bd: t.coral, fg: t.text };
+  const CELL_DOSE = { bg: t.blueL, bd: t.blue, fg: t.text };
+  const CELL_SOUND = { bg: t.amberL, bd: t.amber, fg: t.text };
+  const CELL_PIN = { bg: t.greenL, bd: t.green, fg: t.green };
+  const CELL_PLAIN = { bg: t.purpleL, bd: t.lavender, fg: t.text };
   /* ★ 칸 색의 차광도 뱃지와 **같은 자료**(storage_method 의 「차광」)를 본다.
-     한쪽만 바꾸면 같은 칸에서 색과 뱃지가 서로 다른 말을 한다. (2026-11-07 이정화 님 지시) */
+     한쪽만 바꾸면 같은 칸에서 색과 뱃지가 서로 다른 말을 한다. */
   const cs = d => {
     if (!d) return { bg: t.card, bd: t.border, fg: t.textL };
     /* ★ 차광은 **칸 바탕 검정 + 약품명 노랑**으로 보인다. 칸 안에 「차광」 뱃지는 붙이지 않는다.
        (2026-11-07 이정화 님 지시 — 라벨과 같은 규칙) 색 두 가지는 이미 쓰던 값이다. */
-    if (isShade(d)) return { bg: SHADE_BG, bd: SHADE_BG, fg: SHADE_FG };
+    if (isShade(d)) return CELL_SHADE;
     /* ★ 칸 색도 뱃지와 같은 자료(caution_*)를 본다. 색은 바뀌지 않았다 — 자료만 바꿨다.
        주의가 여러 개면 발음 > 모양 > 용량 차례로 하나만 칠한다(라벨 바탕색과 같은 차례). */
     const k = cellCaution(d);
-    if (k === 'shape') return { bg: t.coral, bd: t.coral, fg: t.text };
-    if (k === 'dose') return { bg: t.blueL, bd: t.blue, fg: t.text };
-    if (k === 'sound') return { bg: t.amberL, bd: t.amber, fg: t.text };
-    return { bg: t.purpleL, bd: t.lavender, fg: t.text };
+    if (k === 'shape') return CELL_SHAPE;
+    if (k === 'dose') return CELL_DOSE;
+    if (k === 'sound') return CELL_SOUND;
+    /* ★ 상비는 주의 **뒤**다 — 사용량순 제안 화면과 같은 차례 (2026-11-07 지시).
+       상비는 뱃지로도 붙으므로 색까지 먼저 가져가면 주의가 가려진다. */
+    if (d.atc_pinned) return CELL_PIN;
+    return CELL_PLAIN;
   };
   const Cell = (label, key, byMap, fluid, editable) => {
     const d = byMap[key]; const s = cs(d); const dash = fluid && !d; const active = q.trim() !== ''; const hit = active && d && matches(d); const dim = active && !hit; const badge = (key === 'FSP2' || key === 'FSP4') ? '0.5T' : null; const sel = editMode && editable && selSlot === key;
@@ -8004,7 +8016,7 @@ function AtcView({ drugs, onReload }) {
   /* ★ 주의 뱃지(용량·모양·발음)는 화면 칩과 **같은 색·같은 아이콘**을 쓴다.
      색은 `cautionChipColors`, 그림은 `CautionIcon` — 여기서 새로 그리지 않는다.
      밝은 화면 기준 값을 쓴다(인쇄물이라 화면 모드를 타면 안 된다). */
-  const LIGHT_CHIP = { mode: 'light', blue: '#2E4A62', red: '#C62828', yellow: '#FFE082' };
+  const LIGHT_CHIP = { mode: 'light', blue: themes.light.blue, red: themes.light.red, yellow: themes.light.yellow };
   const cautionBadge = kind => {
     const { bg, fg } = cautionChipColors(LIGHT_CHIP, kind);
     const label = { dose: '용량', shape: '모양', sound: '발음' }[kind];
@@ -8029,7 +8041,24 @@ function AtcView({ drugs, onReload }) {
      주의 3종은 `caution_*`(74종)을 본다. 예전에는 `lasa_type`(28종)을 봤는데
      같은 뜻의 칸이 둘로 갈라져 있었다. 한쪽만 고치면 두 화면이 다른 말을 한다.
      ★ `lasa_type` 칸 자체는 **건드리지 않는다**(지우지도 고치지도 않는다). */
-  const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }); for (const k of ['dose', 'shape', 'sound']) { const col = { dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]; if (d[col] === true) a.push(cautionBadge(k)); } if (d.fsp_slot && d.fsp_note) a.push({ x: d.fsp_note, bg: t.greenL, fg: t.green, bd: t.green }); return a; };
+  /* ★ 상비 뱃지 — 어두운 화면에서는 **불투명 바탕**을 쓴다.
+     어두운 팔레트의 accentL 은 투명도 12% 라 연빨강(모양) 칸 위에서 밑색이 비쳐
+     글씨가 묻혔다(대비 1.04:1 — 2026-11-07 실측). 팔레트에 이미 있는 cardSolid 로
+     바꾸면 어느 칸 위에서도 6.68:1 이다. 밝은 화면은 accentL 이 불투명이라 그대로 둔다. */
+  const PIN_BG = isDark(t) ? t.cardSolid : t.accentL;
+  /* ★ 범례 — 두 화면이 **같은 부품**을 쓴다.
+     예전에는 현재배치(알약형 · 차광이 남색 t.text)와 사용량순 제안(색견본형)이
+     모양·항목·차례가 모두 달랐다. 색견본은 **칸 색 상수를 그대로** 가져다 쓴다 —
+     따로 적으면 범례와 칸이 어긋난다(차광이 남색이던 것이 그 예다).
+     ★ 어두운 화면에서는 차광 색견본(#1F1F1F)이 카드 바탕(#1A2332)과 1.04:1 이라
+       안 보인다 — 그때만 테두리를 t.border 로 준다. */
+  const LEGEND = [['차광', CELL_SHADE], ['모양', CELL_SHAPE], ['용량', CELL_DOSE],
+    ['발음', CELL_SOUND], ['상비 고정', CELL_PIN], ['일반', CELL_PLAIN]];
+  const legend = fluid => <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10, fontSize: 10, color: t.textM, alignItems: 'center' }}>
+    {LEGEND.map(([lb, s]) => <span key={lb} style={{ background: s.bg, color: s.fg, padding: '1px 6px', borderRadius: 3, fontWeight: 700, border: '1px solid ' + (s === CELL_SHADE && isDark(t) ? t.border : s.bd) }}>{lb}</span>)}
+    {fluid && <span style={{ color: t.textL }}>점선 = 유동</span>}
+  </div>;
+  const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: PIN_BG, fg: t.accent, bd: t.accent }); for (const k of ['dose', 'shape', 'sound']) { const col = { dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]; if (d[col] === true) a.push(cautionBadge(k)); } if (d.fsp_slot && d.fsp_note) a.push({ x: d.fsp_note, bg: t.greenL, fg: t.green, bd: t.green }); return a; };
   /* 인쇄 전용 성분명: 「영문(한글)」, 복합제(구분자 '/')는 첫 성분 외 N종 축약. 개수 다르면 영문 기준. 화면·엑셀 무관 */
   const printIng = d => { const en = String((d && d.ingredient_en) || '').trim(); const kr = String((d && d.ingredient_kr) || '').trim(); const enP = en ? en.split('/').map(s => s.trim()).filter(Boolean) : []; const krP = kr ? kr.split('/').map(s => s.trim()).filter(Boolean) : []; const cnt = enP.length || krP.length; const fe = enP[0] || ''; const fk = krP[0] || ''; const first = fe && fk ? fe + '(' + fk + ')' : (fe || fk); return cnt > 1 ? first + ' 외 ' + (cnt - 1) + '종' : first; };
   /* 슬롯 정렬키(숫자): 카세트 1~80 → 확장 301~308 → FSP5~1(1001~1005). 문자열정렬 금지 */
@@ -8128,7 +8157,7 @@ function AtcView({ drugs, onReload }) {
   const cKeep = [...curCodes2].filter(cc => t88p.has(cc));
   /* A(신규 진입) 표 행 — aNew(0.5T FSP 적재 표기 포함) + 수기조제(top88·미배정). FSP 1T전용은 제외. 카드·헤더 건수 공용 */
   const aNewRows = [...aNew.map(d => ({ _slot: atcSlotKey(propSlotOf[d.drug_code]), slotLabel: propSlotOf[d.drug_code], name: d.drug_name, r3: usageScore(d), rank: rankFull.get(d.drug_code) || null, excl: false, reason: null, fspLoad: (d.fsp_slot && d.fsp_note) ? (d.fsp_slot + ' ' + d.fsp_note + ' 적재') : null, d })), ...manualEx.filter(d => (rankFull.get(d.drug_code) || 999) <= 88 && !curCodes2.has(d.drug_code)).map(d => ({ _slot: 9999, slotLabel: null, name: d.drug_name, r3: usageScore(d), rank: rankFull.get(d.drug_code) || null, excl: true, reason: d.atc_exclude_reason, fspLoad: null, d }))];
-  const pcs = (d, exp) => { if (!d) return { bg: t.card, bd: t.border, fg: t.textL }; if (isShade(d)) return { bg: SHADE_BG, bd: SHADE_BG, fg: SHADE_FG }; if (d.atc_pinned) return { bg: t.greenL, bd: t.green, fg: t.green }; const _k = cellCaution(d); if (_k === 'shape') return { bg: t.coral, bd: t.coral, fg: t.text }; if (_k === 'dose') return { bg: t.blueL, bd: t.blue, fg: t.blue }; if (_k === 'sound') return { bg: t.amberL, bd: t.amber, fg: t.amber }; if (exp) return { bg: t.bg, bd: t.border, fg: t.textM }; return { bg: t.purpleL, bd: t.border, fg: t.accent }; };
+  const pcs = (d, exp) => { if (!d) return { bg: t.card, bd: t.border, fg: t.textL }; if (isShade(d)) return CELL_SHADE; const _k = cellCaution(d); if (_k === 'shape') return CELL_SHAPE; if (_k === 'dose') return CELL_DOSE; if (_k === 'sound') return CELL_SOUND; if (d.atc_pinned) return CELL_PIN; if (exp) return { bg: t.bg, bd: t.border, fg: t.textM }; return { bg: t.purpleL, bd: t.border, fg: t.accent }; };
   const PCell = (slot, exp) => { const d = pIdeal[slot]; const s = pcs(d, exp); const active = q.trim() !== ''; const hit = active && d && matches(d); const dim = active && !hit; return <div key={slot} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : ''} style={{ border: hit ? '2px solid ' + t.accent : '1px solid ' + s.bd, background: s.bg, color: s.fg, borderRadius: 6, padding: '3px 5px', minHeight: CELL_MIN, opacity: dim ? 0.3 : 1, cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ ...slotHead, opacity: 0.62 }}><span style={{ flexShrink: 0 }}>{slot}</span><span style={badgeWrap}>{d && cellBadges(d).map((b, bi) => <span key={bi} style={{ display: 'inline-flex' }}>{(b.kind || b.shade) ? CB(b) : <span style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>}</span>)}</span></div><div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflow: 'hidden' }}>{d ? d.drug_name : ''}</div></div>; };  const th = { textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' };
   const td = { padding: '5px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border };
   async function runSwaps(pairs, desc) { const { data, error } = await supabase.rpc('swap_atc_slots', { p_pairs: pairs }); if (error) { setMsg('교환 실패: ' + error.message); return; } if (data && data.ok === false) { setMsg('교환 차단 - ' + (data.failed || []).map(f => f.slot_a + '<->' + f.slot_b + '(' + f.reason + ')').join(', ')); return; } setMsg('슬롯 교환 ' + (data && data.done != null ? data.done : pairs.length) + '건 완료' + (desc ? ' - ' + desc : '')); setSelSlot(null); setPending(null); setSelPairs({}); onReload && onReload(); setTimeout(() => setMsg(null), 4000); }
@@ -8216,14 +8245,7 @@ function AtcView({ drugs, onReload }) {
           <div style={{ marginTop: 4 }}><div style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>월 {Math.round(curExpBand.mn / 3)} ~ {Math.round(curExpBand.mx / 3)}개 / 3개월 {curExpBand.mn} ~ {curExpBand.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: Math.min(100, curExpBand.mx / Math.max(1, curBandMax) * 100) + '%', marginTop: 3 }} /></div>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10, fontSize: 10, color: t.textM, alignItems: 'center' }}>
-        <span style={{ background: t.text, color: t.bg, padding: '1px 6px', borderRadius: 3, fontWeight: 700 }}>차광</span>
-        <span style={{ background: t.coral, color: t.text, padding: '1px 6px', borderRadius: 3, fontWeight: 700 }}>모양</span>
-        <span style={{ background: t.blueL, color: t.text, padding: '1px 6px', borderRadius: 3, border: '1px solid ' + t.blue, fontWeight: 700 }}>용량</span>
-        <span style={{ background: t.amberL, color: t.text, padding: '1px 6px', borderRadius: 3, border: '1px solid ' + t.amber, fontWeight: 700 }}>발음</span>
-        <span style={{ background: t.purpleL, color: t.text, padding: '1px 6px', borderRadius: 3, border: '1px solid ' + t.lavender, fontWeight: 700 }}>일반</span>
-        <span style={{ color: t.textL }}>점선 = 유동</span>
-      </div>
+      {legend(true)}
     </div>}
     {viewMode === 'proposal' && <div className="no-print" style={{ background: t.card, border: '1px solid ' + t.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
       <style>{'@media(max-width:1100px){.atc-prop-row{grid-template-columns:1fr 22px 1fr!important}.atc-prop-row>*:last-child{grid-column:1/-1;margin-top:4px}}'}</style>
@@ -8248,7 +8270,7 @@ function AtcView({ drugs, onReload }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 3 }}>{[301, 302, 303, 304, 305, 306, 307, 308].map(n => PCell(String(n), true))}</div>
           <div style={{ marginTop: 4 }}><div style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>월 {Math.round(expBand.mn / 3)} ~ {Math.round(expBand.mx / 3)}개 / 3개월 {expBand.mn} ~ {expBand.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: '100%', marginTop: 3 }} /></div></div>
       </div>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10, fontSize: 11.5, opacity: 0.75, alignItems: 'center' }}>{[['모양', t.coral], ['용량', t.blueL], ['발음', t.amberL], ['차광', SHADE_BG], ['상비 고정', t.greenL], ['일반', t.purpleL]].map(([lb, cl]) => <span key={lb} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: cl, border: '1px solid ' + t.border }} />{lb}</span>)}</div>
+      {legend(false)}
       <div style={{ fontSize: 11.5, color: t.textL, marginTop: 8 }}>기존 약품 간 교환은 카세트째 이동하므로 즉시 실행 가능합니다.</div>
       <div style={{ fontSize: 11.5, color: t.textL }}>사용량에 수기 입력분이 포함되어 있습니다. 9월 마감 후 재산출을 권장합니다.</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8, marginTop: 12 }}>

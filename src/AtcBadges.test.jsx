@@ -64,7 +64,7 @@ describe('★ 뱃지 차례 — 상비 · 용량 → 모양 → 발음 · 차광
   })
 
   it('상비의 색도 바뀌지 않았다', () => {
-    expect(DB).toContain("{ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }")
+    expect(DB).toContain("{ x: '상비', bg: PIN_BG, fg: t.accent, bd: t.accent }")  /* 어두운 화면만 불투명 — 2026-11-07 */
   })
 })
 
@@ -79,7 +79,7 @@ describe('★ 색·아이콘은 화면 칩 부품을 그대로 쓴다', () => {
   })
 
   it('★ 인쇄물이라 화면 모드를 타지 않는다 (밝은 화면 값 고정)', () => {
-    expect(CODE).toContain("LIGHT_CHIP = { mode: 'light', blue: '#2E4A62', red: '#C62828', yellow: '#FFE082' }")
+    expect(CODE).toContain("LIGHT_CHIP = { mode: 'light', blue: themes.light.blue, red: themes.light.red, yellow: themes.light.yellow }")
   })
 
   it('그 값이 화면 칩과 같다', () => {
