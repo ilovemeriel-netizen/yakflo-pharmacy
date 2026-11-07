@@ -7963,11 +7963,20 @@ function AtcView({ drugs, onReload }) {
      ★ 범례에 **보이는 차례**는 이것과 다르다(차광 → 모양 → 용량 → 발음 → 상비 → 일반)..
        보기 좋으라고 정한 줄 차례일 뿐, 색을 고르는 규칙이 아니다. (2026-11-07 이정화 님 지시)
      범례도 이 값을 그대로 가져다 쓴다 — 따로 적으면 범례와 칸이 어긋난다. */
+  /* ★ 칸 색 — **연한 바탕은 그대로 두고 테두리를 칩 색 2px** 로 (2026-11-07 이정화 님 안 ⓒ).
+     연한 색끼리는 바탕만으로 안 갈린다(어두운 화면 용량 vs 일반 거리 6.8).
+     테두리를 칩 색으로 주면 테두리끼리는 92.9 이상 떨어져 갈린다.
+     ★ 차광 칸과 일반 칸은 **지금 그대로** 둔다(테두리 1px).
+     ★ 상비는 칸 바탕으로 쓰지 않는다 — 언제나 뱃지다. 초록은 FSP 「배정됨」 뜻과 겹친다.
+     새 색은 없다 — 테두리 색은 전부 칩 색(cautionDefs)이다. */
+  const _chip = k => cautionChipColors({ mode: 'light', blue: themes.light.blue, red: themes.light.red, yellow: themes.light.yellow }, k);
+  /* ★ 어두운 화면에서 모양 칸(연빨강)의 글씨가 1.66:1 이라 거의 안 읽혔다.
+     그 칸만 글씨를 검정으로 바꾼다(밝은 화면은 그대로). */
+  const SHAPE_FG = isDark(t) ? SHADE_BG : t.text;
   const CELL_SHADE = { bg: SHADE_BG, bd: SHADE_BG, fg: SHADE_FG };
-  const CELL_SHAPE = { bg: t.coral, bd: t.coral, fg: t.text };
-  const CELL_DOSE = { bg: t.blueL, bd: t.blue, fg: t.text };
-  const CELL_SOUND = { bg: t.amberL, bd: t.amber, fg: t.text };
-  const CELL_PIN = { bg: t.greenL, bd: t.green, fg: t.green };
+  const CELL_SHAPE = { bg: t.coral, bd: _chip('shape').bg, fg: SHAPE_FG, bw: 2 };
+  const CELL_DOSE = { bg: t.blueL, bd: _chip('dose').bg, fg: t.text, bw: 2 };
+  const CELL_SOUND = { bg: t.amberL, bd: _chip('sound').bg, fg: t.text, bw: 2 };
   const CELL_PLAIN = { bg: t.purpleL, bd: t.lavender, fg: t.text };
   /* ★ 칸 색의 차광도 뱃지와 **같은 자료**(storage_method 의 「차광」)를 본다.
      한쪽만 바꾸면 같은 칸에서 색과 뱃지가 서로 다른 말을 한다. */
@@ -7983,17 +7992,15 @@ function AtcView({ drugs, onReload }) {
     if (k === 'shape') return CELL_SHAPE;
     if (k === 'dose') return CELL_DOSE;
     if (k === 'sound') return CELL_SOUND;
-    /* ★ 상비는 주의 **뒤**다 — 사용량순 제안 화면과 같은 차례 (2026-11-07 지시).
-       상비는 뱃지로도 붙으므로 색까지 먼저 가져가면 주의가 가려진다. */
-    if (d.atc_pinned) return CELL_PIN;
+    /* ★ 상비는 **칸 바탕으로 쓰지 않는다** — 언제나 뱃지다(2026-11-07 지시). */
     return CELL_PLAIN;
   };
   const Cell = (label, key, byMap, fluid, editable) => {
     const d = byMap[key]; const s = cs(d); const dash = fluid && !d; const active = q.trim() !== ''; const hit = active && d && matches(d); const dim = active && !hit; const badge = (key === 'FSP2' || key === 'FSP4') ? '0.5T' : null; const sel = editMode && editable && selSlot === key;
     return <div key={key} onClick={() => { if (editMode && editable) cellEdit(key, d); else if (d && open360) open360(d); }} title={d ? d.drug_name : (fluid ? '유동(미배정)' : '')}
-      style={{ border: (sel || hit) ? '2px solid ' + t.accent : ((dash ? '1px dashed ' : '1px solid ') + (dash ? t.textL : s.bd)), background: sel ? t.accentL : (dash ? t.card : s.bg), color: dash ? t.textL : s.fg, borderRadius: 6, padding: '3px 5px', minHeight: CELL_MIN, opacity: dim ? 0.3 : 1, cursor: (d || (editMode && editable)) ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
+      style={{ border: (sel || hit) ? '2px solid ' + t.accent : ((dash ? '1px dashed ' : (s.bw || 1) + 'px solid ') + (dash ? t.textL : s.bd)), background: sel ? t.accentL : (dash ? t.card : s.bg), color: dash ? t.textL : s.fg, borderRadius: 6, padding: '3px 5px', boxSizing: 'border-box', minHeight: CELL_MIN, opacity: dim ? 0.3 : 1, cursor: (d || (editMode && editable)) ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
       <div style={slotHead}><span style={slotNo}>{label}</span><span style={badgeWrap}>{d && cellBadges(d).filter(b => String(key).startsWith('FSP') || !(b.bg === t.greenL && b.fg === t.green)).map((b, bi) => <span key={bi} style={{ display: 'inline-flex' }}>{(b.kind || b.shade) ? CB(b) : <span style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>}</span>)}</span></div>
-      <div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflow: 'hidden' }}>{d ? d.drug_name : (fluid ? '유동' : '')}</div>
+      <div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, marginTop: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflow: 'hidden' }}>{d ? d.drug_name : (fluid ? '유동' : '')}</div>
     </div>;
   };
   const Door = (start) => <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 4, border: '1px solid ' + t.borderH, borderRadius: 8, padding: 5, position: 'relative' }}>
@@ -8016,22 +8023,23 @@ function AtcView({ drugs, onReload }) {
      (2026-11-07 실측 — 창 900px 에서 25칸 · 1152px 에서 23칸, 최대 24.1px.
       1280px 에서는 0칸이라 넓은 화면에서는 안 보였다)
      머리 줄에 flexWrap 을 주어 안 맞으면 뱃지가 **제 줄로 내려간다**.
-     머리가 두 줄이 되면 칸이 커지므로 CELL_MIN 을 74 로 올려 **모든 칸을 같은 높이**로 둔다. */
+     안 ⓑ 로 뱃지가 거의 사라져 머리 줄이 한 줄이라 60px 로 모든 칸이 같은 높이다. */
   const badgeWrap = { display: 'inline-flex', gap: 2, flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0, maxWidth: '100%' };
   /* ★ 흐리게 하는 것은 **슬롯 번호뿐**이다.
      CSS opacity 는 자식까지 통째로 흐리게 한다 — 예전에는 머리 줄에 걸려 있어
      뱃지까지 흐려졌다(현재배치 15% · 사용량순 제안 38%). */
   const slotNo = { flexShrink: 0, opacity: 0.85 };
   const slotNoDim = { flexShrink: 0, opacity: 0.62 };
-  /* ★ 칸 높이는 **뱃지 개수와 상관없이 하나**다.
+  /* ★ 칸 높이는 **뱃지 개수·테두리 굵기와 상관없이 하나**다.
      좁은 창에서는 뱃지 2개가 한 줄에 못 들어가 머리 줄이 15 → 30px 이 되고,
      그 칸이 든 서랍 전체가, 다시 그 줄 전체가 높아져 줄마다 높이가 달라졌다.
-     (2026-11-07 실측 — 창 1280px 에서 칸 46px x32 / 60px x48, 줄 58px x2 / 72px x3.
-     뒤에 뱃지 줄바꿈을 넣으면서 좁은 창에서 60/74 두 종류가 되어 74 로 올렸다 —
-     900 · 1152 · 1280px 모두 74px 한 종류다.)
-     가장 높은 경우(머리 줄 두 줄 + 약품명 두 줄)에 맞춰
-     어느 창 폭에서도 모든 칸이 같은 높이가 되게 한다. */
-  const CELL_MIN = 74;
+     가장 높은 경우(머리 줄 두 줄 + 약품명 두 줄)에 맞춘 값이다.
+     ★ 78 인 이유 (2026-11-07 안 ⓒ 실측) — 76 으로 두면 줄마다 76px / 77.8px 두 가지가 섞인다.
+       900 · 1152 · 1280px 모두에서 78 이면 144칸 전부 78px 한 종류다.
+     ★ 아래 세 곳의 `boxSizing: 'border-box'` 가 꼭 필요하다.
+       약플로에는 전역 `*{box-sizing:border-box}` 가 없다(index.css 는 `#root` 에만 준다).
+       그대로 두면 테두리 2px 짜리 칸(모양·용량·발음)만 다른 칸보다 2px 높아진다. */
+  const CELL_MIN = 78;
   const B = (x, bg, fg, bd) => <span style={badgeStyle(bg, fg, bd)}>{x}</span>;
   /* ★ 주의 뱃지(용량·모양·발음)는 화면 칩과 **같은 색·같은 아이콘**을 쓴다.
      색은 `cautionChipColors`, 그림은 `CautionIcon` — 여기서 새로 그리지 않는다.
@@ -8051,8 +8059,20 @@ function AtcView({ drugs, onReload }) {
      (badgeStyle 이 이미 `1px solid transparent` 라 자리를 잡아 뒀다).
      밝은 칸에서는 아무것도 바뀌지 않는다. */
   const ON_SHADE = ['dose', 'shape'];
-  const onShade = b => (ON_SHADE.indexOf(b.kind) >= 0 ? { ...b, bd: '#FFFFFF' } : b);
-  const cellBadges = d => (isShade(d) ? dBadges(d).map(onShade) : dBadges(d));
+  /* 흰 테두리를 주는 자리
+       · 용량·모양 뱃지 — 검정(차광) 칸과 연빨강(모양) 칸 위에서 제 테두리가 묻힌다
+       · 상비 뱃지 — **검정(차광) 칸 위에서만** (2026-11-07 지시) */
+  const onShade = (b, shade) => ((ON_SHADE.indexOf(b.kind) >= 0 || (b.pin && shade)) ? { ...b, bd: '#FFFFFF' } : b);
+  /* ★ 칸 뱃지 — **칸 바탕이 이미 보여 주는 속성은 뺀다** (2026-11-07 안 ⓑ).
+     속성이 하나뿐이면 뱃지가 없어져 슬롯 번호 옆이 비고, 둘 이상이면 나머지만 붙는다.
+     ★ 상비·0.5T 는 칸 바탕이 없으므로 **언제나 남는다**.
+     ★ 배치 목록 표·인쇄 표는 바탕이 없으므로  를 그대로 쓴다. */
+  /* ★ 안 ⓒ — 뱃지는 **지금처럼 전부** 붙인다(바탕으로 빼지 않는다).
+     바탕이 연한 색이라 바탕만으로는 못 가린다. 테두리로 갈리고, 글자는 뱃지가 말한다.
+     ★ 바탕이 어두운(차광)·연빨강(모양) 칸 위에서는 모양·용량 뱃지 테두리가 묻혀
+       흰 테두리를 준다. 그 밖의 칸은 그대로다. */
+  const WHITE_BD_ON = d => isShade(d) || cellCaution(d) === 'shape';
+  const cellBadges = d => (d && WHITE_BD_ON(d) ? dBadges(d).map(b => onShade(b, isShade(d))) : dBadges(d));
   /* ★ 차광 — 검정 바탕 + 노랑 글씨 + 초승달. 화면 모드를 타지 않는 고정값이다.
      예전에는 바탕 t.text · 글씨 t.navText 였는데, 어두운 팔레트에서는 둘 다 #E8E6E1 이라
      글씨가 바탕에 묻혀 **빈 알약**으로 보였다(2026-11-07 확인). */
@@ -8061,24 +8081,31 @@ function AtcView({ drugs, onReload }) {
      주의 3종은 `caution_*`(74종)을 본다. 예전에는 `lasa_type`(28종)을 봤는데
      같은 뜻의 칸이 둘로 갈라져 있었다. 한쪽만 고치면 두 화면이 다른 말을 한다.
      ★ `lasa_type` 칸 자체는 **건드리지 않는다**(지우지도 고치지도 않는다). */
-  /* ★ 상비 뱃지 — 어두운 화면에서는 **불투명 바탕**을 쓴다.
-     어두운 팔레트의 accentL 은 투명도 12% 라 연빨강(모양) 칸 위에서 밑색이 비쳐
-     글씨가 묻혔다(대비 1.04:1 — 2026-11-07 실측). 팔레트에 이미 있는 cardSolid 로
-     바꾸면 어느 칸 위에서도 6.68:1 이다. 밝은 화면은 accentL 이 불투명이라 그대로 둔다. */
-  const PIN_BG = isDark(t) ? t.cardSolid : t.accentL;
+  /* ★ 상비 뱃지 — **약플로 보라 바탕 + 흰 글씨**, 밝은·어두운 화면이 같다
+     (2026-11-07 이정화 님 지시). 예전에는 밝은 화면이 accentL(연보라)·어두운 화면이
+     cardSolid 라 화면마다 달랐고, 어두운 accentL 은 투명도 12% 라 연빨강 칸 위에서
+     밑색이 비쳐 글씨가 묻혔다(1.04:1 — 2026-11-07 실측).
+     보라 #804A87 + 흰 글씨는 6.47:1 이고, 어느 칸 위에 놓여도 바탕이 비치지 않는다.
+     ★ 테마를 타지 않으므로 팔레트에서 **밝은 쪽 값**을 고정으로 가져온다. */
+  const PIN_BG = themes.light.accent;
+  const PIN_FG = '#FFFFFF';
   /* ★ 범례 — 두 화면이 **같은 부품**을 쓴다.
      예전에는 현재배치(알약형 · 차광이 남색 t.text)와 사용량순 제안(색견본형)이
      모양·항목·차례가 모두 달랐다. 색견본은 **칸 색 상수를 그대로** 가져다 쓴다 —
      따로 적으면 범례와 칸이 어긋난다(차광이 남색이던 것이 그 예다).
      ★ 어두운 화면에서는 차광 색견본(#1F1F1F)이 카드 바탕(#1A2332)과 1.04:1 이라
        안 보인다 — 그때만 테두리를 t.border 로 준다. */
+  /* ★ 범례 — 칸 색은 **칸 색 상수 그대로**, 상비는 **실제 뱃지 견본**이다.
+     상비는 칸 바탕이 아니라 뱃지라 색칸으로 보이면 거짓말이 된다. */
   const LEGEND = [['차광', CELL_SHADE], ['모양', CELL_SHAPE], ['용량', CELL_DOSE],
-    ['발음', CELL_SOUND], ['상비 고정', CELL_PIN], ['일반', CELL_PLAIN]];
+    ['발음', CELL_SOUND], ['일반', CELL_PLAIN]];
   const legend = fluid => <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10, fontSize: 10, color: t.textM, alignItems: 'center' }}>
-    {LEGEND.map(([lb, s]) => <span key={lb} style={{ background: s.bg, color: s.fg, padding: '1px 6px', borderRadius: 3, fontWeight: 700, border: '1px solid ' + (s === CELL_SHADE && isDark(t) ? t.border : s.bd) }}>{lb}</span>)}
+    {LEGEND.map(([lb, s]) => <span key={lb} style={{ background: s.bg, color: s.fg, padding: '1px 6px', borderRadius: 3, fontWeight: 700, border: (s.bw || 1) + 'px solid ' + (s === CELL_SHADE && isDark(t) ? t.border : s.bd) }}>{lb}</span>)}
+    {/* ★ 상비는 칸 색이 아니라 **뱃지**다 — 칸에 붙는 것과 같은 부품·같은 색으로 보여 준다 */}
+    <span style={{ display: 'inline-flex' }}>{B('상비', PIN_BG, PIN_FG, PIN_BG)}</span>
     {fluid && <span style={{ color: t.textL }}>점선 = 유동</span>}
   </div>;
-  const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: PIN_BG, fg: t.accent, bd: t.accent }); for (const k of ['dose', 'shape', 'sound']) { const col = { dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]; if (d[col] === true) a.push(cautionBadge(k)); } if (d.fsp_slot && d.fsp_note) a.push({ x: d.fsp_note, bg: t.greenL, fg: t.green, bd: t.green }); return a; };
+  const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: PIN_BG, fg: PIN_FG, bd: PIN_BG, pin: true }); for (const k of ['dose', 'shape', 'sound']) { const col = { dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]; if (d[col] === true) a.push(cautionBadge(k)); } if (d.fsp_slot && d.fsp_note) a.push({ x: d.fsp_note, bg: t.greenL, fg: t.green, bd: t.green }); return a; };
   /* 인쇄 전용 성분명: 「영문(한글)」, 복합제(구분자 '/')는 첫 성분 외 N종 축약. 개수 다르면 영문 기준. 화면·엑셀 무관 */
   const printIng = d => { const en = String((d && d.ingredient_en) || '').trim(); const kr = String((d && d.ingredient_kr) || '').trim(); const enP = en ? en.split('/').map(s => s.trim()).filter(Boolean) : []; const krP = kr ? kr.split('/').map(s => s.trim()).filter(Boolean) : []; const cnt = enP.length || krP.length; const fe = enP[0] || ''; const fk = krP[0] || ''; const first = fe && fk ? fe + '(' + fk + ')' : (fe || fk); return cnt > 1 ? first + ' 외 ' + (cnt - 1) + '종' : first; };
   /* 슬롯 정렬키(숫자): 카세트 1~80 → 확장 301~308 → FSP5~1(1001~1005). 문자열정렬 금지 */
@@ -8177,8 +8204,8 @@ function AtcView({ drugs, onReload }) {
   const cKeep = [...curCodes2].filter(cc => t88p.has(cc));
   /* A(신규 진입) 표 행 — aNew(0.5T FSP 적재 표기 포함) + 수기조제(top88·미배정). FSP 1T전용은 제외. 카드·헤더 건수 공용 */
   const aNewRows = [...aNew.map(d => ({ _slot: atcSlotKey(propSlotOf[d.drug_code]), slotLabel: propSlotOf[d.drug_code], name: d.drug_name, r3: usageScore(d), rank: rankFull.get(d.drug_code) || null, excl: false, reason: null, fspLoad: (d.fsp_slot && d.fsp_note) ? (d.fsp_slot + ' ' + d.fsp_note + ' 적재') : null, d })), ...manualEx.filter(d => (rankFull.get(d.drug_code) || 999) <= 88 && !curCodes2.has(d.drug_code)).map(d => ({ _slot: 9999, slotLabel: null, name: d.drug_name, r3: usageScore(d), rank: rankFull.get(d.drug_code) || null, excl: true, reason: d.atc_exclude_reason, fspLoad: null, d }))];
-  const pcs = (d, exp) => { if (!d) return { bg: t.card, bd: t.border, fg: t.textL }; if (isShade(d)) return CELL_SHADE; const _k = cellCaution(d); if (_k === 'shape') return CELL_SHAPE; if (_k === 'dose') return CELL_DOSE; if (_k === 'sound') return CELL_SOUND; if (d.atc_pinned) return CELL_PIN; if (exp) return { bg: t.bg, bd: t.border, fg: t.textM }; return { bg: t.purpleL, bd: t.border, fg: t.accent }; };
-  const PCell = (slot, exp) => { const d = pIdeal[slot]; const s = pcs(d, exp); const active = q.trim() !== ''; const hit = active && d && matches(d); const dim = active && !hit; return <div key={slot} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : ''} style={{ border: hit ? '2px solid ' + t.accent : '1px solid ' + s.bd, background: s.bg, color: s.fg, borderRadius: 6, padding: '3px 5px', minHeight: CELL_MIN, opacity: dim ? 0.3 : 1, cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={slotHead}><span style={slotNoDim}>{slot}</span><span style={badgeWrap}>{d && cellBadges(d).map((b, bi) => <span key={bi} style={{ display: 'inline-flex' }}>{(b.kind || b.shade) ? CB(b) : <span style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>}</span>)}</span></div><div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflow: 'hidden' }}>{d ? d.drug_name : ''}</div></div>; };  const th = { textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' };
+  const pcs = (d, exp) => { if (!d) return { bg: t.card, bd: t.border, fg: t.textL }; if (isShade(d)) return CELL_SHADE; const _k = cellCaution(d); if (_k === 'shape') return CELL_SHAPE; if (_k === 'dose') return CELL_DOSE; if (_k === 'sound') return CELL_SOUND; if (exp) return { bg: t.bg, bd: t.border, fg: t.textM }; return { bg: t.purpleL, bd: t.border, fg: t.accent }; };
+  const PCell = (slot, exp) => { const d = pIdeal[slot]; const s = pcs(d, exp); const active = q.trim() !== ''; const hit = active && d && matches(d); const dim = active && !hit; return <div key={slot} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : ''} style={{ border: hit ? '2px solid ' + t.accent : (s.bw || 1) + 'px solid ' + s.bd, background: s.bg, color: s.fg, borderRadius: 6, padding: '3px 5px', boxSizing: 'border-box', minHeight: CELL_MIN, opacity: dim ? 0.3 : 1, cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={slotHead}><span style={slotNoDim}>{slot}</span><span style={badgeWrap}>{d && cellBadges(d).map((b, bi) => <span key={bi} style={{ display: 'inline-flex' }}>{(b.kind || b.shade) ? CB(b) : <span style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>}</span>)}</span></div><div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, marginTop: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflow: 'hidden' }}>{d ? d.drug_name : ''}</div></div>; };  const th = { textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' };
   const td = { padding: '5px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border };
   async function runSwaps(pairs, desc) { const { data, error } = await supabase.rpc('swap_atc_slots', { p_pairs: pairs }); if (error) { setMsg('교환 실패: ' + error.message); return; } if (data && data.ok === false) { setMsg('교환 차단 - ' + (data.failed || []).map(f => f.slot_a + '<->' + f.slot_b + '(' + f.reason + ')').join(', ')); return; } setMsg('슬롯 교환 ' + (data && data.done != null ? data.done : pairs.length) + '건 완료' + (desc ? ' - ' + desc : '')); setSelSlot(null); setPending(null); setSelPairs({}); onReload && onReload(); setTimeout(() => setMsg(null), 4000); }
   function cellEdit(slot, d) { if (selSlot != null) { if (selSlot === slot) { setSelSlot(null); return; } const da = byAtc[selSlot], db = d; setPending({ pairs: [{ slot_a: selSlot, slot_b: slot }], desc: '슬롯 ' + selSlot + ' ' + (da ? da.drug_name : '(빈 칸)') + '  <->  슬롯 ' + slot + ' ' + (db ? db.drug_name : '(빈 칸)') }); return; } if (d) { setCellAct({ slot, d }); return; } setAssignSlot(slot); setAssignQ(''); }
@@ -8285,7 +8312,7 @@ function AtcView({ drugs, onReload }) {
       </div>; })}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
         <div><div style={{ fontSize: 12, fontWeight: 700, color: t.green, marginBottom: 6 }}>FSP 고정식</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 3 }}>{['FSP5', 'FSP4', 'FSP3', 'FSP2', 'FSP1'].map(f => { const d = byFsp[f]; const s = d ? { bg: t.greenL, bd: t.green, fg: t.green } : { bg: t.card, bd: t.textL, fg: t.textL }; const active = q.trim() !== ''; const hit = active && d && matches(d); const dim = active && d && !hit; return <div key={f} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : '유동'} style={{ border: hit ? '2px solid ' + t.accent : ((d ? '1px solid ' : '1px dashed ') + s.bd), background: s.bg, color: s.fg, borderRadius: 6, minHeight: CELL_MIN, padding: '3px 5px', opacity: dim ? 0.3 : 1, cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ fontSize: 9, opacity: 0.62 }}>{f}{d && d.fsp_note ? ' ' + d.fsp_note : ''}</div><div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflow: 'hidden' }}>{d ? d.drug_name : '유동'}</div></div>; })}</div></div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 3 }}>{['FSP5', 'FSP4', 'FSP3', 'FSP2', 'FSP1'].map(f => { const d = byFsp[f]; const s = d ? { bg: t.greenL, bd: t.green, fg: t.green } : { bg: t.card, bd: t.textL, fg: t.textL }; const active = q.trim() !== ''; const hit = active && d && matches(d); const dim = active && d && !hit; return <div key={f} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : '유동'} style={{ border: hit ? '2px solid ' + t.accent : ((d ? '1px solid ' : '1px dashed ') + s.bd), background: s.bg, color: s.fg, borderRadius: 6, boxSizing: 'border-box', minHeight: CELL_MIN, padding: '3px 5px', opacity: dim ? 0.3 : 1, cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ fontSize: 9, opacity: 0.62 }}>{f}{d && d.fsp_note ? ' ' + d.fsp_note : ''}</div><div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, marginTop: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflow: 'hidden' }}>{d ? d.drug_name : '유동'}</div></div>; })}</div></div>
         <div><div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>하단 확장 301–308 · 최다빈도</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 3 }}>{[301, 302, 303, 304, 305, 306, 307, 308].map(n => PCell(String(n), true))}</div>
           <div style={{ marginTop: 4 }}><div style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>월 {Math.round(expBand.mn / 3)} ~ {Math.round(expBand.mx / 3)}개 / 3개월 {expBand.mn} ~ {expBand.mx}</div><div style={{ height: 5, borderRadius: 3, background: t.lavender, width: '100%', marginTop: 3 }} /></div></div>

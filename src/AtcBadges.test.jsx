@@ -64,7 +64,7 @@ describe('★ 뱃지 차례 — 상비 · 용량 → 모양 → 발음 · 차광
   })
 
   it('상비의 색도 바뀌지 않았다', () => {
-    expect(DB).toContain("{ x: '상비', bg: PIN_BG, fg: t.accent, bd: t.accent }")  /* 어두운 화면만 불투명 — 2026-11-07 */
+    expect(DB).toContain("{ x: '상비', bg: PIN_BG, fg: PIN_FG, bd: PIN_BG, pin: true }")  /* 어두운 화면만 불투명 — 2026-11-07 */
   })
 })
 
@@ -115,5 +115,34 @@ describe('★ 인쇄 — 배경 그래픽이 꺼져 있어도 뱃지 바탕이 �
     expect(style).toContain('fontSize: 8')
     expect(style).toContain('borderRadius: 3')
     expect(style).toContain("whiteSpace: 'nowrap'")
+  })
+})
+
+describe('★ 뱃지 크기는 다섯 가지가 모두 같다 (2026-11-07 지시)', () => {
+  /* 상비 · 모양 · 용량 · 발음 · 0.5T — 테두리가 있든 없든 **같은 높이**여야 한다.
+     엣지 실측 1280px : 다섯 가지 모두 14.0px · 글자 8px · 안여백 0 4px · 둥글기 3px · 테두리 1px
+     (60_안C_뱃지크기_밝은/어두운.png — 현재배치 칸 · 제안 칸 · 두 범례 모두). */
+  const style = between('const badgeStyle = (bg, fg, bd) =>', '});')
+
+  it('★ 크기를 정하는 값이 **한 군데**에만 있다 (badgeStyle)', () => {
+    for (const k of ['fontSize: 8', "padding: '0 4px'", 'borderRadius: 3', 'lineHeight: 1.5'])
+      expect(style).toContain(k)
+  })
+
+  it('★ 테두리가 없는 뱃지도 **자리를 똑같이** 잡는다 — 없으면 투명 1px', () => {
+    /* 이게 없으면 테두리 있는 뱃지만 2px 높아진다 */
+    expect(style).toContain("border: bd ? '1px solid ' + bd : '1px solid transparent'")
+  })
+
+  it('★ 아이콘 뱃지(CB)도 같은 badgeStyle 을 깔고 쓴다 — 크기를 따로 적지 않는다', () => {
+    const CB = between('const CB = b =>', '</span>;')
+    expect(CB).toContain('...badgeStyle(b.bg, b.fg, b.bd)')
+    expect(CB).not.toContain('fontSize:')
+    expect(CB).not.toContain('padding:')
+    expect(CB).not.toContain('borderRadius:')
+  })
+
+  it('★ 범례의 상비 견본도 같은 부품(B)이다 — 따로 그리지 않는다', () => {
+    expect(CODE).toContain("{B('상비', PIN_BG, PIN_FG, PIN_BG)}")
   })
 })

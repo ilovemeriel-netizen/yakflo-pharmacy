@@ -62,9 +62,11 @@ describe('★ 범례가 하나다', () => {
 })
 
 describe('★ 범례 항목과 차례', () => {
-  it('차광 → 모양 → 용량 → 발음 → 상비 고정 → 일반', () => {
+  it('차광 → 모양 → 용량 → 발음 → 일반 (+ 끝에 상비 뱃지)', () => {
+    /* 2026-11-07 안 ⓒ — 상비는 칸 색이 아니라 **언제나 뱃지**라서 색견본 줄에서 빠졌다 */
     expect(CODE).toContain("const LEGEND = [['차광', CELL_SHADE], ['모양', CELL_SHAPE], ['용량', CELL_DOSE],")
-    expect(CODE).toContain("['발음', CELL_SOUND], ['상비 고정', CELL_PIN], ['일반', CELL_PLAIN]]")
+    expect(CODE).toContain("['발음', CELL_SOUND], ['일반', CELL_PLAIN]]")
+    expect(CODE).not.toContain("['상비 고정', CELL_PIN]")
   })
 
   it('★ 색견본이 칸 색 상수를 그대로 쓴다 (값을 따로 적지 않는다)', () => {
@@ -75,8 +77,18 @@ describe('★ 범례 항목과 차례', () => {
     expect(L).not.toContain('SHADE_BG,')
   })
 
-  it('「상비 고정」 항목이 남아 있다', () => {
-    expect(CODE).toContain("['상비 고정', CELL_PIN]")
+  it('★ 색견본 테두리 굵기도 칸과 같다 — 주의 3종은 2px (2026-11-07 안 ⓒ)', () => {
+    const L = between('const legend = fluid =>', '</div>;')
+    expect(L).toContain("(s.bw || 1) + 'px solid '")
+    /* 칸 쪽도 같은 식을 쓴다 — 현재배치 칸 · 제안 칸 */
+    expect((CODE.match(/\(s\.bw \|\| 1\) \+ 'px solid '/g) || []).length).toBe(3)
+  })
+
+  it('★ 「상비」는 색칸이 아니라 **칸에 붙는 뱃지 그대로** 보여 준다 (2026-11-07 안 ⓒ)', () => {
+    const L = between('const legend = fluid =>', '</div>;')
+    /* 칸 안에서 쓰는 뱃지 부품(B) 과 **같은 색·같은 부품**이어야 한다 */
+    expect(L).toContain("{B('상비', PIN_BG, PIN_FG, PIN_BG)}")
+    expect(L).not.toContain('상비 고정')
   })
 })
 
@@ -118,10 +130,10 @@ describe('★ 칸 색을 정하는 차례 vs 범례에 보이는 차례 — 둘�
     }
   })
 
-  it('범례에 보이는 차례는 그것과 **다르다** (차광 → 모양 → 용량 → 발음 → 상비 → 일반)', () => {
+  it('범례에 보이는 차례는 그것과 **다르다** (차광 → 모양 → 용량 → 발음 → 일반)', () => {
     const order = (CODE.match(/const LEGEND = \[([\s\S]*?)\]\];/) || [])[1] || ''
     const names = (order.match(/'([^']+)'/g) || []).map(s => s.replace(/'/g, ''))
-    expect(names).toEqual(['차광', '모양', '용량', '발음', '상비 고정', '일반'])
+    expect(names).toEqual(['차광', '모양', '용량', '발음', '일반'])
   })
 
   it('★ 지금 운영에는 주의가 2개 이상인 약이 없어 차례가 화면을 바꾸지 않는다', () => {
@@ -139,19 +151,19 @@ describe('★ 칸 색 차례 — 두 화면이 같다', () => {
   const CS = between('const cs = d => {', 'const Cell =')
   const PCS = between('const pcs = (d, exp) =>', 'const PCell =')
 
-  it('공용 상수 6개가 있다', () => {
-    for (const k of ['CELL_SHADE', 'CELL_SHAPE', 'CELL_DOSE', 'CELL_SOUND', 'CELL_PIN', 'CELL_PLAIN'])
+  it('공용 상수 5개가 있다 (상비는 칸 색이 아니라 뱃지라 빠졌다)', () => {
+    for (const k of ['CELL_SHADE', 'CELL_SHAPE', 'CELL_DOSE', 'CELL_SOUND', 'CELL_PLAIN'])
       expect(CODE).toContain('const ' + k + ' =')
+    expect(CODE).not.toContain('const CELL_PIN =')
   })
 
-  it('★ 두 함수 모두 차광 → 주의 → 상비 차례다', () => {
+  it('★ 두 함수 모두 차광 → 주의 차례다 (상비는 칸 색을 밀어내지 않는다)', () => {
     for (const part of [CS, PCS]) {
       const iShade = part.indexOf('isShade(d)')
       const iCau = part.indexOf('cellCaution(d)')
-      const iPin = part.indexOf('atc_pinned')
       expect(iShade).toBeGreaterThan(-1)
       expect(iCau).toBeGreaterThan(iShade)
-      expect(iPin).toBeGreaterThan(iCau)
+      expect(part).not.toContain('atc_pinned')   /* 2026-11-07 안 ⓒ — 상비는 언제나 뱃지 */
     }
   })
 
@@ -161,7 +173,6 @@ describe('★ 칸 색 차례 — 두 화면이 같다', () => {
       expect(part).toContain('return CELL_SHAPE')
       expect(part).toContain('return CELL_DOSE')
       expect(part).toContain('return CELL_SOUND')
-      expect(part).toContain('return CELL_PIN')
     }
     /* 예전에 제안 칸만 달랐던 글씨색(t.blue·t.amber)이 사라졌다 */
     expect(PCS).not.toContain('fg: t.blue')
@@ -173,32 +184,35 @@ describe('★ 칸 색 차례 — 두 화면이 같다', () => {
   })
 })
 
-describe('★ 상비 뱃지 — 어두운 화면만 불투명', () => {
-  it('어두우면 팔레트 cardSolid 를 쓴다', () => {
-    expect(CODE).toContain('const PIN_BG = isDark(t) ? t.cardSolid : t.accentL;')
+describe('★ 상비 뱃지 — 두 화면이 같은 보라 (2026-11-07 지시)', () => {
+  it('★ 약플로 보라 바탕 + 흰 글씨, 테마를 타지 않는다', () => {
+    expect(CODE).toContain('const PIN_BG = themes.light.accent;')
+    expect(CODE).toContain("const PIN_FG = '#FFFFFF';")
+    expect(CODE).not.toContain('const PIN_BG = isDark(t) ? t.cardSolid : t.accentL;')
   })
 
   it('뱃지가 그 값을 쓴다', () => {
     expect(between('const dBadges = d =>', 'return a; };'))
-      .toContain("{ x: '상비', bg: PIN_BG, fg: t.accent, bd: t.accent }")
+      .toContain("{ x: '상비', bg: PIN_BG, fg: PIN_FG, bd: PIN_BG, pin: true }")
   })
 
-  it('★ 전 — 연빨강 칸 위에서 묻혔다 (투명 12% 라 밑색이 비쳤다)', () => {
+  it('★ 전 — 어두운 화면에서 연빨강 칸 위에 묻혔다 (투명 12% 라 밑색이 비쳤다)', () => {
     const mix = (fg, bg, al) => '#' + hx(fg).map((v, i) => Math.round(v * al + hx(bg)[i] * (1 - al)).toString(16).padStart(2, '0')).join('')
     expect(ratio('#BFA6D9', mix('#BFA6D9', '#F39E94', 0.12))).toBeLessThan(1.1)
   })
 
-  it('★ 후 — 어느 칸 위에서도 6:1 을 넘는다', () => {
-    expect(ratio('#BFA6D9', '#1E2A3A')).toBeGreaterThan(6)
+  it('★ 후 — 보라 #804A87 위 흰 글씨는 6.47:1 이다 (두 화면 같은 값 · AA 통과)', () => {
+    expect(ratio('#FFFFFF', '#804A87')).toBeCloseTo(6.47, 1)
   })
 
-  it('연빨강·검정 칸과도 갈린다 (테두리 t.accent 가 받쳐 준다)', () => {
-    expect(ratio('#1E2A3A', '#F39E94')).toBeGreaterThan(6)
-    expect(ratio('#BFA6D9', SHADE_BG)).toBeGreaterThan(7)   /* 검정 칸 위 테두리 */
+  it('★ 어느 칸 바탕 위에 놓여도 뱃지가 칸과 갈린다', () => {
+    for (const cell of ['#F39E94', '#EAF0F5', '#FFF3E0', '#F5EDF6', '#1F1F1F', '#1A2332', '#1E2A3A'])
+      expect(ratio('#804A87', cell)).toBeGreaterThan(1.5)
   })
 
-  it('밝은 화면은 그대로다 (accentL 불투명)', () => {
-    expect(ratio('#804A87', '#F5EDF6')).toBeGreaterThan(4.5)
+  it('★ 검정(차광) 칸 위에서는 흰 테두리 1px 로 받친다', () => {
+    expect(CODE).toContain("(b.pin && shade)")
+    expect(ratio('#FFFFFF', SHADE_BG)).toBeCloseTo(16.48, 1)
   })
 })
 
@@ -235,8 +249,7 @@ describe('★ 건드리지 않은 것', () => {
     expect(DB.indexOf('fsp_note')).toBeGreaterThan(DB.indexOf("['dose', 'shape', 'sound']"))
   })
 
-  it('칸 높이·고정 열은 그대로', () => {
-    expect(CODE).toContain('const CELL_MIN = 74;')
+  it('고정 열은 그대로', () => {
     expect(CODE).toContain("{ k: 'drug_name', h: '약품명', sticky: { left: 120, w: 208 }")
   })
 })

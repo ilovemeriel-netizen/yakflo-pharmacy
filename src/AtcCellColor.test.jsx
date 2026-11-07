@@ -118,10 +118,13 @@ describe('★ 색은 바뀌지 않았다 — 자료만 바꿨다', () => {
   const CS = between('const cs = d => {', 'const Cell =')
   const PCS = between('const pcs = (d, exp) =>', 'const PCell =')
 
-  it('카세트 칸 — 모양 coral · 용량 blueL · 발음 amberL 그대로', () => {
-    expect(CODE).toContain("const CELL_SHAPE = { bg: t.coral, bd: t.coral, fg: t.text };")
-    expect(CODE).toContain("const CELL_DOSE = { bg: t.blueL, bd: t.blue, fg: t.text };")
-    expect(CODE).toContain("const CELL_SOUND = { bg: t.amberL, bd: t.amber, fg: t.text };")
+  it('★ 칸 바탕은 연한 색 그대로 + 테두리만 칩 색 2px (2026-11-07 안 ⓒ)', () => {
+    /* 바탕(coral · blueL · amberL)은 **하나도 바뀌지 않았다**. 테두리만 칩 색으로 묶었다. */
+    expect(CODE).toContain("const CELL_SHAPE = { bg: t.coral, bd: _chip('shape').bg, fg: SHAPE_FG, bw: 2 };")
+    expect(CODE).toContain("const CELL_DOSE = { bg: t.blueL, bd: _chip('dose').bg, fg: t.text, bw: 2 };")
+    expect(CODE).toContain("const CELL_SOUND = { bg: t.amberL, bd: _chip('sound').bg, fg: t.text, bw: 2 };")
+    /* 테두리 색은 칩에서 바로 가져온다 — 값을 베껴 적지 않는다 */
+    expect(CODE).toContain("const _chip = k => cautionChipColors({ mode: 'light'")
   })
 
   it('제안 칸 — 각자의 글씨색도 그대로 (blue·amber)', () => {
@@ -136,9 +139,24 @@ describe('★ 색은 바뀌지 않았다 — 자료만 바꿨다', () => {
       expect(part).toContain('if (isShade(d)) return CELL_SHADE')
   })
 
-  it('상비·빈 칸·기본색도 그대로', () => {
-    expect(PCS).toContain('if (d.atc_pinned) return CELL_PIN')
+  it('빈 칸·기본색은 그대로 (상비는 칸 색이 아니라 뱃지 — 2026-11-07 안 ⓒ)', () => {
+    expect(PCS).not.toContain('atc_pinned')
     expect(CODE).toContain('const CELL_PLAIN = { bg: t.purpleL, bd: t.lavender, fg: t.text };')
+  })
+
+  it('★ 어두운 화면에서만 모양 칸 글씨가 검정이다 (밝은 화면은 그대로)', () => {
+    /* 연빨강 #F39E94 위에서 남색 글씨는 1.66:1 로 거의 안 보였다 → 검정 #1F1F1F 로 7.95:1 */
+    expect(CODE).toContain('const SHAPE_FG = isDark(t) ? SHADE_BG : t.text;')
+  })
+
+  it('★ 그 숫자를 못 박는다 — 어두운 화면 1.66 → 7.95, 밝은 화면 4.46 그대로', () => {
+    const lin = c => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4) }
+    const hx = h => { const n = h.replace('#', ''); return [0, 2, 4].map(i => parseInt(n.slice(i, i + 2), 16)) }
+    const lum = a => 0.2126 * lin(a[0]) + 0.7152 * lin(a[1]) + 0.0722 * lin(a[2])
+    const ratio = (a, b) => { const [x, y] = [lum(hx(a)), lum(hx(b))].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05) }
+    expect(ratio('#E8E6E1', '#F39E94')).toBeCloseTo(1.66, 1)   /* 전 — 어두운 화면 글씨 */
+    expect(ratio('#1F1F1F', '#F39E94')).toBeCloseTo(7.95, 1)   /* 후 — 어두운 화면 글씨 */
+    expect(ratio('#2E4A62', '#F39E94')).toBeCloseTo(4.46, 1)   /* 밝은 화면은 손대지 않았다 */
   })
 })
 

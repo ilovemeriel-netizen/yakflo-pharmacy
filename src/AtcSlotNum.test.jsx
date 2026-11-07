@@ -88,8 +88,14 @@ describe('★ 투명도는 슬롯 번호에만', () => {
 })
 
 describe('★ 칸 높이는 여전히 하나', () => {
-  it('CELL_MIN 이 74 다', () => {
-    expect(CODE).toContain('const CELL_MIN = 74;')
+  it('CELL_MIN 이 78 이다 (2026-11-07 안 ⓒ 실측 — 76 이면 78px 칸이 섞인다)', () => {
+    expect(CODE).toContain('const CELL_MIN = 78;')
+  })
+
+  it('★ 칸이 **border-box** 다 — 아니면 테두리 2px 짜리 칸만 더 높아진다', () => {
+    /* 약플로에는 전역 `*{box-sizing:border-box}` 가 없다(#root 에만 있다).
+       그대로 두면 모양·용량·발음 칸(테두리 2px)이 다른 칸보다 2px 높아진다. */
+    expect((CODE.match(/boxSizing: 'border-box', minHeight: CELL_MIN/g) || []).length).toBe(3)
   })
 
   it('세 곳이 같이 쓴다 (현재배치 · 제안 · 제안 FSP)', () => {
