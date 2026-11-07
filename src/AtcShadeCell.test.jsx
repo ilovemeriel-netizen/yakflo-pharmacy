@@ -56,7 +56,7 @@ describe('★ 차광 = 칸 색 (뱃지 아님)', () => {
   })
 
   it('★ 다른 뱃지는 그대로 붙는다 (상비·주의 3종·0.5T)', () => {
-    expect(DB).toContain("{ x: '상비', bg: PIN_BG, fg: t.accent, bd: t.accent }")
+    expect(DB).toContain("{ x: '상비', bg: PIN_BG, fg: PIN_FG, bd: PIN_BG, pin: true }")
     expect(DB).toContain("['dose', 'shape', 'sound']")
     expect(DB).toContain('bg: t.greenL, fg: t.green, bd: t.green')
   })
@@ -75,7 +75,7 @@ describe('★ 차광 = 칸 색 (뱃지 아님)', () => {
 })
 
 describe('★ 검정 칸 위 모양·용량 뱃지에만 흰 테두리 (2026-11-07 지시)', () => {
-  const OS = between('const onShade = b =>', ');')
+  const OS = between('const onShade = (b, shade) =>', ');')
   const CBD = between('const cellBadges = d =>', ');')
 
   it('모양·용량 두 가지만 대상이다', () => {
@@ -86,8 +86,10 @@ describe('★ 검정 칸 위 모양·용량 뱃지에만 흰 테두리 (2026-11-
     expect(OS).toContain("bd: '#FFFFFF'")
   })
 
-  it('★ 검정 칸일 때만 준다 — 밝은 칸은 그대로다', () => {
-    expect(CBD).toContain('isShade(d) ? dBadges(d).map(onShade) : dBadges(d)')
+  it('★ 검정(차광) 칸과 연빨강(모양) 칸에만 준다 — 나머지 칸은 그대로다', () => {
+    /* 2026-11-07 안 ⓒ — 모양 칸이 연빨강이라 빨강 뱃지 테두리가 묻힌다(2.07:1). 흰 테두리로 받친다. */
+    expect(CODE).toContain("const WHITE_BD_ON = d => isShade(d) || cellCaution(d) === 'shape';")
+    expect(CBD).toContain('WHITE_BD_ON(d) ? dBadges(d).map(b => onShade(b, isShade(d))) : dBadges(d)')
   })
 
   it('CB 가 테두리를 실제로 그린다', () => {
@@ -124,11 +126,11 @@ describe('★ 검정 칸 위 모양·용량 뱃지에만 흰 테두리 (2026-11-
 describe('★ 사용량순 제안 칸 — 차광이 1순위 (2026-11-07 지시)', () => {
   const PCS = between('const pcs = (d, exp) =>', 'const PCell =')
 
-  it('차광이 상비보다 **먼저** 온다', () => {
+  it('차광이 가장 먼저 온다 (상비는 2026-11-07 안 ⓒ 로 칸 색에서 빠졌다)', () => {
     const iShade = PCS.indexOf('isShade(d)')
-    const iPin = PCS.indexOf('atc_pinned')
     expect(iShade).toBeGreaterThan(-1)
-    expect(iPin).toBeGreaterThan(iShade)
+    expect(PCS.indexOf('!d')).toBeLessThan(iShade)   /* 빈 칸 먼저, 그다음 차광 */
+    expect(PCS).not.toContain('atc_pinned')
   })
 
   it('★ 현재배치 칸(cs)과 같은 차례다', () => {
@@ -137,10 +139,9 @@ describe('★ 사용량순 제안 칸 — 차광이 1순위 (2026-11-07 지시)'
     expect(PCS.indexOf('isShade(d)')).toBeLessThan(PCS.indexOf('cellCaution(d)'))
   })
 
-  it('상비는 사라지지 않는다 — 색이 밀렸을 뿐 뱃지로 남는다', () => {
-    expect(PCS).toContain('return CELL_PIN')
+  it('상비는 사라지지 않는다 — 칸 색에서 빠졌을 뿐 **언제나 뱃지**로 남는다', () => {
     expect(between('const dBadges = d =>', 'return a; };'))
-      .toContain("{ x: '상비', bg: PIN_BG, fg: t.accent, bd: t.accent }")
+      .toContain("{ x: '상비', bg: PIN_BG, fg: PIN_FG, bd: PIN_BG, pin: true }")
   })
 
   it('제안 화면의 「FSP 고정식」 초록 블록은 그대로다', () => {
@@ -154,9 +155,10 @@ describe('★ 범례', () => {
     expect(CODE).not.toContain("['차광', t.text]")
   })
 
-  it('나머지 색견본은 그대로다', () => {
+  it('나머지 색견본은 그대로다 (상비만 색칸 → 실제 뱃지로)', () => {
     for (const s of ["['모양', CELL_SHAPE]", "['용량', CELL_DOSE]", "['발음', CELL_SOUND]",
-      "['상비 고정', CELL_PIN]", "['일반', CELL_PLAIN]"]) expect(CODE).toContain(s)
+      "['일반', CELL_PLAIN]"]) expect(CODE).toContain(s)
+    expect(CODE).toContain("{B('상비', PIN_BG, PIN_FG, PIN_BG)}")
   })
 })
 
