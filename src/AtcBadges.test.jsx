@@ -47,14 +47,12 @@ describe('★ 뱃지 차례 — 상비 · 용량 → 모양 → 발음 · 차광
     expect(DB).toContain("['dose', 'shape', 'sound']")
   })
 
-  it('차광과 0.5T(fsp_note) 가 주의 3종 **뒤**에 온다', () => {
+  it('0.5T(fsp_note) 가 주의 3종 **뒤**에 온다', () => {
+    /* 차광은 2026-11-07 부터 뱃지가 아니라 **칸 색**이라 이 차례에 없다 */
     const iCau = DB.indexOf("['dose', 'shape', 'sound']")
-    /* 0117 부터 차광은 storage_light 가 아니라 isShade(storage_method) 로 본다 */
-    const iShade = DB.indexOf('isShade(d)')
     const iFsp = DB.indexOf('fsp_note')
     expect(iCau).toBeGreaterThan(-1)
-    expect(iShade).toBeGreaterThan(iCau)
-    expect(iFsp).toBeGreaterThan(iShade)
+    expect(iFsp).toBeGreaterThan(iCau)
   })
 
   it('상비는 맨 앞에 그대로 있다', () => {

@@ -82,13 +82,13 @@ describe('★ 칸 색과 뱃지가 같은 자료를 본다', () => {
     expect(PCS).not.toContain('storage_light')
   })
 
-  it('뱃지(dBadges)도 isShade 를 쓴다', () => {
-    expect(DB).toContain('isShade(d)')
+  it('★ 뱃지(dBadges)에는 차광이 없다 — 칸 색으로만 보인다 (2026-11-07 지시)', () => {
+    expect(DB).not.toContain('shadeBadge()')
     expect(DB).not.toContain('storage_light')
   })
 
-  it('★ 셋이 모두 같은 함수를 부른다 (한쪽만 바뀌지 않게)', () => {
-    for (const part of [CS, PCS, DB]) expect(part).toContain('isShade(d)')
+  it('★ 칸 색 두 곳이 같은 함수를 부른다 (한쪽만 바뀌지 않게)', () => {
+    for (const part of [CS, PCS]) expect(part).toContain('isShade(d)')
   })
 
   it('화면 표 「차광」 칸도 같은 자료를 본다', () => {
@@ -182,11 +182,12 @@ describe('★ 뱃지 그리기 — 주의 3종과 같은 틀', () => {
   })
 
   it('같은 badgeStyle 을 쓴다 (크기·둥글기가 자리마다 그대로)', () => {
-    expect(CB).toContain('badgeStyle(b.bg, b.fg)')
+    expect(CB).toContain('badgeStyle(b.bg, b.fg, b.bd)')
   })
 
-  it('카세트 칸·인쇄 표 모두 아이콘 뱃지를 CB 로 그린다', () => {
-    expect((CODE.match(/\(b\.kind \|\| b\.shade\) \? CB\(b\)/g) || []).length).toBe(2)
+  it('카세트 칸·제안 칸·인쇄 표 모두 아이콘 뱃지를 CB 로 그린다', () => {
+    /* 현재배치 칸 · 사용량순 제안 칸(2026-11-07 추가) · 인쇄 표 = 3곳 */
+    expect((CODE.match(/\(b\.kind \|\| b\.shade\) \? CB\(b\)/g) || []).length).toBe(3)
   })
 
   it('뱃지 모양(크기·둥글기)은 바뀌지 않았다', () => {
