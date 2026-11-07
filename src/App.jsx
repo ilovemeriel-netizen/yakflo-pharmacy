@@ -26,7 +26,8 @@ const VaccineManage = lazy(() => import('./VaccineManage'))
 import BulkUploadModal from './BulkUploadModal'
 import MP from './MultiPick'
 import { DrugChips, HighAlertChip, CautionChip, WarnTriangle } from './CautionChips'
-import { CAUTION_ORDER, cautionCheckColor } from './lib/cautionDefs'
+import { CAUTION_ORDER, cautionCheckColor, cautionChipColors } from './lib/cautionDefs'
+import { CautionIcon } from './CautionChips'
 import LabelPrint from './LabelPrint'
 import UsageUploadModal from './UsageUploadModal'
 /* 마약·향정 판정은 모달과 **같은 함수 하나**를 쓴다 — 두 곳이 갈리면 탭마다 답이 달라진다 */
@@ -7976,9 +7977,26 @@ function AtcView({ drugs, onReload }) {
   </div>;
   const slotNum = d => d.atc_slot ? Number(d.atc_slot) : (d.fsp_slot ? 1000 + Number(String(d.fsp_slot).replace('FSP', '')) : 9999);
   const slotLabel = d => { const p = []; if (d.atc_slot) p.push(d.atc_slot + ' (1T)'); if (d.fsp_slot) p.push(d.fsp_slot + (d.fsp_note ? ' (' + d.fsp_note + ')' : '')); return p.join(' · '); };
-  const badgeStyle = (bg, fg, bd) => ({ fontSize: 8, fontWeight: 700, padding: '0 4px', borderRadius: 3, background: bg, color: fg, border: bd ? '1px solid ' + bd : '1px solid transparent', whiteSpace: 'nowrap', lineHeight: 1.5, display: 'inline-block' });
+  /* ★ print-color-adjust — 크롬 인쇄 창의 「배경 그래픽」이 꺼져 있어도 뱃지 바탕이 찍히게 한다.
+     없으면 바탕이 하얘지고 흰 글씨(용량·모양)가 종이에서 사라진다. */
+  const badgeStyle = (bg, fg, bd) => ({ fontSize: 8, fontWeight: 700, padding: '0 4px', borderRadius: 3, background: bg, color: fg, border: bd ? '1px solid ' + bd : '1px solid transparent', whiteSpace: 'nowrap', lineHeight: 1.5, display: 'inline-block', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' });
   const B = (x, bg, fg, bd) => <span style={badgeStyle(bg, fg, bd)}>{x}</span>;
-  const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }); if (d.storage_light) a.push({ x: '차광', bg: t.text, fg: t.navText }); if (d.lasa_type === '모양') a.push({ x: '모양', bg: t.coral, fg: t.text }); if (d.lasa_type === '용량') a.push({ x: '용량', bg: t.blueL, fg: t.blue, bd: t.blue }); if (d.lasa_type === '발음') a.push({ x: '발음', bg: t.amberL, fg: t.amber, bd: t.amber }); if (d.fsp_slot && d.fsp_note) a.push({ x: d.fsp_note, bg: t.greenL, fg: t.green, bd: t.green }); return a; };
+  /* ★ 주의 뱃지(용량·모양·발음)는 화면 칩과 **같은 색·같은 아이콘**을 쓴다.
+     색은 `cautionChipColors`, 그림은 `CautionIcon` — 여기서 새로 그리지 않는다.
+     밝은 화면 기준 값을 쓴다(인쇄물이라 화면 모드를 타면 안 된다). */
+  const LIGHT_CHIP = { mode: 'light', blue: '#2E4A62', red: '#C62828', yellow: '#FFE082' };
+  const cautionBadge = kind => {
+    const { bg, fg } = cautionChipColors(LIGHT_CHIP, kind);
+    const label = { dose: '용량', shape: '모양', sound: '발음' }[kind];
+    return { kind, x: label, bg, fg };
+  };
+  const CB = b => <span style={{ ...badgeStyle(b.bg, b.fg), display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+    <CautionIcon kind={b.kind} size={8} color={b.fg} />{b.x}</span>;
+  /* ★ 뱃지 차례 — 상비 · 용량 → 모양 → 발음 · 차광 · 0.5T.
+     주의 3종은 `caution_*`(74종)을 본다. 예전에는 `lasa_type`(28종)을 봤는데
+     같은 뜻의 칸이 둘로 갈라져 있었다. 한쪽만 고치면 두 화면이 다른 말을 한다.
+     ★ `lasa_type` 칸 자체는 **건드리지 않는다**(지우지도 고치지도 않는다). */
+  const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }); for (const k of ['dose', 'shape', 'sound']) { const col = { dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]; if (d[col] === true) a.push(cautionBadge(k)); } if (d.storage_light) a.push({ x: '차광', bg: t.text, fg: t.navText }); if (d.fsp_slot && d.fsp_note) a.push({ x: d.fsp_note, bg: t.greenL, fg: t.green, bd: t.green }); return a; };
   /* 인쇄 전용 성분명: 「영문(한글)」, 복합제(구분자 '/')는 첫 성분 외 N종 축약. 개수 다르면 영문 기준. 화면·엑셀 무관 */
   const printIng = d => { const en = String((d && d.ingredient_en) || '').trim(); const kr = String((d && d.ingredient_kr) || '').trim(); const enP = en ? en.split('/').map(s => s.trim()).filter(Boolean) : []; const krP = kr ? kr.split('/').map(s => s.trim()).filter(Boolean) : []; const cnt = enP.length || krP.length; const fe = enP[0] || ''; const fk = krP[0] || ''; const first = fe && fk ? fe + '(' + fk + ')' : (fe || fk); return cnt > 1 ? first + ' 외 ' + (cnt - 1) + '종' : first; };
   /* 슬롯 정렬키(숫자): 카세트 1~80 → 확장 301~308 → FSP5~1(1001~1005). 문자열정렬 금지 */
@@ -8257,7 +8275,7 @@ function AtcView({ drugs, onReload }) {
           <td style={{ ...td, textAlign: 'left', position: 'sticky', left: 120, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, cursor: 'pointer', fontWeight: 600 }}>{d.drug_code}</span></td>
           <td style={{ ...td, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_name}</td>
           <td style={{ ...td, textAlign: 'left', color: t.textM, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.ingredient_kr || '-'}</td>
-          <td style={{ ...td, textAlign: 'left' }}>{d.lasa_type === '모양' ? B('모양', t.coral, t.text) : d.lasa_type === '용량' ? B('용량', t.blueL, t.blue, t.blue) : d.lasa_type === '발음' ? B('발음', t.amberL, t.amber, t.amber) : <span style={{ color: t.textL }}>-</span>}</td>
+          <td style={{ ...td, textAlign: 'left' }}>{(() => { const bs = ['dose', 'shape', 'sound'].filter(k => d[{ dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]] === true); return bs.length ? bs.map(k => <span key={k} style={{ marginRight: 3 }}>{CB(cautionBadge(k))}</span>) : <span style={{ color: t.textL }}>-</span> })()}</td>
           <td style={{ ...td, textAlign: 'left' }}>{d.storage_light ? B('차광', t.text, t.navText) : <span style={{ color: t.textL }}>-</span>}</td>
           <td style={{ ...td, textAlign: 'right' }}>{Number(d.recent_3m_usage) || 0}</td>
           <td style={{ ...td, textAlign: 'right' }}>{d.recent_1m_usage == null ? '-' : Number(d.recent_1m_usage)}</td>
@@ -8280,7 +8298,7 @@ function AtcView({ drugs, onReload }) {
     <div className="atc-print-only">
       <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '2mm' }}>ATC 카세트 배치 목록 ({slot91.length}건 · 가나다순){temp ? ' · 임시 사용량 기준 · ' + temp.file + ' · 지표: ' + metricLabel : ''}</div>
       <table><thead><tr>{[['슬롯', '12%', 'center'], ['약품명', '30%', 'left'], ['성분명', '46%', 'left'], ['배지', '12%', 'center']].map(([h, w, al]) => <th key={h} style={{ fontSize: '8pt', textAlign: al, borderBottom: '0.5pt solid ' + t.border, width: w }}>{h}</th>)}</tr></thead>
-      <tbody>{slot91Ga.map(({ slot, d }, i) => { const isFsp = String(slot).startsWith('FSP'); return <tr key={i}><td className="sl" style={{ fontWeight: 700, borderBottom: '0.3pt solid ' + t.border }}>{slot}</td><td className="nm" style={{ fontWeight: 600, borderBottom: '0.3pt solid ' + t.border }} title={d.drug_name}>{d.drug_name}</td><td className="ig" style={{ color: t.textM, borderBottom: '0.3pt solid ' + t.border }} title={[d.ingredient_en, d.ingredient_kr].filter(Boolean).join(' / ')}>{printIng(d)}</td><td className="bd" style={{ borderBottom: '0.3pt solid ' + t.border }}>{dBadges(d).filter(b => b.x !== '상비' && (isFsp || !(b.bg === t.greenL && b.fg === t.green))).map((b, bi) => <span key={bi} style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>)}</td></tr>; })}</tbody></table>
+      <tbody>{slot91Ga.map(({ slot, d }, i) => { const isFsp = String(slot).startsWith('FSP'); return <tr key={i}><td className="sl" style={{ fontWeight: 700, borderBottom: '0.3pt solid ' + t.border }}>{slot}</td><td className="nm" style={{ fontWeight: 600, borderBottom: '0.3pt solid ' + t.border }} title={d.drug_name}>{d.drug_name}</td><td className="ig" style={{ color: t.textM, borderBottom: '0.3pt solid ' + t.border }} title={[d.ingredient_en, d.ingredient_kr].filter(Boolean).join(' / ')}>{printIng(d)}</td><td className="bd" style={{ borderBottom: '0.3pt solid ' + t.border }}>{dBadges(d).filter(b => b.x !== '상비' && (isFsp || !(b.bg === t.greenL && b.fg === t.green))).map((b, bi) => <span key={bi} style={{ marginRight: 2 }}>{b.kind ? CB(b) : <span style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>}</span>)}</td></tr>; })}</tbody></table>
     </div>
   </div>;
 }
