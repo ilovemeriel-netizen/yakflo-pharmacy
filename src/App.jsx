@@ -8146,7 +8146,7 @@ function AtcView({ drugs, onReload }) {
   const slot91 = [];
   assigned.forEach(d => { if (d.atc_slot) slot91.push({ slot: d.atc_slot, d }); if (d.fsp_slot) slot91.push({ slot: d.fsp_slot, d }); });
   const slot91Ga = [...slot91].sort((x, y) => (x.d.drug_name || '').localeCompare(y.d.drug_name || '', 'ko'));
-  function dlXlsx(mode) {
+  async function dlXlsx(mode) {
     const src = mode === '슬롯' ? [...slot91].sort((x, y) => (Number(String(x.slot).replace('FSP', '999')) || 0) - (Number(String(y.slot).replace('FSP', '999')) || 0)) : slot91Ga;
     /* ★ 엑셀은 성분명을 영문·한글 **두 칸**으로 내보낸다(2026-11-07 지시).
        화면과 달리 **줄이지 않고 원본 그대로** 넣는다 — 엑셀은 칸 폭 제약이 없고,
@@ -8158,9 +8158,22 @@ function AtcView({ drugs, onReload }) {
          ★ 하나도 없으면 화면의 '-' 대신 **빈칸**이다 — 같은 파일의 「차광」 칸과 맞춘다.
          ★ `lasa_type` 칸 자체는 건드리지 않는다. */
     const xlLasa = d => { const s = cautionKey(d); return s === '-' ? '' : s; };
-    const ws = XLSX.utils.json_to_sheet(src.map(({ slot, d }) => ({ 슬롯: slot, 약품코드: d.drug_code, 약품명: d.drug_name, '성분명(영문)': d.ingredient_en || '', '성분명(한글)': d.ingredient_kr || '', 유사: xlLasa(d), 차광: isShade(d) ? '차광' : '', 최근3개월: d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage), 직전1개월: d.recent_1m_usage == null ? '' : Number(d.recent_1m_usage) })));
-    if (temp) XLSX.utils.sheet_add_aoa(ws, [[], ['임시 사용량 기준 · ' + temp.file + ' · 지표: ' + metricLabel]], { origin: -1 });
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, temp ? 'ATC배치(임시)' : 'ATC배치'); XLSX.writeFile(wb, 'ATC배치_' + (temp ? '임시_' : '') + mode + '_' + new Date().toISOString().split('T')[0] + '.xlsx');
+    /* ★ 2026-11-07 — 칸 너비·첫 줄 고정·머리글 굵게를 주려고 exceljs 로 옮겼다.
+       지금 쓰는 xlsx@0.18.5 커뮤니티판은 **고정과 굵게가 파일에 기록되지 않는다**(실측).
+       자세한 이유와 수치는 lib/atcListXlsx.js 머리글에 적어 두었다. */
+    const rows = src.map(({ slot, d }) => ({ slot, code: d.drug_code, name: d.drug_name,
+      ingEn: d.ingredient_en || '', ingKr: d.ingredient_kr || '',
+      lasa: xlLasa(d), light: isShade(d) ? '차광' : '',
+      r3: d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage),
+      r1: d.recent_1m_usage == null ? '' : Number(d.recent_1m_usage) }));
+    const { writeAtcListXlsx, atcListFileName } = await import('./lib/atcListXlsx.js');
+    const blob = await writeAtcListXlsx(rows, {
+      sheetName: temp ? 'ATC배치(임시)' : 'ATC배치',
+      note: temp ? '임시 사용량 기준 · ' + temp.file + ' · 지표: ' + metricLabel : null,
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = atcListFileName(mode, !!temp);
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   }
   const oral = (drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d)).sort((a, b) => usageScore(b) - usageScore(a));
   const top88 = oral.slice(0, 88), spare = oral.slice(88, 100);
