@@ -8294,8 +8294,8 @@ function AtcView({ drugs, onReload }) {
       </div>
       <StandardTable t={t} TS={atcTS} sk={atcSk} sd={atcSd} setSort={(k, sdv) => { atcSetSort(k, sdv); setAtcPage(1); }} hf={atcHf} layout="fixed" minWidth={1096} colWidths={[120, 120, 208, 220, 80, 72, 96, 96, 84]} hscroll={{ noLabel: true, ends: true }} cols={[
         { k: '_slotkey', h: '슬롯', sticky: { left: 0, w: 120 }, th: { textAlign: 'center' } },
-        { k: 'drug_code', h: '약품코드', sticky: { left: 120, w: 120 } },
-        { k: 'drug_name', h: '약품명', th: { minWidth: 200 } },
+        { k: 'drug_code', h: '약품코드' },
+        { k: 'drug_name', h: '약품명', sticky: { left: 120, w: 208 }, th: { minWidth: 200 } },
         { k: 'ingredient_kr', h: '성분명' },
         { k: 'lasa', h: '유사' },
         { k: 'light', h: '차광' },
@@ -8305,8 +8305,8 @@ function AtcView({ drugs, onReload }) {
       ]}>
         <tbody>{!atcPaged.length ? <tr><td colSpan={9} style={{ padding: 30, textAlign: 'center', color: t.textL }}>없음</td></tr> : atcPaged.map((e, i) => { const d = e.d; return <tr key={i} onMouseEnter={ev => ev.currentTarget.style.background = t.glass} onMouseLeave={ev => ev.currentTarget.style.background = ''}>
           <td style={{ ...td, fontWeight: 700, color: t.accent, textAlign: 'center', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border }}><span style={{ display: 'inline-flex', gap: 3, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>{e.slot}{!e.fsp && d.atc_pinned && B('상비', t.accentL, t.accent, t.accent)}{e.fsp && d.fsp_note && B(d.fsp_note, t.greenL, t.green, t.green)}{d.atc_excluded && B('수기 조제', t.amberL, t.amber, t.amber)}</span></td>
-          <td style={{ ...td, textAlign: 'left', position: 'sticky', left: 120, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, cursor: 'pointer', fontWeight: 600 }}>{d.drug_code}</span></td>
-          <td style={{ ...td, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_name}</td>
+          <td style={{ ...td, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span onClick={() => open360 && open360(d)} style={{ color: t.accent, cursor: 'pointer', fontWeight: 600 }}>{d.drug_code}</span></td>
+          <td style={{ ...td, textAlign: 'left', position: 'sticky', left: 120, zIndex: 2, background: t.card, borderRight: '1px solid ' + t.border, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_name}</td>
           <td style={{ ...td, textAlign: 'left', color: t.textM, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.ingredient_kr || '-'}</td>
           <td style={{ ...td, textAlign: 'left' }}>{(() => { const bs = ['dose', 'shape', 'sound'].filter(k => d[{ dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]] === true); return bs.length ? bs.map(k => <span key={k} style={{ marginRight: 3 }}>{CB(cautionBadge(k))}</span>) : <span style={{ color: t.textL }}>-</span> })()}</td>
           <td style={{ ...td, textAlign: 'left' }}>{isShade(d) ? CB(shadeBadge()) : <span style={{ color: t.textL }}>-</span>}</td>
