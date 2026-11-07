@@ -8150,8 +8150,15 @@ function AtcView({ drugs, onReload }) {
     const src = mode === '슬롯' ? [...slot91].sort((x, y) => (Number(String(x.slot).replace('FSP', '999')) || 0) - (Number(String(y.slot).replace('FSP', '999')) || 0)) : slot91Ga;
     /* ★ 엑셀은 성분명을 영문·한글 **두 칸**으로 내보낸다(2026-11-07 지시).
        화면과 달리 **줄이지 않고 원본 그대로** 넣는다 — 엑셀은 칸 폭 제약이 없고,
-       줄여서 넣으면 뒤 성분이 사라져 자료로 못 쓴다. */
-    const ws = XLSX.utils.json_to_sheet(src.map(({ slot, d }) => ({ 슬롯: slot, 약품코드: d.drug_code, 약품명: d.drug_name, '성분명(영문)': d.ingredient_en || '', '성분명(한글)': d.ingredient_kr || '', 유사: d.lasa_type || '', 차광: isShade(d) ? '차광' : '', 최근3개월: d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage), 직전1개월: d.recent_1m_usage == null ? '' : Number(d.recent_1m_usage) })));
+       줄여서 넣으면 뒤 성분이 사라져 자료로 못 쓴다.
+       ★ 「유사」 칸은 화면과 **같은 자료**(caution_* 74종)를 본다 — 2026-11-07 수정.
+         PR #419 에서 화면만 lasa_type → caution_* 로 바꾸고 **이 엑셀을 빠뜨려서**,
+         라식스정40mg 처럼 화면에는 모양 뱃지가 있는데 엑셀은 빈칸인 약이 있었다.
+         여러 개면 화면 뱃지와 같은 차례(용량 · 모양 · 발음)로 「용량·모양」처럼 적는다.
+         ★ 하나도 없으면 화면의 '-' 대신 **빈칸**이다 — 같은 파일의 「차광」 칸과 맞춘다.
+         ★ `lasa_type` 칸 자체는 건드리지 않는다. */
+    const xlLasa = d => { const s = cautionKey(d); return s === '-' ? '' : s; };
+    const ws = XLSX.utils.json_to_sheet(src.map(({ slot, d }) => ({ 슬롯: slot, 약품코드: d.drug_code, 약품명: d.drug_name, '성분명(영문)': d.ingredient_en || '', '성분명(한글)': d.ingredient_kr || '', 유사: xlLasa(d), 차광: isShade(d) ? '차광' : '', 최근3개월: d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage), 직전1개월: d.recent_1m_usage == null ? '' : Number(d.recent_1m_usage) })));
     if (temp) XLSX.utils.sheet_add_aoa(ws, [[], ['임시 사용량 기준 · ' + temp.file + ' · 지표: ' + metricLabel]], { origin: -1 });
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, temp ? 'ATC배치(임시)' : 'ATC배치'); XLSX.writeFile(wb, 'ATC배치_' + (temp ? '임시_' : '') + mode + '_' + new Date().toISOString().split('T')[0] + '.xlsx');
   }
