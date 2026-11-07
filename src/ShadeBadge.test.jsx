@@ -185,8 +185,9 @@ describe('★ 뱃지 그리기 — 주의 3종과 같은 틀', () => {
     expect(CB).toContain('badgeStyle(b.bg, b.fg)')
   })
 
-  it('카세트 칸·인쇄 표 모두 아이콘 뱃지를 CB 로 그린다', () => {
-    expect((CODE.match(/\(b\.kind \|\| b\.shade\) \? CB\(b\)/g) || []).length).toBe(2)
+  it('카세트 칸·제안 칸·인쇄 표 모두 아이콘 뱃지를 CB 로 그린다', () => {
+    /* 현재배치 칸 · 사용량순 제안 칸(2026-11-07 추가) · 인쇄 표 = 3곳 */
+    expect((CODE.match(/\(b\.kind \|\| b\.shade\) \? CB\(b\)/g) || []).length).toBe(3)
   })
 
   it('뱃지 모양(크기·둥글기)은 바뀌지 않았다', () => {
