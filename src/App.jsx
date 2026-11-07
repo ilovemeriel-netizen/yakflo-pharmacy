@@ -26,8 +26,8 @@ const VaccineManage = lazy(() => import('./VaccineManage'))
 import BulkUploadModal from './BulkUploadModal'
 import MP from './MultiPick'
 import { DrugChips, HighAlertChip, CautionChip, WarnTriangle } from './CautionChips'
-import { CAUTION_ORDER, cautionCheckColor, cautionChipColors } from './lib/cautionDefs'
-import { CautionIcon } from './CautionChips'
+import { CAUTION_ORDER, cautionCheckColor, cautionChipColors, SHADE_BG, SHADE_FG, SHADE_LABEL, isShade } from './lib/cautionDefs'
+import { CautionIcon, ShadeIcon } from './CautionChips'
 import LabelPrint from './LabelPrint'
 import UsageUploadModal from './UsageUploadModal'
 /* 마약·향정 판정은 모달과 **같은 함수 하나**를 쓴다 — 두 곳이 갈리면 탭마다 답이 달라진다 */
@@ -7955,9 +7955,11 @@ function AtcView({ drugs, onReload }) {
   const assigned = (drugs || []).filter(d => d.atc_slot || d.fsp_slot);
   const byAtc = {}, byFsp = {};
   assigned.forEach(d => { if (d.atc_slot) byAtc[String(d.atc_slot)] = d; if (d.fsp_slot) byFsp[String(d.fsp_slot)] = d; });
+  /* ★ 칸 색의 차광도 뱃지와 **같은 자료**(storage_method 의 「차광」)를 본다.
+     한쪽만 바꾸면 같은 칸에서 색과 뱃지가 서로 다른 말을 한다. (2026-11-07 이정화 님 지시) */
   const cs = d => {
     if (!d) return { bg: t.card, bd: t.border, fg: t.textL };
-    if (d.storage_light) return { bg: t.text, bd: t.text, fg: t.bg };
+    if (isShade(d)) return { bg: t.text, bd: t.text, fg: t.bg };
     if (d.lasa_type === '모양') return { bg: t.coral, bd: t.coral, fg: t.text };
     if (d.lasa_type === '용량') return { bg: t.blueL, bd: t.blue, fg: t.text };
     if (d.lasa_type === '발음') return { bg: t.amberL, bd: t.amber, fg: t.text };
@@ -7967,7 +7969,7 @@ function AtcView({ drugs, onReload }) {
     const d = byMap[key]; const s = cs(d); const dash = fluid && !d; const active = q.trim() !== ''; const hit = active && d && matches(d); const dim = active && !hit; const badge = (key === 'FSP2' || key === 'FSP4') ? '0.5T' : null; const sel = editMode && editable && selSlot === key;
     return <div key={key} onClick={() => { if (editMode && editable) cellEdit(key, d); else if (d && open360) open360(d); }} title={d ? d.drug_name : (fluid ? '유동(미배정)' : '')}
       style={{ border: (sel || hit) ? '2px solid ' + t.accent : ((dash ? '1px dashed ' : '1px solid ') + (dash ? t.textL : s.bd)), background: sel ? t.accentL : (dash ? t.card : s.bg), color: dash ? t.textL : s.fg, borderRadius: 6, padding: '3px 5px', minHeight: 46, opacity: dim ? 0.3 : 1, cursor: (d || (editMode && editable)) ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
-      <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.85, display: 'flex', justifyContent: 'space-between', gap: 3, alignItems: 'center' }}><span>{label}</span><span style={{ display: 'inline-flex', gap: 2, flexWrap: 'wrap' }}>{d && dBadges(d).filter(b => String(key).startsWith('FSP') || !(b.bg === t.greenL && b.fg === t.green)).map((b, bi) => <span key={bi} style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>)}</span></div>
+      <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.85, display: 'flex', justifyContent: 'space-between', gap: 3, alignItems: 'center' }}><span>{label}</span><span style={{ display: 'inline-flex', gap: 2, flexWrap: 'wrap' }}>{d && dBadges(d).filter(b => String(key).startsWith('FSP') || !(b.bg === t.greenL && b.fg === t.green)).map((b, bi) => <span key={bi} style={{ display: 'inline-flex' }}>{(b.kind || b.shade) ? CB(b) : <span style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>}</span>)}</span></div>
       <div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflow: 'hidden' }}>{d ? d.drug_name : (fluid ? '유동' : '')}</div>
     </div>;
   };
@@ -7990,17 +7992,22 @@ function AtcView({ drugs, onReload }) {
     const label = { dose: '용량', shape: '모양', sound: '발음' }[kind];
     return { kind, x: label, bg, fg };
   };
+  /* 아이콘이 붙는 뱃지 — 주의 3종(kind)과 차광(shade)이 같은 틀을 쓴다. */
   const CB = b => <span style={{ ...badgeStyle(b.bg, b.fg), display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-    <CautionIcon kind={b.kind} size={8} color={b.fg} />{b.x}</span>;
+    {b.shade ? <ShadeIcon size={8} color={b.fg} /> : <CautionIcon kind={b.kind} size={8} color={b.fg} />}{b.x}</span>;
+  /* ★ 차광 — 검정 바탕 + 노랑 글씨 + 초승달. 화면 모드를 타지 않는 고정값이다.
+     예전에는 바탕 t.text · 글씨 t.navText 였는데, 어두운 팔레트에서는 둘 다 #E8E6E1 이라
+     글씨가 바탕에 묻혀 **빈 알약**으로 보였다(2026-11-07 확인). */
+  const shadeBadge = () => ({ shade: true, x: SHADE_LABEL, bg: SHADE_BG, fg: SHADE_FG });
   /* ★ 뱃지 차례 — 상비 · 용량 → 모양 → 발음 · 차광 · 0.5T.
      주의 3종은 `caution_*`(74종)을 본다. 예전에는 `lasa_type`(28종)을 봤는데
      같은 뜻의 칸이 둘로 갈라져 있었다. 한쪽만 고치면 두 화면이 다른 말을 한다.
      ★ `lasa_type` 칸 자체는 **건드리지 않는다**(지우지도 고치지도 않는다). */
-  const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }); for (const k of ['dose', 'shape', 'sound']) { const col = { dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]; if (d[col] === true) a.push(cautionBadge(k)); } if (d.storage_light) a.push({ x: '차광', bg: t.text, fg: t.navText }); if (d.fsp_slot && d.fsp_note) a.push({ x: d.fsp_note, bg: t.greenL, fg: t.green, bd: t.green }); return a; };
+  const dBadges = d => { const a = []; if (!d) return a; if (d.atc_pinned) a.push({ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }); for (const k of ['dose', 'shape', 'sound']) { const col = { dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]; if (d[col] === true) a.push(cautionBadge(k)); } if (isShade(d)) a.push(shadeBadge()); if (d.fsp_slot && d.fsp_note) a.push({ x: d.fsp_note, bg: t.greenL, fg: t.green, bd: t.green }); return a; };
   /* 인쇄 전용 성분명: 「영문(한글)」, 복합제(구분자 '/')는 첫 성분 외 N종 축약. 개수 다르면 영문 기준. 화면·엑셀 무관 */
   const printIng = d => { const en = String((d && d.ingredient_en) || '').trim(); const kr = String((d && d.ingredient_kr) || '').trim(); const enP = en ? en.split('/').map(s => s.trim()).filter(Boolean) : []; const krP = kr ? kr.split('/').map(s => s.trim()).filter(Boolean) : []; const cnt = enP.length || krP.length; const fe = enP[0] || ''; const fk = krP[0] || ''; const first = fe && fk ? fe + '(' + fk + ')' : (fe || fk); return cnt > 1 ? first + ' 외 ' + (cnt - 1) + '종' : first; };
   /* 슬롯 정렬키(숫자): 카세트 1~80 → 확장 301~308 → FSP5~1(1001~1005). 문자열정렬 금지 */
-  const mkRow = (slot, d, fsp) => ({ slot, d, fsp, _slotkey: fsp ? 1000 + (6 - Number(String(slot).replace('FSP', ''))) : Number(slot), drug_code: d.drug_code, drug_name: d.drug_name, ingredient_kr: d.ingredient_kr || '', lasa: d.lasa_type || '-', light: d.storage_light ? '차광' : '-', kind: fsp ? 'FSP' : '카세트', r3: Number(d.recent_3m_usage) || 0, r1: d.recent_1m_usage == null ? null : Number(d.recent_1m_usage), mavg: d.monthly_avg == null ? null : Number(d.monthly_avg) });
+  const mkRow = (slot, d, fsp) => ({ slot, d, fsp, _slotkey: fsp ? 1000 + (6 - Number(String(slot).replace('FSP', ''))) : Number(slot), drug_code: d.drug_code, drug_name: d.drug_name, ingredient_kr: d.ingredient_kr || '', lasa: d.lasa_type || '-', light: isShade(d) ? '차광' : '-', kind: fsp ? 'FSP' : '카세트', r3: Number(d.recent_3m_usage) || 0, r1: d.recent_1m_usage == null ? null : Number(d.recent_1m_usage), mavg: d.monthly_avg == null ? null : Number(d.monthly_avg) });
   const atcRows = (() => { const ent = []; assigned.filter(matches).forEach(d => { if (d.atc_slot) ent.push(mkRow(d.atc_slot, d, false)); if (d.fsp_slot) ent.push(mkRow(d.fsp_slot, d, true)); }); return ent; })();
   const _uA = arr => [...new Set(arr.filter(v => v != null && String(v).trim() !== ''))];
   const atcHf = {
@@ -8020,7 +8027,7 @@ function AtcView({ drugs, onReload }) {
   const slot91Ga = [...slot91].sort((x, y) => (x.d.drug_name || '').localeCompare(y.d.drug_name || '', 'ko'));
   function dlXlsx(mode) {
     const src = mode === '슬롯' ? [...slot91].sort((x, y) => (Number(String(x.slot).replace('FSP', '999')) || 0) - (Number(String(y.slot).replace('FSP', '999')) || 0)) : slot91Ga;
-    const ws = XLSX.utils.json_to_sheet(src.map(({ slot, d }) => ({ 슬롯: slot, 약품코드: d.drug_code, 약품명: d.drug_name, 성분명: d.ingredient_kr || '', 유사: d.lasa_type || '', 차광: d.storage_light ? '차광' : '', 최근3개월: d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage), 직전1개월: d.recent_1m_usage == null ? '' : Number(d.recent_1m_usage) })));
+    const ws = XLSX.utils.json_to_sheet(src.map(({ slot, d }) => ({ 슬롯: slot, 약품코드: d.drug_code, 약품명: d.drug_name, 성분명: d.ingredient_kr || '', 유사: d.lasa_type || '', 차광: isShade(d) ? '차광' : '', 최근3개월: d.recent_3m_usage == null ? '' : Number(d.recent_3m_usage), 직전1개월: d.recent_1m_usage == null ? '' : Number(d.recent_1m_usage) })));
     if (temp) XLSX.utils.sheet_add_aoa(ws, [[], ['임시 사용량 기준 · ' + temp.file + ' · 지표: ' + metricLabel]], { origin: -1 });
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, temp ? 'ATC배치(임시)' : 'ATC배치'); XLSX.writeFile(wb, 'ATC배치_' + (temp ? '임시_' : '') + mode + '_' + new Date().toISOString().split('T')[0] + '.xlsx');
   }
@@ -8095,7 +8102,7 @@ function AtcView({ drugs, onReload }) {
   const cKeep = [...curCodes2].filter(cc => t88p.has(cc));
   /* A(신규 진입) 표 행 — aNew(0.5T FSP 적재 표기 포함) + 수기조제(top88·미배정). FSP 1T전용은 제외. 카드·헤더 건수 공용 */
   const aNewRows = [...aNew.map(d => ({ _slot: atcSlotKey(propSlotOf[d.drug_code]), slotLabel: propSlotOf[d.drug_code], name: d.drug_name, r3: usageScore(d), rank: rankFull.get(d.drug_code) || null, excl: false, reason: null, fspLoad: (d.fsp_slot && d.fsp_note) ? (d.fsp_slot + ' ' + d.fsp_note + ' 적재') : null, d })), ...manualEx.filter(d => (rankFull.get(d.drug_code) || 999) <= 88 && !curCodes2.has(d.drug_code)).map(d => ({ _slot: 9999, slotLabel: null, name: d.drug_name, r3: usageScore(d), rank: rankFull.get(d.drug_code) || null, excl: true, reason: d.atc_exclude_reason, fspLoad: null, d }))];
-  const pcs = (d, exp) => { if (!d) return { bg: t.card, bd: t.border, fg: t.textL }; if (d.atc_pinned) return { bg: t.greenL, bd: t.green, fg: t.green }; if (d.storage_light) return { bg: t.text, bd: t.text, fg: t.navText }; if (d.lasa_type === '모양') return { bg: t.coral, bd: t.coral, fg: t.text }; if (d.lasa_type === '용량') return { bg: t.blueL, bd: t.blue, fg: t.blue }; if (d.lasa_type === '발음') return { bg: t.amberL, bd: t.amber, fg: t.amber }; if (exp) return { bg: t.bg, bd: t.border, fg: t.textM }; return { bg: t.purpleL, bd: t.border, fg: t.accent }; };
+  const pcs = (d, exp) => { if (!d) return { bg: t.card, bd: t.border, fg: t.textL }; if (d.atc_pinned) return { bg: t.greenL, bd: t.green, fg: t.green }; if (isShade(d)) return { bg: t.text, bd: t.text, fg: t.navText }; if (d.lasa_type === '모양') return { bg: t.coral, bd: t.coral, fg: t.text }; if (d.lasa_type === '용량') return { bg: t.blueL, bd: t.blue, fg: t.blue }; if (d.lasa_type === '발음') return { bg: t.amberL, bd: t.amber, fg: t.amber }; if (exp) return { bg: t.bg, bd: t.border, fg: t.textM }; return { bg: t.purpleL, bd: t.border, fg: t.accent }; };
   const PCell = (slot, exp) => { const d = pIdeal[slot]; const s = pcs(d, exp); const active = q.trim() !== ''; const hit = active && d && matches(d); const dim = active && !hit; return <div key={slot} onClick={() => d && open360 && open360(d)} title={d ? d.drug_name : ''} style={{ border: hit ? '2px solid ' + t.accent : '1px solid ' + s.bd, background: s.bg, color: s.fg, borderRadius: 6, padding: '3px 5px', minHeight: 46, opacity: dim ? 0.3 : 1, cursor: d ? 'pointer' : 'default', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ fontSize: 9, opacity: 0.62 }}>{slot}</div><div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflow: 'hidden' }}>{d ? d.drug_name : ''}</div></div>; };  const th = { textAlign: 'left', padding: '6px 8px', color: t.textM, borderBottom: '1px solid ' + t.border, fontSize: 11, whiteSpace: 'nowrap' };
   const td = { padding: '5px 8px', fontSize: 11, borderBottom: '1px solid ' + t.border };
   async function runSwaps(pairs, desc) { const { data, error } = await supabase.rpc('swap_atc_slots', { p_pairs: pairs }); if (error) { setMsg('교환 실패: ' + error.message); return; } if (data && data.ok === false) { setMsg('교환 차단 - ' + (data.failed || []).map(f => f.slot_a + '<->' + f.slot_b + '(' + f.reason + ')').join(', ')); return; } setMsg('슬롯 교환 ' + (data && data.done != null ? data.done : pairs.length) + '건 완료' + (desc ? ' - ' + desc : '')); setSelSlot(null); setPending(null); setSelPairs({}); onReload && onReload(); setTimeout(() => setMsg(null), 4000); }
@@ -8276,7 +8283,7 @@ function AtcView({ drugs, onReload }) {
           <td style={{ ...td, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.drug_name}</td>
           <td style={{ ...td, textAlign: 'left', color: t.textM, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.ingredient_kr || '-'}</td>
           <td style={{ ...td, textAlign: 'left' }}>{(() => { const bs = ['dose', 'shape', 'sound'].filter(k => d[{ dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }[k]] === true); return bs.length ? bs.map(k => <span key={k} style={{ marginRight: 3 }}>{CB(cautionBadge(k))}</span>) : <span style={{ color: t.textL }}>-</span> })()}</td>
-          <td style={{ ...td, textAlign: 'left' }}>{d.storage_light ? B('차광', t.text, t.navText) : <span style={{ color: t.textL }}>-</span>}</td>
+          <td style={{ ...td, textAlign: 'left' }}>{isShade(d) ? CB(shadeBadge()) : <span style={{ color: t.textL }}>-</span>}</td>
           <td style={{ ...td, textAlign: 'right' }}>{Number(d.recent_3m_usage) || 0}</td>
           <td style={{ ...td, textAlign: 'right' }}>{d.recent_1m_usage == null ? '-' : Number(d.recent_1m_usage)}</td>
           <td style={{ ...td, textAlign: 'right' }}>{d.monthly_avg == null ? '-' : Number(d.monthly_avg)}</td>
@@ -8297,8 +8304,13 @@ function AtcView({ drugs, onReload }) {
     </div>}
     <div className="atc-print-only">
       <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '2mm' }}>ATC 카세트 배치 목록 ({slot91.length}건 · 가나다순){temp ? ' · 임시 사용량 기준 · ' + temp.file + ' · 지표: ' + metricLabel : ''}</div>
-      <table><thead><tr>{[['슬롯', '12%', 'center'], ['약품명', '30%', 'left'], ['성분명', '46%', 'left'], ['배지', '12%', 'center']].map(([h, w, al]) => <th key={h} style={{ fontSize: '8pt', textAlign: al, borderBottom: '0.5pt solid ' + t.border, width: w }}>{h}</th>)}</tr></thead>
-      <tbody>{slot91Ga.map(({ slot, d }, i) => { const isFsp = String(slot).startsWith('FSP'); return <tr key={i}><td className="sl" style={{ fontWeight: 700, borderBottom: '0.3pt solid ' + t.border }}>{slot}</td><td className="nm" style={{ fontWeight: 600, borderBottom: '0.3pt solid ' + t.border }} title={d.drug_name}>{d.drug_name}</td><td className="ig" style={{ color: t.textM, borderBottom: '0.3pt solid ' + t.border }} title={[d.ingredient_en, d.ingredient_kr].filter(Boolean).join(' / ')}>{printIng(d)}</td><td className="bd" style={{ borderBottom: '0.3pt solid ' + t.border }}>{dBadges(d).filter(b => b.x !== '상비' && (isFsp || !(b.bg === t.greenL && b.fg === t.green))).map((b, bi) => <span key={bi} style={{ marginRight: 2 }}>{b.kind ? CB(b) : <span style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>}</span>)}</td></tr>; })}</tbody></table>
+      {/* ★ 배지 칸 12% → 16%, 성분명 46% → 42% (2026-11-07 승인).
+          A4 세로·여백 12mm 라 쓸 수 있는 폭이 186mm 다. 12% = 22.2mm 로는
+          뱃지 3개(라식스정40mg = 모양 + 차광 + 0.5T, 28.05mm)가 5.83mm 넘쳤다.
+          16% = 29.6mm 부터 들어간다(12·14·16·18·20% 를 실제로 재서 고른 값).
+          성분명은 원래 한 줄 말줄임이라 글자가 조금 일찍 잘릴 뿐이다. */}
+      <table><thead><tr>{[['슬롯', '12%', 'center'], ['약품명', '30%', 'left'], ['성분명', '42%', 'left'], ['배지', '16%', 'center']].map(([h, w, al]) => <th key={h} style={{ fontSize: '8pt', textAlign: al, borderBottom: '0.5pt solid ' + t.border, width: w }}>{h}</th>)}</tr></thead>
+      <tbody>{slot91Ga.map(({ slot, d }, i) => { const isFsp = String(slot).startsWith('FSP'); return <tr key={i}><td className="sl" style={{ fontWeight: 700, borderBottom: '0.3pt solid ' + t.border }}>{slot}</td><td className="nm" style={{ fontWeight: 600, borderBottom: '0.3pt solid ' + t.border }} title={d.drug_name}>{d.drug_name}</td><td className="ig" style={{ color: t.textM, borderBottom: '0.3pt solid ' + t.border }} title={[d.ingredient_en, d.ingredient_kr].filter(Boolean).join(' / ')}>{printIng(d)}</td><td className="bd" style={{ borderBottom: '0.3pt solid ' + t.border }}>{dBadges(d).filter(b => b.x !== '상비' && (isFsp || !(b.bg === t.greenL && b.fg === t.green))).map((b, bi) => <span key={bi} style={{ marginRight: 2 }}>{(b.kind || b.shade) ? CB(b) : <span style={badgeStyle(b.bg, b.fg, b.bd)}>{b.x}</span>}</span>)}</td></tr>; })}</tbody></table>
     </div>
   </div>;
 }

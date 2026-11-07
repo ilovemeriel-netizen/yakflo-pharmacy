@@ -73,6 +73,20 @@ export function BubbleIcon({ size = 11, color = 'currentColor' }) {
   )
 }
 
+/* 차광 — 초승달. 「어둡게 보관」.
+   ★ 왜 초승달인가: 인쇄 크기(8px)에서도 읽혀야 한다. 해+사선 안도 그려 봤는데
+     동그라미·빛살·사선이 8px 에서 뭉개져 점이 흩어진 얼룩으로 보였다(2026-11-07 시안 30).
+     초승달은 덩어리가 하나라 작아도 모양이 남는다. (이정화 님 ⓑ 선택)
+   ★ 바깥 원에서 안쪽 원을 뺀 모양이라 획 두께에 기대지 않는다. */
+export function ShadeIcon({ size = 11, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"
+      style={{ display: 'inline-block', flexShrink: 0 }}>
+      <path d="M16.2 2.6 A10.4 10.4 0 1 0 16.2 21.4 A9.4 9.4 0 1 1 16.2 2.6 Z" fill={color} />
+    </svg>
+  )
+}
+
 export function CautionIcon({ kind, size = 11, color = 'currentColor' }) {
   if (kind === 'dose') return <ScaleIcon size={size} color={color} />
   if (kind === 'shape') return <CapsuleIcon size={size} color={color} />

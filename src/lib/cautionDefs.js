@@ -32,6 +32,28 @@ export const CAUTION_ORDER = [
   { kind: 'sound', col: 'caution_sound', label: '발음' },
 ]
 
+/* ── 차광 (2026-11-07 이정화 님 확정) ───────────────────────────────────
+ *  바탕 #1F1F1F · 글씨 #FFE082 — **둘 다 이미 쓰던 값이다.**
+ *    · #1F1F1F 은 위 SOUND_CHECK(발음 체크 표시)와 같은 값
+ *    · #FFE082 는 팔레트 t.yellow(발음 칩 바탕)와 같은 값
+ *  발음 칩(노란 바탕·검은 글씨)과 **정확히 뒤집힌 모양**이라 나란히 놓아도 갈린다.
+ *  대비비 12.7 : 1.
+ *
+ *  ★ 화면 모드를 타지 않는다. 지금 차광 뱃지는 바탕 t.text · 글씨 t.navText 인데
+ *    어두운 팔레트에서는 **둘 다 #E8E6E1** 이라 글씨가 사라져 있었다. 고정값으로 막는다.
+ *
+ *  ★ 차광 여부는 `storage_method` 에 「차광」이 들어 있는지로 본다(2026-11-07 승인).
+ *    예전에는 `storage_light`(참/거짓)를 봤는데, 그 칸은 켜고 끌 화면이 없어
+ *    ATC 카세트 약 9종만 손으로 찍힌 상태였다(보관방법 차광 155종의 부분집합).
+ *    ★ `storage_light` 칸 자체는 **건드리지 않는다** — 읽지만 않는다. */
+export const SHADE_BG = '#1F1F1F'
+export const SHADE_FG = '#FFE082'
+export const SHADE_LABEL = '차광'
+
+export function isShade(d) {
+  return String((d && d.storage_method) || '').includes('차광')
+}
+
 /* 화면이 어두운 쪽인지 — 팔레트가 스스로 밝힌다(themes.light/dark 의 mode) */
 export function isDark(t) { return (t && t.mode) === 'dark' }
 
