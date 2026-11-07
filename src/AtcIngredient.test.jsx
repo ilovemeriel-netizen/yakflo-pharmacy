@@ -193,8 +193,21 @@ describe('★ 건드리지 않은 것', () => {
     expect(CODE).toContain("String(d.ingredient_kr||'').toLowerCase().includes(kw)")
   })
 
-  it('표의 열 폭·고정 열은 그대로다', () => {
-    expect(CODE).toContain('colWidths={[120, 120, 208, 220, 80, 72, 96, 96, 84]}')
+  it('★ 성분명 칸만 220 → 320px (나머지 열·고정 열은 그대로)', () => {
+    /* 2026-11-07 실측 — 220px 에서는 88종 중 54종(61%)이 잘렸다. 320px 면 11종(13%).
+       창 1280·1600px 에서는 **가로 스크롤이 여전히 0** 이다. */
+    expect(CODE).toContain('colWidths={[120, 120, 208, 320, 80, 72, 96, 96, 84]}')
     expect(CODE).toContain("{ k: 'drug_name', h: '약품명', sticky: { left: 120, w: 208 }")
+  })
+
+  it('★ 배치 목록 표의 minWidth 가 열 폭 합과 **정확히** 같다 (어긋나면 열이 밀린다)', () => {
+    /* ATC 화면에는 StandardTable 이 여섯 개 있다. 그중 9열짜리 **배치 목록 표**만 본다.
+       ※ 나머지 표 두 곳은 예전부터 minWidth 와 합이 다르다(640/676 · 340/332).
+          이번 지시 밖이라 건드리지 않았다 — 백로그 메모로만 남긴다. */
+    const m = ATC.match(/minWidth=\{(\d+)\} colWidths=\{\[(120, 120, 208, [\d, ]+)\]\}/)
+    expect(m).toBeTruthy()
+    const sum = m[2].split(',').map(Number).reduce((a, b) => a + b, 0)
+    expect(Number(m[1])).toBe(sum)
+    expect(sum).toBe(1196)
   })
 })

@@ -8383,7 +8383,7 @@ function AtcView({ drugs, onReload }) {
         <div style={{ flex: 1 }} />
         {atcDf > 0 && <button onClick={_atcReset} title="필터·정렬 초기화" style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent + '12', color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>필터 초기화 ({atcDf})</button>}
       </div>
-      <StandardTable t={t} TS={atcTS} sk={atcSk} sd={atcSd} setSort={(k, sdv) => { atcSetSort(k, sdv); setAtcPage(1); }} hf={atcHf} layout="fixed" minWidth={1096} colWidths={[120, 120, 208, 220, 80, 72, 96, 96, 84]} hscroll={{ noLabel: true, ends: true }} cols={[
+      <StandardTable t={t} TS={atcTS} sk={atcSk} sd={atcSd} setSort={(k, sdv) => { atcSetSort(k, sdv); setAtcPage(1); }} hf={atcHf} layout="fixed" minWidth={1196} colWidths={[120, 120, 208, 320, 80, 72, 96, 96, 84]} hscroll={{ noLabel: true, ends: true }} cols={[
         { k: '_slotkey', h: '슬롯', sticky: { left: 0, w: 120 }, th: { textAlign: 'center' } },
         { k: 'drug_code', h: '약품코드' },
         { k: 'drug_name', h: '약품명', sticky: { left: 120, w: 208 }, th: { minWidth: 200 } },
