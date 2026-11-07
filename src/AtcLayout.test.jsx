@@ -23,10 +23,10 @@ describe('★ 칸 머리 줄 — 뱃지가 칸을 넘지 않게', () => {
     expect(CODE).toContain('const badgeWrap = {')
   })
 
-  it('★ 뱃지 묶음이 제 너비를 줄일 수 있다 (minWidth:0 + flexShrink)', () => {
+  it('★ 뱃지 묶음은 줄지 않고 **줄바꿈**한다 (2026-11-07 — minWidth:0 은 줄바꿈을 막았다)', () => {
     const w = between('const badgeWrap = {', '};')
-    expect(w).toContain('minWidth: 0')
-    expect(w).toContain('flexShrink: 1')
+    expect(w).toContain('flexShrink: 0')
+    expect(w).not.toContain('minWidth: 0')
     expect(w).toContain("flexWrap: 'wrap'")
   })
 
@@ -35,8 +35,9 @@ describe('★ 칸 머리 줄 — 뱃지가 칸을 넘지 않게', () => {
   })
 
   it('★ 슬롯 번호는 줄어들지 않는다 (번호가 먼저 찌그러지면 안 된다)', () => {
-    expect((CODE.match(/<span style=\{\{ flexShrink: 0 \}\}>\{label\}<\/span>/g) || []).length).toBe(1)
-    expect((CODE.match(/<span style=\{\{ flexShrink: 0 \}\}>\{slot\}<\/span>/g) || []).length).toBe(1)
+    /* 2026-11-07 — 번호에 투명도까지 붙어 slotNo·slotNoDim 으로 옮겼다 */
+    expect(CODE).toContain('<span style={slotNo}>{label}</span>')
+    expect(CODE).toContain('<span style={slotNoDim}>{slot}</span>')
   })
 
   it('머리 줄 글자 크기·굵기는 바뀌지 않았다', () => {
@@ -44,6 +45,7 @@ describe('★ 칸 머리 줄 — 뱃지가 칸을 넘지 않게', () => {
     expect(s).toContain('fontSize: 9')
     expect(s).toContain('fontWeight: 700')
     expect(s).toContain("justifyContent: 'space-between'")
+    expect(s).toContain("flexWrap: 'wrap'")   /* 2026-11-07 — 안 맞으면 뱃지가 제 줄로 */
   })
 })
 
@@ -68,8 +70,9 @@ describe('★ 두 칸이 같은 뱃지를 쓴다', () => {
     expect(PCELL).toContain('(b.kind || b.shade) ? CB(b)')
   })
 
-  it('제안 칸의 흐린 글씨(opacity 0.62)는 그대로다', () => {
-    expect(PCELL).toContain('opacity: 0.62')
+  it('제안 칸의 흐린 글씨(0.62)는 이제 **슬롯 번호에만** 걸린다', () => {
+    expect(PCELL).toContain('style={slotNoDim}')
+    expect(PCELL).not.toContain('opacity: 0.62')
   })
 
   it('★ 제안 칸은 0.5T(fsp_note)도 거르지 않는다 — 현재배치 칸만 거른다', () => {
@@ -121,8 +124,8 @@ describe('★ 줄바꿈이 실제로 되는가 (부품을 그려서 잰다)', ()
     expect(o.flexWrap).toBe('wrap')
   })
 
-  it('★ minWidth 가 0 이다 — 이 값이 없으면 wrap 이 있어도 줄바꿈이 안 된다', () => {
-    expect(wrapStyle().minWidth).toBe(0)
+  it('★ minWidth 가 없다 — 있으면 줄바꿈 대신 줄어든다(2026-11-07 실측)', () => {
+    expect(wrapStyle().minWidth).toBeUndefined()
   })
 
   it('뱃지 사이 간격은 2 그대로다', () => {
@@ -137,7 +140,7 @@ describe('★ 줄바꿈이 실제로 되는가 (부품을 그려서 잰다)', ()
 
 describe('★ 건드리지 않은 것', () => {
   it('★ 칸 높이는 **한 값**을 셋이 같이 쓴다 (뱃지 개수와 상관없이 같은 높이)', () => {
-    expect(CODE).toContain('const CELL_MIN = 60;')
+    expect(CODE).toContain('const CELL_MIN = 74;')
     /* 현재배치 칸 · 사용량순 제안 칸 · 제안 화면 FSP 칸 = 3곳 */
     expect((CODE.match(/minHeight: CELL_MIN/g) || []).length).toBe(3)
     expect(CODE).not.toContain('minHeight: 46')

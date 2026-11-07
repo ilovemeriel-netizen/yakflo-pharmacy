@@ -236,7 +236,7 @@ describe('★ 건드리지 않은 것', () => {
   })
 
   it('칸 높이·고정 열은 그대로', () => {
-    expect(CODE).toContain('const CELL_MIN = 60;')
+    expect(CODE).toContain('const CELL_MIN = 74;')
     expect(CODE).toContain("{ k: 'drug_name', h: '약품명', sticky: { left: 120, w: 208 }")
   })
 })
