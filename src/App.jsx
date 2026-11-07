@@ -7128,9 +7128,9 @@ export function LocDrugsModal({ loc, desc, onClose, onSaved, onFlash }) {
        ② 괄호·대괄호 **밖의** '/' 에서만 자른다. 단순 split 은 지씨플루의 [A/Victoria/…] 와
           스카이조스터의 (Strain: Oka/SK, …) 를 중간에서 끊어 괄호가 열린 채 남는다.
        ③ 영문·한글이 모두 없으면 「—」.
-   ★ 2026-11-07 — ATC 쪽이 「영문 (한글)」(괄호 앞 빈칸)으로 바뀌었다. 여기는 **지시 밖이라
-     건드리지 않았다** — 그래서 이쪽만 빈칸 없이 「Gabapentin(가바펜틴)」이다.
-     맞출지는 이정화 님 판단을 기다린다. 개수 표기(「… 외 6종」)는 양쪽이 같다. */
+   ★ 2026-11-07 — **괄호 앞 빈칸 하나만** ATC 와 맞췄다(이정화 님 승인).
+     「Gabapentin (가바펜틴)」. 복합제 판정(compound_type)·자르는 기준(lpSplitTop)·
+     「외 N종」 셈법은 **그대로다** — 띄어쓰기 말고는 아무것도 바꾸지 않았다. */
 function lpSplitTop(s) {
   const out = []; let depth = 0, cur = ''
   for (const ch of String(s || '')) {
@@ -7148,7 +7148,7 @@ function lpIng(d) {
   if (!en && !kr) return '—'
   const eP = lpSplitTop(en), kP = lpSplitTop(kr)
   const fe = eP[0] || '', fk = kP[0] || ''
-  const first = fe && fk ? fe + '(' + fk + ')' : (fe || fk)
+  const first = fe && fk ? fe + ' (' + fk + ')' : (fe || fk)   /* ★ 괄호 앞 빈칸 하나 — ATC 와 같게(2026-11-07 지시) */
   /* 개수는 영문 조각 기준, 영문이 없으면 한글 기준 — ATC 와 같은 규약.
      ★ 복합제인데 최상위 조각이 1개면(구분자가 전부 괄호 안) 개수를 셀 수 없어 「외」를 붙이지 않는다. */
   const cnt = eP.length || kP.length
@@ -7156,7 +7156,7 @@ function lpIng(d) {
 }
 /* ★ lpIng 과 **같은 규칙**으로 JSX 를 돌려주는 별도 함수 — lpIng 은 건드리지 않는다.
    괄호 안 한글은 .kor, 복합제 꼬리 「외 N종」은 .etc 로 감싸 인쇄에서 색을 달리한다.
-   ★ 텍스트 결과는 lpIng 과 글자 하나까지 같다: fe + '(' + fk + ')' + 꼬리.
+   ★ 텍스트 결과는 lpIng 과 글자 하나까지 같다: fe + ' (' + fk + ')' + 꼬리(괄호 앞 빈칸 포함).
      괄호 밖 첫 '/' 분할(lpSplitTop)과 「외 N종」 계산을 그대로 공유하고,
      괄호 한글이 없는 경우(영문만·한글만·둘 다 없음)는 lpIng 에 그대로 위임한다. */
 function lpIngNode(d) {
@@ -7166,7 +7166,7 @@ function lpIngNode(d) {
   if (!fe || !fk) return lpIng(d)
   const cnt = eP.length || kP.length
   const tail = (d && d.compound_type === '복합제' && cnt > 1) ? ' 외 ' + (cnt - 1) + '종' : ''
-  return <>{fe}{'('}<span className="kor">{fk}</span>{')'}{tail ? <span className="etc">{tail}</span> : null}</>
+  return <>{fe}{' ('}<span className="kor">{fk}</span>{')'}{tail ? <span className="etc">{tail}</span> : null}</>
 }
 
 export function LocationVocab() {

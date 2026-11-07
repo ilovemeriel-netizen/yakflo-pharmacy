@@ -172,11 +172,21 @@ describe('★ 엑셀 — 성분명 두 칸', () => {
 })
 
 describe('★ 건드리지 않은 것', () => {
-  it('★ 구역별 인쇄(복제본)는 지시 밖이라 건드리지 않았다 — 그쪽은 빈칸이 없다', () => {
-    /* 판정 기준이 달라(compound_type · 괄호 밖 '/' 만 자름) 일부러 복제해 둔 별도 구현이다.
-       ATC 만 「영문 (한글)」로 바뀌었으므로 지금은 두 인쇄의 띄어쓰기가 다르다 — 보고 대상. */
+  it('★ 구역별 인쇄는 **띄어쓰기만** 맞췄다 — 판정·자르기 로직은 그대로 (2026-11-07 승인)', () => {
+    /* 복제본인 이유: 복합제 여부를 compound_type 으로 보고, 괄호·대괄호 **밖의** '/' 에서만 자른다.
+       그 두 가지는 손대지 않고 괄호 앞 빈칸 하나만 ATC 와 같게 했다. */
     expect(CODE).toContain('function lpSplitTop(s)')
-    expect(CODE).toContain("const first = fe && fk ? fe + '(' + fk + ')' : (fe || fk)")
+    expect(CODE).toContain("const first = fe && fk ? fe + ' (' + fk + ')' : (fe || fk)")
+    /* 글자(lpIng)와 JSX(lpIngNode) 두 곳이 **같은 모양**이어야 한다 — 한쪽만 고치면 종이에서 어긋난다 */
+    expect(CODE).toContain("{fe}{' ('}<span className=\"kor\">{fk}</span>{')'}")
+    /* 판정·자르기는 그대로 */
+    expect(CODE).toContain("d.compound_type === '복합제' && cnt > 1")
+    expect(CODE).toContain("else if (ch === '/' && depth === 0)")
+  })
+
+  it('★ 빈칸 없는 옛 모양이 App.jsx 어디에도 남아 있지 않다', () => {
+    expect(CODE).not.toContain("fe + '(' + fk + ')'")
+    expect(CODE).not.toContain("{fe}{'('}")
   })
 
   it('검색(q)은 그대로 약품코드·약품명·성분명(한글)을 본다', () => {
