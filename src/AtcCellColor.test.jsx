@@ -119,25 +119,26 @@ describe('★ 색은 바뀌지 않았다 — 자료만 바꿨다', () => {
   const PCS = between('const pcs = (d, exp) =>', 'const PCell =')
 
   it('카세트 칸 — 모양 coral · 용량 blueL · 발음 amberL 그대로', () => {
-    expect(CS).toContain("{ bg: t.coral, bd: t.coral, fg: t.text }")
-    expect(CS).toContain("{ bg: t.blueL, bd: t.blue, fg: t.text }")
-    expect(CS).toContain("{ bg: t.amberL, bd: t.amber, fg: t.text }")
+    expect(CODE).toContain("const CELL_SHAPE = { bg: t.coral, bd: t.coral, fg: t.text };")
+    expect(CODE).toContain("const CELL_DOSE = { bg: t.blueL, bd: t.blue, fg: t.text };")
+    expect(CODE).toContain("const CELL_SOUND = { bg: t.amberL, bd: t.amber, fg: t.text };")
   })
 
   it('제안 칸 — 각자의 글씨색도 그대로 (blue·amber)', () => {
-    expect(PCS).toContain("{ bg: t.coral, bd: t.coral, fg: t.text }")
-    expect(PCS).toContain("{ bg: t.blueL, bd: t.blue, fg: t.blue }")
-    expect(PCS).toContain("{ bg: t.amberL, bd: t.amber, fg: t.amber }")
+    /* 2026-11-07 — 제안 칸도 현재배치와 **같은 상수**를 쓴다(글씨색 blue·amber 가 사라졌다) */
+    expect(PCS).toContain('return CELL_SHAPE')
+    expect(PCS).toContain('return CELL_DOSE')
+    expect(PCS).toContain('return CELL_SOUND')
   })
 
   it('★ 차광 칸은 검정 바탕 + 노랑 글씨다 (두 곳 다 같은 값 · 2026-11-07 지시)', () => {
     for (const part of [CS, PCS])
-      expect(part).toContain('if (isShade(d)) return { bg: SHADE_BG, bd: SHADE_BG, fg: SHADE_FG }')
+      expect(part).toContain('if (isShade(d)) return CELL_SHADE')
   })
 
   it('상비·빈 칸·기본색도 그대로', () => {
-    expect(PCS).toContain('if (d.atc_pinned) return { bg: t.greenL, bd: t.green, fg: t.green }')
-    expect(CS).toContain('{ bg: t.purpleL, bd: t.lavender, fg: t.text }')
+    expect(PCS).toContain('if (d.atc_pinned) return CELL_PIN')
+    expect(CODE).toContain('const CELL_PLAIN = { bg: t.purpleL, bd: t.lavender, fg: t.text };')
   })
 })
 

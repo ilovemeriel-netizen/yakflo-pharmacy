@@ -43,11 +43,11 @@ describe('★ 차광 = 칸 색 (뱃지 아님)', () => {
   const DB = between('const dBadges = d =>', 'return a; };')
 
   it('현재배치 칸이 검정 바탕 + 노랑 글씨다', () => {
-    expect(CS).toContain('if (isShade(d)) return { bg: SHADE_BG, bd: SHADE_BG, fg: SHADE_FG }')
+    expect(CS).toContain('if (isShade(d)) return CELL_SHADE')  /* 공용 상수로 모음 — 2026-11-07 */
   })
 
   it('사용량순 제안 칸도 **같은 값**이다', () => {
-    expect(PCS).toContain('if (isShade(d)) return { bg: SHADE_BG, bd: SHADE_BG, fg: SHADE_FG }')
+    expect(PCS).toContain('if (isShade(d)) return CELL_SHADE')
   })
 
   it('★ 뱃지에는 차광이 없다', () => {
@@ -56,7 +56,7 @@ describe('★ 차광 = 칸 색 (뱃지 아님)', () => {
   })
 
   it('★ 다른 뱃지는 그대로 붙는다 (상비·주의 3종·0.5T)', () => {
-    expect(DB).toContain("{ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }")
+    expect(DB).toContain("{ x: '상비', bg: PIN_BG, fg: t.accent, bd: t.accent }")
     expect(DB).toContain("['dose', 'shape', 'sound']")
     expect(DB).toContain('bg: t.greenL, fg: t.green, bd: t.green')
   })
@@ -138,9 +138,9 @@ describe('★ 사용량순 제안 칸 — 차광이 1순위 (2026-11-07 지시)'
   })
 
   it('상비는 사라지지 않는다 — 색이 밀렸을 뿐 뱃지로 남는다', () => {
-    expect(PCS).toContain('{ bg: t.greenL, bd: t.green, fg: t.green }')
+    expect(PCS).toContain('return CELL_PIN')
     expect(between('const dBadges = d =>', 'return a; };'))
-      .toContain("{ x: '상비', bg: t.accentL, fg: t.accent, bd: t.accent }")
+      .toContain("{ x: '상비', bg: PIN_BG, fg: t.accent, bd: t.accent }")
   })
 
   it('제안 화면의 「FSP 고정식」 초록 블록은 그대로다', () => {
@@ -150,13 +150,13 @@ describe('★ 사용량순 제안 칸 — 차광이 1순위 (2026-11-07 지시)'
 
 describe('★ 범례', () => {
   it('차광 색견본이 칸과 같은 검정이다', () => {
-    expect(CODE).toContain("['차광', SHADE_BG]")
+    expect(CODE).toContain("['차광', CELL_SHADE]")
     expect(CODE).not.toContain("['차광', t.text]")
   })
 
   it('나머지 색견본은 그대로다', () => {
-    for (const s of ["['모양', t.coral]", "['용량', t.blueL]", "['발음', t.amberL]",
-      "['상비 고정', t.greenL]", "['일반', t.purpleL]"]) expect(CODE).toContain(s)
+    for (const s of ["['모양', CELL_SHAPE]", "['용량', CELL_DOSE]", "['발음', CELL_SOUND]",
+      "['상비 고정', CELL_PIN]", "['일반', CELL_PLAIN]"]) expect(CODE).toContain(s)
   })
 })
 
