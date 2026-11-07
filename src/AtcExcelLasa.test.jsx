@@ -26,7 +26,7 @@ const D = o => ({ caution_dose: false, caution_shape: false, caution_sound: fals
 describe('★ 엑셀 「유사」 칸이 화면과 같은 자료를 본다', () => {
   it('★ 엑셀이 cautionKey 를 쓴다 — lasa_type 을 직접 읽지 않는다', () => {
     expect(CODE).toContain('const xlLasa = d => { const s = cautionKey(d); return s === ')
-    expect(CODE).toContain('유사: xlLasa(d)')
+    expect(CODE).toContain('lasa: xlLasa(d)')
     expect(CODE).not.toContain("유사: d.lasa_type || ''")
   })
 
@@ -75,13 +75,13 @@ describe('★ 건드리지 않은 것', () => {
   })
 
   it('같은 파일의 다른 칸은 그대로다', () => {
-    for (const k of ['슬롯: slot', '약품코드: d.drug_code', '약품명: d.drug_name',
-      "'성분명(영문)': d.ingredient_en || ''", "'성분명(한글)': d.ingredient_kr || ''",
-      "차광: isShade(d) ? '차광' : ''"]) expect(CODE).toContain(k)
+    for (const k of ['slot,', 'code: d.drug_code', 'name: d.drug_name',
+      "ingEn: d.ingredient_en || ''", "ingKr: d.ingredient_kr || ''",
+      "light: isShade(d) ? '차광' : ''"]) expect(CODE).toContain(k)
   })
 
   it('★ 빈 값 표기가 「차광」 칸과 같은 방식이다 (둘 다 빈칸)', () => {
-    expect(CODE).toContain("차광: isShade(d) ? '차광' : ''")
+    expect(CODE).toContain("light: isShade(d) ? '차광' : ''")
     expect(xlLasa(D({}))).toBe('')
   })
 

@@ -151,14 +151,18 @@ describe('★ 화면 코드가 그 식을 그대로 쓴다', () => {
 })
 
 describe('★ 엑셀 — 성분명 두 칸', () => {
+  /* 2026-11-07 — 칸 너비·첫 줄 고정을 주려고 엑셀 내보내기를 lib/atcListXlsx.js 로 옮겼다.
+     줄을 만드는 자리는 여전히 App.jsx 이고, 머리글 이름은 그쪽 ATC_COLS 가 정한다. */
+  const XL = CODE.slice(CODE.indexOf('const rows = src.map'), CODE.indexOf('writeAtcListXlsx(rows'))
+
   it('★ 성분명(영문) · 성분명(한글) 두 칸이다', () => {
-    expect(CODE).toContain("'성분명(영문)': d.ingredient_en || '', '성분명(한글)': d.ingredient_kr || ''")
+    expect(XL).toContain("ingEn: d.ingredient_en || '', ingKr: d.ingredient_kr || ''")
   })
 
   it('★ 엑셀은 **줄이지 않은 원본**이다 (줄이면 뒤 성분이 사라진다)', () => {
-    const xl = CODE.slice(CODE.indexOf('XLSX.utils.json_to_sheet(src.map'), CODE.indexOf('XLSX.utils.json_to_sheet(src.map') + 600)
-    expect(xl).not.toContain('ingShort')
-    expect(xl).not.toContain('ing_en')
+    expect(XL).not.toContain('ingShort')
+    expect(XL).not.toContain('ing_en:')
+    expect(XL).not.toContain('ingOne')
   })
 
   it('옛 한 칸짜리 「성분명」은 사라졌다', () => {
@@ -166,8 +170,14 @@ describe('★ 엑셀 — 성분명 두 칸', () => {
   })
 
   it('다른 칸은 그대로다', () => {
-    for (const k of ['슬롯: slot', '약품코드: d.drug_code', '약품명: d.drug_name', '유사: xlLasa(d)', '차광: isShade(d)'])
-      expect(CODE).toContain(k)
+    for (const k of ['slot,', 'code: d.drug_code', 'name: d.drug_name', 'lasa: xlLasa(d)', "light: isShade(d) ? '차광' : ''"])
+      expect(XL).toContain(k)
+  })
+
+  it('★ 머리글 이름은 예전과 같다 (ATC_COLS 가 정한다)', () => {
+    const LIB = readFileSync(resolve(process.cwd(), 'src/lib/atcListXlsx.js'), 'utf8')
+    for (const h of ['슬롯', '약품코드', '약품명', '성분명(영문)', '성분명(한글)', '유사', '차광', '최근3개월', '직전1개월'])
+      expect(LIB).toContain("header: '" + h + "'")
   })
 })
 

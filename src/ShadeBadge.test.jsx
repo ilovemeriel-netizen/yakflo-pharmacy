@@ -100,7 +100,7 @@ describe('★ 칸 색과 뱃지가 같은 자료를 본다', () => {
   })
 
   it('엑셀 내려받기도 같은 자료를 본다', () => {
-    expect(CODE).toContain("차광: isShade(d) ? '차광' : ''")
+    expect(CODE).toContain("light: isShade(d) ? '차광' : ''")
   })
 })
 
