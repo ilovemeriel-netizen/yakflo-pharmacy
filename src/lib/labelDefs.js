@@ -25,6 +25,21 @@ export const LABEL_BG = {
   shape: '#FCA5A5',  /* 모양 — 연빨강 */
 }
 
+/* ── 차광 (2026-11-09 이정화 님 확정) ──────────────────────────────────
+   차광은 **뱃지 하나만** 더 붙인다. 라벨 바탕색·제목 칸·글자 크기·다른 뱃지는 그대로다.
+   ★ 약품명 칸을 검정으로 칠하는 안(칸 전체/글자 상자)은 **둘 다 취소**됐다.
+   ★ 이 두 색만은 화면 칩(cautionDefs)과 **같은 값**이다 — 위 머리글의 「인쇄 색과
+     화면 색을 섞지 않는다」에 대한 하나뿐인 예외이고, ATC 화면과 같은 색으로 읽히게 하려는 뜻이다.
+     다른 뱃지는 지금처럼 검정 바탕(#111) + 흰 글씨를 쓴다 — 차광만 노랑 글씨다. */
+export const SHADE_BG = '#1F1F1F'
+export const SHADE_FG = '#FFE082'
+
+/* 보관방법에 「차광」이 들어가면 차광 약이다 — 화면(cautionDefs.isShade)과 같은 판정이다.
+   `storage_light` 열은 쓰지 않는다(그 값을 고칠 화면이 없어 채워지지 않는다). */
+export function isShade(d) {
+  return String((d && d.storage_method) || '').includes('차광')
+}
+
 /* 고위험 바탕색 — 원내 게시물 규칙 (2026-11-06 확정).
    ★ 갈래 이름은 DB(`drugs.high_alert_class`)에 있고, **색 값은 여기에만** 있다.
      색을 바꾸고 싶으면 DB 1,133줄이 아니라 이 줄만 고친다. */
@@ -49,7 +64,7 @@ export const LABEL_PRIORITY = ['sound', 'shape', 'dose']
 
 export const CAUTION_COL = { dose: 'caution_dose', shape: 'caution_shape', sound: 'caution_sound' }
 export const CAUTION_LABEL = { dose: '용량 주의', shape: '모양 주의', sound: '발음 주의' }
-export const CAUTION_SHORT = { dose: '용량', shape: '모양', sound: '발음', high: '고위험' }
+export const CAUTION_SHORT = { dose: '용량', shape: '모양', sound: '발음', high: '고위험', shade: '차광' }
 
 /* 이 약의 주의 가운데 바탕을 정하는 것 — 없으면 null */
 export function bgKind(d) {
@@ -71,10 +86,13 @@ export function labelBg(d) {
 }
 export function labelHead(d) { return lighten(labelBg(d), HEAD_LIGHTEN) }
 
-/* 뱃지 차례 — **고위험이 언제나 맨 앞**, 그 뒤 발음 > 모양 > 용량 */
+/* 뱃지 차례 — **고위험이 언제나 맨 앞**, 그 뒤 차광 > 발음 > 모양 > 용량.
+   (2026-11-09 — 차광을 고위험 바로 뒤에 넣었다. 고위험 자리는 그대로다.)
+   ※ 상비는 라벨에 뱃지로 넣지 않는다 — 지금도 없고 이번에 넣지 않았다. */
 export function badgeKinds(d) {
   if (!d) return []
   const out = d.is_high_alert === true ? ['high'] : []
+  if (isShade(d)) out.push('shade')
   return out.concat(LABEL_PRIORITY.filter(k => d[CAUTION_COL[k]] === true))
 }
 
@@ -192,8 +210,15 @@ export function sheetPrintCss(gap = SHEET_GAP_MM) {
 }
 
 /* ── 라벨 인쇄 화면의 거르개 ──────────────────────────────────────────── */
+/* ★ 「주의 있는 약만」은 **차광을 세지 않는다** (2026-11-09 이정화 님 지시).
+   차광이 뱃지가 되면서 `badgeKinds(d).length > 0` 으로 두면 차광만 있는 약 113종이
+   이 거르개에 새로 끼어들어 73종 → 186종이 된다. 차광은 보관 방법이지 주의가 아니므로
+   **고위험 + 주의 3종만** 센다. 거르개 개수를 예전 그대로 두려는 것이다. */
+export function cautionOnlyKinds(d) {
+  return badgeKinds(d).filter(k => k !== 'shade')
+}
 export const LABEL_FILTERS = [
-  { id: 'caution', l: '주의 있는 약만', test: d => badgeKinds(d).length > 0 },
+  { id: 'caution', l: '주의 있는 약만', test: d => cautionOnlyKinds(d).length > 0 },
   { id: 'all', l: '전체', test: () => true },
   { id: 'dose', l: '용량', test: d => d.caution_dose === true },
   { id: 'shape', l: '모양', test: d => d.caution_shape === true },

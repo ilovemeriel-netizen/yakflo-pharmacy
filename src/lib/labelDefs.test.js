@@ -93,8 +93,8 @@ describe('★ 뱃지 — 고위험이 언제나 맨 앞', () => {
     expect(badgeKinds(null)).toEqual([])
   })
 
-  it('뱃지 글자 — 짧은 이름', () => {
-    expect(CAUTION_SHORT).toEqual({ dose: '용량', shape: '모양', sound: '발음', high: '고위험' })
+  it('뱃지 글자 — 짧은 이름 (2026-11-09 차광 추가)', () => {
+    expect(CAUTION_SHORT).toEqual({ dose: '용량', shape: '모양', sound: '발음', high: '고위험', shade: '차광' })
     expect(CAUTION_LABEL.dose).toBe('용량 주의')
   })
 })
