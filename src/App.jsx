@@ -34,6 +34,7 @@ import UsageUploadModal from './UsageUploadModal'
 import { narcCodes } from './lib/usageParse'
 /* B-1 — 마약·향정 사용량을 달력 기준으로 계산해 보여 주기만 하는 창(DB 쓰기 없음) */
 import NarcoticUsageModal from './NarcoticUsageModal'
+import UsageCompareModal from './UsageCompareModal'
 import ColumnSelector from './ColumnSelector'
 import GnbSearch from './GnbSearch'
 import { useDraggableModal } from './useDraggableModal'
@@ -2239,7 +2240,7 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
   const[surge,setSurge]=useState(SURGE_ALL)   /* 급변 필터 — 머리글 메뉴와 칩이 **이 하나**를 같이 쓴다 */
   const[xlAsk,setXlAsk]=useState(false)              /* 엑셀 범위 선택 창 */
-  const[uMsg,setUMsg]=useState(null);const[uOpen,setUOpen]=useState(false);const[npOpen,setNpOpen]=useState(false);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});const[uBusy,setUBusy]=useState(false)
+  const[uMsg,setUMsg]=useState(null);const[uOpen,setUOpen]=useState(false);const[npOpen,setNpOpen]=useState(false);const[ucOpen,setUcOpen]=useState(false);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});const[uBusy,setUBusy]=useState(false)
   /* ★ 아직 저장 안 한 값이 있으면 새 배포 자동 적용을 미룬다(화면에 그리는 것은 없다) */
   useBusy('stock-drafts', Object.keys(drafts).length > 0)
   useEffect(()=>{if(nf?.filter){setFilter(nf.filter);setPage(1)}},[nf])
@@ -2374,6 +2375,8 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
         {isTenantManager&&<button onClick={dlUsageTemplate} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 양식</button>}
         {isTenantManager&&<button onClick={()=>setUOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 업로드</button>}
         {canRecompute&&<button onClick={()=>setRecomfirm(true)} disabled={uBusy} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.purpleL,color:t.purple,cursor:uBusy?'default':'pointer',fontSize:11,fontWeight:600,opacity:uBusy?0.6:1}}>{uBusy?'집계 중…':'출고 자동집계'}</button>}
+        {/* ★ 마감된 달 기준으로 견주기만 한다 — 「적용」을 눌러야 저장한다(2026-11-09). */}
+        {canRecompute&&<button onClick={()=>setUcOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.accent,background:t.accentL,color:t.accent,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 비교</button>}
         {/* ★ B-1 — 달력 기준으로 **계산해 보여 주기만** 한다. DB 에 쓰지 않는다(확정 업무 규칙 9). */}
         {canRecompute&&<button onClick={()=>setNpOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.bg,color:t.purple,cursor:'pointer',fontSize:11,fontWeight:600}}>마약·향정 사용량 보기</button>}
         <input ref={uRef} type="file" accept=".xlsx,.xls" onChange={uploadUsage} style={{display:'none'}}/>
@@ -2422,6 +2425,8 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
         onClose={()=>setUOpen(false)} onReload={onReload} onBulkFile={f=>uploadUsage(f)} />}
       {npOpen&&<NarcoticUsageModal t={t} drugs={drugs} onClose={()=>setNpOpen(false)}
         isTenantManager={isTenantManager} onReload={onReload} Confirm={CountConfirmModal} />}
+      {ucOpen&&<UsageCompareModal t={t} drugs={drugs.filter(d=>String(d.status||'').trim()==='사용')}
+        isTenantManager={isTenantManager} onClose={()=>setUcOpen(false)} onReload={onReload} Confirm={CountConfirmModal} />}
     </div><Ft/>
   </div>
 }
@@ -5912,12 +5917,14 @@ const mpTd={border:'1px solid #bbb',padding:'6px 10px'};
 function MSec({title,children}){return <div style={{marginBottom:9}}><div style={{background:'#019748',color:'#fff',fontWeight:800,fontSize:13.5,padding:'5px 10px'}}>{title}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><tbody>{children}</tbody></table></div>}
 function MRow({label,value,bg}){return <tr><td style={{...mpTd,background:bg||'#eee',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',fontWeight:800,color:'#804A87',fontVariantNumeric:'tabular-nums'}}>{value}</td></tr>}
 function MRow2({label,cnt,amt,bg,fg}){return <tr><td style={{...mpTd,background:bg||'#eee',color:fg||'#222',fontWeight:700,width:'42%'}}>{label}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontVariantNumeric:'tabular-nums'}}>{cnt}</td><td style={{...mpTd,textAlign:'right',width:'29%',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{amt}</td></tr>}
-export function Report({drugs,onNav}){
+export function Report({drugs,onNav,onReload}){
   const{t,memberRole}=useTheme();
   const isOwner=memberRole==='owner'; // 마감·업로드 권한(고위험 체크박스와 동일 패턴)
   /* 거래일 정정 「모두 바꾸기」 권한 — 0107 RPC 와 **같은 기준**(owner·admin).
      화면에만 단추를 숨기는 것이 아니라 DB 함수도 같은 역할을 본다. */
   const isTenantManager=memberRole==='owner'||memberRole==='admin'
+  /* ★ 마감 뒤 사용량 비교표 — 보기만 하고 저장하지 않는다(2026-11-09) */
+  const[ucOpen,setUcOpen]=useState(false)
   const cy=new Date().getFullYear(),cm=new Date().getMonth()+1;
   const[rtype,setRtype]=useState('monthly');
   const[year,setYear]=useState(cy);const[month,setMonth]=useState(cm);
@@ -6341,6 +6348,14 @@ export function Report({drugs,onNav}){
           위에 끼면 요약이 1쪽을 12.7mm 넘겨, 넘친 꼬리(작성 시각·저작권)만 2쪽에 홀로 남고
           약품 목록은 page-break-before 때문에 3쪽부터 시작했다(524행 16쪽 → 17쪽). */}
     {closeMsg&&<div className="no-print" style={{background:closeMsg.includes('✅')?t.greenL:t.redL,border:`1px solid ${closeMsg.includes('✅')?t.green:t.red}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:closeMsg.includes('✅')?t.green:t.red,fontSize:12,fontWeight:600}}>{closeMsg}</div>}
+    {/* ★ 마감이 끝나면 비교표를 볼 수 있게 한다 — 저장은 하지 않는다(2026-11-09). */}
+    {closeMsg&&closeMsg.includes('✅')&&closeMsg.includes('마감 완료')&&<div className="no-print" style={{background:t.bg,border:'1px solid '+t.border,borderRadius:8,padding:'12px 14px',marginBottom:10,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+      <span style={{fontSize:12,color:t.textM,lineHeight:1.7}}><b style={{color:t.text}}>사용량 비교표를 볼 수 있습니다.</b> 직전3개월·직전1개월을 이 마감 기준으로 다시 센 숫자입니다. 보기만 하며 저장하지 않습니다.</span>
+      <button type="button" onClick={()=>setUcOpen(true)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.accent,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>사용량 비교 보기</button>
+    </div>}
+    {ucOpen&&<UsageCompareModal t={t} drugs={drugs.filter(d=>String(d.status||'').trim()==='사용')}
+      year={year} month={month} isTenantManager={isTenantManager}
+      onClose={()=>setUcOpen(false)} onReload={onReload} Confirm={CountConfirmModal} />}
 
     {/* 앱 내 확인/안내 모달(alert·confirm 대체) — 기존 DrugDeleteConfirm 스타일 재사용 */}
     {dialog&&<div onClick={()=>setDialog(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
@@ -8748,7 +8763,7 @@ export default function App() {
           {menu === 'vaccine' && <><Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: t.textL, fontSize: 12 }}>불러오는 중...</div>}><VaccineManage ColMenu={ColMenu} useSort={useSort} ymd={ymd} todayYmd={todayYmd} /></Suspense><div className="no-print"><Ft /></div></>}
           {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
           {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
-          {menu === 'report' && <Report drugs={drugs} onNav={handleNav} />}
+          {menu === 'report' && <Report drugs={drugs} onNav={handleNav} onReload={load} />}
           {menu === 'emergency' && <><EmergencyDispense /><div className="no-print"><Ft /></div></>}
           {menu === 'atc' && <><AtcView drugs={drugs} onReload={load} /><div className="no-print"><Ft /></div></>}
           {menu === 'schedule' && <><Schedule drugs={drugs} onNav={handleNav} /><div className="no-print"><Ft /></div></>}
