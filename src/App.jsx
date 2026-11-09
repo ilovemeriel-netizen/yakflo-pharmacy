@@ -2175,6 +2175,11 @@ function StandardTable({ cols, TS, sk, sd, setSort, hf, t, grid, layout, colWidt
     ? { borderCollapse: 'collapse', fontSize: fontSize || 12, tableLayout: 'fixed', width: '100%', minWidth: minWidth }
     : { width: '100%', borderCollapse: 'collapse', fontSize: fontSize || 12 };
   return <HScroll {...(hscroll || {})}><table style={tableStyle}>
+    {/* ★ colWidths 에 **null** 을 넣으면 그 열에는 너비를 주지 않는다 — 리액트가 빈 값을 지운다.
+        표는 `width:100%` 라 칸보다 좁으면 늘어나는데, 모든 열에 너비가 있으면 **비율대로** 늘어나
+        글자 칸까지 같이 넓어진다(2026-11-07 실측 — 약품명 170 → 481px, 빈 공간 321px).
+        너비가 **없는 열이 하나 있으면 그 열이 남는 폭을 혼자 먹고**, 나머지는 적힌 px 그대로 남는다.
+        막대(그래프)처럼 늘어나도 되는 열을 마지막에 두고 null 을 주는 식으로 쓴다. */}
     {colWidths ? <colgroup>{colWidths.map((w, ci) => <col key={ci} style={{ width: w }} />)}</colgroup> : null}
     <thead><tr>{cols.map(c => {
       const k = c.k;
@@ -8042,6 +8047,24 @@ function AtcView({ drugs, onReload }) {
        약플로에는 전역 `*{box-sizing:border-box}` 가 없다(index.css 는 `#root` 에만 준다).
        그대로 두면 테두리 2px 짜리 칸(모양·용량·발음)만 다른 칸보다 2px 높아진다. */
   const CELL_MIN = 78;
+  /* ★ 막대(그래프)가 마지막 열인 표는 **필요 이상으로 늘어나지 않게** 최대 폭을 준다
+       (2026-11-07 안 B · 이정화 님 선택).
+     그 표들은 마지막 열에 너비를 주지 않아 남는 폭을 막대가 혼자 먹는다. 그대로 두면
+     창 1600px 에서 막대가 1,198px 까지 늘어나 한쪽으로 쏠려 보였다(실측).
+     막대는 길이를 **서로 견주는** 그림이라 320px 이면 충분하다 —
+       표 최대 폭 = 막대 말고 다른 열의 합 + 320
+     이 값은 StandardTable 이 아니라 **감싸는 div** 에 준다. 공통 규격은 건드리지 않는다.
+     세 표 : 2차 예비 320+320=640 · FSP 후보 464+320=784 · 현재 FSP 528+320=848
+     셋 다 제 minWidth(420 · 628 · 628)보다 크므로 표가 잘릴 일은 없다.
+
+     ★ 표를 `margin: 0 auto` 로 **가운데**에 둔다 — 카드 제목이 가운데이기 때문이다.
+       제목 div 에는 textAlign 이 없지만 `#root { text-align: center }`(index.css)를 물려받아
+       **실제 화면에서는 가운데로 보인다.** 코드만 보고 「왼쪽」이라 읽으면 틀린다(함정 #31).
+       2026-11-08 실측(운영 CSS 포함) — 제목 좌우 여백이 393/393 · 502/502 · 403/403px 로 같다.
+     ★ 같은 이유로 #root 는 `width: 1126px` 라 **창을 아무리 넓혀도 본문은 1126px** 다.
+       카드 안쪽은 1,074px, 표 칸은 1,058px 로 창 1280px 과 1600px 이 같다. */
+  const BAR_MAX = 320;
+  const BAR_TBL_MAX = fixed => fixed + BAR_MAX;
   const B = (x, bg, fg, bd) => <span style={badgeStyle(bg, fg, bd)}>{x}</span>;
   /* ★ 주의 뱃지(용량·모양·발음)는 화면 칩과 **같은 색·같은 아이콘**을 쓴다.
      색은 `cautionChipColors`, 그림은 `CautionIcon` — 여기서 새로 그리지 않는다.
@@ -8389,7 +8412,7 @@ function AtcView({ drugs, onReload }) {
       </div>
       <div style={{ marginTop: 12, border: '1px solid ' + t.border, borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ padding: '8px 10px', background: t.bg, borderBottom: '1px solid ' + t.border, fontSize: 12, fontWeight: 700, color: t.text }}>2차 예비 ({yebi12.length}) · 89~100위 · 카세트 확보 시 투입</div>
-        <div style={{ padding: 8 }}><AtcTable t={t} minWidth={420} colWidths={[56, 170, 64, 130]} resetable qfilter={r => !r.d || matches(r.d)} rows={yebi12.map(d => ({ rank: rankFull.get(d.drug_code) || null, name: d.drug_name, r3: usageScore(d), _u: usageScore(d), d }))} cols={[{ k: 'rank', h: '순위', align: 'center', render: r => r.rank == null ? '-' : r.rank }, { k: 'name', h: '약품명', align: 'left' }, { k: 'r3', h: '3개월', align: 'right' }, { k: '_u', h: '88위 경계 대비', align: 'left', render: r => { const bnd = usageScore(assignable[87]) || 1; const w = Math.max(2, Math.min(100, r._u / bnd * 100)); return <div style={{ height: 6, borderRadius: 3, background: t.lavender, width: w + '%' }} />; } }]} /></div>
+        <div style={{ padding: 8, maxWidth: BAR_TBL_MAX(320), margin: '0 auto' }}><AtcTable t={t} minWidth={420} colWidths={[56, 200, 64, null]} resetable qfilter={r => !r.d || matches(r.d)} rows={yebi12.map(d => ({ rank: rankFull.get(d.drug_code) || null, name: d.drug_name, r3: usageScore(d), _u: usageScore(d), d }))} cols={[{ k: 'rank', h: '순위', align: 'center', render: r => r.rank == null ? '-' : r.rank }, { k: 'name', h: '약품명', align: 'left' }, { k: 'r3', h: '3개월', align: 'right' }, { k: '_u', h: '88위 경계 대비', align: 'left', render: r => { const bnd = usageScore(assignable[87]) || 1; const w = Math.max(2, Math.min(100, r._u / bnd * 100)); return <div style={{ height: 6, borderRadius: 3, background: t.lavender, width: w + '%' }} />; } }]} /></div>
       </div>
       <div style={{ marginTop: 12, border: '1px solid ' + t.border, borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: t.bg, borderBottom: '1px solid ' + t.border, flexWrap: 'wrap' }}>{B('C', t.accentL, t.accent, t.accent)}<span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>교환 제안 ({swapTop.length})</span><span style={{ fontSize: 10, color: t.textL }}>카세트째 이동 · 즉시 실행</span><div style={{ flex: 1 }} /><span style={{ fontSize: 10, color: t.textM }}>상위</span><input type="range" min={10} max={40} value={swapN} onChange={e => setSwapN(Number(e.target.value))} style={{ accentColor: t.accent }} /><span style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>{swapN}건</span><span style={{ fontSize: 10, color: t.textL }}>(개선 {swaps.length}쌍 중)</span>{temp && <span style={{ fontSize: 10, color: t.textL }}>임시 모드 · 적용 불가</span>}{canSwap && <button onClick={() => { const ps = swapTop.filter((_, i) => selPairs[i]).map(sw => ({ slot_a: sw.a.sl, slot_b: sw.b.sl })); if (!ps.length) { setMsg('선택된 쌍이 없습니다'); setTimeout(() => setMsg(null), 2500); return; } setPending({ pairs: ps, desc: ps.length + '쌍 일괄 교환' }); }} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.card, color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>선택 적용</button>}</div>
@@ -8441,9 +8464,9 @@ function AtcView({ drugs, onReload }) {
           table-layout:fixed + width:100% 는 열 폭을 「내 값 ÷ 합계」 비율로 늘린다.
           합계가 다르면(520 vs 620) 배율이 달라, 앞 4열 값이 같아도 자리가 어긋난다.
           (2026-11-07 실측 — 창 1600px 에서 코드 45px · 약품명 94px · 최근3개월 197px 어긋나 있었다) */}
-      <div style={{ marginBottom: 10 }}><AtcTable t={t} minWidth={628} colWidths={[64, 110, 170, 90, 194]} qfilter={r => !r.d || matches(r.d)} rows={fspCand.map((x, i) => ({ rank: i + 1, code: x.d.drug_code, name: x.d.drug_name, r3: x.r3, frac: x.frac ? '소수' : '-', d: x.d }))} cols={[{ k: 'rank', h: '제안순위', align: 'center' }, { k: 'code', h: '코드', align: 'left' }, { k: 'name', h: '약품명', align: 'left' }, { k: 'r3', h: '최근3개월', align: 'right' }, { k: 'frac', h: '소수여부', align: 'center', filter: true, render: r => <span style={{ color: r.frac === '소수' ? t.green : t.textL }}>{r.frac}</span> }]} /></div>
+      <div style={{ maxWidth: BAR_TBL_MAX(464), margin: '0 auto 10px' }}><AtcTable t={t} minWidth={628} colWidths={[64, 110, 200, 90, null]} qfilter={r => !r.d || matches(r.d)} rows={fspCand.map((x, i) => ({ rank: i + 1, code: x.d.drug_code, name: x.d.drug_name, r3: x.r3, frac: x.frac ? '소수' : '-', d: x.d }))} cols={[{ k: 'rank', h: '제안순위', align: 'center' }, { k: 'code', h: '코드', align: 'left' }, { k: 'name', h: '약품명', align: 'left' }, { k: 'r3', h: '최근3개월', align: 'right' }, { k: 'frac', h: '소수여부', align: 'center', filter: true, render: r => <span style={{ color: r.frac === '소수' ? t.green : t.textL }}>{r.frac}</span> }]} /></div>
       <div style={{ fontSize: 11, fontWeight: 700, color: t.text, marginBottom: 4 }}>현재 배정 역검증 (QROKEL125·SBCLP1·LSX)</div>
-      <AtcTable t={t} minWidth={628} colWidths={[64, 110, 170, 90, 64, 130]} qfilter={r => !r.d || matches(r.d)} rows={curFsp.map(({ s, d }) => { const r3 = d ? (Number(d.recent_3m_usage) || 0) : 0; const isFrac = d && (r3 % 1 !== 0); return { _slot: atcSlotKey(s), slot: s, code: d ? d.drug_code : '-', name: d ? d.drug_name : '-', r3: d ? r3 : null, frac: isFrac ? '소수' : '-', verdict: d ? (isFrac ? '0.5T 운용 확인됨' : '다빈도 배정') : '-', d }; })} cols={[{ k: '_slot', h: '슬롯', align: 'center', render: r => r.slot }, { k: 'code', h: '코드', align: 'left' }, { k: 'name', h: '약품명', align: 'left' }, { k: 'r3', h: '최근3개월', align: 'right', render: r => r.r3 == null ? '-' : r.r3 }, { k: 'frac', h: '소수', align: 'center', filter: true }, { k: 'verdict', h: '기준 부합', align: 'center', filter: true, render: r => <span style={{ fontWeight: 700, color: r.verdict === '0.5T 운용 확인됨' ? t.green : r.verdict === '다빈도 배정' ? t.accent : t.textL }}>{r.verdict}</span> }]} />
+      <div style={{ maxWidth: BAR_TBL_MAX(528), margin: '0 auto' }}><AtcTable t={t} minWidth={628} colWidths={[64, 110, 200, 90, 64, null]} qfilter={r => !r.d || matches(r.d)} rows={curFsp.map(({ s, d }) => { const r3 = d ? (Number(d.recent_3m_usage) || 0) : 0; const isFrac = d && (r3 % 1 !== 0); return { _slot: atcSlotKey(s), slot: s, code: d ? d.drug_code : '-', name: d ? d.drug_name : '-', r3: d ? r3 : null, frac: isFrac ? '소수' : '-', verdict: d ? (isFrac ? '0.5T 운용 확인됨' : '다빈도 배정') : '-', d }; })} cols={[{ k: '_slot', h: '슬롯', align: 'center', render: r => r.slot }, { k: 'code', h: '코드', align: 'left' }, { k: 'name', h: '약품명', align: 'left' }, { k: 'r3', h: '최근3개월', align: 'right', render: r => r.r3 == null ? '-' : r.r3 }, { k: 'frac', h: '소수', align: 'center', filter: true }, { k: 'verdict', h: '기준 부합', align: 'center', filter: true, render: r => <span style={{ fontWeight: 700, color: r.verdict === '0.5T 운용 확인됨' ? t.green : r.verdict === '다빈도 배정' ? t.accent : t.textL }}>{r.verdict}</span> }]} /></div>
     </div>}
     <div className="atc-print-only">
       <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: '2mm' }}>ATC 카세트 배치 목록 ({slot91.length}건 · 가나다순){temp ? ' · 임시 사용량 기준 · ' + temp.file + ' · 지표: ' + metricLabel : ''}</div>
