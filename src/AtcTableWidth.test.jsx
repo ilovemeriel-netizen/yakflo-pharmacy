@@ -23,36 +23,32 @@ import { resolve } from 'node:path'
 const APP = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8')
 const CODE = APP.split('\n').filter(l => !/^\s*\/\*|^\s*\*/.test(l)).join('\n')
 
-describe('★ 안 ⓑ 를 적용한 세 표 (마지막 열이 막대)', () => {
-  it('2차 예비 — [56, 200, 64, 없음]', () => {
+describe('★ 막대가 있는 표는 「2차 예비」 하나뿐이다 (2026-11-09 확인)', () => {
+  /* ★ 2026-11-07 에 세 표 모두 마지막 열이 막대인 줄 알고 null 을 줬는데 **틀렸다.**
+       FSP 후보의 마지막 열은 「소수여부」, 현재 FSP 는 「기준 부합」으로 **둘 다 글자 칸**이다.
+       글자 칸에 남는 폭을 몰아주면 휑해진다 — 그래서 그 둘은 너비를 그대로 준다. */
+  it('2차 예비만 마지막 열이 비어 있다 — 막대가 남는 폭을 먹는다', () => {
     expect(CODE).toContain('minWidth={420} colWidths={[56, 200, 64, null]}')
   })
 
-  it('FSP 후보 — [64, 110, 200, 90, 없음]', () => {
-    expect(CODE).toContain('minWidth={628} colWidths={[64, 110, 200, 90, null]}')
+  it('★ null 을 쓰는 표가 **하나뿐**이다', () => {
+    expect((CODE.match(/colWidths=\{\[[^\]]*null\]\}/g) || []).length).toBe(1)
   })
 
-  it('현재 FSP — [64, 110, 200, 90, 64, 없음]', () => {
-    expect(CODE).toContain('minWidth={628} colWidths={[64, 110, 200, 90, 64, null]}')
+  it('★ FSP 두 표는 마지막 열 너비를 그대로 받는다 (글자 칸이라서)', () => {
+    expect(CODE).toContain('minWidth={658} colWidths={[64, 110, 200, 90, 194]}')
+    expect(CODE).toContain('minWidth={658} colWidths={[64, 110, 200, 90, 64, 130]}')
   })
 
-  it('★ 세 표 모두 **마지막 열만** null 이다 (중간에 null 이 있으면 열이 엉킨다)', () => {
-    for (const m of CODE.matchAll(/colWidths=\{\[([^\]]*null[^\]]*)\]\}/g)) {
-      const parts = m[1].split(',').map(s => s.trim())
-      expect(parts[parts.length - 1]).toBe('null')
-      expect(parts.slice(0, -1).some(p => p === 'null')).toBe(false)
-    }
-  })
-
-  it('★ null 을 쓰는 표가 정확히 셋이다', () => {
-    expect((CODE.match(/colWidths=\{\[[^\]]*null\]\}/g) || []).length).toBe(3)
+  it('★ 그 두 표의 마지막 열이 정말 글자 칸인지 (막대가 아니다)', () => {
+    expect(CODE).toContain("h: '소수여부'")
+    expect(CODE).toContain("h: '기준 부합'")
+    /* 막대를 그리는 곳은 「88위 경계 대비」 한 군데뿐이다 */
+    expect((CODE.match(/h: '88위 경계 대비'/g) || []).length).toBe(1)
   })
 })
 
-describe('★ 손대지 않은 세 표 (마지막 열이 막대가 아니다)', () => {
-  /* 남는 폭은 어디론가 가야 한다. 막대가 없는 표에서 마지막 글자 칸에 몰아주면
-     구멍이 더 커진다 — 실측(창 1280px): 신규 진입의 「사유」 222px · 교환 제안의 「실행」 650px.
-     지금처럼 고르게 퍼지는 쪽이 낫다(가장 큰 구멍 160~192px). */
+describe('★ 손대지 않은 표들', () => {
   it('신규 진입 · 제외 — [68, 148, 60, 56] 그대로', () => {
     expect(CODE).toContain('minWidth={340} colWidths={[68, 148, 60, 56]}')
   })
@@ -108,64 +104,56 @@ describe('★ StandardTable — null 규칙이 코드에 적혀 있다', () => {
   })
 })
 
-describe('★ 안 B — 표가 필요 이상 늘지 않게 (2026-11-07 이정화 님 선택)', () => {
-  /* 마지막 막대 열에 너비를 주지 않으면 남는 폭을 막대가 혼자 먹는다.
-     그대로 두면 창 1600px 에서 막대가 1,198px 까지 늘어나 한쪽으로 쏠려 보였다(실측).
-     막대는 길이를 **서로 견주는** 그림이라 320px 이면 충분하다. */
+describe('★ 안 ⓑ — 표는 카드 폭 끝까지, 막대만 320px (2026-11-09 이정화 님 결정)', () => {
+  /* 앞서(2026-11-07 안 B) 표 자체를 640/784/848px 로 좁히고 가운데에 뒀더니,
+     머리글 줄 폭이 같은 화면의 다른 표(신규 진입·제외·교환 제안)와 달라 보였다.
+     → 표는 다른 표와 똑같이 카드 폭 끝까지 가고, **막대 그림만** 320px 에서 멈춘다. */
   const BAR_MAX = 320
-  const FIXED = { yebi: 56 + 200 + 64, fspc: 64 + 110 + 200 + 90, fspn: 64 + 110 + 200 + 90 + 64 }
 
   it('규칙이 상수로 한 군데에 있다', () => {
     expect(CODE).toContain('const BAR_MAX = 320;')
-    expect(CODE).toContain('const BAR_TBL_MAX = fixed => fixed + BAR_MAX;')
   })
 
-  it('★ 세 표가 **감싸는 div** 에 최대 폭을 받는다 (StandardTable 은 건드리지 않았다)', () => {
-    expect(CODE).toContain('maxWidth: BAR_TBL_MAX(320)')   /* 2차 예비 */
-    expect(CODE).toContain('maxWidth: BAR_TBL_MAX(464)')   /* FSP 후보 */
-    expect(CODE).toContain('maxWidth: BAR_TBL_MAX(528)')   /* 현재 FSP */
-    /* 쓰는 곳 셋뿐이다 — 정의는 `BAR_TBL_MAX = fixed =>` 라 이름 뒤에 괄호가 없다 */
-    expect((CODE.match(/BAR_TBL_MAX\(/g) || []).length).toBe(3)
+  it('★ 표를 좁히거나 가운데로 미는 것이 **사라졌다**', () => {
+    /* `margin: '0 auto'` 는 App.jsx 의 다른 화면에도 쓰이므로 ATC 부분만 잘라서 본다 */
+    const ATC = CODE.slice(CODE.indexOf('const BAR_MAX = 320;'), CODE.indexOf('export default function App()'))
+    expect(ATC).not.toContain('BAR_TBL_MAX')
+    expect(ATC).not.toContain("margin: '0 auto'")
+    expect(ATC.length).toBeGreaterThan(1000)   /* 조각이 비면 위 확인이 거짓으로 통과한다 */
   })
 
-  it('★ 적어 준 고정 합이 colWidths 와 **실제로 같다** (어긋나면 최대 폭이 틀어진다)', () => {
-    expect(FIXED.yebi).toBe(320)
-    expect(FIXED.fspc).toBe(464)
-    expect(FIXED.fspn).toBe(528)
+  it('★ 막대는 320px 짜리 상자 **안에서** 비율을 그린다', () => {
+    /* 막대에 바로 max-width 를 걸면 43% 넘는 막대가 모두 같은 길이로 보여 비교가 망가진다.
+       상자에 걸고 그 안에서 %를 그려야 서로 견주는 비율이 산다.
+       실측(창 1280px) — 가장 긴 막대 318px · 가장 짧은 막대 257px 로 서로 다르다. */
+    expect(CODE).toContain("<div style={{ maxWidth: BAR_MAX }}><div style={{ height: 6, borderRadius: 3, background: t.lavender, width: w + '%' }} /></div>")
   })
 
-  it('★ 넘침 증명 — 표 최대 폭이 제 minWidth 보다 크다 (계산으로 끝난다)', () => {
-    /* 최대 < 최소면 표가 잘린다. 창 폭과 무관하므로 이 비교만으로 넘침이 없음이 증명된다. */
-    const MIN = { yebi: 420, fspc: 628, fspn: 628 }
-    for (const k of ['yebi', 'fspc', 'fspn'])
-      expect(FIXED[k] + BAR_MAX).toBeGreaterThanOrEqual(MIN[k])
+  it('★ 머리글 줄이 다른 표와 같은 폭이다 — 실측으로 확인', () => {
+    /* 운영 CSS 를 넣고 창 1280px 실측(86_안ⓑ_실측_after.png):
+         신규 진입(손대지 않은 표) · 2차 예비 · FSP 후보 · 현재 FSP
+         → 표 폭 1058px · 머리글 줄 1058px · 높이 39px · 글자 11px · 색 #52524E 로 **모두 같다.**
+       전(86_안ⓑ_실측_before.png)에는 1058 / 640 / 784 / 848px 로 제각각이었다.
+       같아지는 조건은 「감싸는 div 에 maxWidth 가 없다」 하나뿐이라 그것만 못 박는다. */
+    expect(CODE).toContain('<div style={{ padding: 8 }}><AtcTable t={t} minWidth={420}')
+    expect(CODE).toContain('<div style={{ marginBottom: 10 }}><AtcTable t={t} minWidth={658}')
+    expect(CODE).toContain('<div><AtcTable t={t} minWidth={658}')
   })
 
-  it('★ 표 최대 폭 값 — 640 · 784 · 848px', () => {
-    expect(FIXED.yebi + BAR_MAX).toBe(640)
-    expect(FIXED.fspc + BAR_MAX).toBe(784)
-    expect(FIXED.fspn + BAR_MAX).toBe(848)
-  })
-
-  it('★ 표는 카드 안에서 **가운데**다 — 제목이 가운데라 줄이 맞는다 (2026-11-08 정정)', () => {
-    /* ★ 함정 #31 — 제목 div 에는 textAlign 이 없지만 `#root { text-align: center }` 를
-       물려받아 **화면에서는 가운데로 보인다.** 코드만 보고 「왼쪽」이라 읽으면 틀린다.
-       운영 CSS 를 넣고 실측 : 제목 좌우 여백 393/393 · 502/502 · 403/403px (83_운영CSS_실측_*.png) */
-    expect(CODE).toContain("maxWidth: BAR_TBL_MAX(320), margin: '0 auto'")
-    expect(CODE).toContain("maxWidth: BAR_TBL_MAX(464), margin: '0 auto 10px'")
-    expect(CODE).toContain("maxWidth: BAR_TBL_MAX(528), margin: '0 auto'")
-  })
-
-  it('★ #root 의 가운데 정렬·1126px 제한이 그대로 있다 (이 전제가 깨지면 위 판단이 바뀐다)', () => {
+  it('★ #root 의 가운데 정렬·1126px 제한이 그대로 있다 (이 전제가 깨지면 위 실측이 달라진다)', () => {
     const CSS = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
     const root = CSS.slice(CSS.indexOf('#root {'), CSS.indexOf('}', CSS.indexOf('#root {')))
     expect(root).toContain('text-align: center')
     expect(root).toContain('width: 1126px')
   })
 
-  it('약품명 200px 과 마지막 열 null 은 그대로다', () => {
+  it('약품명 200px 은 세 표 모두 그대로다', () => {
     expect(CODE).toContain('colWidths={[56, 200, 64, null]}')
-    expect(CODE).toContain('colWidths={[64, 110, 200, 90, null]}')
-    expect(CODE).toContain('colWidths={[64, 110, 200, 90, 64, null]}')
+    expect(CODE).toContain('colWidths={[64, 110, 200, 90, 194]}')
+    expect(CODE).toContain('colWidths={[64, 110, 200, 90, 64, 130]}')
+  })
+
+  it('막대 최대값이 320 이다', () => {
+    expect(BAR_MAX).toBe(320)
   })
 })
