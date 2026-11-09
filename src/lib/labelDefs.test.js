@@ -269,8 +269,28 @@ describe('라벨 인쇄 화면의 거르개·찾기', () => {
   ]
   const pick = id => rows.filter(LABEL_FILTERS.find(f => f.id === id).test)
 
-  it('거르개 여섯 개', () => {
-    expect(LABEL_FILTERS.map(f => f.id)).toEqual(['caution', 'all', 'dose', 'shape', 'sound', 'high'])
+  it('거르개 일곱 개 — 「차광」이 「고위험」 바로 뒤', () => {
+    expect(LABEL_FILTERS.map(f => f.id)).toEqual(['caution', 'all', 'dose', 'shape', 'sound', 'high', 'shade'])
+    expect(LABEL_FILTERS.map(f => f.l)).toEqual(['주의 있는 약만', '전체', '용량', '모양', '발음', '고위험', '차광'])
+  })
+
+  /* ★ 2026-11-09 — 차광 거르개를 넣어도 「주의 있는 약만」 개수가 늘면 안 된다.
+     운영 실측 73종(상태 「사용」)을 그대로 유지하는 것이 이정화 님 조건이었다. */
+  it('★ 차광은 「주의 있는 약만」에 들어가지 않는다', () => {
+    const 차광만 = D({ drug_code: 'S6', drug_name: '딜라트렌정6.25mg', storage_method: '실온/차광' })
+    const rows2 = [...rows, 차광만]
+    const by = id => rows2.filter(LABEL_FILTERS.find(f => f.id === id).test).map(d => d.drug_code)
+    expect(by('shade')).toEqual(['S6'])
+    expect(by('caution')).toEqual(['A1', 'B2', 'C3', 'E5'])   /* S6 없음 */
+  })
+
+  it('차광 거르개는 보관방법 글자로 가른다', () => {
+    const by = d => LABEL_FILTERS.find(f => f.id === 'shade').test(d)
+    expect(by(D({ storage_method: '실온/차광' }))).toBe(true)
+    expect(by(D({ storage_method: '냉장/차광' }))).toBe(true)
+    expect(by(D({ storage_method: '실온' }))).toBe(false)
+    expect(by(D({ storage_method: null }))).toBe(false)
+    expect(by(D({}))).toBe(false)
   })
 
   it('★ 「주의 있는 약만」에 고위험도 들어간다 (뱃지가 붙는 약이 기준)', () => {

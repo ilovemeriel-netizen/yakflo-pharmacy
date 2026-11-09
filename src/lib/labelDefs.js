@@ -224,6 +224,10 @@ export const LABEL_FILTERS = [
   { id: 'shape', l: '모양', test: d => d.caution_shape === true },
   { id: 'sound', l: '발음', test: d => d.caution_sound === true },
   { id: 'high', l: '고위험', test: d => d.is_high_alert === true },
+  /* 차광 — 보관방법에 「차광」이 들어간 약. 라벨에 차광 뱃지가 붙는 것과 같은 기준이다.
+     ★ 「주의 있는 약만」(caution) 에는 들어가지 않는다 — cautionOnlyKinds 가 차광을 뺀다.
+       (2026-11-09 이정화 님: 73종 그대로 유지) */
+  { id: 'shade', l: '차광', test: d => isShade(d) },
 ]
 
 export function matchSearch(d, kw) {

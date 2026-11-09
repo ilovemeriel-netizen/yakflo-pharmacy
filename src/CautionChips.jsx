@@ -97,11 +97,21 @@ export function CautionIcon({ kind, size = 11, color = 'currentColor' }) {
 /* ── 칩 ──────────────────────────────────────────────────────────────── */
 /* 운영 Bd 부품과 **같은 모양**: radius 8 · fontSize 10 · padding 3/10 · 같은 그림자.
    아이콘이 들어가므로 inline-flex 로 세로 가운데를 맞춘다. */
-export function Chip({ bg, color, icon, children }) {
+export function Chip({ bg, color, icon, border, children }) {
+  /* ★ border 를 넣어도 **바깥 크기는 그대로**여야 한다(옆에 선 다른 칩과 높이가 어긋나지 않게).
+     이 프로젝트에는 전역 `* { box-sizing: border-box }` 가 없어 칩은 content-box 다.
+     그래서 테두리 1px 이 바깥으로 더해진다 → 안여백을 상하·좌우 1px 씩 줄여 상쇄한다.
+       테두리 없음 : 안여백 3px 10px            → 바깥 32.09 × 65.55px
+       테두리 1px : 안여백 2px 9px + 테두리 1px → 바깥 32.09 × 65.55px (같음)
+     ※ height/width 를 적지 않으므로 box-sizing 을 바꿔도 소용이 없다(높이가 내용에서 나온다).
+       안여백으로 상쇄하는 것이 유일하게 통하는 방법이다. (2026-11-09) */
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
-      background: bg, color, padding: '3px 10px', borderRadius: 8,
+      background: bg, color,
+      padding: border ? '2px 9px' : '3px 10px',
+      border: border ? `1px solid ${border}` : undefined,
+      borderRadius: 8,
       fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap',
       boxShadow: '0 1px 3px rgba(0,0,0,0.06)', verticalAlign: 'middle',
     }}>
@@ -110,8 +120,17 @@ export function Chip({ bg, color, icon, children }) {
   )
 }
 
+/* 고위험 — 바탕이 10% 투명한 연분홍이라 색이 꽉 찬 용량·모양·발음 칩 옆에서
+   더 작고 흐리게 보였다. 바탕·글씨·아이콘 색은 그대로 두고 **테두리 한 줄만** 둘러
+   경계를 또렷하게 한다. (2026-11-09 이정화 님 안 ㄴ 승인)
+   ★ 이 칩은 라벨 인쇄 목록과 약품목록(고위험 열·약품명 칸) 세 자리에서 함께 쓰인다 —
+     세 자리를 같게 유지하는 것이 승인 조건이었다. */
 export function HighAlertChip() {
-  return <Chip bg={HIGH_ALERT_BG} color={HIGH_ALERT_FG} icon={<WarnTriangle />}>고위험</Chip>
+  return (
+    <Chip bg={HIGH_ALERT_BG} color={HIGH_ALERT_FG} border={HIGH_ALERT_FG} icon={<WarnTriangle />}>
+      고위험
+    </Chip>
+  )
 }
 
 export function CautionChip({ t, kind, label }) {

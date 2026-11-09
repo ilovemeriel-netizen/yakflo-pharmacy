@@ -75,6 +75,41 @@ describe('★ 고위험 칩 — 색은 한 글자도 바뀌지 않는다', () =>
   })
 })
 
+/* 2026-11-09 — 이정화 님 안 ㄴ.
+   고위험 칩만 바탕이 10% 투명이라 색이 꽉 찬 용량·모양·발음 칩 옆에서 작고 흐리게 보였다.
+   바탕·글씨·아이콘 색은 그대로 두고 테두리 한 줄만 둘렀다.
+   ★ 조건: 테두리를 넣어도 **바깥 크기(32.09 × 65.55px)가 그대로**여야 한다.
+     이 프로젝트에는 전역 box-sizing:border-box 가 없어 칩이 content-box 다 →
+     테두리 1px 이 바깥으로 더해지므로 안여백을 1px 씩 줄여 상쇄한다. */
+describe('★ 고위험 칩 테두리 — 바깥 크기를 바꾸지 않는다', () => {
+  const hi = () => render(<HighAlertChip />).container.firstChild
+  const cau = () => render(<CautionChip t={LIGHT} kind="shape" label="모양" />).container.firstChild
+
+  it('테두리는 1px · 글씨와 같은 빨강(#D9342B)', () => {
+    expect(hi().style.borderWidth).toBe('1px')
+    expect(hi().style.borderStyle).toBe('solid')
+    expect(hi().style.borderColor).toBe('rgb(217, 52, 43)')
+    expect(HIGH_ALERT_FG).toBe('#D9342B')
+  })
+
+  it('★ 테두리 1px 만큼 안여백이 1px 줄어 바깥 크기가 같다', () => {
+    expect(cau().style.padding).toBe('3px 10px')   /* 테두리 없음 → 3 + 0 */
+    expect(hi().style.padding).toBe('2px 9px')     /* 테두리 1px → 2 + 1 = 3 (같음) */
+    expect(cau().style.borderStyle).toBe('')       /* 다른 칩에는 테두리가 없다 */
+  })
+
+  it('둥글기·글자 크기·그림자는 다른 칩과 같다', () => {
+    for (const k of ['borderRadius', 'fontSize', 'fontWeight', 'boxShadow', 'display', 'gap']) {
+      expect(hi().style[k]).toBe(cau().style[k])
+    }
+  })
+
+  it('바탕·글씨 색은 그대로다 (테두리만 더했다)', () => {
+    expect(hi().style.background).toBe('rgba(217, 52, 43, 0.1)')
+    expect(hi().style.color).toBe('rgb(217, 52, 43)')
+  })
+})
+
 describe('고위험 아이콘 — 노랑 안쪽 + 빨강 테두리 + 진한 느낌표', () => {
   it('글자 ⚠ 가 아니라 그림(SVG)이다', () => {
     const { container } = render(<HighAlertChip />)

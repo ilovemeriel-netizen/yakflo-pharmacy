@@ -175,7 +175,9 @@ describe('★ 「주의 있는 약만」 거르개 — 차광은 세지 않는�
     expect(F('shape').test(D({ caution_shape: true }))).toBe(true)
     expect(F('sound').test(D({ caution_sound: true }))).toBe(true)
     expect(F('high').test(D({ is_high_alert: true }))).toBe(true)
-    expect(LABEL_FILTERS.map(x => x.id)).toEqual(['caution', 'all', 'dose', 'shape', 'sound', 'high'])
+    /* 2026-11-09 — 「차광」 거르개가 「고위험」 뒤에 더해졌다(이정화 님 승인).
+       그래도 위의 다른 거르개 판정은 한 글자도 바뀌지 않았다. */
+    expect(LABEL_FILTERS.map(x => x.id)).toEqual(['caution', 'all', 'dose', 'shape', 'sound', 'high', 'shade'])
   })
 
   it('★ 운영 실측 — 73종 (차광 뱃지가 생기기 전과 같다)', () => {
