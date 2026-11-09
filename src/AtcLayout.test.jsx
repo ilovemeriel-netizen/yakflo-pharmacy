@@ -83,15 +83,17 @@ describe('★ 두 칸이 같은 뱃지를 쓴다', () => {
 })
 
 describe('★ FSP 위·아래 표 — 앞 4열을 맞춘다', () => {
-  /* 2026-11-07 — 마지막 막대 열에 너비를 주지 않게 바뀌었다(안 ⓑ).
-     「합계가 같다」는 더 이상 뜻이 없다 — 막대가 남는 폭을 혼자 먹기 때문이다.
-     대신 **앞 4열이 글자 그대로 같은지**를 못 박는다. 그게 두 표를 맞추는 진짜 조건이다. */
+  /* ★ 2026-11-09 확인 — 이 두 표에는 **막대가 없다.**
+     마지막 열은 「소수여부」·「기준 부합」으로 둘 다 **글자 칸**이다.
+     2026-11-07 에 막대가 있는 줄 알고 마지막 열 너비를 빼(null) 보냈는데,
+     그러면 남는 폭을 글자 칸이 먹어 휑해진다. 그래서 너비를 되돌렸다.
+     앞 4열(64·110·200·90)과 합계(658)가 두 표에서 같다 — PR #420 에서 맞춰 둔 성질이다. */
   it('위 표 앞 4열이 64·110·200·90 이다 (약품명 170 → 200)', () => {
-    expect(CODE).toContain('colWidths={[64, 110, 200, 90, null]}')
+    expect(CODE).toContain('colWidths={[64, 110, 200, 90, 194]}')
   })
 
   it('아래 표 앞 4열도 같다', () => {
-    expect(CODE).toContain('colWidths={[64, 110, 200, 90, 64, null]}')
+    expect(CODE).toContain('colWidths={[64, 110, 200, 90, 64, 130]}')
   })
 
   it('★ 두 표의 앞 4열이 **글자 그대로** 같다 (다르면 열이 어긋나 보인다)', () => {
@@ -101,18 +103,20 @@ describe('★ FSP 위·아래 표 — 앞 4열을 맞춘다', () => {
     expect(got[1].startsWith('64, 110, 200, 90')).toBe(true)
   })
 
-  it('★ 마지막 막대 열에는 너비를 주지 않는다 — 남는 폭을 막대가 먹는다', () => {
+  it('★ 두 표의 마지막 열은 **글자 칸**이라 너비를 그대로 준다 (막대가 없다)', () => {
     /* 주지 않으면 비율대로 늘어나 글자 칸까지 넓어진다(실측: 약품명 170 → 322px) */
-    expect(CODE).toContain('colWidths={[64, 110, 200, 90, null]}')
-    expect(CODE).toContain('colWidths={[64, 110, 200, 90, 64, null]}')
+    expect(CODE).toContain('colWidths={[64, 110, 200, 90, 194]}')
+    expect(CODE).toContain('colWidths={[64, 110, 200, 90, 64, 130]}')
     expect(CODE).not.toContain('colWidths={[64, 110, 170, 90, 194]}')
     expect(CODE).not.toContain('colWidths={[64, 110, 170, 90, 64, 130]}')
   })
 
-  it('★ minWidth 도 둘 다 628 다', () => {
-    expect((CODE.match(/minWidth=\{628\}/g) || []).length).toBe(2)
-    expect(CODE).not.toContain('minWidth={520}')
-    expect(CODE).not.toContain('minWidth={620}')
+  it('★ minWidth 도 둘 다 658 다 (열 폭 합과 같다)', () => {
+    /* 2026-11-09 — 약품명이 170 → 200 이 되면서 합계가 628 → 658 로 올랐다 */
+    expect((CODE.match(/minWidth=\{658\}/g) || []).length).toBe(2)
+    expect(CODE).not.toContain('minWidth={628}')
+    expect([64, 110, 200, 90, 194].reduce((a, b) => a + b, 0)).toBe(658)
+    expect([64, 110, 200, 90, 64, 130].reduce((a, b) => a + b, 0)).toBe(658)
   })
 
   it('열 이름은 그대로다 (제안순위 / 슬롯)', () => {
