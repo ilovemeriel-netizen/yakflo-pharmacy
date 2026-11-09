@@ -10,9 +10,9 @@
  *   말줄임(…)도 하지 않는다. 약 이름이 잘리면 위험하다.
  */
 import React, { useLayoutEffect, useRef } from 'react'
-import { CautionIcon, WarnTriangle } from './CautionChips'
+import { CautionIcon, WarnTriangle, ShadeIcon } from './CautionChips'
 import {
-  labelBg, labelHead, badgeKinds, CAUTION_SHORT, ingredientPair, NAME_MM,
+  labelBg, labelHead, badgeKinds, CAUTION_SHORT, ingredientPair, NAME_MM, SHADE_BG, SHADE_FG,
 } from './lib/labelDefs'
 
 /* 칸에 들어갈 때까지 글자를 줄인다 — 말줄임 없음 */
@@ -42,17 +42,23 @@ export function FitName({ text, startMm = NAME_MM.start }) {
 }
 
 /* ★ 제목 칸(17mm) 안에 들어가야 한다. 「고위험」은 세 글자라 가장 길다 —
-   글자·아이콘·여백을 그 폭에 맞춰 잡았다. 넘치면 잘리지 않고 칸을 밀어낸다. */
+   글자·아이콘·여백을 그 폭에 맞춰 잡았다. 넘치면 잘리지 않고 칸을 밀어낸다.
+   ★ 차광만 색이 다르다(검정 #1F1F1F + 노랑 #FFE082) — ATC 화면과 같은 색으로 읽히게.
+     크기·모양·여백·둥글기는 **다른 뱃지와 똑같다**(2026-11-09 확정). */
 function Badge({ kind }) {
+  const shade = kind === 'shade'
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5mm',
-      background: '#111', color: '#fff', fontWeight: 700, fontSize: '2.1mm', lineHeight: 1,
+      background: shade ? SHADE_BG : '#111', color: shade ? SHADE_FG : '#fff',
+      fontWeight: 700, fontSize: '2.1mm', lineHeight: 1,
       padding: '0.5mm 0.8mm', borderRadius: '0.5mm', whiteSpace: 'nowrap', marginTop: '0.7mm',
       maxWidth: '100%', overflow: 'hidden',
       WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
     }}>
-      {kind === 'high' ? <WarnTriangle size="2.2mm" /> : <CautionIcon kind={kind} size="2.2mm" color="#fff" />}
+      {kind === 'high' ? <WarnTriangle size="2.2mm" />
+        : shade ? <ShadeIcon size="2.2mm" color={SHADE_FG} />
+          : <CautionIcon kind={kind} size="2.2mm" color="#fff" />}
       {CAUTION_SHORT[kind]}
     </span>
   )
@@ -94,7 +100,19 @@ export function DrugLabel({ drug, forPrint, idOverride }) {
           <tr>
             <th style={th}>
               <div style={thText}>약품명</div>
-              {kinds.map(k => <Badge key={k} kind={k} />)}
+              {/* ★ 뱃지는 **줄바꿈할 수 있어야** 한다 (2026-11-09).
+                  제목 칸(17mm)에 `whiteSpace: nowrap` 이 걸려 있어(「약품/명」으로 접히는 것을 막으려고)
+                  뱃지가 가로로만 늘어서다 칸 밖으로 나가 **잘렸다** —
+                  실측: 휴물린알주100단위(고위험 + 차광)에서 차광 뱃지가 잘렸다.
+                  여기서만 줄바꿈을 되살린다. 제목 글자·칸 너비·뱃지 크기는 그대로다. */}
+              {kinds.length > 0 && (
+                <div style={{
+                  display: 'flex', flexWrap: 'wrap', justifyContent: 'center',
+                  alignItems: 'center', gap: '0.5mm', whiteSpace: 'normal',
+                }}>
+                  {kinds.map(k => <Badge key={k} kind={k} />)}
+                </div>
+              )}
             </th>
             <td style={{ ...cell, height: '55%' }}>
               <FitName text={d.drug_name || ''} />

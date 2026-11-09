@@ -230,12 +230,13 @@ describe('★ 건드리지 않은 것', () => {
     expect(LABEL).not.toContain('isShade')
   })
 
-  it('85×45 라벨에도 차광을 넣지 않았다', () => {
+  it('★ 85×45 라벨에는 **차광 뱃지가 들어갔다** (2026-11-09 결정 바뀜)', () => {
+    /* 2026-11-07 에는 「라벨에 차광을 넣지 않는다」였는데, 2026-11-09 에 뱃지로 넣기로 바뀌었다.
+       자세한 것은 src/LabelShadeBadge.test.jsx 에 있다. 여기서는 들어갔다는 사실만 못 박는다. */
     const LBL = readFileSync(resolve(process.cwd(), 'src/DrugLabel.jsx'), 'utf8')
-    expect(LBL).not.toContain('ShadeIcon')
-    expect(LBL).not.toContain('isShade')
+    expect(LBL).toContain('ShadeIcon')
     const DEF = readFileSync(resolve(process.cwd(), 'src/lib/labelDefs.js'), 'utf8')
-    expect(DEF).not.toContain('isShade')
+    expect(DEF).toContain('export function isShade')
   })
 
   it('주의 3종 칩은 그대로다', () => {
