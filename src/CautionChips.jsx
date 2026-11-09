@@ -11,7 +11,8 @@
  */
 import React from 'react'
 import {
-  HIGH_ALERT_BG, HIGH_ALERT_FG, cautionChipColors, cautionsOf,
+  HIGH_ALERT_BG, HIGH_ALERT_FG, SHADE_BG, SHADE_FG, SHADE_LABEL,
+  cautionChipColors, cautionsOf,
 } from './lib/cautionDefs'
 
 /* ── 아이콘 ──────────────────────────────────────────────────────────── */
@@ -136,6 +137,19 @@ export function HighAlertChip() {
 export function CautionChip({ t, kind, label }) {
   const { bg, fg } = cautionChipColors(t, kind)
   return <Chip bg={bg} color={fg} icon={<CautionIcon kind={kind} color={fg} />}>{label}</Chip>
+}
+
+/* 차광 칩 — 라벨 인쇄 목록 「주의」 칸에서만 쓴다. (2026-11-09 이정화 님 요청)
+ *  ★ 새 색을 만들지 않는다 — 이미 있는 차광 토큰 그대로다.
+ *    바탕 #1F1F1F(SHADE_BG) · 글씨 #FFE082(SHADE_FG) · 초승달(ShadeIcon).
+ *  ★ 틀이 공용 Chip 이라 용량·모양·발음 칩과 크기·글자·안여백·둥글기가 같다
+ *    (실측 32.09 × 55.38px · 10px · 3px 10px · 8px · 아이콘 11px).
+ *  ★ 화면 모드를 타지 않는다 — 두 값 모두 고정색이다(cautionDefs 참고).
+ *  ※ 차광은 `cautionDefs.CAUTION_ORDER` 에 **넣지 않는다.** 거기에 넣으면
+ *    약품목록 약품명 칸·수정창·등록창·ATC 「유사」 칸이 전부 따라 바뀐다.
+ *    차례는 `labelDefs.badgeKinds`(85×45 라벨이 쓰는 그 함수)로 맞춘다. */
+export function ShadeChip() {
+  return <Chip bg={SHADE_BG} color={SHADE_FG} icon={<ShadeIcon color={SHADE_FG} />}>{SHADE_LABEL}</Chip>
 }
 
 /* 약품 한 줄에 붙는 칩 전부 — 고위험이 **언제나 맨 앞**, 주의 3종이 그 뒤.
