@@ -12,8 +12,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import { useTheme } from './lib/theme'
-import { CautionChip, HighAlertChip } from './CautionChips'
-import { CAUTION_ORDER } from './lib/cautionDefs'
+import { CautionChip, HighAlertChip, ShadeChip } from './CautionChips'
 import { DrugLabel } from './DrugLabel'
 import { LabelSheet } from './LabelSheet'
 import MP from './MultiPick'
@@ -21,6 +20,7 @@ import { VOCAB } from './lib/drugRules'
 import {
   LABEL_FILTERS, matchSearch, labelPrintCss, sheetPrintCss,
   SHEET_GAP_MM, SHEET_PER_PAGE, QTY_MAX, expandForSheet, paginate,
+  badgeKinds, CAUTION_SHORT,
 } from './lib/labelDefs'
 
 const PAGE = 50
@@ -168,10 +168,19 @@ export function LabelPrint({ drugs }) {
                           }}>{d.drug_name}</button>
                         <div style={{ fontSize: 11, color: t.textL, textAlign: 'left' }}>{d.drug_code}</div>
                       </td>
+                      {/* 주의 — 고위험 > 차광 > 발음 > 모양 > 용량.
+                          ★ 85×45 라벨과 **같은 함수**(badgeKinds)로 차례를 맞춘다. 한 약이
+                            종이와 화면에서 다른 차례로 보이면 그게 더 헷갈린다.
+                          ★ 차광 칩은 **보이기만** 한다 — 「주의 있는 약만」 거르개 판정
+                            (cautionOnlyKinds)에는 들어가지 않아 개수는 73 그대로다.
+                          (2026-11-09 이정화 님 요청) */}
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                        {d.is_high_alert ? <><HighAlertChip />{' '}</> : null}
-                        {CAUTION_ORDER.filter(x => d[x.col]).map(x => (
-                          <React.Fragment key={x.kind}><CautionChip t={t} kind={x.kind} label={x.label} />{' '}</React.Fragment>
+                        {badgeKinds(d).map(k => (
+                          <React.Fragment key={k}>
+                            {k === 'high' ? <HighAlertChip />
+                              : k === 'shade' ? <ShadeChip />
+                                : <CautionChip t={t} kind={k} label={CAUTION_SHORT[k]} />}{' '}
+                          </React.Fragment>
                         ))}
                       </td>
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>

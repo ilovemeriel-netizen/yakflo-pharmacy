@@ -11,7 +11,8 @@
  */
 import React from 'react'
 import {
-  HIGH_ALERT_BG, HIGH_ALERT_FG, cautionChipColors, cautionsOf,
+  HIGH_ALERT_BG, HIGH_ALERT_FG, SHADE_BG, SHADE_FG, SHADE_LABEL,
+  cautionChipColors, cautionsOf,
 } from './lib/cautionDefs'
 
 /* ── 아이콘 ──────────────────────────────────────────────────────────── */
@@ -97,11 +98,21 @@ export function CautionIcon({ kind, size = 11, color = 'currentColor' }) {
 /* ── 칩 ──────────────────────────────────────────────────────────────── */
 /* 운영 Bd 부품과 **같은 모양**: radius 8 · fontSize 10 · padding 3/10 · 같은 그림자.
    아이콘이 들어가므로 inline-flex 로 세로 가운데를 맞춘다. */
-export function Chip({ bg, color, icon, children }) {
+export function Chip({ bg, color, icon, border, children }) {
+  /* ★ border 를 넣어도 **바깥 크기는 그대로**여야 한다(옆에 선 다른 칩과 높이가 어긋나지 않게).
+     이 프로젝트에는 전역 `* { box-sizing: border-box }` 가 없어 칩은 content-box 다.
+     그래서 테두리 1px 이 바깥으로 더해진다 → 안여백을 상하·좌우 1px 씩 줄여 상쇄한다.
+       테두리 없음 : 안여백 3px 10px            → 바깥 32.09 × 65.55px
+       테두리 1px : 안여백 2px 9px + 테두리 1px → 바깥 32.09 × 65.55px (같음)
+     ※ height/width 를 적지 않으므로 box-sizing 을 바꿔도 소용이 없다(높이가 내용에서 나온다).
+       안여백으로 상쇄하는 것이 유일하게 통하는 방법이다. (2026-11-09) */
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
-      background: bg, color, padding: '3px 10px', borderRadius: 8,
+      background: bg, color,
+      padding: border ? '2px 9px' : '3px 10px',
+      border: border ? `1px solid ${border}` : undefined,
+      borderRadius: 8,
       fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap',
       boxShadow: '0 1px 3px rgba(0,0,0,0.06)', verticalAlign: 'middle',
     }}>
@@ -110,13 +121,35 @@ export function Chip({ bg, color, icon, children }) {
   )
 }
 
+/* 고위험 — 바탕이 10% 투명한 연분홍이라 색이 꽉 찬 용량·모양·발음 칩 옆에서
+   더 작고 흐리게 보였다. 바탕·글씨·아이콘 색은 그대로 두고 **테두리 한 줄만** 둘러
+   경계를 또렷하게 한다. (2026-11-09 이정화 님 안 ㄴ 승인)
+   ★ 이 칩은 라벨 인쇄 목록과 약품목록(고위험 열·약품명 칸) 세 자리에서 함께 쓰인다 —
+     세 자리를 같게 유지하는 것이 승인 조건이었다. */
 export function HighAlertChip() {
-  return <Chip bg={HIGH_ALERT_BG} color={HIGH_ALERT_FG} icon={<WarnTriangle />}>고위험</Chip>
+  return (
+    <Chip bg={HIGH_ALERT_BG} color={HIGH_ALERT_FG} border={HIGH_ALERT_FG} icon={<WarnTriangle />}>
+      고위험
+    </Chip>
+  )
 }
 
 export function CautionChip({ t, kind, label }) {
   const { bg, fg } = cautionChipColors(t, kind)
   return <Chip bg={bg} color={fg} icon={<CautionIcon kind={kind} color={fg} />}>{label}</Chip>
+}
+
+/* 차광 칩 — 라벨 인쇄 목록 「주의」 칸에서만 쓴다. (2026-11-09 이정화 님 요청)
+ *  ★ 새 색을 만들지 않는다 — 이미 있는 차광 토큰 그대로다.
+ *    바탕 #1F1F1F(SHADE_BG) · 글씨 #FFE082(SHADE_FG) · 초승달(ShadeIcon).
+ *  ★ 틀이 공용 Chip 이라 용량·모양·발음 칩과 크기·글자·안여백·둥글기가 같다
+ *    (실측 32.09 × 55.38px · 10px · 3px 10px · 8px · 아이콘 11px).
+ *  ★ 화면 모드를 타지 않는다 — 두 값 모두 고정색이다(cautionDefs 참고).
+ *  ※ 차광은 `cautionDefs.CAUTION_ORDER` 에 **넣지 않는다.** 거기에 넣으면
+ *    약품목록 약품명 칸·수정창·등록창·ATC 「유사」 칸이 전부 따라 바뀐다.
+ *    차례는 `labelDefs.badgeKinds`(85×45 라벨이 쓰는 그 함수)로 맞춘다. */
+export function ShadeChip() {
+  return <Chip bg={SHADE_BG} color={SHADE_FG} icon={<ShadeIcon color={SHADE_FG} />}>{SHADE_LABEL}</Chip>
 }
 
 /* 약품 한 줄에 붙는 칩 전부 — 고위험이 **언제나 맨 앞**, 주의 3종이 그 뒤.

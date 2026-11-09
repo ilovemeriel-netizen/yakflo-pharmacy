@@ -31,17 +31,20 @@ const DRUGS = [
   { drug_code: 'SGBRONNC10', drug_name: '가바로닌캡슐100mg', category: '경구제', status: '사용',
     ingredient_en: 'Gabapentin', ingredient_kr: '가바펜틴',
     caution_dose: true, caution_shape: false, caution_sound: false, is_high_alert: false },
+  /* 차광 + 모양 — 칩이 두 개 붙는 약 (2026-11-09) */
   { drug_code: 'DGX', drug_name: '디고신정', category: '경구제', status: '사용',
-    ingredient_en: 'Digoxin', ingredient_kr: '디곡신',
+    ingredient_en: 'Digoxin', ingredient_kr: '디곡신', storage_method: '실온/차광',
     caution_dose: false, caution_shape: true, caution_sound: false, is_high_alert: false },
   { drug_code: 'MGM', drug_name: '마그밀정', category: '경구제', status: '사용',
     ingredient_en: 'Magnesium hydroxide', ingredient_kr: '수산화마그네슘',
     caution_dose: false, caution_shape: false, caution_sound: true, is_high_alert: false },
+  /* 차광만 있는 약 — 「주의 있는 약만」에는 들어가지 않아야 한다 (2026-11-09) */
   { drug_code: 'GRD2', drug_name: '게리드정2mg', category: '경구제', status: '사용',
-    ingredient_en: 'Glimepiride', ingredient_kr: '글리메피리드',
+    ingredient_en: 'Glimepiride', ingredient_kr: '글리메피리드', storage_method: '실온/차광',
     caution_dose: false, caution_shape: false, caution_sound: false, is_high_alert: false },
+  /* 고위험 + 차광 — 휴물린알주100단위와 같은 꼴 (2026-11-09) */
   { drug_code: '7PTSMCLDH', drug_name: '대한염화칼륨-40', category: '주사제', status: '사용',
-    ingredient_en: 'Potassium Chloride', ingredient_kr: '염화칼륨',
+    ingredient_en: 'Potassium Chloride', ingredient_kr: '염화칼륨', storage_method: '냉장/차광',
     caution_dose: false, caution_shape: false, caution_sound: false,
     is_high_alert: true, high_alert_class: 'electrolyte_k' },
 ]
@@ -197,6 +200,68 @@ describe('라벨 인쇄 화면', () => {
     expect(screen.getByRole('button', { name: '주의 있는 약만 4' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '전체 5' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '고위험 1' })).toBeTruthy()
+    /* ★ 차광 거르개 — 디고신정·게리드정2mg·대한염화칼륨-40 (2026-11-09) */
+    expect(screen.getByRole('button', { name: '차광 3' })).toBeTruthy()
+  })
+
+  /* ★ 2026-11-09 이정화 님 요청 — 「주의」 칸에 차광 칩을 더한다.
+     못 박는 것
+      ① 차례가 85×45 라벨과 같다 : 고위험 > 차광 > 발음 > 모양 > 용량
+      ② 차광 칩은 **보이기만** 한다 — 「주의 있는 약만」 개수는 그대로다
+      ③ 색은 기존 차광 토큰 그대로 (#1F1F1F / #FFE082) — 새 색을 만들지 않았다
+      ④ 크기·글자·안여백·둥글기가 모양·발음 칩과 같다 */
+  describe('★ 「주의」 칸의 차광 칩', () => {
+    /* 목록 표에서 그 약 줄의 「주의」 칸(세 번째 td) 을 집는다 */
+    const cautionCell = (container, name) => {
+      const list = container.querySelectorAll('table')[0]
+      const row = [...list.querySelectorAll('tbody tr')]
+        .find(tr => tr.textContent.includes(name))
+      return row.querySelectorAll('td')[2]
+    }
+    const chipsOf = cell => [...cell.querySelectorAll('span')]
+      .filter(s => s.style.display === 'inline-flex')
+
+    it('차광인 약에 차광 칩이 붙는다', () => {
+      const { container } = wrap(<LabelPrint drugs={DRUGS} />)
+      expect(chipsOf(cautionCell(container, '디고신정')).map(s => s.textContent))
+        .toEqual(['차광', '모양'])
+    })
+
+    it('★ 차례가 라벨과 같다 — 고위험이 맨 앞, 차광이 그다음', () => {
+      const { container } = wrap(<LabelPrint drugs={DRUGS} />)
+      expect(chipsOf(cautionCell(container, '대한염화칼륨-40')).map(s => s.textContent))
+        .toEqual(['고위험', '차광'])
+    })
+
+    it('차광이 아닌 약에는 안 붙는다', () => {
+      const { container } = wrap(<LabelPrint drugs={DRUGS} />)
+      expect(chipsOf(cautionCell(container, '가바로닌캡슐100mg')).map(s => s.textContent))
+        .toEqual(['용량'])
+    })
+
+    it('★ 차광만 있는 약은 「주의 있는 약만」에 안 들어간다 (개수 4 그대로)', () => {
+      wrap(<LabelPrint drugs={DRUGS} />)
+      expect(screen.getByRole('button', { name: '주의 있는 약만 4' })).toBeTruthy()
+      expect(screen.queryByRole('button', { name: /게리드정2mg/ })).toBeNull()
+    })
+
+    it('색은 기존 차광 토큰 그대로 — 새 색이 아니다', () => {
+      const { container } = wrap(<LabelPrint drugs={DRUGS} />)
+      const chip = chipsOf(cautionCell(container, '디고신정'))[0]
+      expect(chip.textContent).toBe('차광')
+      /* jsdom 이 색을 rgb() 로 바꿔 돌려준다 — #1F1F1F · #FFE082 와 같은 값이다 */
+      expect(bgOf(chip)).toBe('rgb(31,31,31)')
+      expect(String(chip.style.color).replace(/\s/g, '').toLowerCase()).toBe('rgb(255,224,130)')
+      expect(chip.querySelector('svg')).toBeTruthy()   /* 초승달 — 이모지가 아니다 */
+    })
+
+    it('★ 크기·글자·안여백·둥글기가 모양 칩과 같다', () => {
+      const { container } = wrap(<LabelPrint drugs={DRUGS} />)
+      const [shade, shape] = chipsOf(cautionCell(container, '디고신정'))
+      for (const k of ['padding', 'borderRadius', 'fontSize', 'fontWeight', 'display', 'gap']) {
+        expect(shade.style[k]).toBe(shape.style[k])
+      }
+    })
   })
 
   it('★ 표 셀이 왼쪽 정렬이다 (#root 의 가운데 정렬에 밀리지 않는다)', () => {
