@@ -96,3 +96,56 @@ describe('★ StandardTable — null 규칙이 코드에 적혀 있다', () => {
     expect(before).toContain('비율')
   })
 })
+
+describe('★ 안 B — 표가 필요 이상 늘지 않게 (2026-11-07 이정화 님 선택)', () => {
+  /* 마지막 막대 열에 너비를 주지 않으면 남는 폭을 막대가 혼자 먹는다.
+     그대로 두면 창 1600px 에서 막대가 1,198px 까지 늘어나 한쪽으로 쏠려 보였다(실측).
+     막대는 길이를 **서로 견주는** 그림이라 320px 이면 충분하다. */
+  const BAR_MAX = 320
+  const FIXED = { yebi: 56 + 190 + 64, fspc: 64 + 110 + 190 + 90, fspn: 64 + 110 + 190 + 90 + 64 }
+
+  it('규칙이 상수로 한 군데에 있다', () => {
+    expect(CODE).toContain('const BAR_MAX = 320;')
+    expect(CODE).toContain('const BAR_TBL_MAX = fixed => fixed + BAR_MAX;')
+  })
+
+  it('★ 세 표가 **감싸는 div** 에 최대 폭을 받는다 (StandardTable 은 건드리지 않았다)', () => {
+    expect(CODE).toContain('maxWidth: BAR_TBL_MAX(310)')   /* 2차 예비 */
+    expect(CODE).toContain('maxWidth: BAR_TBL_MAX(454)')   /* FSP 후보 */
+    expect(CODE).toContain('maxWidth: BAR_TBL_MAX(518)')   /* 현재 FSP */
+    /* 쓰는 곳 셋뿐이다 — 정의는 `BAR_TBL_MAX = fixed =>` 라 이름 뒤에 괄호가 없다 */
+    expect((CODE.match(/BAR_TBL_MAX\(/g) || []).length).toBe(3)
+  })
+
+  it('★ 적어 준 고정 합이 colWidths 와 **실제로 같다** (어긋나면 최대 폭이 틀어진다)', () => {
+    expect(FIXED.yebi).toBe(310)
+    expect(FIXED.fspc).toBe(454)
+    expect(FIXED.fspn).toBe(518)
+  })
+
+  it('★ 넘침 증명 — 표 최대 폭이 제 minWidth 보다 크다 (계산으로 끝난다)', () => {
+    /* 최대 < 최소면 표가 잘린다. 창 폭과 무관하므로 이 비교만으로 넘침이 없음이 증명된다. */
+    const MIN = { yebi: 420, fspc: 628, fspn: 628 }
+    for (const k of ['yebi', 'fspc', 'fspn'])
+      expect(FIXED[k] + BAR_MAX).toBeGreaterThanOrEqual(MIN[k])
+  })
+
+  it('★ 표 최대 폭 값 — 630 · 774 · 838px', () => {
+    expect(FIXED.yebi + BAR_MAX).toBe(630)
+    expect(FIXED.fspc + BAR_MAX).toBe(774)
+    expect(FIXED.fspn + BAR_MAX).toBe(838)
+  })
+
+  it('★ 표는 카드 안에서 **왼쪽**이다 — 제목이 왼쪽 정렬이라 줄이 맞는다', () => {
+    /* 가운데(margin: 0 auto)로 두면 제목만 왼쪽에 남아 떨어져 보인다(80_안B_시안_1600.png 비교) */
+    expect(CODE).not.toContain("maxWidth: BAR_TBL_MAX(310), margin: '0 auto'")
+    expect(CODE).not.toContain("maxWidth: BAR_TBL_MAX(454), margin: '0 auto'")
+    expect(CODE).not.toContain("maxWidth: BAR_TBL_MAX(518), margin: '0 auto'")
+  })
+
+  it('약품명 190px 과 마지막 열 null 은 그대로다', () => {
+    expect(CODE).toContain('colWidths={[56, 190, 64, null]}')
+    expect(CODE).toContain('colWidths={[64, 110, 190, 90, null]}')
+    expect(CODE).toContain('colWidths={[64, 110, 190, 90, 64, null]}')
+  })
+})
