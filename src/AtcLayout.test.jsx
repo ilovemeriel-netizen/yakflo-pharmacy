@@ -86,25 +86,25 @@ describe('★ FSP 위·아래 표 — 앞 4열을 맞춘다', () => {
   /* 2026-11-07 — 마지막 막대 열에 너비를 주지 않게 바뀌었다(안 ⓑ).
      「합계가 같다」는 더 이상 뜻이 없다 — 막대가 남는 폭을 혼자 먹기 때문이다.
      대신 **앞 4열이 글자 그대로 같은지**를 못 박는다. 그게 두 표를 맞추는 진짜 조건이다. */
-  it('위 표 앞 4열이 64·110·190·90 이다 (약품명 170 → 190)', () => {
-    expect(CODE).toContain('colWidths={[64, 110, 190, 90, null]}')
+  it('위 표 앞 4열이 64·110·200·90 이다 (약품명 170 → 200)', () => {
+    expect(CODE).toContain('colWidths={[64, 110, 200, 90, null]}')
   })
 
   it('아래 표 앞 4열도 같다', () => {
-    expect(CODE).toContain('colWidths={[64, 110, 190, 90, 64, null]}')
+    expect(CODE).toContain('colWidths={[64, 110, 200, 90, 64, null]}')
   })
 
   it('★ 두 표의 앞 4열이 **글자 그대로** 같다 (다르면 열이 어긋나 보인다)', () => {
-    const got = [...CODE.matchAll(/colWidths=\{\[(64, 110, 190, 90[^\]]*)\]\}/g)].map(m => m[1])
+    const got = [...CODE.matchAll(/colWidths=\{\[(64, 110, 200, 90[^\]]*)\]\}/g)].map(m => m[1])
     expect(got).toHaveLength(2)
-    expect(got[0].startsWith('64, 110, 190, 90')).toBe(true)
-    expect(got[1].startsWith('64, 110, 190, 90')).toBe(true)
+    expect(got[0].startsWith('64, 110, 200, 90')).toBe(true)
+    expect(got[1].startsWith('64, 110, 200, 90')).toBe(true)
   })
 
   it('★ 마지막 막대 열에는 너비를 주지 않는다 — 남는 폭을 막대가 먹는다', () => {
     /* 주지 않으면 비율대로 늘어나 글자 칸까지 넓어진다(실측: 약품명 170 → 322px) */
-    expect(CODE).toContain('colWidths={[64, 110, 190, 90, null]}')
-    expect(CODE).toContain('colWidths={[64, 110, 190, 90, 64, null]}')
+    expect(CODE).toContain('colWidths={[64, 110, 200, 90, null]}')
+    expect(CODE).toContain('colWidths={[64, 110, 200, 90, 64, null]}')
     expect(CODE).not.toContain('colWidths={[64, 110, 170, 90, 194]}')
     expect(CODE).not.toContain('colWidths={[64, 110, 170, 90, 64, 130]}')
   })
