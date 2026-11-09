@@ -1,0 +1,189 @@
+/* 사용량 비교 창 — 진짜 부품을 렌더해 확인한다 (2026-11-09).
+ *
+ * 못 박는 것
+ *  ① 창을 열기만 해서는 **DB 에 아무것도 쓰지 않는다**
+ *  ② 「적용」은 **한 번의 호출**로 한다 — 전부 성공 아니면 전부 취소가 깨지지 않게
+ *  ③ 보내는 칸은 3개월·1개월 **둘뿐**이다 (전년은 수기 유지)
+ *  ④ 극소량 줄은 r3 가 **null** 이다
+ *  ⑤ 백신·출고0 줄은 체크가 꺼져 있고, 체크를 켜면 보내는 줄에 들어간다
+ *  ⑥ 기준월을 안 넘기면 **가장 최근에 마감된 달**을 스스로 찾는다
+ *  ⑦ 새 색을 만들지 않았다 — 부모가 준 t 값만 쓴다
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+const rpc = vi.fn()
+const from = vi.fn()
+vi.mock('./lib/supabase', () => ({ supabase: { rpc: (...a) => rpc(...a), from: (...a) => from(...a) } }))
+
+const UsageCompareModal = (await import('./UsageCompareModal')).default
+const SRC = readFileSync(resolve(process.cwd(), 'src/UsageCompareModal.jsx'), 'utf8')
+
+const T = { mode: 'light', bg: '#F7F6F3', card: '#FFFFFF', cardSolid: '#FFFFFF', border: '#E8E6E1',
+  text: '#2E4A62', textM: '#52524E', textL: '#A3A39E', accent: '#804A87', accentL: '#F5EDF6',
+  green: '#019748', greenL: '#E6F7EE', red: '#C62828', redL: '#FFEBEE', amber: '#E65100',
+  amberL: '#FFF3E0', blue: '#2E4A62', blueL: '#EAF0F5', purple: '#804A87', purpleL: '#F5EDF6',
+  shadowH: '0 8px 24px rgba(46,74,98,0.10)' }
+
+const D = o => ({ drug_code: 'X', drug_name: '약', category: '경구제', status: '사용',
+  current_qty: 100, recent_3m_usage: 0, recent_1m_usage: 0, prev_year_usage: 0,
+  monthly_avg: 0, safety_stock: 0, max_stock: 0, ...o })
+
+const DRUGS = [
+  D({ drug_code: 'CFO', drug_name: '칼페온정', recent_3m_usage: 93, recent_1m_usage: 30,
+    monthly_avg: 31, safety_stock: 38, max_stock: 93 }),
+  D({ drug_code: 'TTFLU', drug_name: '지씨플루프리필드시린지주', atc_code: 'J07BB02',
+    recent_3m_usage: 2, recent_1m_usage: 2, monthly_avg: 1, safety_stock: 2 }),
+  D({ drug_code: 'LDMX', drug_name: '삼아리도멕스로션', recent_3m_usage: 2, recent_1m_usage: 1,
+    monthly_avg: 1, safety_stock: 2, max_stock: 3 }),
+  D({ drug_code: 'ALM', drug_name: '알말정10mg', recent_3m_usage: 155, recent_1m_usage: 0,
+    monthly_avg: 52, safety_stock: 63 }),
+]
+const TXNS = [
+  { drug_code: 'CFO', type: '출고', transaction_date: '2026-09-10', quantity: 851 },
+  { drug_code: 'TTFLU', type: '출고', transaction_date: '2026-10-02', quantity: 124 },
+  { drug_code: 'LDMX', type: '출고', transaction_date: '2026-09-02', quantity: 1 },
+]
+
+/* supabase.from('transactions') 사슬을 흉내낸다 */
+function mockTx(rows) {
+  const chain = {
+    select: () => chain, eq: () => chain, gte: () => chain, lt: () => chain,
+    order: () => chain, limit: () => chain,
+    maybeSingle: () => Promise.resolve({ data: { snap_year: 2026, snap_month: 10 }, error: null }),
+    then: (res) => Promise.resolve({ data: rows, count: rows.length, error: null }).then(res),
+  }
+  return chain
+}
+
+/* 확인 창 — 진짜 CountConfirmModal 은 App.jsx 안에 있어 불러올 수 없다.
+   여기서는 「확인을 누르면 onConfirm 이 돈다」만 흉내낸다. */
+const Confirm = ({ confirm, onConfirm }) => <button type="button" onClick={onConfirm}>{confirm}</button>
+
+async function open(props = {}) {
+  from.mockImplementation(() => mockTx(TXNS))
+  const r = render(<UsageCompareModal t={T} drugs={DRUGS} year={2026} month={10}
+    isTenantManager onClose={() => {}} onReload={() => {}} Confirm={Confirm} {...props} />)
+  await act(async () => { await Promise.resolve(); await Promise.resolve() })
+  return r
+}
+
+beforeEach(() => { rpc.mockReset(); rpc.mockResolvedValue({ data: { saved: 1 }, error: null }); from.mockReset() })
+afterEach(() => cleanup())
+
+describe('① 열기만 해서는 아무것도 쓰지 않는다', () => {
+  it('창을 열어도 rpc 를 부르지 않는다', async () => {
+    await open()
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('「적용」을 눌러야 바뀐다고 적혀 있다', async () => {
+    await open()
+    expect(screen.getByText(/「적용」을 눌러야 바뀝니다/)).toBeTruthy()
+  })
+})
+
+describe('②③④⑤ 적용 — 한 번에, 두 칸만, 극소량은 null', () => {
+  async function applyNow() {
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: /적용$/ }))
+    await act(async () => { await Promise.resolve() })
+    fireEvent.click(screen.getByRole('button', { name: '적용' }))
+    await act(async () => { await Promise.resolve() })
+  }
+
+  it('★ rpc 를 딱 한 번 부른다 (전부 아니면 전부 취소)', async () => {
+    await applyNow()
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc.mock.calls[0][0]).toBe('app_save_usage_bulk')
+  })
+
+  it('★ 보내는 칸은 3개월·1개월 둘뿐 — 전년은 없다', async () => {
+    await applyNow()
+    const a = rpc.mock.calls[0][1]
+    expect(a.p_fields).toEqual(['recent_3m_usage', 'recent_1m_usage'])
+    expect(a.p_fields).not.toContain('prev_year_usage')
+    expect(a.p_zero_missing).toBe(false)
+  })
+
+  it('★ 극소량 줄은 r3 가 null 이다', async () => {
+    await applyNow()
+    const rows = rpc.mock.calls[0][1].p_rows
+    const ldmx = rows.find(r => r.code === 'LDMX')
+    expect(ldmx).toBeTruthy()
+    expect(ldmx.r3).toBe(null)
+    expect(ldmx.r1).toBe(0)
+  })
+
+  it('★ 백신·출고0 은 기본으로 안 보낸다', async () => {
+    await applyNow()
+    const codes = rpc.mock.calls[0][1].p_rows.map(r => r.code)
+    expect(codes).toContain('CFO')
+    expect(codes).not.toContain('TTFLU')   /* 백신 */
+    expect(codes).not.toContain('ALM')     /* 3개월 출고 0 */
+  })
+
+  it('체크를 켜면 그 약도 보낸다', async () => {
+    await open()
+    fireEvent.click(screen.getByLabelText('지씨플루프리필드시린지주 적용하기'))
+    fireEvent.click(screen.getByRole('button', { name: /적용$/ }))
+    await act(async () => { await Promise.resolve() })
+    fireEvent.click(screen.getByRole('button', { name: '적용' }))
+    await act(async () => { await Promise.resolve() })
+    expect(rpc.mock.calls[0][1].p_rows.map(r => r.code)).toContain('TTFLU')
+  })
+
+  it('체크를 풀면 그 약은 빠진다', async () => {
+    await open()
+    /* 기본 체크는 칼페온정·삼아리도멕스로션 둘이다(극소량도 기본은 켜짐) */
+    expect(screen.getByText('고른 2종 적용')).toBeTruthy()
+    fireEvent.click(screen.getByLabelText('칼페온정 적용하기'))
+    expect(screen.getByText('고른 1종 적용')).toBeTruthy()
+    fireEvent.click(screen.getByLabelText('삼아리도멕스로션 적용하기'))
+    expect(screen.getByText('고른 0종 적용')).toBeTruthy()
+  })
+})
+
+describe('⑥ 기준월', () => {
+  it('넘긴 연·월을 쓴다', async () => {
+    await open()
+    expect(screen.getByText(/최근 마감 2026년 10월/)).toBeTruthy()
+    expect(screen.getByText(/8·9·10월/)).toBeTruthy()
+  })
+
+  it('★ 안 넘기면 마감표에서 스스로 찾는다', async () => {
+    await open({ year: undefined, month: undefined })
+    expect(from).toHaveBeenCalledWith('monthly_snapshots')
+    expect(screen.getByText(/최근 마감 2026년 10월/)).toBeTruthy()
+  })
+})
+
+describe('⑦ 색 — 새 색을 만들지 않았다', () => {
+  it('소스에 하드코딩된 색이 팔레트 밖에 없다', () => {
+    /* 허용: 흰 글씨 · 덮개 검정 · 회색 칩 바탕(App.jsx 의 SB 와 같은 값) */
+    const ok = new Set(['#fff', '#F0F0EB'])
+    const found = (SRC.match(/#[0-9A-Fa-f]{3,8}/g) || []).filter(x => !ok.has(x))
+    expect(found).toEqual([])
+  })
+
+  it('덮개는 기존 모달과 같은 값이다', () => {
+    expect(SRC).toContain("background: 'rgba(0,0,0,0.4)'")
+    expect(SRC).toContain('zIndex: 1100')
+  })
+})
+
+describe('표 — 극소량은 3개월을 그대로 둔다고 보인다', () => {
+  it('★ 극소량 줄에 「그대로」가 적혀 있다', async () => {
+    await open()
+    expect(screen.getByText(/2 \(그대로\)/)).toBeTruthy()
+  })
+
+  it('비고 뱃지가 갈래를 알려 준다', async () => {
+    await open()
+    expect(screen.getByText('백신 — 제외')).toBeTruthy()
+    expect(screen.getByText('3개월 출고 0')).toBeTruthy()
+    expect(screen.getByText('극소량 — 3개월 그대로')).toBeTruthy()
+  })
+})
