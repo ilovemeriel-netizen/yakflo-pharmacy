@@ -210,8 +210,15 @@ export function sheetPrintCss(gap = SHEET_GAP_MM) {
 }
 
 /* ── 라벨 인쇄 화면의 거르개 ──────────────────────────────────────────── */
+/* ★ 「주의 있는 약만」은 **차광을 세지 않는다** (2026-11-09 이정화 님 지시).
+   차광이 뱃지가 되면서 `badgeKinds(d).length > 0` 으로 두면 차광만 있는 약 113종이
+   이 거르개에 새로 끼어들어 73종 → 186종이 된다. 차광은 보관 방법이지 주의가 아니므로
+   **고위험 + 주의 3종만** 센다. 거르개 개수를 예전 그대로 두려는 것이다. */
+export function cautionOnlyKinds(d) {
+  return badgeKinds(d).filter(k => k !== 'shade')
+}
 export const LABEL_FILTERS = [
-  { id: 'caution', l: '주의 있는 약만', test: d => badgeKinds(d).length > 0 },
+  { id: 'caution', l: '주의 있는 약만', test: d => cautionOnlyKinds(d).length > 0 },
   { id: 'all', l: '전체', test: () => true },
   { id: 'dose', l: '용량', test: d => d.caution_dose === true },
   { id: 'shape', l: '모양', test: d => d.caution_shape === true },

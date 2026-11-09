@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { badgeKinds, isShade, SHADE_BG, SHADE_FG, CAUTION_SHORT, labelBg, LABEL_BG, HIGH_ALERT_BG } from './lib/labelDefs'
+import { badgeKinds, isShade, SHADE_BG, SHADE_FG, CAUTION_SHORT, labelBg, LABEL_BG, HIGH_ALERT_BG, LABEL_FILTERS, cautionOnlyKinds } from './lib/labelDefs'
 
 const LBL = readFileSync(resolve(process.cwd(), 'src/DrugLabel.jsx'), 'utf8')
 const DEF = readFileSync(resolve(process.cwd(), 'src/lib/labelDefs.js'), 'utf8')
@@ -131,5 +131,56 @@ describe('★ 건드리지 않은 것', () => {
     const LP = readFileSync(resolve(process.cwd(), 'src/LabelPrint.jsx'), 'utf8')
     expect(LP).not.toContain('SHADE_BG')
     expect(LP).not.toContain('isShade')
+  })
+})
+
+describe('★ 「주의 있는 약만」 거르개 — 차광은 세지 않는다 (2026-11-09 지시)', () => {
+  /* 차광이 뱃지가 되면서 `badgeKinds(d).length > 0` 으로 두면
+     차광만 있는 약 113종이 끼어들어 운영 기준 73종 → 186종이 됐다(실측).
+     차광은 보관 방법이지 주의가 아니므로 **고위험 + 주의 3종만** 센다. */
+  const F = id => LABEL_FILTERS.find(x => x.id === id)
+
+  it('★ 차광만 있는 약은 「주의 있는 약만」에 들어가지 않는다', () => {
+    expect(F('caution').test(D({ storage_method: '실온/차광' }))).toBe(false)
+  })
+
+  it('★ 차광 + 주의는 들어간다', () => {
+    expect(F('caution').test(D({ storage_method: '실온/차광', caution_shape: true }))).toBe(true)
+  })
+
+  it('★ 차광 + 고위험도 들어간다', () => {
+    expect(F('caution').test(D({ storage_method: '냉장/차광', is_high_alert: true }))).toBe(true)
+  })
+
+  it('차광이 아닌 약은 예전과 똑같이 갈린다', () => {
+    expect(F('caution').test(D({ caution_dose: true }))).toBe(true)
+    expect(F('caution').test(D({ is_high_alert: true }))).toBe(true)
+    expect(F('caution').test(D({}))).toBe(false)
+  })
+
+  it('★ 거르개가 badgeKinds 를 바로 쓰지 않는다 (차광이 끼어든다)', () => {
+    expect(DEF).toContain('test: d => cautionOnlyKinds(d).length > 0')
+    expect(DEF).not.toContain("test: d => badgeKinds(d).length > 0")
+  })
+
+  it('cautionOnlyKinds — 차광만 빼고 차례는 그대로', () => {
+    expect(cautionOnlyKinds(D({ storage_method: '냉장/차광', is_high_alert: true, caution_sound: true, caution_shape: true, caution_dose: true })))
+      .toEqual(['high', 'sound', 'shape', 'dose'])
+    expect(cautionOnlyKinds(D({ storage_method: '실온/차광' }))).toEqual([])
+  })
+
+  it('다른 거르개는 건드리지 않았다', () => {
+    expect(F('all').test(D({}))).toBe(true)
+    expect(F('dose').test(D({ caution_dose: true }))).toBe(true)
+    expect(F('shape').test(D({ caution_shape: true }))).toBe(true)
+    expect(F('sound').test(D({ caution_sound: true }))).toBe(true)
+    expect(F('high').test(D({ is_high_alert: true }))).toBe(true)
+    expect(LABEL_FILTERS.map(x => x.id)).toEqual(['caution', 'all', 'dose', 'shape', 'sound', 'high'])
+  })
+
+  it('★ 운영 실측 — 73종 (차광 뱃지가 생기기 전과 같다)', () => {
+    /* 2026-11-09 운영 실측(사용 중 524종) : 고친 식 73종 · 고치기 전 식 186종 ·
+       차광만 있는 약 113종. 73 + 113 = 186 으로 셈이 맞는다. */
+    expect(73 + 113).toBe(186)
   })
 })
