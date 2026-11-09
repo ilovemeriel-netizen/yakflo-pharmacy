@@ -8248,7 +8248,10 @@ function AtcView({ drugs, onReload }) {
   const manualEx = propCand.filter(d => !isN(d) && d.atc_excluded); /* 수기 조제 — 사용자 지정 배정 제외(0071) */
   const fspOnly = propCand.filter(d => !isN(d) && !d.atc_excluded && d.fsp_slot && !d.atc_slot && !d.fsp_note); /* FSP 전용 — FSP에 1T(fsp_note 없음)로만 있어 카세트 불필요 → 배정 제외(순위 유지). 0.5T는 별개 형태라 카세트 후보 유지 */
   const assignable = propCand.filter(d => !isN(d) && !d.atc_excluded && !(d.fsp_slot && !d.atc_slot && !d.fsp_note)); /* 슬롯 배정 대상(향정·수기제외·FSP 1T전용 건너뛰기) */
-  ['SANTLTRPL', 'STCNE', 'AMNP5'].forEach(pc => { const ix = assignable.findIndex(d => d.drug_code === pc); if (ix >= 88) { const mv = assignable.splice(ix, 1)[0]; assignable.splice(87, 0, mv); } }); /* 상비 잔류 보장 */
+  /* ★ `pinnedIn` 은 **적어 두기만** 한다 — 끼워 넣는 동작은 한 글자도 바뀌지 않았다.
+     「88위 경계 대비」 막대가 기준값을 잡을 때 이 약들을 걸러내려고 적어 둔다(2026-11-09). */
+  const pinnedIn = [];
+  ['SANTLTRPL', 'STCNE', 'AMNP5'].forEach(pc => { const ix = assignable.findIndex(d => d.drug_code === pc); if (ix >= 88) { const mv = assignable.splice(ix, 1)[0]; pinnedIn.push(pc); assignable.splice(87, 0, mv); } }); /* 상비 잔류 보장 */
   const pIdeal = {};
   for (let x = 301; x <= 308; x++) pIdeal[String(x)] = assignable[x - 301] || null;
   for (let sl = 1; sl <= 80; sl++) pIdeal[String(sl)] = assignable[88 - sl] || null;
@@ -8259,6 +8262,19 @@ function AtcView({ drugs, onReload }) {
   const curBandMax = Math.max(1, curRowBand(1).mx, curRowBand(17).mx, curRowBand(33).mx, curRowBand(49).mx, curRowBand(65).mx);
   const curExpBand = (() => { const u = []; for (let x = 301; x <= 308; x++) { const d = byAtc[String(x)]; if (d) u.push(Number(d.recent_3m_usage) || 0); } return u.length ? { mn: Math.min(...u), mx: Math.max(...u) } : { mn: 0, mx: 0 }; })();
   const top88r = assignable.slice(0, 88); const yebi12 = assignable.slice(88, 100);
+  /* ★ 「88위 경계 대비」 막대의 기준값 (2026-11-09 방안 A · 이정화 님 승인).
+     예전에는 `usageScore(assignable[87])` — 88번 **자리**에 있는 약을 그대로 썼다.
+     그런데 바로 위 「상비 잔류 보장」이 사용량이 낮은 상비 약을 그 자리에 끼워 넣는다.
+     2026-11-09 운영 실측 — 애니탈정(원래 135위 · 3개월 213)이 88번 자리에 들어가
+     기준값이 213 이 되고, 예비 12종(353~457)이 **전부 165~215%** 라 100% 에서 잘려
+     **막대 12개가 모두 같은 길이**가 됐다.
+     → 끼워 넣은 상비를 **모두** 걸러내고, 제 힘으로 들어간 약 가운데 **가장 낮은 사용량**을
+       경계선으로 삼는다. 「경계선에 얼마나 가까운가」라는 열 이름의 뜻이 그대로 산다.
+     ★ 이 값은 **읽기만** 한다 — 배정 목록·상비 끼워넣기·순위 계산은 하나도 바뀌지 않는다. */
+  const barBase = (() => {
+    const earned = top88r.filter(d => pinnedIn.indexOf(d.drug_code) < 0);
+    return usageScore(earned[earned.length - 1]) || 1;
+  })();
   const propSlotOf = {}; for (const k in pIdeal) { const d = pIdeal[k]; if (d) propSlotOf[d.drug_code] = k; } /* 코드→제안 슬롯 */
   const narcTop88 = narcEx.filter(d => (rankFull.get(d.drug_code) || 999) <= 88); /* 향정 중 원래 top88(리보트릴·아티반) */
   const t88p = new Set(top88r.map(d => d.drug_code));
@@ -8412,7 +8428,7 @@ function AtcView({ drugs, onReload }) {
       </div>
       <div style={{ marginTop: 12, border: '1px solid ' + t.border, borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ padding: '8px 10px', background: t.bg, borderBottom: '1px solid ' + t.border, fontSize: 12, fontWeight: 700, color: t.text }}>2차 예비 ({yebi12.length}) · 89~100위 · 카세트 확보 시 투입</div>
-        <div style={{ padding: 8 }}><AtcTable t={t} minWidth={420} colWidths={[56, 200, 64, null]} resetable qfilter={r => !r.d || matches(r.d)} rows={yebi12.map(d => ({ rank: rankFull.get(d.drug_code) || null, name: d.drug_name, r3: usageScore(d), _u: usageScore(d), d }))} cols={[{ k: 'rank', h: '순위', align: 'center', render: r => r.rank == null ? '-' : r.rank }, { k: 'name', h: '약품명', align: 'left' }, { k: 'r3', h: '3개월', align: 'right' }, { k: '_u', h: '88위 경계 대비', align: 'left', render: r => { const bnd = usageScore(assignable[87]) || 1; const w = Math.max(2, Math.min(100, r._u / bnd * 100)); return <div style={{ maxWidth: BAR_MAX }}><div style={{ height: 6, borderRadius: 3, background: t.lavender, width: w + '%' }} /></div>; } }]} /></div>
+        <div style={{ padding: 8 }}><AtcTable t={t} minWidth={420} colWidths={[56, 200, 64, null]} resetable qfilter={r => !r.d || matches(r.d)} rows={yebi12.map(d => ({ rank: rankFull.get(d.drug_code) || null, name: d.drug_name, r3: usageScore(d), _u: usageScore(d), d }))} cols={[{ k: 'rank', h: '순위', align: 'center', render: r => r.rank == null ? '-' : r.rank }, { k: 'name', h: '약품명', align: 'left' }, { k: 'r3', h: '3개월', align: 'right' }, { k: '_u', h: '88위 경계 대비', align: 'left', render: r => { const w = Math.max(2, Math.min(100, r._u / barBase * 100)); return <div style={{ maxWidth: BAR_MAX }}><div style={{ height: 6, borderRadius: 3, background: t.lavender, width: w + '%' }} /></div>; } }]} /></div>
       </div>
       <div style={{ marginTop: 12, border: '1px solid ' + t.border, borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: t.bg, borderBottom: '1px solid ' + t.border, flexWrap: 'wrap' }}>{B('C', t.accentL, t.accent, t.accent)}<span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>교환 제안 ({swapTop.length})</span><span style={{ fontSize: 10, color: t.textL }}>카세트째 이동 · 즉시 실행</span><div style={{ flex: 1 }} /><span style={{ fontSize: 10, color: t.textM }}>상위</span><input type="range" min={10} max={40} value={swapN} onChange={e => setSwapN(Number(e.target.value))} style={{ accentColor: t.accent }} /><span style={{ fontSize: 11, fontWeight: 700, color: t.accent }}>{swapN}건</span><span style={{ fontSize: 10, color: t.textL }}>(개선 {swaps.length}쌍 중)</span>{temp && <span style={{ fontSize: 10, color: t.textL }}>임시 모드 · 적용 불가</span>}{canSwap && <button onClick={() => { const ps = swapTop.filter((_, i) => selPairs[i]).map(sw => ({ slot_a: sw.a.sl, slot_b: sw.b.sl })); if (!ps.length) { setMsg('선택된 쌍이 없습니다'); setTimeout(() => setMsg(null), 2500); return; } setPending({ pairs: ps, desc: ps.length + '쌍 일괄 교환' }); }} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.card, color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>선택 적용</button>}</div>
