@@ -42,6 +42,10 @@ export const SCREEN_LABEL = {
   transaction: '입출고', report: '보고서', emergency: '비상조제', atc: 'ATC편집',
   schedule: '일정', register: '약품등록', mypage: '내 정보', admin: '사용자관리',
   archive: '보관함', locvocab: '보관위치', vaccine: '백신 관리',
+  /* ★ 2026-11-10 — PR #414 에서 라벨 화면을 ROUTES 에만 넣고 이 명단에 빠뜨려,
+     errorBoundarySync 시험 2건이 11-06 부터 계속 실패해 있었다.
+     이름은 **메뉴띠(App.jsx 의 ms)의 children 라벨과 같은 글자**여야 한다. */
+  label: '약품식별 라벨 인쇄',
 }
 export function screenLabel(menu) {
   return SCREEN_LABEL[menu] || ''
