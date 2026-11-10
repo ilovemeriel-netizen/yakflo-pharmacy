@@ -51,14 +51,16 @@ describe('6화면 라우팅에 푸터가 붙었다', () => {
 })
 
 describe('푸터 총 개수', () => {
-  it('기존 16곳 + 신규 6곳 = 22곳', () => {
+  /* ★ 2026-11-10 — 라벨 인쇄 화면(PR #414)이 푸터를 한 곳 더 늘려 22→23 이 됐다.
+     숫자만 올리고 제목을 그대로 두면 제목이 거짓이 되므로 제목·주석도 같이 고친다. */
+  it('기존 16곳 + 신규 6곳 + 라벨 1곳 = 23곳', () => {
     const n = (APP.match(/<Ft\s*\/>/g) || []).length
-    expect(n).toBe(22)
+    expect(n).toBe(23)
   })
   it('신규 6곳은 모두 no-print 로 감싸여 있다', () => {
     const wrapped = (APP.match(/<div className="no-print"><Ft \/><\/div>/g) || []).length
-    /* 병동 인쇄용으로 이미 쓰고 있던 1곳 + 이번 6곳 */
-    expect(wrapped).toBe(7)
+    /* 병동 인쇄용으로 이미 쓰고 있던 1곳 + 이번 6곳 + 라벨 인쇄 1곳 */
+    expect(wrapped).toBe(8)
   })
 })
 
