@@ -178,9 +178,14 @@ export default function PowderGroup() {
   }
 
   return (
-    <div style={{ padding: '0 0 24px' }}>
+    /* ★ 바깥 여백 — 다른 화면과 **같은 값**(`padding: '20px 24px'`). 새 규격을 만들지 않는다.
+       ★ textAlign:'left' 를 꼭 적는다 — index.css 의 `#root { text-align: center }` 가
+         전 화면에 상속되기 때문이다(함정 #31). 안 적으면 표 칸 값·띠·안내글·목록 제목이
+         죄다 가운데로 몰린다. 병동신청·실사·사용점검도 같은 이유로 이미 적어 두었다.
+         (2026-11-10 — 처음 올릴 때 이 두 줄을 빠뜨려 운영에서 어긋났다.) */
+    <div style={{ padding: '20px 24px', textAlign: 'left' }}>
       {/* ── 제목줄 — 비상조제와 같은 모양 ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap', textAlign: 'left' }}>
         <span style={{ fontSize: 16, fontWeight: 700, color: PURPLE }}>가루약 분리번호</span>
         <span style={{ fontSize: 12, color: t.textM }}>
           약품 정보(ATC·성분·제형)로 그때그때 계산합니다 · 저장하지 않습니다
