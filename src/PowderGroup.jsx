@@ -20,13 +20,22 @@ import { dbErrorMsg } from './lib/dbError'
 import { HIGH_ALERT_BG, HIGH_ALERT_FG } from './lib/cautionDefs'
 import { WarnTriangle } from './CautionChips'
 import {
-  buildPowderTable, searchPowder, GROUP_NAMES, MANUAL, CHECK,
+  buildPowderTable, searchPowder, overridesToMap,
+  GROUP_NAMES, GROUP_NOS, MANUAL, CHECK,
 } from './lib/powderGroup'
+import {
+  fetchOverrides, setOverrideMany, clearOverride, invalidateOverrides,
+} from './lib/powderOverrides'
 
 /* 비상조제와 같은 상수 — 기존 팔레트. 새 색을 만들지 않는다. */
 const PURPLE = '#804A87'
 
 const num = n => Number(n || 0).toLocaleString()
+const kst = s => {
+  if (!s) return ''
+  try { return new Date(s).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false }) }
+  catch { return String(s) }
+}
 
 /* 가루 위험 칩 — ★ 기존 고위험 칩 토큰을 그대로 쓴다(새 색 아님).
    Chip() 규격: 테두리가 있으면 안여백을 1px 씩 줄여 바깥 크기를 맞춘다. */
@@ -43,13 +52,18 @@ function HazardChip({ title }) {
   )
 }
 
-function NumBadge({ t, no }) {
+/* 번호 뱃지 — 사람이 고친 번호면 옆에 「수기」를 작게 붙인다(2026-11-10 이정화 님 결정).
+   뱃지 색은 그대로 두고 글자만 더한다 — 뱃지 색을 바꾸면 번호를 읽기 어려워진다. */
+function NumBadge({ t, no, manual }) {
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      minWidth: 22, height: 22, padding: '0 6px', borderRadius: 7,
-      background: t.accentL, color: t.accent, fontSize: 11.5, fontWeight: 700,
-    }}>{no}</span>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        minWidth: 22, height: 22, padding: '0 6px', borderRadius: 7,
+        background: t.accentL, color: t.accent, fontSize: 11.5, fontWeight: 700,
+      }}>{no}</span>
+      {manual && <span style={{ fontSize: 9, fontWeight: 700, color: t.amber }}>수기</span>}
+    </span>
   )
 }
 
@@ -71,6 +85,29 @@ export default function PowderGroup() {
   const [cutMsg, setCutMsg] = useState('')
   const [q, setQ] = useState('')
   const [open, setOpen] = useState({})
+  /* 사람이 고친 번호 */
+  const [ovMap, setOvMap] = useState({})
+  const [ovErr, setOvErr] = useState('')
+  /* 여러 개 한꺼번에 — 체크한 약품코드 */
+  const [picked, setPicked] = useState(() => new Set())
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)   /* { ok, text } */
+  const [reload, setReload] = useState(0)
+
+  /* ── 고친 번호 읽기 ─────────────────────────────────────────────── */
+  useEffect(() => {
+    let dead = false
+    ;(async () => {
+      invalidateOverrides()
+      const { rows, error } = await fetchOverrides()
+      if (dead) return
+      if (error) { setOvErr('고친 번호를 읽지 못했습니다: ' + dbErrorMsg(error)); return }
+      setOvErr('')
+      setOvMap(overridesToMap(rows))
+    })()
+    return () => { dead = true }
+  }, [reload])
 
   /* ── drugs 읽기 — 쪽을 나눠 끝까지 ───────────────────────────────── */
   useEffect(() => {
@@ -99,9 +136,53 @@ export default function PowderGroup() {
     return () => { dead = true }
   }, [])
 
-  const p = useMemo(() => buildPowderTable(drugs), [drugs])
+  const p = useMemo(() => buildPowderTable(drugs, ovMap), [drugs, ovMap])
   const hits = useMemo(() => searchPowder(p.rows, q), [p, q])
   const asked = q.trim() !== ''
+
+  /* ── 번호 주기 / 되돌리기 ───────────────────────────────────────── */
+  const toggle = code => setPicked(s => {
+    const n = new Set(s)
+    if (n.has(code)) n.delete(code); else n.add(code)
+    return n
+  })
+
+  async function applyNo(no) {
+    if (!picked.size || busy) return
+    setBusy(true); setMsg(null)
+    const codes = [...picked]
+    let r
+    try { r = await setOverrideMany(codes, no, note.trim()) }
+    catch (e) { r = { error: e, saved: 0 } }
+    setBusy(false)
+    if (r.error) {
+      setMsg({ ok: false, text: '번호를 주지 못했습니다: ' + dbErrorMsg(r.error) })
+      return
+    }
+    if (r.saved !== codes.length) {
+      setMsg({
+        ok: false,
+        text: '보낸 ' + num(codes.length) + '종 가운데 ' + num(r.saved)
+          + '종만 저장됐습니다. 약플로 담당자에게 알려 주세요.',
+      })
+    } else {
+      setMsg({ ok: true, text: num(r.saved) + '종을 ' + no + '번으로 바꿨습니다.' })
+      setPicked(new Set()); setNote('')
+    }
+    setReload(v => v + 1)
+  }
+
+  async function revert(code, name) {
+    if (busy) return
+    setBusy(true); setMsg(null)
+    let r
+    try { r = await clearOverride(code) } catch (e) { r = { error: e } }
+    setBusy(false)
+    setMsg(r.error
+      ? { ok: false, text: '되돌리지 못했습니다: ' + dbErrorMsg(r.error) }
+      : { ok: true, text: name + ' 을(를) 자동 계산으로 되돌렸습니다.' })
+    setReload(v => v + 1)
+  }
 
   const card = {
     background: t.card, border: '1px solid ' + t.border, borderRadius: 12,
@@ -114,10 +195,20 @@ export default function PowderGroup() {
   const td = { padding: '8px 10px', borderBottom: '1px solid ' + t.border, fontSize: 12, color: t.text }
 
   const resultRow = x => (
-    <tr key={x.d.drug_code}>
+    /* 사람이 고친 줄은 바탕을 옅게 — 한눈에 갈라 보라고(2026-11-10 이정화 님 결정 1).
+       기존 amberL 토큰에 알파를 더해 **더 옅게** 쓴다. 새 색이 아니다. */
+    <tr key={x.d.drug_code} style={x.r.manual ? { background: t.amberL + '66' } : undefined}>
+      <td style={{ ...td, textAlign: 'center' }}>
+        <input type="checkbox" checked={picked.has(x.d.drug_code)}
+          onChange={() => toggle(x.d.drug_code)}
+          aria-label={x.d.drug_name + ' 고르기'}
+          style={{ width: 15, height: 15, accentColor: t.accent, cursor: 'pointer' }} />
+      </td>
       <td style={{ ...td, fontWeight: 600 }}>{x.d.drug_name}</td>
       <td style={{ ...td, textAlign: 'center' }}>
-        {x.r.no == null ? <ManualChip t={t} /> : <NumBadge t={t} no={x.r.no} />}
+        {x.r.no == null
+          ? <ManualChip t={t} />
+          : <NumBadge t={t} no={x.r.no} manual={x.r.manual} />}
       </td>
       <td style={td}>{x.r.label}</td>
       <td style={td}>
@@ -129,6 +220,34 @@ export default function PowderGroup() {
           padding: '2px 7px', borderRadius: 8, fontWeight: 700,
         }}>{x.r.note}</span>}
       </td>
+      {/* ★ 「자동이면 N번」을 **늘** 보인다 (2026-11-10 이정화 님 결정 2) —
+          사람이 고친 것인지 규칙이 그렇게 말한 것인지 한눈에 갈라 보라고. */}
+      <td style={{ ...td, fontSize: 11, color: t.textM }}>
+        {x.r.manual ? (
+          <>
+            {x.r.override && x.r.override.note
+              ? <span>{x.r.override.note}</span>
+              : <span style={{ color: t.textL }}>까닭 없음</span>}
+            <div style={{ fontSize: 10, color: t.textL, marginTop: 2 }}>
+              자동 계산이면 {x.r.auto.no == null ? x.r.auto.label : x.r.auto.no + '번'} 입니다
+              {x.r.override && x.r.override.updated_at
+                ? ' · ' + kst(x.r.override.updated_at)
+                : (x.r.override && x.r.override.created_at ? ' · ' + kst(x.r.override.created_at) : '')}
+            </div>
+          </>
+        ) : <span style={{ color: t.textL }}>자동 계산</span>}
+      </td>
+      <td style={{ ...td, textAlign: 'center' }}>
+        {x.r.manual
+          ? <button type="button" disabled={busy}
+            onClick={() => revert(x.d.drug_code, x.d.drug_name)}
+            style={{
+              padding: '5px 11px', borderRadius: 8, border: '1px solid ' + t.accent,
+              background: 'transparent', color: t.accent, fontSize: 11, fontWeight: 700,
+              cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: busy ? 0.5 : 1,
+            }}>되돌리기</button>
+          : <span style={{ color: t.textL }}>—</span>}
+      </td>
       <td style={{ ...td, color: t.textM, fontSize: 11 }}>{x.d.ingredient_kr || ''}</td>
       <td style={{ ...td, color: t.textM, fontSize: 11, textAlign: 'center' }}>{x.d.atc_code || ''}</td>
     </tr>
@@ -137,9 +256,13 @@ export default function PowderGroup() {
   const pill = x => (
     <span key={x.d.drug_code} title={x.r.why} style={{
       display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: t.text,
-      background: t.bg, border: '1px solid ' + t.border, borderRadius: 7, padding: '3px 9px',
+      /* 사람이 고친 약은 알약에도 옅은 바탕을 준다 — 목록에서도 갈라 보이게 */
+      background: x.r.manual ? t.amberL : t.bg,
+      border: '1px solid ' + (x.r.manual ? t.amber + '55' : t.border),
+      borderRadius: 7, padding: '3px 9px',
     }}>
       {x.d.drug_name}
+      {x.r.manual && <span style={{ fontSize: 9, fontWeight: 700, color: t.amber }}>수기</span>}
       {x.r.hazard && <WarnTriangle />}
     </span>
   )
@@ -188,7 +311,7 @@ export default function PowderGroup() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap', textAlign: 'left' }}>
         <span style={{ fontSize: 16, fontWeight: 700, color: PURPLE }}>가루약 분리번호</span>
         <span style={{ fontSize: 12, color: t.textM }}>
-          약품 정보(ATC·성분·제형)로 그때그때 계산합니다 · 저장하지 않습니다
+          약품 정보(ATC·성분·제형)로 그때그때 계산합니다 · 고친 번호가 있으면 그것을 먼저 씁니다
         </span>
         {loaded && !err && (
           <span style={{ fontSize: 11, color: t.textL }}>
@@ -203,11 +326,84 @@ export default function PowderGroup() {
           padding: '8px 12px', fontSize: 12, fontWeight: 700, marginBottom: 12,
         }}>❗ {err}</div>
       )}
+      {ovErr && (
+        <div style={{
+          background: t.redL, color: t.red, border: '1px solid ' + t.red, borderRadius: 8,
+          padding: '8px 12px', fontSize: 12, fontWeight: 700, marginBottom: 12,
+        }}>❗ {ovErr}</div>
+      )}
       {cutMsg && (
         <div style={{
           background: t.amberL, color: t.amber, border: '1px solid ' + t.amber, borderRadius: 8,
           padding: '8px 12px', fontSize: 12, fontWeight: 700, marginBottom: 12,
         }}>⚠ {cutMsg}</div>
+      )}
+      {/* ★ 바꾼 결과는 **반드시 보인다** — 잘됐는지 안 됐는지 모르는 채로 두지 않는다. */}
+      {msg && (
+        <div style={{
+          background: msg.ok ? t.greenL : t.redL, color: msg.ok ? t.green : t.red,
+          border: '1px solid ' + (msg.ok ? t.green : t.red), borderRadius: 8,
+          padding: '8px 12px', fontSize: 12, fontWeight: 700, marginBottom: 12,
+        }}>{msg.ok ? '✅ ' : '❗ '}{msg.text}</div>
+      )}
+
+      {/* ── 수기 요약 띠 ── */}
+      {loaded && !err && (
+        <div style={{
+          background: t.amberL, border: '1px solid ' + t.border, borderRadius: 10,
+          padding: '9px 13px', fontSize: 11.5, color: t.text, marginBottom: 12,
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+        }}>
+          <b style={{ color: t.amber }}>수기 {num(p.edited.length)}종</b>
+          <span style={{ color: t.textM }}>
+            {p.edited.length
+              ? '— 사람이 고친 번호입니다. 되돌리면 자동 계산으로 돌아갑니다.'
+              : '— 아직 고친 번호가 없습니다. 모두 규칙으로 계산한 값입니다.'}
+          </span>
+          {p.edited.length > 0 && (
+            <span style={{ marginLeft: 'auto', color: t.textM }}>
+              {p.edited.map(x => x.d.drug_name).join(' · ')}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ── 고르기 띠 — 여러 개 한꺼번에 ── */}
+      {loaded && !err && (
+        <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '11px 14px' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>고른 약 {num(picked.size)}종</span>
+          <span style={{ fontSize: 11, color: t.textM }}>번호를 누르면 한꺼번에 바꿉니다</span>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {GROUP_NOS.map(n => (
+              <button key={n} type="button" title={GROUP_NAMES[n]}
+                disabled={!picked.size || busy}
+                onClick={() => applyNo(n)}
+                style={{
+                  width: 30, height: 28, borderRadius: 7, border: '1px solid ' + t.border,
+                  background: t.card, color: t.accent, fontSize: 12, fontWeight: 700,
+                  cursor: (!picked.size || busy) ? 'not-allowed' : 'pointer',
+                  opacity: (!picked.size || busy) ? 0.45 : 1, fontFamily: 'inherit',
+                }}>{n}</button>
+            ))}
+          </div>
+          {/* 까닭은 **선택**이다 — 비워도 된다(2026-11-10 이정화 님 결정 5) */}
+          <input value={note} onChange={e => setNote(e.target.value)}
+            placeholder="고친 까닭 (선택 — 비워도 됩니다)"
+            aria-label="고친 까닭 (선택)"
+            style={{
+              flex: 1, minWidth: 180, border: '1px solid ' + t.borderH, borderRadius: 8,
+              background: t.card, padding: '7px 10px', fontSize: 11.5, color: t.text,
+              outline: 'none', fontFamily: 'inherit',
+            }} />
+          {picked.size > 0 && (
+            <button type="button" onClick={() => { setPicked(new Set()); setNote('') }}
+              style={{
+                padding: '7px 14px', borderRadius: 8, border: '1px solid ' + t.border,
+                background: 'transparent', color: t.textM, fontSize: 11.5, fontWeight: 700,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>고르기 지우기</button>
+          )}
+        </div>
       )}
 
       {/* ── 검색 ── */}
@@ -245,10 +441,24 @@ export default function PowderGroup() {
             </div>
             : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead><tr>
-                <th style={{ ...th, width: 260 }}>약품명</th>
-                <th style={{ ...th, width: 76 }}>번호</th>
-                <th style={{ ...th, width: 150 }}>구분</th>
-                <th style={{ ...th, width: 190 }}>가루 위험</th>
+                <th style={{ ...th, width: 38 }}>
+                  {/* 찾은 약 전부 고르기 */}
+                  <input type="checkbox"
+                    aria-label="찾은 약 전부 고르기"
+                    checked={hits.length > 0 && hits.every(x => picked.has(x.d.drug_code))}
+                    onChange={e => setPicked(s => {
+                      const n = new Set(s)
+                      for (const x of hits) { if (e.target.checked) n.add(x.d.drug_code); else n.delete(x.d.drug_code) }
+                      return n
+                    })}
+                    style={{ width: 15, height: 15, accentColor: t.accent, cursor: 'pointer' }} />
+                </th>
+                <th style={{ ...th, width: 230 }}>약품명</th>
+                <th style={{ ...th, width: 92 }}>번호</th>
+                <th style={{ ...th, width: 140 }}>구분</th>
+                <th style={{ ...th, width: 160 }}>가루 위험</th>
+                <th style={{ ...th, width: 230 }}>고친 까닭 · 언제</th>
+                <th style={{ ...th, width: 92 }}>되돌리기</th>
                 <th style={th}>성분(한글)</th>
                 <th style={{ ...th, width: 90 }}>ATC</th>
               </tr></thead>
