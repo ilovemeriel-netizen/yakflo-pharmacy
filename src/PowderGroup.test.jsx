@@ -119,7 +119,9 @@ describe('★ 1,000줄 조용한 절단 — 쪽을 나눠 끝까지 읽는다', 
     await open()
     expect(screen.getAllByText(/사용 중인 경구제 1,150종/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/다 읽지 못했습니다/)).toBeNull()
-    expect(from).toHaveBeenCalledTimes(2)   /* 1,000 + 150 → 두 쪽 */
+    /* ★ 화면은 두 표를 읽는다 — drugs 와 고친 번호(drug_powder_override).
+       그래서 **drugs 를 몇 번 읽었나**만 센다. 1,000 + 150 → 두 쪽. */
+    expect(from.mock.calls.filter(c => c[0] === 'drugs').length).toBe(2)
   })
 
   it('★ 그래도 잘리면 주황 띠로 보인다', async () => {
@@ -139,8 +141,12 @@ describe('★ 1,000줄 조용한 절단 — 쪽을 나눠 끝까지 읽는다', 
 
   it('한 쪽으로 끝나면 더 읽지 않는다', async () => {
     await open()
-    expect(from).toHaveBeenCalledTimes(1)
-    expect(from.mock.calls[0][0]).toBe('drugs')
+    expect(from.mock.calls.filter(c => c[0] === 'drugs').length).toBe(1)
+  })
+
+  it('고친 번호 표도 쪽 나눠 읽는다 — 한 쪽이면 한 번', async () => {
+    await open()
+    expect(from.mock.calls.filter(c => c[0] === 'drug_powder_override').length).toBe(1)
   })
 })
 
@@ -251,12 +257,12 @@ describe('★ 번호별 목록 — 1·6번만 기본 접힘', () => {
   })
 })
 
-describe('★ DB 를 바꾸지 않는다', () => {
+describe('★ 읽을 때는 DB 를 바꾸지 않는다', () => {
   it('rpc 를 한 번도 부르지 않는다', async () => {
     await open()
     expect(rpc).not.toHaveBeenCalled()
   })
-  it('drugs 를 읽기만 한다 — insert·update·delete 를 쓰지 않는다', async () => {
+  it('화면을 열기만 하면 insert·update·delete·upsert 를 쓰지 않는다', async () => {
     const chain = mockDrugs(BASE)
     chain.insert = vi.fn(); chain.update = vi.fn(); chain.delete = vi.fn(); chain.upsert = vi.fn()
     from.mockImplementation(() => chain)
@@ -265,5 +271,195 @@ describe('★ DB 를 바꾸지 않는다', () => {
     expect(chain.update).not.toHaveBeenCalled()
     expect(chain.delete).not.toHaveBeenCalled()
     expect(chain.upsert).not.toHaveBeenCalled()
+  })
+  it('drugs 표에는 **끝까지** 쓰지 않는다 — 고쳐도 drugs 는 그대로다', async () => {
+    const spy = { upsert: vi.fn(), delete: vi.fn() }
+    useOverrides([], spy)
+    await open()
+    fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: '마그밀' } })
+    await settle(2)
+    fireEvent.click(screen.getByLabelText('마그밀정 고르기'))
+    await settle(2)
+    fireEvent.click(screen.getByRole('button', { name: '9' }))
+    await settle(4)
+    /* 쓴 표는 고친 번호 표 하나뿐이다 */
+    expect(wroteTo).toEqual(['drug_powder_override'])
+  })
+})
+
+/* ── 고친 번호를 돌려줄 수 있는 가짜 supabase ── */
+let wroteTo = []
+function useOverrides(ovRows, spy) {
+  wroteTo = []
+  from.mockImplementation(table => {
+    if (table === 'drug_powder_override') {
+      const chain = mockDrugs(ovRows || [])
+      chain.upsert = (...a) => {
+        wroteTo.push(table)
+        if (spy && spy.upsert) spy.upsert(...a)
+        const rows = Array.isArray(a[0]) ? a[0] : [a[0]]
+        return { select: () => Promise.resolve({ data: rows.map(r => ({ drug_code: r.drug_code })), error: null }) }
+      }
+      chain.delete = () => {
+        wroteTo.push(table)
+        if (spy && spy.delete) spy.delete()
+        return { eq: () => Promise.resolve({ data: null, error: null }) }
+      }
+      return chain
+    }
+    return mockDrugs(BASE)
+  })
+}
+
+describe('★ 사람이 고친 번호 — resolveGroup 이 먼저 쓴다', () => {
+  const OV = [{ drug_code: 'MGM', group_no: 9, note: '변비약 2개 이상일 때 따로', updated_at: '2026-11-10T07:41:00Z' }]
+
+  it('고친 번호가 번호 칸에 나오고 「수기」가 붙는다', async () => {
+    useOverrides(OV)
+    await open()
+    fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: '마그밀' } })
+    await settle(2)
+    /* 「9」는 고르기 띠의 번호 단추에도 있으므로 **번호 뱃지**를 따로 집어낸다 */
+    const badge = screen.getAllByText('9').find(el => el.tagName === 'SPAN')
+    expect(badge).toBeTruthy()
+    expect(screen.getAllByText('수기').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('그 외 분리 필요한 약제').length).toBeGreaterThan(0)
+  })
+
+  it('★ 「자동이면 N번」을 늘 보인다', async () => {
+    useOverrides(OV)
+    await open()
+    fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: '마그밀' } })
+    await settle(2)
+    expect(screen.getByText(/자동 계산이면 4번 입니다/)).toBeTruthy()
+  })
+
+  it('고친 까닭을 보인다', async () => {
+    useOverrides(OV)
+    await open()
+    fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: '마그밀' } })
+    await settle(2)
+    expect(screen.getByText('변비약 2개 이상일 때 따로')).toBeTruthy()
+  })
+
+  it('수기 요약 띠가 수를 센다', async () => {
+    useOverrides(OV)
+    await open()
+    expect(screen.getByText('수기 1종')).toBeTruthy()
+  })
+
+  it('고친 번호가 없으면 「수기 0종」이라고 적는다', async () => {
+    useOverrides([])
+    await open()
+    expect(screen.getByText('수기 0종')).toBeTruthy()
+    expect(screen.getByText(/아직 고친 번호가 없습니다/)).toBeTruthy()
+  })
+
+  it('★ 번호를 고쳐도 가루 위험 표시는 그대로다', async () => {
+    useOverrides([{ drug_code: 'FNF', group_no: 1 }])
+    await open()
+    fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: '피나스테아' } })
+    await settle(2)
+    expect(screen.getAllByTitle(/피나스테리드/).length).toBeGreaterThan(0)
+  })
+})
+
+describe('★ 여러 개 한꺼번에 · 되돌리기', () => {
+  it('고르기 전에는 번호 단추가 꺼져 있다', async () => {
+    useOverrides([])
+    await open()
+    expect(screen.getByRole('button', { name: '9' }).disabled).toBe(true)
+  })
+
+  it('고르면 켜지고, 누르면 그 번호로 저장한다', async () => {
+    const spy = { upsert: vi.fn() }
+    useOverrides([], spy)
+    await open()
+    fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: '마그밀' } })
+    await settle(2)
+    fireEvent.click(screen.getByLabelText('마그밀정 고르기'))
+    await settle(2)
+    expect(screen.getByRole('button', { name: '9' }).disabled).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: '9' }))
+    await settle(4)
+    expect(spy.upsert).toHaveBeenCalled()
+    const rows = spy.upsert.mock.calls[0][0]
+    expect(rows).toEqual([{ drug_code: 'MGM', group_no: 9, note: null }])
+  })
+
+  it('★ 고른 것이 여러 개면 **한 번에** 보낸다 — 나눠 보내지 않는다', async () => {
+    const spy = { upsert: vi.fn() }
+    useOverrides([], spy)
+    await open()
+    /* 두 약이 함께 나오게 「정」으로 찾는다 */
+    fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: '정' } })
+    await settle(2)
+    fireEvent.click(screen.getByLabelText('마그밀정 고르기'))
+    fireEvent.click(screen.getByLabelText('시그마트정5mg 고르기'))
+    await settle(2)
+    fireEvent.click(screen.getByRole('button', { name: '4' }))
+    await settle(4)
+    expect(spy.upsert).toHaveBeenCalledTimes(1)
+    expect(spy.upsert.mock.calls[0][0].length).toBe(2)
+  })
+
+  it('까닭은 선택이다 — 비워도 저장된다', async () => {
+    const spy = { upsert: vi.fn() }
+    useOverrides([], spy)
+    await open()
+    fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: '마그밀' } })
+    await settle(2)
+    fireEvent.click(screen.getByLabelText('마그밀정 고르기'))
+    await settle(2)
+    fireEvent.click(screen.getByRole('button', { name: '9' }))
+    await settle(4)
+    expect(spy.upsert.mock.calls[0][0][0].note).toBeNull()
+  })
+
+  it('까닭을 적으면 함께 보낸다', async () => {
+    const spy = { upsert: vi.fn() }
+    useOverrides([], spy)
+    await open()
+    fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: '마그밀' } })
+    await settle(2)
+    fireEvent.click(screen.getByLabelText('마그밀정 고르기'))
+    fireEvent.change(screen.getByLabelText(/고친 까닭/), { target: { value: '따로 빼기' } })
+    await settle(2)
+    fireEvent.click(screen.getByRole('button', { name: '9' }))
+    await settle(4)
+    expect(spy.upsert.mock.calls[0][0][0].note).toBe('따로 빼기')
+  })
+
+  it('저장하면 초록 띠로 알린다', async () => {
+    useOverrides([])
+    await open()
+    fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: '마그밀' } })
+    await settle(2)
+    fireEvent.click(screen.getByLabelText('마그밀정 고르기'))
+    await settle(2)
+    fireEvent.click(screen.getByRole('button', { name: '9' }))
+    await settle(4)
+    expect(screen.getByText(/1종을 9번으로 바꿨습니다/)).toBeTruthy()
+  })
+
+  it('★ 되돌리기는 **고친 약에만** 나온다', async () => {
+    useOverrides([{ drug_code: 'MGM', group_no: 9 }])
+    await open()
+    fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: '정' } })
+    await settle(2)
+    const btns = screen.getAllByRole('button', { name: '되돌리기' })
+    expect(btns.length).toBe(1)
+  })
+
+  it('되돌리면 그 줄을 지운다', async () => {
+    const spy = { delete: vi.fn() }
+    useOverrides([{ drug_code: 'MGM', group_no: 9 }], spy)
+    await open()
+    fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: '마그밀' } })
+    await settle(2)
+    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }))
+    await settle(4)
+    expect(spy.delete).toHaveBeenCalled()
+    expect(screen.getByText(/자동 계산으로 되돌렸습니다/)).toBeTruthy()
   })
 })

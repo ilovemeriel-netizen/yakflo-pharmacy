@@ -151,12 +151,48 @@ export function isTarget(d) {
 const KO = (a, b) => String(a).localeCompare(String(b), 'ko')
 
 /**
- * 기준표 한 벌을 만든다.
- * @param {Array} drugs 약품 전체(상태·구분은 여기서 거른다)
+ * ★ 번호를 정하는 **유일한 길목** — 가루약분리 화면·약품 등록·수정 창이 **모두 이 함수**를 쓴다.
+ *   세 곳이 어긋날 수 없게 한 곳에 모아 둔다.
+ *
+ *   ① 사람이 고친 번호가 있으면  →  그 번호 (manual: true)
+ *   ② 없으면                     →  decideGroup() 자동 계산
+ *   ③ 자동도 못 정하면           →  「확인 필요」 (추측 금지)
+ *
+ *   ★ 고친 번호가 있어도 **자동 계산 결과를 함께 돌려준다**(`auto`).
+ *     화면이 「자동이면 N번 입니다」를 늘 보여 줄 수 있어야 하기 때문이다
+ *     — 사람이 고친 것인지, 규칙이 그렇게 말한 것인지 한눈에 갈라 보라고.
+ *
+ * @param {object} d        약 한 줄
+ * @param {object} [ovMap]  { 약품코드: { group_no, note, updated_by, updated_at, … } }
  */
-export function buildPowderTable(drugs) {
+export function resolveGroup(d, ovMap) {
+  const auto = decideGroup(d)
+  const ov = (ovMap || {})[(d && d.drug_code) || '']
+  const n = ov == null ? null : Number(ov.group_no)
+  if (!Number.isInteger(n) || n < 1 || n > 9) {
+    return { ...auto, manual: false, override: null, auto }
+  }
+  return {
+    no: n,
+    label: GROUP_NAMES[n],
+    why: '사람이 고친 번호입니다' + (ov.note ? ' — ' + ov.note : ''),
+    /* 가루 위험은 **규칙이 정한다** — 번호를 고쳐도 위험 표시는 그대로 붙어 있어야 한다 */
+    hazard: auto.hazard,
+    note: auto.note,
+    manual: true,
+    override: ov,
+    auto,
+  }
+}
+
+/**
+ * 기준표 한 벌을 만든다.
+ * @param {Array} drugs    약품 전체(상태·구분은 여기서 거른다)
+ * @param {object} [ovMap] 사람이 고친 번호 { 약품코드: {group_no, …} }
+ */
+export function buildPowderTable(drugs, ovMap) {
   const rows = (drugs || []).filter(isTarget)
-    .map(d => ({ d, r: decideGroup(d) }))
+    .map(d => ({ d, r: resolveGroup(d, ovMap) }))
     .sort((a, b) => KO(a.d.drug_name, b.d.drug_name))
   const groups = GROUP_NOS.map(no => ({
     no,
@@ -170,7 +206,19 @@ export function buildPowderTable(drugs) {
     rows, groups, manual, check,
     total: rows.length,
     hazard: rows.filter(x => !!x.r.hazard),
+    /* 사람이 고친 줄 — 요약 띠에 쓴다. 「수기조제(MANUAL)」와 헷갈리지 않게 이름을 edited 로 둔다. */
+    edited: rows.filter(x => x.r.manual),
   }
+}
+
+/** 고친 번호 줄들을 { 약품코드: 줄 } 로 바꾼다. 같은 약이 둘이면 뒤엣것이 이긴다(DB 는 유일 인덱스로 막는다). */
+export function overridesToMap(rows) {
+  const m = {}
+  for (const r of rows || []) {
+    const k = S(r && r.drug_code).trim()
+    if (k) m[k] = r
+  }
+  return m
 }
 
 /** 검색 — 약품명·성분명(한글/영문)으로 찾는다. 약품코드도 받아 준다. */
