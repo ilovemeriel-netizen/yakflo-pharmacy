@@ -46,6 +46,8 @@ export const SCREEN_LABEL = {
      errorBoundarySync 시험 2건이 11-06 부터 계속 실패해 있었다.
      이름은 **메뉴띠(App.jsx 의 ms)의 children 라벨과 같은 글자**여야 한다. */
   label: '약품식별 라벨 인쇄',
+  /* 가루약분리 — 조제관리 안의 기준표 화면 (2026-11-10). 메뉴띠 글자와 같게 적는다. */
+  powder: '가루약분리',
 }
 export function screenLabel(menu) {
   return SCREEN_LABEL[menu] || ''
