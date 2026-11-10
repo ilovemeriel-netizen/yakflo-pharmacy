@@ -35,10 +35,11 @@ describe('ROUTES — 새로고침이 대시보드로 떨어지지 않게 하는 
   })
   it('기존 22개 화면이 순서까지 그대로다', () => {
     expect(ROUTES.slice(0, OTHERS.length)).toEqual(OTHERS)
-    /* ★ 2026-11-10 — 22개 + vaccine + label(라벨 인쇄, PR #414) = 24개.
+    /* ★ 2026-11-10 — 22개 + vaccine + label(라벨 인쇄, PR #414) + powder(가루약분리) = 25개.
        숫자를 올릴 때 **무엇이 늘었는지** 적어 둔다. 다음에 또 늘면 여기서 걸린다. */
-    expect(ROUTES).toHaveLength(OTHERS.length + 2)
+    expect(ROUTES).toHaveLength(OTHERS.length + 3)
     expect(ROUTES).toContain('label')
+    expect(ROUTES).toContain('powder')
   })
   it('★ #vaccine · #vaccine/survey 새로고침이 백신 관리로 간다', () => {
     expect(routeOf('#vaccine')).toBe('vaccine')
