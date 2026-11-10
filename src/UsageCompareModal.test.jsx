@@ -47,17 +47,30 @@ const TXNS = [
   { drug_code: 'LDMX', type: '출고', transaction_date: '2026-09-02', quantity: 1 },
 ]
 
-/* supabase.from('transactions') 사슬을 흉내낸다 */
-function mockTx(rows) {
+/* supabase.from('transactions') 사슬을 흉내낸다 — **range() 를 지킨다.**
+   ★ 지키지 않으면 「쪽 나눠 읽기」가 도는지 시험할 수 없다. 운영에서 1,079줄 중
+     79줄이 조용히 빠졌던 것이 바로 이 자리다(2026-11-10). */
+function mockTx(rows, opt) {
+  const o = opt || {}
+  let lo = 0, hi = 1e9
   const chain = {
     select: () => chain, eq: () => chain, gte: () => chain, lt: () => chain,
     order: () => chain, limit: () => chain,
+    range: (a, b) => { lo = a; hi = b; return chain },
     maybeSingle: () => Promise.resolve({ data: { snap_year: 2026, snap_month: 10 }, error: null }),
-    then: (res) => Promise.resolve({ data: rows, count: rows.length, error: null }).then(res),
+    then: (res) => {
+      if (o.error) return Promise.resolve({ data: null, count: null, error: o.error }).then(res)
+      const page = rows.slice(lo, hi + 1)
+      /* count 는 PostgREST 처럼 **전체** 줄 수를 준다 */
+      const count = o.count == null ? rows.length : o.count
+      return Promise.resolve({ data: page, count, error: null }).then(res)
+    },
   }
   return chain
 }
 
+/* 한 쪽을 읽고 돌아올 때마다 act 를 한 번씩 돌려 준다 */
+const settle = async (n = 6) => { for (let i = 0; i < n; i++) await act(async () => { await Promise.resolve() }) }
 /* 확인 창 — 진짜 CountConfirmModal 은 App.jsx 안에 있어 불러올 수 없다.
    여기서는 「확인을 누르면 onConfirm 이 돈다」만 흉내낸다. */
 const Confirm = ({ confirm, onConfirm }) => <button type="button" onClick={onConfirm}>{confirm}</button>
@@ -185,5 +198,97 @@ describe('표 — 극소량은 3개월을 그대로 둔다고 보인다', () => 
     expect(screen.getByText('백신 — 제외')).toBeTruthy()
     expect(screen.getByText('3개월 출고 0')).toBeTruthy()
     expect(screen.getByText('극소량 — 3개월 그대로')).toBeTruthy()
+  })
+})
+
+/* ★ 2026-11-10 — 운영에서 「적용했는데 0건」이 났다. 뿌리 셋을 못 박는다. */
+describe('★ 1,000줄 조용한 절단 — 쪽을 나눠 끝까지 읽는다', () => {
+  const many = n => Array.from({ length: n }, () => ({
+    drug_code: 'CFO', type: '출고', transaction_date: '2026-09-10', quantity: 1,
+  }))
+
+  it('1,079줄을 두 쪽으로 나눠 **전부** 읽는다', async () => {
+    from.mockImplementation(() => mockTx(many(1079)))
+    render(<UsageCompareModal t={T} drugs={[D({ drug_code: 'CFO', drug_name: '칼페온정' })]}
+      year={2026} month={10} isTenantManager onClose={() => {}} Confirm={Confirm} />)
+    await settle(10)
+    /* 1,079 이 다 들어왔으면 직전3개월이 1,079 로 보인다 */
+    expect(screen.getByText('1,079')).toBeTruthy()
+    expect(screen.queryByText(/다 읽지 못했습니다/)).toBeNull()
+  })
+
+  it('★ 그래도 잘리면 「적용」을 막는다', async () => {
+    /* 전체는 1,079 인데 1,000 만 왔다고 흉내낸다 */
+    from.mockImplementation(() => mockTx(many(1000), { count: 1079 }))
+    render(<UsageCompareModal t={T} drugs={[D({ drug_code: 'CFO', drug_name: '칼페온정' })]}
+      year={2026} month={10} isTenantManager onClose={() => {}} Confirm={Confirm} />)
+    await settle(10)
+    expect(screen.getByText(/다 읽지 못했습니다/)).toBeTruthy()
+    const btn = screen.getByRole('button', { name: /적용$/ })
+    expect(btn.disabled).toBe(true)
+  })
+})
+
+describe('★ 확인 창의 클릭이 창을 닫지 않는다', () => {
+  it('「적용」을 눌러도 onClose 가 불리지 않는다', async () => {
+    const onClose = vi.fn()
+    await open({ onClose })
+    fireEvent.click(screen.getByRole('button', { name: /적용$/ }))
+    await settle(2)
+    fireEvent.click(screen.getByRole('button', { name: '적용' }))
+    await settle(2)
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('덮개를 누르면 닫힌다 (원래 동작은 그대로)', async () => {
+    const onClose = vi.fn()
+    const { container } = await open({ onClose })
+    fireEvent.click(container.firstChild)
+    expect(onClose).toHaveBeenCalled()
+  })
+})
+
+describe('★ 결과를 창 밖으로도 알린다 (숨은 오류 금지)', () => {
+  async function run() {
+    fireEvent.click(screen.getByRole('button', { name: /적용$/ }))
+    await settle(2)
+    fireEvent.click(screen.getByRole('button', { name: '적용' }))
+    await settle(3)
+  }
+
+  it('잘되면 onDone 으로 ok 를 알린다', async () => {
+    const onDone = vi.fn()
+    rpc.mockResolvedValue({ data: { saved: 2 }, error: null })
+    await open({ onDone })
+    await run()
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ ok: true }))
+  })
+
+  it('★ 오류가 나면 onDone 으로 ok:false 를 알린다 — 창이 닫혀도 보이게', async () => {
+    const onDone = vi.fn()
+    rpc.mockResolvedValue({ data: null, error: { message: '권한이 없습니다' } })
+    await open({ onDone })
+    await run()
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ ok: false }))
+    expect(onDone.mock.calls[0][0].message).toContain('적용하지 못했습니다')
+    expect(screen.getByText(/적용하지 못했습니다/)).toBeTruthy()
+  })
+
+  it('★ 던져진 예외도 삼키지 않는다', async () => {
+    const onDone = vi.fn()
+    rpc.mockRejectedValue(new Error('그물 밖 오류'))
+    await open({ onDone })
+    await run()
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ ok: false }))
+  })
+
+  it('★ 보낸 줄보다 적게 저장되면 ok:false 로 알린다', async () => {
+    const onDone = vi.fn()
+    rpc.mockResolvedValue({ data: { saved: 1 }, error: null })
+    await open({ onDone })
+    await run()
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ ok: false }))
+    expect(onDone.mock.calls[0][0].message).toContain('만 저장됐습니다')
   })
 })
