@@ -2240,7 +2240,7 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
   const[surge,setSurge]=useState(SURGE_ALL)   /* 급변 필터 — 머리글 메뉴와 칩이 **이 하나**를 같이 쓴다 */
   const[xlAsk,setXlAsk]=useState(false)              /* 엑셀 범위 선택 창 */
-  const[uMsg,setUMsg]=useState(null);const[uOpen,setUOpen]=useState(false);const[npOpen,setNpOpen]=useState(false);const[ucOpen,setUcOpen]=useState(false);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});const[uBusy,setUBusy]=useState(false)
+  const[uMsg,setUMsg]=useState(null);const[uOpen,setUOpen]=useState(false);const[npOpen,setNpOpen]=useState(false);const[ucOpen,setUcOpen]=useState(false);const[ucMsg,setUcMsg]=useState(null);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});const[uBusy,setUBusy]=useState(false)
   /* ★ 아직 저장 안 한 값이 있으면 새 배포 자동 적용을 미룬다(화면에 그리는 것은 없다) */
   useBusy('stock-drafts', Object.keys(drafts).length > 0)
   useEffect(()=>{if(nf?.filter){setFilter(nf.filter);setPage(1)}},[nf])
@@ -2369,6 +2369,10 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
       </div>}
     </div>}
     <div className="no-print" style={{background:t.card,borderRadius:12,border:`1px solid ${t.border}`,padding:'12px 16px',marginBottom:12,display:'flex',flexDirection:'column',gap:8,backdropFilter:'blur(12px)'}}>
+      {ucMsg&&<div className="no-print" style={{background:ucMsg.ok?t.greenL:t.redL,border:'1px solid '+(ucMsg.ok?t.green:t.red),borderRadius:8,padding:'10px 14px',marginBottom:10,color:ucMsg.ok?t.green:t.red,fontSize:12,fontWeight:600,display:'flex',gap:10,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}}>
+        <span>{ucMsg.ok?'\u2705 ':'\u2757 '}{ucMsg.message}</span>
+        <button type="button" onClick={()=>setUcMsg(null)} style={{border:'none',background:'transparent',color:'inherit',cursor:'pointer',fontSize:12,fontWeight:700}}>닫기</button>
+      </div>}
       <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
         <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} placeholder="검색..." style={{flex:1,minWidth:120,padding:'8px 12px',border:`1px solid ${t.border}`,borderRadius:8,fontSize:12,outline:'none',background:t.bg,color:t.text}}/>
         <button onClick={dlAsk} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>
@@ -2426,7 +2430,8 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
       {npOpen&&<NarcoticUsageModal t={t} drugs={drugs} onClose={()=>setNpOpen(false)}
         isTenantManager={isTenantManager} onReload={onReload} Confirm={CountConfirmModal} />}
       {ucOpen&&<UsageCompareModal t={t} drugs={drugs.filter(d=>String(d.status||'').trim()==='사용')}
-        isTenantManager={isTenantManager} onClose={()=>setUcOpen(false)} onReload={onReload} Confirm={CountConfirmModal} />}
+        isTenantManager={isTenantManager} onClose={()=>setUcOpen(false)} onReload={onReload}
+        onDone={r=>setUcMsg(r)} Confirm={CountConfirmModal} />}
     </div><Ft/>
   </div>
 }
@@ -5925,6 +5930,7 @@ export function Report({drugs,onNav,onReload}){
   const isTenantManager=memberRole==='owner'||memberRole==='admin'
   /* ★ 마감 뒤 사용량 비교표 — 보기만 하고 저장하지 않는다(2026-11-09) */
   const[ucOpen,setUcOpen]=useState(false)
+  const[ucMsg,setUcMsg]=useState(null)
   const cy=new Date().getFullYear(),cm=new Date().getMonth()+1;
   const[rtype,setRtype]=useState('monthly');
   const[year,setYear]=useState(cy);const[month,setMonth]=useState(cm);
@@ -6353,9 +6359,13 @@ export function Report({drugs,onNav,onReload}){
       <span style={{fontSize:12,color:t.textM,lineHeight:1.7}}><b style={{color:t.text}}>사용량 비교표를 볼 수 있습니다.</b> 직전3개월·직전1개월을 이 마감 기준으로 다시 센 숫자입니다. 보기만 하며 저장하지 않습니다.</span>
       <button type="button" onClick={()=>setUcOpen(true)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.accent,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>사용량 비교 보기</button>
     </div>}
-    {ucOpen&&<UsageCompareModal t={t} drugs={drugs.filter(d=>String(d.status||'').trim()==='사용')}
+{ucMsg&&<div className="no-print" style={{background:ucMsg.ok?t.greenL:t.redL,border:'1px solid '+(ucMsg.ok?t.green:t.red),borderRadius:8,padding:'10px 14px',marginBottom:10,color:ucMsg.ok?t.green:t.red,fontSize:12,fontWeight:600,display:'flex',gap:10,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}}>
+        <span>{ucMsg.ok?'\u2705 ':'\u2757 '}{ucMsg.message}</span>
+        <button type="button" onClick={()=>setUcMsg(null)} style={{border:'none',background:'transparent',color:'inherit',cursor:'pointer',fontSize:12,fontWeight:700}}>닫기</button>
+      </div>}
+        {ucOpen&&<UsageCompareModal t={t} drugs={drugs.filter(d=>String(d.status||'').trim()==='사용')}
       year={year} month={month} isTenantManager={isTenantManager}
-      onClose={()=>setUcOpen(false)} onReload={onReload} Confirm={CountConfirmModal} />}
+      onClose={()=>setUcOpen(false)} onReload={onReload} onDone={r=>setUcMsg(r)} Confirm={CountConfirmModal} />}
 
     {/* 앱 내 확인/안내 모달(alert·confirm 대체) — 기존 DrugDeleteConfirm 스타일 재사용 */}
     {dialog&&<div onClick={()=>setDialog(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>

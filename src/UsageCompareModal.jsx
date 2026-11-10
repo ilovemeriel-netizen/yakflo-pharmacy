@@ -28,7 +28,7 @@ function monthLabel(year, month) {
   return m.join('·') + '월'
 }
 
-export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixedM, isTenantManager, onClose, onReload, Confirm }) {
+export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixedM, isTenantManager, onClose, onReload, onDone, Confirm }) {
   const box = useRef(null)
   const [loaded, setLoaded] = useState(null)
   const [onlyMoved, setOnlyMoved] = useState(true)
@@ -60,25 +60,42 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
   const month = ym ? ym.m : null
   const key = year + '-' + month
 
-  /* 거래 읽기 — 그 창의 출고만. 읽기만 한다. */
+  /* 거래 읽기 — 그 창의 출고만. 읽기만 한다.
+     ★ **한 번에 읽지 않는다.** `supabase.from(...).select(...)` 는 기본 1,000줄만 주고
+       넘치면 오류도 경고도 없이 조용히 잘린다(lib/rowLimit.js 첫머리 참고).
+       8·9·10월 출고가 1,079줄이라 79줄이 빠져 **합계가 작게** 나왔다(2026-11-10 실측).
+       월마감의 `_fetchMonthTx` 와 같은 방식으로 1,000줄씩 끝까지 읽는다.
+     ★ 쪽을 나눌 때는 **차례를 고정**한다(id). 고정하지 않으면 쪽마다 같은 줄이
+       겹치거나 빠질 수 있다 — 그러면 또 조용히 틀린다. */
   useEffect(() => {
     if (!year || !month) return undefined
     let dead = false
     const w = closedWindow(year, month)
-    supabase.from('transactions')
-      .select('drug_code,type,transaction_date,quantity', { count: 'exact' })
-      .eq('type', '출고')
-      .gte('transaction_date', w.m3From)
-      .lt('transaction_date', w.toExclusive)
-      .then(({ data, error, count }) => {
+    const PAGE = 1000
+    ;(async () => {
+      let rows = [], from = 0, total = null
+      for (;;) {
+        const { data, error, count } = await supabase.from('transactions')
+          .select('drug_code,type,transaction_date,quantity', { count: 'exact' })
+          .eq('type', '출고')
+          .gte('transaction_date', w.m3From)
+          .lt('transaction_date', w.toExclusive)
+          .order('id')
+          .range(from, from + PAGE - 1)
         if (dead) return
-        const lim = checkRowLimit(data, count)
-        setLoaded({
-          key, rows: data || [],
-          err: error ? '거래를 읽지 못했습니다: ' + dbErrorMsg(error) : '',
-          cutMsg: error ? '' : lim.message,
-        })
-      })
+        if (error) {
+          setLoaded({ key, rows: [], err: '거래를 읽지 못했습니다: ' + dbErrorMsg(error), cutMsg: '' })
+          return
+        }
+        if (count != null) total = count
+        rows = rows.concat(data || [])
+        if (!data || data.length < PAGE) break
+        from += PAGE
+      }
+      /* 다 읽었는지 한 번 더 센다 — 쪽 나누기가 잘못돼도 여기서 걸린다 */
+      const lim = checkRowLimit(rows, total)
+      setLoaded({ key, rows, err: '', cutMsg: lim.message })
+    })()
     return () => { dead = true }
   }, [year, month, key])
 
@@ -116,15 +133,42 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
   const [result, setResult] = useState(null)
   const err = ymErr || readErr || applyErr
 
+  /* ★ 결과를 **창 밖으로도** 알린다 — 창이 닫히거나 다시 그려져도 사라지지 않게.
+     2026-11-10 사례: 「적용했다」는데 DB 는 0건이었고, 화면에는 빨간 띠도 초록 띠도
+     남아 있지 않아 **무슨 일이 났는지 알 길이 없었다.** 창 안에만 적으면 또 그렇게 된다.
+     그래서 세 가지를 한다 —
+       ① 던져진 예외까지 잡는다(try/catch)
+       ② 결과를 부모 화면 띠로 올려 보낸다(onDone)
+       ③ 보낸 줄 수와 저장된 줄 수가 다르면 **성공으로 치지 않는다** */
   async function apply() {
     setConfirming(false); setApplying(true); setApplyErr(''); setResult(null)
     const rows = applyRows(p ? p.rows : [], finalPicked)
-    const { data, error } = await supabase.rpc('app_save_usage_bulk', {
-      p_fields: APPLY_FIELDS, p_rows: rows, p_zero_missing: false, p_keep_codes: [],
-    })
+    let data = null, error = null
+    try {
+      const r = await supabase.rpc('app_save_usage_bulk', {
+        p_fields: APPLY_FIELDS, p_rows: rows, p_zero_missing: false, p_keep_codes: [],
+      })
+      data = r.data; error = r.error
+    } catch (e) {
+      /* 그물 밖으로 새는 예외도 잡는다 — 조용히 사라지면 「눌렀는데 아무 일도」가 된다 */
+      error = e
+    }
     setApplying(false)
-    if (error) { setApplyErr('적용하지 못했습니다: ' + dbErrorMsg(error)); return }
-    setResult(data || null)
+    if (error) {
+      const msg = '적용하지 못했습니다: ' + dbErrorMsg(error)
+      setApplyErr(msg)
+      onDone?.({ ok: false, message: msg })
+      return
+    }
+    const saved = Number((data && data.saved) || 0)
+    setResult(data || { saved: 0 })
+    if (saved !== rows.length) {
+      /* 보낸 줄과 저장된 줄이 다르면 그냥 넘기지 않는다 */
+      onDone?.({ ok: false, message: '적용은 됐지만 보낸 ' + num(rows.length)
+        + '종 가운데 ' + num(saved) + '종만 저장됐습니다. 약플로 담당자에게 알려 주세요.' })
+    } else {
+      onDone?.({ ok: true, message: '사용량 적용 완료 — ' + num(saved) + '종을 저장했습니다.' })
+    }
     onReload?.()
   }
 
@@ -279,17 +323,22 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
         <span style={{ display: 'flex', gap: 8 }}>
           {btn('닫기', null, onClose)}
           {isTenantManager && btn(applying ? '적용 중…' : '고른 ' + finalPicked.size + '종 적용', 'go',
-            () => setConfirming(true), applying || !ready || finalPicked.size === 0 || !!err)}
+            () => setConfirming(true), applying || !ready || finalPicked.size === 0 || !!err || !!cutMsg)}
         </span>
       </div>
     </div>
 
-    {confirming && Confirm && <Confirm t={t} title="사용량 적용"
+    {/* 클릭을 여기서 멈춘다 — 이 바깥 덮개에는 onClick={onClose} 가 걸려 있다.
+        ★ 단정하지 말 것: 진짜 CountConfirmModal 로 재어 보니 **이것만으로는 창이
+          닫히지 않았다**(UsageCompareClose.test.jsx). 2026-11-10 의 「적용했는데
+          0건」의 원인은 **아직 못 찾았다.** 이 한 줄은 그 가설을 막아 두는 빗장일 뿐,
+          원인 규명이 아니다. 원인은 onDone 이 남기는 띠로 다음 번에 잡는다. */}
+    {confirming && Confirm && <div onClick={e => e.stopPropagation()}><Confirm t={t} title="사용량 적용"
       tone={t.accent} escClose focusCancel
       head={`${year}년 ${month}월 마감 기준으로 ${finalPicked.size}종을 저장합니다.`}
       body={as ? `안전재고 ${as.safety}종 · 재고 상태 ${as.stat}종이 바뀝니다 (나빠지는 쪽 ${as.worse}종).\n`
         + `전년 사용량은 건드리지 않습니다. 극소량 ${as.tiny}종은 직전1개월만 바뀌고 3개월·안전재고는 그대로입니다.` : ''}
       confirm="적용" busy={applying}
-      onClose={() => setConfirming(false)} onConfirm={apply} />}
+      onClose={() => setConfirming(false)} onConfirm={apply} /></div>}
   </div>
 }
