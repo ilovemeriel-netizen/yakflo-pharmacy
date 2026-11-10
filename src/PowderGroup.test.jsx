@@ -86,6 +86,24 @@ describe('기본 표시', () => {
     expect(screen.getByText('가루약 분리번호').style.color).toBe('rgb(128, 74, 135)')
   })
 
+  /* ★ 2026-11-10 — 처음 올릴 때 바깥 여백과 textAlign 을 빠뜨려 운영에서
+     제목이 즐겨찾기 줄에 붙고 글자가 죄다 가운데로 몰렸다(함정 #31). */
+  it('★ 바깥 여백이 다른 화면과 같은 20px 24px 다', async () => {
+    const { container } = await open()
+    expect(container.firstChild.style.padding).toBe('20px 24px')
+  })
+
+  it('★ textAlign:left 를 적는다 — #root{text-align:center} 상속을 끊는다', async () => {
+    const { container } = await open()
+    expect(container.firstChild.style.textAlign).toBe('left')
+  })
+
+  it('★ 제목줄에도 textAlign:left 를 적는다', async () => {
+    await open()
+    const row = screen.getByText('가루약 분리번호').parentElement
+    expect(row.style.textAlign).toBe('left')
+  })
+
   it('「확인 필요 0종」 안내가 나온다', async () => {
     await open()
     expect(screen.getByText(/확인 필요 0종/)).toBeTruthy()
