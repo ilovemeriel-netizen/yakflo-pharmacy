@@ -55,7 +55,7 @@ describe('약플로 — 화면 자리만 바뀌고 메뉴는 남는다', () => {
     expect(screen.getByText(EC_CONTACT, { exact: false })).toBeTruthy()
     expect(screen.getByText(EC_COPY)).toBeTruthy()
     /* 작은 글씨에 발생 시각과 화면 이름 */
-    expect(screen.getByText(new RegExp(EC_WHEN + ' \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2} · 백신 관리'))).toBeTruthy()
+    expect(screen.getByText(new RegExp(EC_WHEN + ' \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2} · 백신관리'))).toBeTruthy()
   })
 
   it('★ 다른 화면으로 옮기면(key 바뀜) 정상 화면이 나온다', () => {
