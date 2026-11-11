@@ -180,11 +180,13 @@ describe('지금 운영 값 — 1번 안 서방정 12종', () => {
     status: '사용', category: '경구제',
   }))
   const p = buildPowderTable(drugs, {}, {})
-  it('1번 168종 가운데 서방정 12종', () => {
+  /* ★ 2026-11-11 — 10번(갑상선약)을 없애 갑상선약 5종이 1번으로 돌아왔다. 168 → 173.
+       ★ 서방정 수는 **그대로 12종**이다 — 갑상선약에는 서방정이 없다. */
+  it('1번 173종 가운데 서방정 12종', () => {
     const g1 = p.groups.find(g => g.no === SR_GROUP_NO)
-    expect(g1.list.length).toBe(168)
+    expect(g1.list.length).toBe(173)
     expect(g1.sr.length).toBe(12)
-    expect(g1.nonSr.length).toBe(156)
+    expect(g1.nonSr.length).toBe(161)
   })
   it('★ 후보 3종은 **코드가 넣지 않는다** — 이정화 님이 화면에서 직접 넣으신다', () => {
     const names = p.groups.find(g => g.no === SR_GROUP_NO).sr.map(x => x.d.drug_name)

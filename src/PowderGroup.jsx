@@ -31,7 +31,19 @@ import { fetchSr, setSrMany, clearSr, invalidateSr } from './lib/powderSr'
 import { ingOne } from './lib/ingredientOne'
 
 /* 비상조제와 같은 상수 — 기존 팔레트. 새 색을 만들지 않는다. */
-const PURPLE = '#804A87'
+const PURPLE = '#804A87', GREEN = '#019748', LAV = '#BFA6D9', NAVY = '#2E4A62'
+
+/* 묶음 상자 바탕색 — 비상조제(EmergencyDispense.jsx)의 `sepTint` 와 **같은 방식**이다.
+   팔레트 4색에 저알파('2b')를 붙여 옅게 돌려 쓴다. 새 색이 아니다.
+   ★ 빨강(가루 위험)·주황(수기)은 **쓰지 않는다** — 그 두 색은 이미 뜻이 있어 겹친다.
+   ★ 비상조제처럼 글자를 섞어(해시) 고르지 않고 **차례대로** 돌린다.
+     그래야 옆·위아래 상자끼리 색이 늘 달라진다(2026-11-11 이정화 님 요청). */
+const BOX_TINTS = [LAV, PURPLE, GREEN, NAVY]
+const boxTint = i => BOX_TINTS[((i % BOX_TINTS.length) + BOX_TINTS.length) % BOX_TINTS.length] + '2b'
+
+/* 칸 최소 높이 — ATC 카세트 화면(App.jsx 의 AtcView)과 **같은 값**이다.
+   이 값이 모든 칸을 같은 높이로 잡아 줄이 세로로 맞는다. 새 규격을 만들지 않는다. */
+const CELL_MIN = 78
 
 const num = n => Number(n || 0).toLocaleString()
 const kst = s => {
@@ -87,7 +99,9 @@ export default function PowderGroup() {
   const [err, setErr] = useState('')
   const [cutMsg, setCutMsg] = useState('')
   const [q, setQ] = useState('')
-  const [open, setOpen] = useState({})
+  /* ★ 한 번에 **한 묶음만** 펼친다. null 이면 모두 접힌 상태다.
+       고른 약(`picked`)은 여기와 따로 있으므로 접었다 펴도 체크가 그대로 남는다. */
+  const [openKey, setOpenKey] = useState(null)
   /* 사람이 고친 번호 · 사람이 정한 서방정 표시 · 번호 목록 */
   const [ovMap, setOvMap] = useState({})
   const [srMap, setSrMap] = useState({})
@@ -148,6 +162,17 @@ export default function PowderGroup() {
   const p = useMemo(() => buildPowderTable(drugs, ovMap, srMap, vocab), [drugs, ovMap, srMap, vocab])
   const hits = useMemo(() => searchPowder(p.rows, q), [p, q])
   const asked = q.trim() !== ''
+
+  /* ── 카드 목록 — 번호 카드(목록 차례) + **맨 끝에** 수기조제 카드 ────
+     ★ 묶음 합 = 사용 중인 경구제 수. 번호 카드의 종수를 다 더하고 수기조제를 더하면
+       `p.total` 과 같아야 한다(시험으로 못 박아 두었다). 카드를 빠뜨리면 약이 숨는다. */
+  const cards = useMemo(() => ([
+    ...p.groups.map(g => ({ key: 'g' + g.no, no: g.no, name: g.name, n: g.list.length, g })),
+    {
+      key: 'manual', no: null, name: MANUAL + ' — 번호별 목록에서 뺐습니다',
+      n: p.manual.length, g: { no: null, list: p.manual },
+    },
+  ]), [p])
 
   /* ── 번호 주기 / 되돌리기 ───────────────────────────────────────── */
   const toggle = code => setPicked(s => {
@@ -348,80 +373,92 @@ export default function PowderGroup() {
     </tr>
   )
 
-  /* 1번 묶음은 「서방정 / 그 밖」 두 토막으로 보여 준다 — 번호는 그대로 1번이다. */
-  const srSplit = g => (
-    <>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.accent, marginBottom: 6 }}>
-        서방정 {num(g.sr.length)}종
-        <span style={{ fontWeight: 400, color: t.textL, marginLeft: 6 }}>
-          이름에 「서방」이 있거나, 손으로 넣은 약입니다 · 분리번호는 1번 그대로입니다
-        </span>
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-        {g.sr.length ? g.sr.map(pill) : <span style={{ color: t.textL, fontSize: 11 }}>해당 약 없음</span>}
-      </div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.textM, marginBottom: 6 }}>
-        그 밖 {num(g.nonSr.length)}종
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {g.nonSr.length ? g.nonSr.map(pill) : <span style={{ color: t.textL, fontSize: 11 }}>해당 약 없음</span>}
-      </div>
-    </>
-  )
-
-  const pill = x => (
-    <span key={x.d.drug_code} title={x.r.why} style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: t.text,
-      /* 사람이 고친 약은 알약에도 옅은 바탕을 준다 — 목록에서도 갈라 보이게 */
-      background: x.r.manual ? t.amberL : t.bg,
-      border: '1px solid ' + (x.r.manual ? t.amber + '55' : t.border),
-      borderRadius: 7, padding: '3px 9px',
-    }}>
-      {x.d.drug_name}
-      {/* 1번 안에서 서방정이면 이름 뒤에 작게 「서방」 */}
-      {x.r.no === SR_GROUP_NO && x.s.sr && !x.atcManual
-        && <span style={{ fontSize: 9, fontWeight: 700, color: t.accent }}>서방</span>}
-      {x.atcManual && <span style={{ fontSize: 9, fontWeight: 700, color: t.blue }}>{ATC_MANUAL_LABEL}</span>}
-      {x.r.manual && <span style={{ fontSize: 9, fontWeight: 700, color: t.amber }}>수기</span>}
-      {x.r.hazard && <WarnTriangle />}
-    </span>
-  )
-
-  const section = (key, head, list, foldedByDefault, body) => {
-    const isOpen = open[key] === undefined ? !foldedByDefault : open[key]
+  /* ── 칸 하나 — ATC 카세트 화면(AtcView)과 **같은 규격** ─────────────
+     최소 높이 78 · 둥글기 6 · 안여백 '3px 5px' · 이름 9.5px/600 **두 줄까지**.
+     ★ 칸에는 **그림자를 넣지 않는다** — 칸이 수십 개 붙으면 그림자가 서로 겹쳐
+       지저분해진다. ATC 카세트도 같은 까닭으로 넣지 않았다(2026-11-11 실측).
+     ★ 칸에 가나다 번호를 적지 않는다 — 분리번호와 헷갈린다(이정화 님 결정).
+     ★ 체크는 `picked` 를 본다 — 묶음을 접었다 펴도, 검색 표와도 **같은 값**이다. */
+  const cellOf = (x, srOk) => {
+    const on = picked.has(x.d.drug_code)
+    const badges = []
+    /* 「서방」은 1번(일반 정제) 안에서만 뜻이 있다 */
+    if (srOk && x.s.sr && !x.atcManual) badges.push(['서방', t.accentL, t.accent])
+    if (x.atcManual) badges.push([ATC_MANUAL_LABEL, t.blueL, t.blue])
+    if (x.r.manual) badges.push(['수기', t.amberL, t.amber])
     return (
-      <div key={key} style={{
-        border: '1px solid ' + t.border, borderRadius: 10, background: t.card,
-        marginBottom: 8, overflow: 'hidden',
-      }}>
-        <button
-          type="button"
-          onClick={() => setOpen(s => ({ ...s, [key]: !isOpen }))}
-          aria-expanded={isOpen}
-          style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 13px',
-            fontSize: 12, background: isOpen ? t.bg : 'transparent', border: 0,
-            borderBottom: isOpen ? '1px solid ' + t.border : 0,
-            cursor: 'pointer', textAlign: 'left', color: t.text, fontFamily: 'inherit',
+      <div key={x.d.drug_code}
+        title={x.d.drug_name + ' · ' + (ingOne(x.d) || '-') + ' · ' + (x.d.atc_code || '') + ' · ' + x.r.why}
+        style={{
+          borderRadius: 6, padding: '3px 5px', boxSizing: 'border-box', minHeight: CELL_MIN,
+          border: on ? '2px solid ' + t.accent : '1px solid ' + t.border,
+          background: on ? t.accentL : t.card,
+          display: 'flex', flexDirection: 'column',
+        }}>
+        <div style={{
+          fontSize: 9, fontWeight: 700, display: 'flex', justifyContent: 'space-between',
+          gap: 3, alignItems: 'center', flexWrap: 'wrap', rowGap: 2, minHeight: 13,
+        }}>
+          <input type="checkbox" checked={on} onChange={() => toggle(x.d.drug_code)}
+            aria-label={x.d.drug_name + ' 고르기'}
+            style={{
+              width: 12, height: 12, margin: 0, flexShrink: 0,
+              accentColor: t.accent, cursor: 'pointer',
+            }} />
+          <span style={{
+            display: 'inline-flex', gap: 2, flexWrap: 'wrap',
+            justifyContent: 'flex-end', flexShrink: 0, maxWidth: '100%',
           }}>
-          <span style={{ color: t.textL, fontSize: 11, width: 10 }}>{isOpen ? '▾' : '▸'}</span>
-          {head}
-          <span style={{ fontSize: 11, color: t.textM }}>{num(list.length)}종</span>
-          {foldedByDefault && !isOpen
-            && <span style={{ marginLeft: 'auto', fontSize: 10, color: t.textL }}>기본 접힘</span>}
-        </button>
-        {isOpen && (
-          body
-            /* 1번처럼 **안을 따로 그리는** 묶음은 body 를 받는다 */
-            ? <div style={{ padding: '11px 13px' }}>{body}</div>
-            : <div style={{ padding: '11px 13px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {list.length ? list.map(pill)
-                : <span style={{ color: t.textL, fontSize: 11 }}>해당 약 없음</span>}
-            </div>
-        )}
+            {badges.map(([txt, bg, fg]) => (
+              <span key={txt} style={{
+                fontSize: 8, fontWeight: 700, padding: '0 4px', borderRadius: 3,
+                background: bg, color: fg, whiteSpace: 'nowrap',
+              }}>{txt}</span>
+            ))}
+            {x.r.hazard && <WarnTriangle />}
+          </span>
+        </div>
+        <div style={{
+          fontSize: 9.5, fontWeight: 600, lineHeight: 1.15, marginTop: 2, color: t.text,
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          whiteSpace: 'normal', overflow: 'hidden',
+        }}>{x.d.drug_name}</div>
+        <div style={{ marginTop: 'auto', fontSize: 8, color: t.textL, ...clip }}>{x.d.atc_code || ''}</div>
       </div>
     )
   }
+
+  /* 칸 격자 — ATC 카세트와 같은 gap 4. `auto-fill` 이라 폭이 좁아지면 칸 수가 줄어든다. */
+  const cellGrid = (list, srOk) => (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 4 }}>
+      {list.map(x => cellOf(x, srOk))}
+    </div>
+  )
+  const none = <span style={{ color: t.textM, fontSize: 11 }}>해당 약 없음</span>
+
+  /* 상자 속 — 1번만 「서방정 / 그 밖」 두 토막이다. 번호는 그대로 1번이다. */
+  const boxBody = g => ((g.no === SR_GROUP_NO && g.sr)
+    ? (
+      <>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: t.accent, marginBottom: 5 }}>
+          서방정 {num(g.sr.length)}종
+          <span style={{ fontWeight: 400, color: t.textM, marginLeft: 6 }}>
+            이름에 「서방」이 있거나, 손으로 넣은 약입니다 · 분리번호는 1번 그대로입니다
+          </span>
+        </div>
+        {/* 안쪽 테두리는 **흰색에 알파**를 준다 — 상자 바탕색이 비쳐 보이게. 새 색이 아니다. */}
+        <div style={{ border: '1px solid ' + t.card + 'CC', borderRadius: 8, padding: 6, marginBottom: 10 }}>
+          {g.sr.length ? cellGrid(g.sr, true) : none}
+        </div>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: t.textM, marginBottom: 5 }}>
+          그 밖 {num(g.nonSr.length)}종
+        </div>
+        <div style={{ border: '1px solid ' + t.card + 'CC', borderRadius: 8, padding: 6 }}>
+          {g.nonSr.length ? cellGrid(g.nonSr, true) : none}
+        </div>
+      </>
+    )
+    : (g.list.length ? cellGrid(g.list, false) : none))
 
   return (
     /* ★ 바깥 여백 — 다른 화면과 **같은 값**(`padding: '20px 24px'`). 새 규격을 만들지 않는다.
@@ -645,32 +682,86 @@ export default function PowderGroup() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0 8px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 16, fontWeight: 700, color: PURPLE }}>번호별 전체 목록</span>
             <span style={{ fontSize: 12, color: t.textM }}>
-              모두 접혀 있습니다 · 머리를 누르면 펴집니다
+              카드를 누르면 그 번호만 펼쳐집니다 · 상자 안 약은 가나다 차례입니다
             </span>
           </div>
-          {p.groups.map(g => section(
-            'g' + g.no,
-            <>
-              <NumBadge t={t} no={g.no} />
-              <span style={{ fontWeight: 700, color: t.text }}>{g.name}</span>
-              {/* 1번 머리에만 「서방 N」을 작게 */}
-              {g.no === SR_GROUP_NO && g.sr.length > 0
-                && <span style={{ fontSize: 10.5, color: t.accent, fontWeight: 700 }}>서방 {num(g.sr.length)}</span>}
-            </>,
-            g.list, g.folded,
-            g.no === SR_GROUP_NO ? srSplit(g) : null))}
-          {/* ★ 수기조제 약을 **한 묶음**에 모은다 — 가루약 수기조제 + ATC 수기 조제.
-              기본 접힘 (2026-11-11 이정화 님 결정) */}
-          {section(
-            'manual',
-            <>
-              <ManualChip t={t} />
-              <span style={{ fontWeight: 700, color: t.text }}>수기조제 — 번호별 목록에서 뺐습니다</span>
-              <span style={{ fontSize: 10.5, color: t.textM }}>
-                가루약 {num(p.manualPowder.length)} · ATC {num(p.manualAtc.length)}
-              </span>
-            </>,
-            p.manual, true)}
+          {/* ★ 카드 격자 — 번호마다 카드 한 장, **수기조제는 맨 끝**.
+              누른 카드만 그 번호의 바탕색과 함께 아래에 펼쳐진다
+              (2026-11-11 이정화 님이 고른 시안 ⓑ). */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+            gap: 8, marginBottom: 12,
+          }}>
+            {cards.map((c, i) => {
+              const on = openKey === c.key
+              return (
+                <button key={c.key} type="button" aria-expanded={on}
+                  onClick={() => setOpenKey(k => (k === c.key ? null : c.key))}
+                  style={{
+                    border: on ? '2px solid ' + t.accent : '1px solid ' + t.border,
+                    borderRadius: 12, background: on ? boxTint(i) : t.card,
+                    boxShadow: on ? t.shadowH : t.shadow,
+                    padding: on ? '10px 11px' : '11px 12px',
+                    display: 'flex', flexDirection: 'column', gap: 6, minHeight: 92,
+                    boxSizing: 'border-box', textAlign: 'left', cursor: 'pointer',
+                    color: t.text, fontFamily: 'inherit',
+                  }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      minWidth: 26, height: 26, padding: '0 7px', borderRadius: 8,
+                      background: on ? t.card : boxTint(i), border: '1px solid ' + t.border,
+                      color: c.no == null ? t.blue : t.accent, fontSize: 14, fontWeight: 700,
+                    }}>{c.no == null ? '수기' : c.no}</span>
+                    <span style={{ fontSize: 11, color: t.textM, fontWeight: 700, marginLeft: 'auto' }}>
+                      {num(c.n)}종
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: t.text, lineHeight: 1.2 }}>{c.name}</span>
+                  <span style={{ fontSize: 9.5, color: t.textL, marginTop: 'auto' }}>
+                    {on ? '펼침 ▾' : '누르면 펼쳐집니다'}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          {/* 펼친 상자 — 카드와 **같은 바탕색**으로 바로 아래에 둔다 */}
+          {cards.map((c, i) => (openKey !== c.key ? null : (
+            <div key={'box' + c.key} style={{
+              border: '1px solid ' + t.border, borderRadius: 12, background: boxTint(i),
+              padding: '10px 12px', boxShadow: t.shadow, boxSizing: 'border-box', marginBottom: 12,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8, flexWrap: 'wrap' }}>
+                {c.no == null
+                  ? <ManualChip t={t} />
+                  : <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    minWidth: 30, height: 30, padding: '0 8px', borderRadius: 9,
+                    background: t.card, border: '1px solid ' + t.border,
+                    color: t.accent, fontSize: 17, fontWeight: 700,
+                  }}>{c.no}</span>}
+                <span style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{c.name}</span>
+                <span style={{ fontSize: 11, color: t.textM, fontWeight: 700 }}>{num(c.n)}종</span>
+                {c.no === SR_GROUP_NO && c.g.sr && c.g.sr.length > 0 && (
+                  <span style={{ fontSize: 10.5, color: t.accent, fontWeight: 700 }}>
+                    서방 {num(c.g.sr.length)}
+                  </span>
+                )}
+                {c.no == null && (
+                  <span style={{ fontSize: 10.5, color: t.textM }}>
+                    가루약 {num(p.manualPowder.length)} · ATC {num(p.manualAtc.length)}
+                  </span>
+                )}
+                <button type="button" onClick={() => setOpenKey(null)}
+                  style={{
+                    marginLeft: 'auto', padding: '5px 12px', borderRadius: 8,
+                    border: '1px solid ' + t.border, background: t.card, color: t.textM,
+                    fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                  }}>접기</button>
+              </div>
+              {boxBody(c.g)}
+            </div>
+          )))}
         </>
       )}
 

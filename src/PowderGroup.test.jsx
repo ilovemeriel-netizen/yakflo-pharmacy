@@ -9,7 +9,7 @@
  *   ⑥ DB 에 **쓰지 않는다**
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, act, within } from '@testing-library/react'
 
 const from = vi.fn()
 const rpc = vi.fn()
@@ -278,38 +278,158 @@ describe('검색', () => {
   })
 })
 
-describe('★ 번호별 목록 — 1·6번만 기본 접힘', () => {
-  /* ★ 2026-11-11 — 1·6번만 접던 것을 **전부 접기**로 바꿨다(이정화 님 결정).
-     화면을 열면 검색창이 한참 아래로 밀려 내려가던 것을 고치기 위해서다. */
-  it('★ 1~10번과 수기조제 묶음이 **모두** 접혀 있다', async () => {
+describe('★ 번호별 목록 — 카드 격자 (2026-11-11 시안 ⓑ)', () => {
+  /* ★ 2026-11-11 이정화 님이 고른 모습.
+     번호마다 카드 한 장 · 누른 카드만 그 번호의 바탕색과 함께 아래에 펼쳐진다.
+     ★ 10번(갑상선약)을 없애 번호 카드는 9장 + 수기조제 1장 = **10장**이다. */
+  const cardBtns = () => screen.getAllByRole('button').filter(b => b.hasAttribute('aria-expanded'))
+
+  it('★ 카드가 10장이다 — 1~9번 + 수기조제', async () => {
     await open()
-    /* 번호 10개(1~10, 2026-11-11 갑상선약 추가) + 수기조제 1개 */
-    expect(screen.getAllByText('기본 접힘').length).toBe(11)
+    expect(cardBtns().length).toBe(10)
+  })
+
+  it('★ 수기조제 카드가 **맨 끝**이다', async () => {
+    await open()
+    const last = cardBtns()[cardBtns().length - 1]
+    expect(/수기조제 — 번호별 목록/.test(last.textContent)).toBe(true)
+  })
+
+  it('★ 10번·갑상선약 카드가 없다', async () => {
+    await open()
+    expect(cardBtns().some(b => /갑상선/.test(b.textContent))).toBe(false)
   })
 
   it('★ 처음에는 펴진 묶음이 하나도 없다', async () => {
     await open()
     expect(screen.queryAllByRole('button', { expanded: true }).length).toBe(0)
+    expect(screen.getAllByText('누르면 펼쳐집니다').length).toBe(10)
   })
 
-  it('머리를 누르면 1번이 펴진다', async () => {
+  it('카드를 누르면 2번이 펴지고 그 약이 나온다', async () => {
     await open()
-    const head = screen.getAllByRole('button').find(b => /일반 정제/.test(b.textContent))
+    const head = cardBtns().find(b => /혈압약/.test(b.textContent))
     expect(head.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(head)
     await settle(2)
     expect(head.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getAllByText('시그마트정5mg').length).toBeGreaterThan(0)
   })
 
-  it('수기조제 묶음도 접혀 있고, 누르면 시럽이 나온다', async () => {
+  it('★ 1번을 펴면 「서방정 / 그 밖」 두 토막이 나온다', async () => {
     await open()
-    const head = screen.getAllByRole('button').find(b => /수기조제 — 번호별 목록/.test(b.textContent))
+    fireEvent.click(cardBtns().find(b => /일반 정제/.test(b.textContent)))
+    await settle(2)
+    /* 가짜 자료에는 1번 약이 없다 — 토막 제목은 그대로 나오고 「해당 약 없음」이 붙는다 */
+    expect(screen.getByText(/^그 밖 0종$/)).toBeTruthy()
+    expect(screen.getAllByText('해당 약 없음').length).toBe(2)
+  })
+
+  it('★ 한 번에 한 묶음만 펴진다 — 다른 카드를 누르면 앞엣것이 접힌다', async () => {
+    await open()
+    const one = cardBtns().find(b => /일반 정제/.test(b.textContent))
+    const man = cardBtns().find(b => /수기조제 — 번호별 목록/.test(b.textContent))
+    fireEvent.click(one)
+    await settle(2)
+    fireEvent.click(man)
+    await settle(2)
+    expect(one.getAttribute('aria-expanded')).toBe('false')
+    expect(man.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.queryAllByRole('button', { expanded: true }).length).toBe(1)
+  })
+
+  it('수기조제 카드도 접혀 있고, 누르면 시럽이 나온다', async () => {
+    await open()
+    const head = cardBtns().find(b => /수기조제 — 번호별 목록/.test(b.textContent))
     expect(head).toBeTruthy()
     expect(head.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(head)
     await settle(2)
     expect(head.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getAllByText('듀락칸이지시럽15mL').length).toBeGreaterThan(0)
+  })
+
+  it('「접기」를 누르면 다시 접힌다', async () => {
+    await open()
+    const head = cardBtns().find(b => /일반 정제/.test(b.textContent))
+    fireEvent.click(head)
+    await settle(2)
+    fireEvent.click(screen.getByRole('button', { name: '접기' }))
+    await settle(2)
+    expect(head.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  /* 2번(혈압약/심장약)에 시그마트정5mg 이 들어 있다 */
+  const openTwo = async () => {
+    await open()
+    fireEvent.click(cardBtns().find(b => /혈압약/.test(b.textContent)))
+    await settle(2)
+    return screen.getAllByText('시그마트정5mg')
+      .map(el => el.parentElement)
+      .find(el => el && el.style.minHeight === '78px')
+  }
+
+  it('★ 칸 규격이 ATC 카세트와 같다 — 최소 높이 78 · 그림자 없음', async () => {
+    const cell = await openTwo()
+    expect(cell).toBeTruthy()
+    expect(cell.style.boxShadow).toBe('')
+    expect(cell.style.borderRadius).toBe('6px')
+    expect(cell.style.padding).toBe('3px 5px')
+  })
+
+  it('★ 칸에 가나다 번호를 적지 않는다', async () => {
+    const cell = await openTwo()
+    /* 칸 안에 보이는 글자는 약품명과 ATC 뿐이다 */
+    expect(cell.textContent).toBe('시그마트정5mgC01DX16')
+  })
+
+  it('★ 펼친 상자에 그 번호의 바탕색이 깔린다 — 팔레트 4색 저알파', async () => {
+    await open()
+    const head = cardBtns().find(b => /일반 정제/.test(b.textContent))
+    fireEvent.click(head)
+    await settle(2)
+    /* 1번은 차례의 첫 색(라벤더 #BFA6D9 + '2b') */
+    expect(head.style.background).toContain('191, 166, 217')
+  })
+
+  it('★ 옆 카드끼리 바탕색이 다르다 — 차례대로 돌려 쓴다', async () => {
+    await open()
+    const btns = cardBtns()
+    fireEvent.click(btns[0]); await settle(2)
+    const c0 = btns[0].style.background
+    fireEvent.click(btns[1]); await settle(2)
+    const c1 = btns[1].style.background
+    expect(c0).not.toBe(c1)
+  })
+
+  it('★ 고른 약 체크는 접었다 펴도 그대로 남는다', async () => {
+    await open()
+    const head = cardBtns().find(b => /혈압약/.test(b.textContent))
+    fireEvent.click(head)
+    await settle(2)
+    const box = screen.getAllByLabelText('시그마트정5mg 고르기')
+      .find(el => el.style.width === '12px')
+    fireEvent.click(box)
+    await settle(2)
+    expect(screen.getByText('고른 약 1종')).toBeTruthy()
+    /* 접었다 다시 편다 */
+    fireEvent.click(head)
+    await settle(2)
+    expect(screen.getByText('고른 약 1종')).toBeTruthy()
+    fireEvent.click(head)
+    await settle(2)
+    const again = screen.getAllByLabelText('시그마트정5mg 고르기')
+      .find(el => el.style.width === '12px')
+    expect(again.checked).toBe(true)
+  })
+
+  it('★ 묶음 합 + 수기조제 = 사용 중인 경구제 수', async () => {
+    await open()
+    const sum = cardBtns()
+      .map(b => Number(within(b).getByText(/^\d+종$/).textContent.replace('종', '')))
+      .reduce((a, b) => a + b, 0)
+    expect(sum).toBe(5)   /* 가짜 자료의 사용 중인 경구제 5종 */
+    expect(screen.getAllByText(/사용 중인 경구제 5종/).length).toBeGreaterThan(0)
   })
 })
 
