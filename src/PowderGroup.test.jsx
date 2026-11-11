@@ -302,7 +302,7 @@ describe('★ 번호별 목록 — 1·6번만 기본 접힘', () => {
 
   it('수기조제 묶음도 접혀 있고, 누르면 시럽이 나온다', async () => {
     await open()
-    const head = screen.getAllByRole('button').find(b => /손으로 조제/.test(b.textContent))
+    const head = screen.getAllByRole('button').find(b => /수기조제 — 번호별 목록/.test(b.textContent))
     expect(head).toBeTruthy()
     expect(head.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(head)

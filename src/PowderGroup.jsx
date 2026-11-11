@@ -653,13 +653,13 @@ export default function PowderGroup() {
             </>,
             g.list, g.folded,
             g.no === SR_GROUP_NO ? srSplit(g) : null))}
-          {/* ★ 손으로 조제하는 약을 **한 묶음**에 모은다 — 가루약 수기조제 + ATC 수기 조제.
+          {/* ★ 수기조제 약을 **한 묶음**에 모은다 — 가루약 수기조제 + ATC 수기 조제.
               기본 접힘 (2026-11-11 이정화 님 결정) */}
           {section(
             'manual',
             <>
               <ManualChip t={t} />
-              <span style={{ fontWeight: 700, color: t.text }}>손으로 조제 — 번호별 목록에서 뺐습니다</span>
+              <span style={{ fontWeight: 700, color: t.text }}>수기조제 — 번호별 목록에서 뺐습니다</span>
               <span style={{ fontSize: 10.5, color: t.textM }}>
                 가루약 {num(p.manualPowder.length)} · ATC {num(p.manualAtc.length)}
               </span>
