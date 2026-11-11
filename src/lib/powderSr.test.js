@@ -14,7 +14,7 @@ import {
   decideGroup, resolveGroup, resolveSr, isSrAuto, srToMap, buildPowderTable,
   SR_GROUP_NO, SR_RE, GROUP_NOS,
 } from './powderGroup'
-import FIX from './__fixtures__/powderGroup.2026-11-10.json'
+import FIX from './__fixtures__/powderGroup.2026-11-11.json'
 
 const D = o => ({ drug_code: 'X', drug_name: '', atc_code: '', narcotic_type: '일반', status: '사용', category: '경구제', ...o })
 const 서방 = D({ drug_code: 'SR1', drug_name: '포리부틴서방정', atc_code: 'A03AA05' })
@@ -120,7 +120,7 @@ describe('④ 1번 안에서만 두 토막', () => {
   })
 })
 
-describe('★★ 서방정 표시를 켜고 꺼도 359종 번호가 안 바뀐다', () => {
+describe('★★ 서방정 표시를 켜고 꺼도 358종 번호가 안 바뀐다', () => {
   const drugs = FIX.map(x => ({
     drug_code: x.code, drug_name: x.name, atc_code: x.atc, narcotic_type: x.narc,
     status: '사용', category: '경구제',
@@ -130,8 +130,8 @@ describe('★★ 서방정 표시를 켜고 꺼도 359종 번호가 안 바뀐�
 
   const base = numsOf({})
 
-  it('359종이 다 들어 있다', () => {
-    expect(base.length).toBe(359)
+  it('358종이 다 들어 있다', () => {
+    expect(base.length).toBe(358)
   })
 
   it('서방정 표시가 하나도 없을 때 = decideGroup() 과 같다', () => {
@@ -180,11 +180,11 @@ describe('지금 운영 값 — 1번 안 서방정 12종', () => {
     status: '사용', category: '경구제',
   }))
   const p = buildPowderTable(drugs, {}, {})
-  it('1번 173종 가운데 서방정 12종', () => {
+  it('1번 168종 가운데 서방정 12종', () => {
     const g1 = p.groups.find(g => g.no === SR_GROUP_NO)
-    expect(g1.list.length).toBe(173)
+    expect(g1.list.length).toBe(168)
     expect(g1.sr.length).toBe(12)
-    expect(g1.nonSr.length).toBe(161)
+    expect(g1.nonSr.length).toBe(156)
   })
   it('★ 후보 3종은 **코드가 넣지 않는다** — 이정화 님이 화면에서 직접 넣으신다', () => {
     const names = p.groups.find(g => g.no === SR_GROUP_NO).sr.map(x => x.d.drug_name)

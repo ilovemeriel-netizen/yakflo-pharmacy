@@ -26,8 +26,14 @@ export const GROUP_NAMES = {
   7: '향정신성의약품',
   8: '항혈전제(캡슐)',
   9: '그 외 분리 필요한 약제',
+  /* 10번 — 2026-11-11 이정화 님이 새로 만든 번호. ATC H03(갑상선 치료제) */
+  10: '갑상선약',
 }
-export const GROUP_NOS = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+/* ★ 여기 적힌 번호·이름은 **기본값**이다.
+     운영에서는 `drug_vocab`(axis='powder_group') 에서 읽어 온 목록이 이긴다
+     — 번호를 더하거나 이름을 바꿀 때 코드를 고쳐 배포하지 않으려는 것이다(0121).
+     읽기에 실패하거나 목록이 비면 이 기본값으로 돌아간다. */
+export const GROUP_NOS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 /* 기본으로 접어 두는 번호 — **전부**다 (2026-11-11 이정화 님 결정).
    처음엔 1·6번만 접었는데, 화면을 열면 검색창이 한참 아래로 밀려 내려갔다.
    이제 1~9번과 수기조제 묶음이 **모두 접힌 채로** 열린다. 머리를 누르면 펴진다. */
@@ -146,6 +152,9 @@ export function decideGroup(d) {
   if (/^C0[1-9]/.test(atc)) {
     return out(2, GROUP_NAMES[2], 'ATC ' + atc.slice(0, 3) + ' 혈압/심장 (C10 고지혈증 제외)')
   }
+  /* ⑨-2 갑상선약 — ATC H03 (2026-11-11 이정화 님이 10번으로 새로 만듦).
+       운영 5종 전부 레보티록신(H03AA01)이다. */
+  if (atc.startsWith('H03')) return out(10, GROUP_NAMES[10], 'ATC H03 갑상선')
 
   /* ⑩ 나머지 — 제형으로 1·6. 제형을 못 가리면 「확인 필요」 */
   if (fm === '캡슐') return out(6, GROUP_NAMES[6], '위 규칙에 안 걸림 + 캡슐 → 6번')
@@ -244,23 +253,40 @@ export function srToMap(rows) {
  * @param {Array} drugs    약품 전체(상태·구분은 여기서 거른다)
  * @param {object} [ovMap] 사람이 고친 번호 { 약품코드: {group_no, …} }
  * @param {object} [srMap] 사람이 정한 서방정 표시 { 약품코드: {is_sr, …} }
+ * @param {Array} [vocab]  번호 목록 [{no, label}] — `drug_vocab` 에서 읽어 온 것.
+ *                         안 주면 코드에 적힌 기본값(GROUP_NOS·GROUP_NAMES)을 쓴다.
  */
-export function buildPowderTable(drugs, ovMap, srMap) {
+export function buildPowderTable(drugs, ovMap, srMap, vocab) {
+  /* 번호 목록 — 받은 것이 있으면 그것이 이긴다. 이름도 그쪽을 쓴다. */
+  const list = (vocab && vocab.length)
+    ? vocab.map(v => ({ no: Number(v.no), name: S(v.label) || GROUP_NAMES[v.no] || String(v.no) }))
+    : GROUP_NOS.map(no => ({ no, name: GROUP_NAMES[no] }))
+  const nameOf = no => {
+    const hit = list.find(v => v.no === no)
+    return hit ? hit.name : (GROUP_NAMES[no] || String(no))
+  }
   const rows = (drugs || []).filter(isTarget)
-    .map(d => ({ d, r: resolveGroup(d, ovMap), s: resolveSr(d, srMap), atcManual: isAtcManual(d) }))
+    .map(d => {
+      const r = resolveGroup(d, ovMap)
+      /* 번호가 있는 줄은 **목록의 이름**으로 적는다 — 이름을 바꾸면 화면이 따라간다 */
+      const r2 = r.no == null ? r : { ...r, label: nameOf(r.no) }
+      return { d, r: r2, s: resolveSr(d, srMap), atcManual: isAtcManual(d) }
+    })
     .sort((a, b) => KO(a.d.drug_name, b.d.drug_name))
   /* ★ 「손으로 조제하는 약」을 한 묶음에 모은다 — 번호별 목록에서는 뺀다.
        ① 가루약 수기조제(마약 · 액체·가루 제형)  ② ATC 수기 조제(atc_excluded)
      ★ 번호 자체는 그대로 둔다(`x.r.no`) — 검색 결과에서는 번호가 보인다.
        빼는 것은 **번호별 목록에서만**이다(2026-11-11 이정화 님 결정 2). */
   const inManual = x => x.r.label === MANUAL || x.atcManual
-  const groups = GROUP_NOS.map(no => {
-    const list = rows.filter(x => x.r.no === no && !inManual(x))
-    const g = { no, name: GROUP_NAMES[no], list, folded: FOLDED_NOS.includes(no) }
-    /* ★ 1번만 「서방정 / 그 밖」 두 토막으로 나눠 준다. 번호는 그대로 1번이다. */
+  const groups = list.map(({ no, name }) => {
+    const gl = rows.filter(x => x.r.no === no && !inManual(x))
+    /* ★ 묶음은 **전부** 기본 접힘이다 — 목록에서 읽은 새 번호도 마찬가지다. */
+    const g = { no, name, list: gl, folded: true }
+    /* ★ 1번만 「서방정 / 그 밖」 두 토막으로 나눠 준다. 번호는 그대로 1번이다.
+       ★ `gl`(그 묶음의 약)로 나눈다 — `list`(번호 목록)와 헷갈리면 안 된다. */
     if (no === SR_GROUP_NO) {
-      g.sr = list.filter(x => x.s.sr)
-      g.nonSr = list.filter(x => !x.s.sr)
+      g.sr = gl.filter(x => x.s.sr)
+      g.nonSr = gl.filter(x => !x.s.sr)
     }
     return g
   })

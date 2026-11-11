@@ -10,7 +10,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { decideGroup, resolveGroup, overridesToMap, buildPowderTable, GROUP_NAMES, MANUAL, CHECK } from './powderGroup'
-import FIX from './__fixtures__/powderGroup.2026-11-10.json'
+import FIX from './__fixtures__/powderGroup.2026-11-11.json'
 
 const D = o => ({ drug_code: 'X', drug_name: '', atc_code: '', narcotic_type: '일반', status: '사용', category: '경구제', ...o })
 const 마그밀 = D({ drug_code: 'MGM', drug_name: '마그밀정', atc_code: 'A02AA04' })
@@ -117,7 +117,7 @@ describe('buildPowderTable — 고친 번호를 받는다', () => {
   })
 })
 
-describe('★ ⑥ 고친 값이 없으면 359종 전부 자동과 같다', () => {
+describe('★ ⑥ 고친 값이 없으면 358종 전부 자동과 같다', () => {
   it('한 종도 안 틀린다', () => {
     const diff = FIX.filter(x => {
       const d = { drug_code: x.code, drug_name: x.name, atc_code: x.atc, narcotic_type: x.narc }
