@@ -96,7 +96,8 @@ describe('★ ④ atc_excluded 가 없는 자료에서는 아무것도 안 바�
     expect(p.manualPowder.length).toBe(23)
   })
   it('번호별 수가 보고한 값 그대로', () => {
-    const want = { 1: 168, 2: 65, 3: 12, 4: 5, 5: 23, 6: 42, 7: 9, 8: 3, 9: 3, 10: 5 }
+    /* ★ 2026-11-11 — 10번(갑상선약)을 없앴다. 5종이 1번으로 돌아와 168 → 173. */
+    const want = { 1: 173, 2: 65, 3: 12, 4: 5, 5: 23, 6: 42, 7: 9, 8: 3, 9: 3 }
     for (const n of GROUP_NOS) {
       expect(p.groups.find(g => g.no === n).list.length, n + '번').toBe(want[n])
     }
@@ -114,7 +115,7 @@ describe('지금 운영 값 — ATC 수기 8종이 1번·6번에서 빠진다', 
     atc_excluded: names1.includes(x.name) || names6.includes(x.name),
   }))
   const p = buildPowderTable(drugs, {}, {})
-  it('1번 168 → 162', () => { expect(p.groups.find(g => g.no === 1).list.length).toBe(162) })
+  it('1번 173 → 167', () => { expect(p.groups.find(g => g.no === 1).list.length).toBe(167) })
   it('6번 42 → 40', () => { expect(p.groups.find(g => g.no === 6).list.length).toBe(40) })
   it('수기조제 23 → 31', () => { expect(p.manual.length).toBe(31) })
   it('★ 합계는 358 그대로 — 옮긴 것이지 사라진 것이 아니다', () => {
