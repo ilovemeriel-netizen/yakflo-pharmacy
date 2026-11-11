@@ -20,12 +20,13 @@ import { dbErrorMsg } from './lib/dbError'
 import { HIGH_ALERT_BG, HIGH_ALERT_FG } from './lib/cautionDefs'
 import { WarnTriangle } from './CautionChips'
 import {
-  buildPowderTable, searchPowder, overridesToMap,
-  GROUP_NAMES, GROUP_NOS, MANUAL, CHECK,
+  buildPowderTable, searchPowder, overridesToMap, srToMap,
+  GROUP_NAMES, GROUP_NOS, SR_GROUP_NO, MANUAL, CHECK,
 } from './lib/powderGroup'
 import {
   fetchOverrides, setOverrideMany, clearOverride, invalidateOverrides,
 } from './lib/powderOverrides'
+import { fetchSr, setSrMany, clearSr, invalidateSr } from './lib/powderSr'
 
 /* 비상조제와 같은 상수 — 기존 팔레트. 새 색을 만들지 않는다. */
 const PURPLE = '#804A87'
@@ -85,8 +86,9 @@ export default function PowderGroup() {
   const [cutMsg, setCutMsg] = useState('')
   const [q, setQ] = useState('')
   const [open, setOpen] = useState({})
-  /* 사람이 고친 번호 */
+  /* 사람이 고친 번호 · 사람이 정한 서방정 표시 */
   const [ovMap, setOvMap] = useState({})
+  const [srMap, setSrMap] = useState({})
   const [ovErr, setOvErr] = useState('')
   /* 여러 개 한꺼번에 — 체크한 약품코드 */
   const [picked, setPicked] = useState(() => new Set())
@@ -95,16 +97,18 @@ export default function PowderGroup() {
   const [msg, setMsg] = useState(null)   /* { ok, text } */
   const [reload, setReload] = useState(0)
 
-  /* ── 고친 번호 읽기 ─────────────────────────────────────────────── */
+  /* ── 고친 번호 · 서방정 표시 읽기 ───────────────────────────────── */
   useEffect(() => {
     let dead = false
     ;(async () => {
-      invalidateOverrides()
-      const { rows, error } = await fetchOverrides()
+      invalidateOverrides(); invalidateSr()
+      const [ov, sr] = await Promise.all([fetchOverrides(), fetchSr()])
       if (dead) return
-      if (error) { setOvErr('고친 번호를 읽지 못했습니다: ' + dbErrorMsg(error)); return }
+      const bad = ov.error || sr.error
+      if (bad) { setOvErr('고친 값을 읽지 못했습니다: ' + dbErrorMsg(bad)); return }
       setOvErr('')
-      setOvMap(overridesToMap(rows))
+      setOvMap(overridesToMap(ov.rows))
+      setSrMap(srToMap(sr.rows))
     })()
     return () => { dead = true }
   }, [reload])
@@ -136,7 +140,7 @@ export default function PowderGroup() {
     return () => { dead = true }
   }, [])
 
-  const p = useMemo(() => buildPowderTable(drugs, ovMap), [drugs, ovMap])
+  const p = useMemo(() => buildPowderTable(drugs, ovMap, srMap), [drugs, ovMap, srMap])
   const hits = useMemo(() => searchPowder(p.rows, q), [p, q])
   const asked = q.trim() !== ''
 
@@ -184,6 +188,47 @@ export default function PowderGroup() {
     setReload(v => v + 1)
   }
 
+  /* ── 서방정으로 / 서방정에서 빼기 ───────────────────────────────── */
+  async function applySr(isSr) {
+    if (!picked.size || busy) return
+    setBusy(true); setMsg(null)
+    const codes = [...picked]
+    let r
+    try { r = await setSrMany(codes, isSr, note.trim()) }
+    catch (e) { r = { error: e, saved: 0 } }
+    setBusy(false)
+    if (r.error) {
+      setMsg({ ok: false, text: '서방정 표시를 바꾸지 못했습니다: ' + dbErrorMsg(r.error) })
+      return
+    }
+    if (r.saved !== codes.length) {
+      setMsg({
+        ok: false,
+        text: '보낸 ' + num(codes.length) + '종 가운데 ' + num(r.saved)
+          + '종만 저장됐습니다. 약플로 담당자에게 알려 주세요.',
+      })
+    } else {
+      setMsg({
+        ok: true,
+        text: num(r.saved) + '종을 ' + (isSr ? '서방정으로 넣었습니다.' : '서방정에서 뺐습니다.'),
+      })
+      setPicked(new Set()); setNote('')
+    }
+    setReload(v => v + 1)
+  }
+
+  async function revertSr(code, name) {
+    if (busy) return
+    setBusy(true); setMsg(null)
+    let r
+    try { r = await clearSr(code) } catch (e) { r = { error: e } }
+    setBusy(false)
+    setMsg(r.error
+      ? { ok: false, text: '되돌리지 못했습니다: ' + dbErrorMsg(r.error) }
+      : { ok: true, text: name + ' 의 서방정 표시를 이름 기준으로 되돌렸습니다.' })
+    setReload(v => v + 1)
+  }
+
   const card = {
     background: t.card, border: '1px solid ' + t.border, borderRadius: 12,
     padding: 14, marginBottom: 12,
@@ -211,6 +256,31 @@ export default function PowderGroup() {
           : <NumBadge t={t} no={x.r.no} manual={x.r.manual} />}
       </td>
       <td style={td}>{x.r.label}</td>
+      {/* ★ 서방 칸 — 1번(일반 정제)에서만 뜻이 있다. 다른 번호는 「—」. */}
+      <td style={{ ...td, textAlign: 'center' }}>
+        {x.r.no !== SR_GROUP_NO
+          ? <span style={{ color: t.textL }}>—</span>
+          : x.s.sr
+            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ color: t.accent, fontWeight: 700, fontSize: 11 }}>서방</span>
+              {x.s.manual && <span style={{ fontSize: 9, fontWeight: 700, color: t.amber }}>수기</span>}
+            </span>
+            : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ color: t.textL }}>—</span>
+              {x.s.manual && <span style={{ fontSize: 9, fontWeight: 700, color: t.amber }}>수기</span>}
+            </span>}
+        {x.s.manual && (
+          <div>
+            <button type="button" disabled={busy}
+              onClick={() => revertSr(x.d.drug_code, x.d.drug_name)}
+              style={{
+                marginTop: 3, padding: '2px 7px', borderRadius: 7, border: '1px solid ' + t.border,
+                background: 'transparent', color: t.textM, fontSize: 9, fontWeight: 700,
+                cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: busy ? 0.5 : 1,
+              }}>되돌리기</button>
+          </div>
+        )}
+      </td>
       <td style={td}>
         {x.r.hazard
           ? <HazardChip title={x.r.hazard} />
@@ -253,6 +323,27 @@ export default function PowderGroup() {
     </tr>
   )
 
+  /* 1번 묶음은 「서방정 / 그 밖」 두 토막으로 보여 준다 — 번호는 그대로 1번이다. */
+  const srSplit = g => (
+    <>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.accent, marginBottom: 6 }}>
+        서방정 {num(g.sr.length)}종
+        <span style={{ fontWeight: 400, color: t.textL, marginLeft: 6 }}>
+          이름에 「서방」이 있거나, 손으로 넣은 약입니다 · 분리번호는 1번 그대로입니다
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+        {g.sr.length ? g.sr.map(pill) : <span style={{ color: t.textL, fontSize: 11 }}>해당 약 없음</span>}
+      </div>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.textM, marginBottom: 6 }}>
+        그 밖 {num(g.nonSr.length)}종
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {g.nonSr.length ? g.nonSr.map(pill) : <span style={{ color: t.textL, fontSize: 11 }}>해당 약 없음</span>}
+      </div>
+    </>
+  )
+
   const pill = x => (
     <span key={x.d.drug_code} title={x.r.why} style={{
       display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: t.text,
@@ -262,12 +353,15 @@ export default function PowderGroup() {
       borderRadius: 7, padding: '3px 9px',
     }}>
       {x.d.drug_name}
+      {/* 1번 안에서 서방정이면 이름 뒤에 작게 「서방」 */}
+      {x.r.no === SR_GROUP_NO && x.s.sr
+        && <span style={{ fontSize: 9, fontWeight: 700, color: t.accent }}>서방</span>}
       {x.r.manual && <span style={{ fontSize: 9, fontWeight: 700, color: t.amber }}>수기</span>}
       {x.r.hazard && <WarnTriangle />}
     </span>
   )
 
-  const section = (key, head, list, foldedByDefault) => {
+  const section = (key, head, list, foldedByDefault, body) => {
     const isOpen = open[key] === undefined ? !foldedByDefault : open[key]
     return (
       <div key={key} style={{
@@ -291,10 +385,13 @@ export default function PowderGroup() {
             && <span style={{ marginLeft: 'auto', fontSize: 10, color: t.textL }}>기본 접힘</span>}
         </button>
         {isOpen && (
-          <div style={{ padding: '11px 13px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {list.length ? list.map(pill)
-              : <span style={{ color: t.textL, fontSize: 11 }}>해당 약 없음</span>}
-          </div>
+          body
+            /* 1번처럼 **안을 따로 그리는** 묶음은 body 를 받는다 */
+            ? <div style={{ padding: '11px 13px' }}>{body}</div>
+            : <div style={{ padding: '11px 13px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {list.length ? list.map(pill)
+                : <span style={{ color: t.textL, fontSize: 11 }}>해당 약 없음</span>}
+            </div>
         )}
       </div>
     )
@@ -361,10 +458,14 @@ export default function PowderGroup() {
               : '— 아직 고친 번호가 없습니다. 모두 규칙으로 계산한 값입니다.'}
           </span>
           {p.edited.length > 0 && (
-            <span style={{ marginLeft: 'auto', color: t.textM }}>
+            <span style={{ color: t.textM }}>
               {p.edited.map(x => x.d.drug_name).join(' · ')}
             </span>
           )}
+          <span style={{ marginLeft: 'auto', color: t.textM }}>
+            1번 안 <b style={{ color: t.accent }}>서방정 {num(p.sr.length)}종</b>
+            {p.srEdited.length > 0 && <span style={{ color: t.textL }}> (손으로 정한 것 {num(p.srEdited.length)})</span>}
+          </span>
         </div>
       )}
 
@@ -386,6 +487,24 @@ export default function PowderGroup() {
                 }}>{n}</button>
             ))}
           </div>
+          {/* ★ 서방정 — 번호를 **바꾸지 않는다**. 1번 안에서 묶어 보는 표시만 바꾼다. */}
+          <span style={{ width: 1, height: 20, background: t.border }} />
+          <button type="button" disabled={!picked.size || busy} onClick={() => applySr(true)}
+            title="1번(일반 정제) 안에서 서방정으로 묶어 봅니다. 분리번호는 그대로입니다."
+            style={{
+              padding: '7px 12px', borderRadius: 8, border: '1px solid ' + t.border,
+              background: t.card, color: t.accent, fontSize: 11.5, fontWeight: 700,
+              cursor: (!picked.size || busy) ? 'not-allowed' : 'pointer',
+              opacity: (!picked.size || busy) ? 0.45 : 1, fontFamily: 'inherit',
+            }}>서방정으로</button>
+          <button type="button" disabled={!picked.size || busy} onClick={() => applySr(false)}
+            title="이름에 「서방」이 있어도 서방정 묶음에서 뺍니다. 분리번호는 그대로입니다."
+            style={{
+              padding: '7px 12px', borderRadius: 8, border: '1px solid ' + t.border,
+              background: t.card, color: t.textM, fontSize: 11.5, fontWeight: 700,
+              cursor: (!picked.size || busy) ? 'not-allowed' : 'pointer',
+              opacity: (!picked.size || busy) ? 0.45 : 1, fontFamily: 'inherit',
+            }}>서방정에서 빼기</button>
           {/* 까닭은 **선택**이다 — 비워도 된다(2026-11-10 이정화 님 결정 5) */}
           <input value={note} onChange={e => setNote(e.target.value)}
             placeholder="고친 까닭 (선택 — 비워도 됩니다)"
@@ -453,10 +572,11 @@ export default function PowderGroup() {
                     })}
                     style={{ width: 15, height: 15, accentColor: t.accent, cursor: 'pointer' }} />
                 </th>
-                <th style={{ ...th, width: 230 }}>약품명</th>
+                <th style={{ ...th, width: 210 }}>약품명</th>
                 <th style={{ ...th, width: 92 }}>번호</th>
-                <th style={{ ...th, width: 140 }}>구분</th>
-                <th style={{ ...th, width: 160 }}>가루 위험</th>
+                <th style={{ ...th, width: 130 }}>구분</th>
+                <th style={{ ...th, width: 74 }} title="1번(일반 정제) 안에서만 뜻이 있습니다">서방</th>
+                <th style={{ ...th, width: 150 }}>가루 위험</th>
                 <th style={{ ...th, width: 230 }}>고친 까닭 · 언제</th>
                 <th style={{ ...th, width: 92 }}>되돌리기</th>
                 <th style={th}>성분(한글)</th>
@@ -488,7 +608,7 @@ export default function PowderGroup() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0 8px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 16, fontWeight: 700, color: PURPLE }}>번호별 전체 목록</span>
             <span style={{ fontSize: 12, color: t.textM }}>
-              {GROUP_NAMES[1]}·{GROUP_NAMES[6]}은 약이 많아 기본으로 접혀 있습니다
+              모두 접혀 있습니다 · 머리를 누르면 펴집니다
             </span>
           </div>
           {p.groups.map(g => section(
@@ -496,15 +616,20 @@ export default function PowderGroup() {
             <>
               <NumBadge t={t} no={g.no} />
               <span style={{ fontWeight: 700, color: t.text }}>{g.name}</span>
+              {/* 1번 머리에만 「서방 N」을 작게 */}
+              {g.no === SR_GROUP_NO && g.sr.length > 0
+                && <span style={{ fontSize: 10.5, color: t.accent, fontWeight: 700 }}>서방 {num(g.sr.length)}</span>}
             </>,
-            g.list, g.folded))}
+            g.list, g.folded,
+            g.no === SR_GROUP_NO ? srSplit(g) : null))}
+          {/* 수기조제 묶음도 **기본 접힘** (2026-11-11 이정화 님 결정) */}
           {section(
             'manual',
             <>
               <ManualChip t={t} />
               <span style={{ fontWeight: 700, color: t.text }}>마약 · 액체·가루 제형 — 분리번호 없음</span>
             </>,
-            p.manual, false)}
+            p.manual, true)}
         </>
       )}
 
