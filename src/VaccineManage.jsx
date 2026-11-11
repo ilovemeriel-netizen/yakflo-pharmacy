@@ -556,7 +556,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
   return <div style={{ padding: '20px 24px' }}>
     {/* ═══ 1. 헤더 ═══ */}
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-      <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: t.text }}>백신 관리</h2>
+      <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: t.text }}>백신관리</h2>
       <select value={sel} onChange={e => setSeason(e.target.value)} style={{ ...ip, width: 138, fontWeight: 600 }}>
         {seasons.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
@@ -569,7 +569,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
     {/* ═══ 1-A. 탭 — 「수요 현황」은 **관리자(owner·admin)에게만** 그린다(0093 정책과 같은 기준).
         ★ me 가 관리자가 아니면 탭 띠 자체가 없어 기존 화면과 같다. */}
     {isSurveyAdmin && <nav className="no-print" style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-      {[['manage', '백신 관리'], ['survey', '수요 현황']].map(([k, lab]) => {
+      {[['manage', '백신관리'], ['survey', '수요 현황']].map(([k, lab]) => {
         const on = tab === k
         return <button key={k} onClick={() => goTab(k)} style={{
           padding: '7px 15px', borderRadius: 9, cursor: 'pointer', fontSize: 12, fontWeight: 700,
