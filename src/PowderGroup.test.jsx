@@ -70,10 +70,19 @@ async function open() {
 }
 
 describe('기본 표시', () => {
-  it('제목과 설명이 나온다', async () => {
+  it('제목이 나온다', async () => {
     await open()
     expect(screen.getByText('가루약 분리번호')).toBeTruthy()
-    expect(screen.getByText(/그때그때 계산합니다/)).toBeTruthy()
+  })
+
+  /* ★ 2026-11-11 이정화 님 결정(글자 줄이기 A안) — 긴 설명 넷을 뺐다.
+     다시 들어가면 이 시험이 알려 준다. */
+  it('★ 뺀 설명이 도로 들어오지 않았다', async () => {
+    await open()
+    expect(screen.queryByText(/그때그때 계산합니다/)).toBeNull()
+    expect(screen.queryByText(/카드를 누르면 그 번호만/)).toBeNull()
+    expect(screen.queryByText('누르면 펼쳐집니다')).toBeNull()
+    expect(screen.queryByText(/번호별 목록에서 뺐습니다/)).toBeNull()
   })
 
   it('★ 사용 중인 경구제만 센다 — 중지·주사제는 빠진다', async () => {
@@ -292,7 +301,7 @@ describe('★ 번호별 목록 — 카드 격자 (2026-11-11 시안 ⓑ)', () =>
   it('★ 수기조제 카드가 **맨 끝**이다', async () => {
     await open()
     const last = cardBtns()[cardBtns().length - 1]
-    expect(/수기조제 — 번호별 목록/.test(last.textContent)).toBe(true)
+    expect(/수기조제/.test(last.textContent)).toBe(true)
   })
 
   it('★ 10번·갑상선약 카드가 없다', async () => {
@@ -303,7 +312,45 @@ describe('★ 번호별 목록 — 카드 격자 (2026-11-11 시안 ⓑ)', () =>
   it('★ 처음에는 펴진 묶음이 하나도 없다', async () => {
     await open()
     expect(screen.queryAllByRole('button', { expanded: true }).length).toBe(0)
-    expect(screen.getAllByText('누르면 펼쳐집니다').length).toBe(10)
+  })
+
+  /* ★ 카드 1장 = 예전 카드 4장(2×2) 크기 · 미리보기 3줄 + 「외 N종」
+       (2026-11-11 이정화 님 결정) */
+  it('★ 카드 높이가 192px 다', async () => {
+    await open()
+    for (const b of cardBtns()) expect(b.style.minHeight).toBe('192px')
+  })
+
+  it('★ 카드에 큰 번호(32px)가 있다', async () => {
+    await open()
+    const one = cardBtns().find(b => /일반 정제/.test(b.textContent))
+    const badge = [...one.querySelectorAll('span')].find(s => s.textContent === '1')
+    expect(badge.style.fontSize).toBe('32px')
+    expect(badge.style.minWidth).toBe('46px')
+  })
+
+  it('★ 카드 바탕은 **늘** 그 번호의 색이다 — 접혀 있어도', async () => {
+    await open()
+    const btns = cardBtns()
+    expect(btns[0].style.background).toContain('191, 166, 217')   /* 1번 라벤더 */
+    expect(btns[0].style.background).not.toBe('rgb(255, 255, 255)')
+  })
+
+  it('★ 미리보기는 약 이름 3줄 + 「외 N종」 이다', async () => {
+    await open()
+    /* 가짜 자료의 2번(혈압약)은 1종뿐이라 「외 N종」이 없다 — 수기조제(2종)도 마찬가지.
+       줄 수 자체를 못 박는다: 4줄을 넘지 않는다. */
+    for (const b of cardBtns()) {
+      const lines = b.textContent.split('·').length - 1
+      expect(lines).toBeLessThanOrEqual(3)
+    }
+    expect(screen.getAllByText(/^· 시그마트정5mg$/).length).toBe(1)
+  })
+
+  it('★ 약이 없는 번호는 「해당 약 없음」이라고 적는다', async () => {
+    await open()
+    const one = cardBtns().find(b => /일반 정제/.test(b.textContent))
+    expect(/해당 약 없음/.test(one.textContent)).toBe(true)
   })
 
   it('카드를 누르면 2번이 펴지고 그 약이 나온다', async () => {
@@ -320,15 +367,16 @@ describe('★ 번호별 목록 — 카드 격자 (2026-11-11 시안 ⓑ)', () =>
     await open()
     fireEvent.click(cardBtns().find(b => /일반 정제/.test(b.textContent)))
     await settle(2)
-    /* 가짜 자료에는 1번 약이 없다 — 토막 제목은 그대로 나오고 「해당 약 없음」이 붙는다 */
+    /* 가짜 자료에는 1번 약이 없다 — 토막 제목은 그대로 나오고 「해당 약 없음」이 붙는다.
+       (카드 미리보기에도 같은 글이 들어가므로 수를 못 박지 않고 **있는지**만 본다) */
     expect(screen.getByText(/^그 밖 0종$/)).toBeTruthy()
-    expect(screen.getAllByText('해당 약 없음').length).toBe(2)
+    expect(screen.getAllByText('해당 약 없음').length).toBeGreaterThanOrEqual(2)
   })
 
   it('★ 한 번에 한 묶음만 펴진다 — 다른 카드를 누르면 앞엣것이 접힌다', async () => {
     await open()
     const one = cardBtns().find(b => /일반 정제/.test(b.textContent))
-    const man = cardBtns().find(b => /수기조제 — 번호별 목록/.test(b.textContent))
+    const man = cardBtns().find(b => /수기조제/.test(b.textContent))
     fireEvent.click(one)
     await settle(2)
     fireEvent.click(man)
@@ -340,7 +388,7 @@ describe('★ 번호별 목록 — 카드 격자 (2026-11-11 시안 ⓑ)', () =>
 
   it('수기조제 카드도 접혀 있고, 누르면 시럽이 나온다', async () => {
     await open()
-    const head = cardBtns().find(b => /수기조제 — 번호별 목록/.test(b.textContent))
+    const head = cardBtns().find(b => /수기조제/.test(b.textContent))
     expect(head).toBeTruthy()
     expect(head.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(head)

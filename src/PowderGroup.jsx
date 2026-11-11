@@ -45,6 +45,13 @@ const boxTint = i => BOX_TINTS[((i % BOX_TINTS.length) + BOX_TINTS.length) % BOX
    이 값이 모든 칸을 같은 높이로 잡아 줄이 세로로 맞는다. 새 규격을 만들지 않는다. */
 const CELL_MIN = 78
 
+/* 묶음 카드 — 예전 카드(168×92) **4장(2×2)** 크기다.
+   세로 92×2 + 사이 8 = 192. 가로는 `minmax(340px,1fr)` 이 1,126px 에서 345px 를 만든다
+   (168×2 + 8 = 345, 한 줄 3장 — 2026-11-11 실측).
+   ★ 미리보기는 **3줄 + 「외 N종」**. 이 높이에 딱 맞는 줄 수다 — 더 넣으면 카드가 커진다. */
+const CARD_H = 192
+const CARD_PREVIEW = 3
+
 const num = n => Number(n || 0).toLocaleString()
 const kst = s => {
   if (!s) return ''
@@ -168,8 +175,10 @@ export default function PowderGroup() {
        `p.total` 과 같아야 한다(시험으로 못 박아 두었다). 카드를 빠뜨리면 약이 숨는다. */
   const cards = useMemo(() => ([
     ...p.groups.map(g => ({ key: 'g' + g.no, no: g.no, name: g.name, n: g.list.length, g })),
+    /* ★ 꼬리말 「— 번호별 목록에서 뺐습니다」를 뺐다 (글자 줄이기 A안).
+         무슨 뜻인지는 펼친 상자 머리의 「가루약 N · ATC N」이 말해 준다. */
     {
-      key: 'manual', no: null, name: MANUAL + ' — 번호별 목록에서 뺐습니다',
+      key: 'manual', no: null, name: MANUAL,
       n: p.manual.length, g: { no: null, list: p.manual },
     },
   ]), [p])
@@ -470,9 +479,8 @@ export default function PowderGroup() {
       {/* ── 제목줄 — 비상조제와 같은 모양 ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap', textAlign: 'left' }}>
         <span style={{ fontSize: 16, fontWeight: 700, color: PURPLE }}>가루약 분리번호</span>
-        <span style={{ fontSize: 12, color: t.textM }}>
-          약품 정보(ATC·성분·제형)로 그때그때 계산합니다 · 고친 번호가 있으면 그것을 먼저 씁니다
-        </span>
+        {/* ★ 긴 설명을 뺐다 (2026-11-11 이정화 님 결정 — 화면 글자 줄이기 A안).
+            「약품 정보(ATC·성분·제형)로 그때그때 계산합니다 · 고친 번호가 있으면 그것을 먼저 씁니다」 */}
         {loaded && !err && (
           <span style={{ fontSize: 11, color: t.textL }}>
             사용 중인 경구제 {num(p.total)}종
@@ -681,45 +689,56 @@ export default function PowderGroup() {
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0 8px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 16, fontWeight: 700, color: PURPLE }}>번호별 전체 목록</span>
-            <span style={{ fontSize: 12, color: t.textM }}>
-              카드를 누르면 그 번호만 펼쳐집니다 · 상자 안 약은 가나다 차례입니다
-            </span>
+            {/* ★ 설명을 뺐다 (글자 줄이기 A안) — 카드가 눌리는 모양(그림자·손 모양)으로 알 수 있다 */}
           </div>
           {/* ★ 카드 격자 — 번호마다 카드 한 장, **수기조제는 맨 끝**.
               누른 카드만 그 번호의 바탕색과 함께 아래에 펼쳐진다
-              (2026-11-11 이정화 님이 고른 시안 ⓑ). */}
+              (2026-11-11 이정화 님이 고른 시안 ⓑ).
+              ★ 카드 1장 = 예전 카드 4장(2×2) 크기다 — 1,126px 에서 345×192px, 한 줄 3장.
+                `minmax(340px,1fr)` 과 `minHeight: CARD_H` 가 그 크기를 만든다(실측).
+              ★ 바탕색은 **늘** 그 번호의 색이다. 누른 카드는 테두리 2px + 진한 그림자로 가린다. */}
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
             gap: 8, marginBottom: 12,
           }}>
             {cards.map((c, i) => {
               const on = openKey === c.key
+              /* 미리보기 — 가나다 앞에서 3종 + 「… 외 N종」 (2026-11-11 이정화 님 결정).
+                 카드 높이 192px 에 **딱 맞는 줄 수**다. 더 넣으면 카드가 커진다. */
+              const head = c.g.list.slice(0, CARD_PREVIEW)
+              const rest = c.n - head.length
               return (
                 <button key={c.key} type="button" aria-expanded={on}
                   onClick={() => setOpenKey(k => (k === c.key ? null : c.key))}
                   style={{
                     border: on ? '2px solid ' + t.accent : '1px solid ' + t.border,
-                    borderRadius: 12, background: on ? boxTint(i) : t.card,
+                    borderRadius: 14, background: boxTint(i),
                     boxShadow: on ? t.shadowH : t.shadow,
-                    padding: on ? '10px 11px' : '11px 12px',
-                    display: 'flex', flexDirection: 'column', gap: 6, minHeight: 92,
+                    padding: on ? '13px 15px' : '14px 16px',
+                    display: 'flex', flexDirection: 'column', gap: 8, minHeight: CARD_H,
                     boxSizing: 'border-box', textAlign: 'left', cursor: 'pointer',
                     color: t.text, fontFamily: 'inherit',
                   }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
                     <span style={{
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      minWidth: 26, height: 26, padding: '0 7px', borderRadius: 8,
-                      background: on ? t.card : boxTint(i), border: '1px solid ' + t.border,
-                      color: c.no == null ? t.blue : t.accent, fontSize: 14, fontWeight: 700,
+                      minWidth: 46, height: 46, padding: '0 10px', borderRadius: 12,
+                      background: t.card, border: '1px solid ' + t.border,
+                      color: c.no == null ? t.blue : t.accent,
+                      fontSize: c.no == null ? 17 : 32, fontWeight: 700, flexShrink: 0,
                     }}>{c.no == null ? '수기' : c.no}</span>
-                    <span style={{ fontSize: 11, color: t.textM, fontWeight: 700, marginLeft: 'auto' }}>
-                      {num(c.n)}종
-                    </span>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: t.text, lineHeight: 1.25 }}>{c.name}</span>
+                    <span style={{
+                      fontSize: 13, color: t.textM, fontWeight: 700,
+                      marginLeft: 'auto', flexShrink: 0,
+                    }}>{num(c.n)}종</span>
                   </span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: t.text, lineHeight: 1.2 }}>{c.name}</span>
-                  <span style={{ fontSize: 9.5, color: t.textL, marginTop: 'auto' }}>
-                    {on ? '펼침 ▾' : '누르면 펼쳐집니다'}
+                  <span style={{ fontSize: 10.5, lineHeight: 1.5, color: t.textM, overflow: 'hidden' }}>
+                    {head.map(x => (
+                      <span key={x.d.drug_code} style={{ display: 'block', ...clip }}>· {x.d.drug_name}</span>
+                    ))}
+                    {rest > 0 && <span style={{ display: 'block', color: t.textL }}>… 외 {num(rest)}종</span>}
+                    {!c.n && <span style={{ display: 'block', color: t.textL }}>해당 약 없음</span>}
                   </span>
                 </button>
               )
