@@ -159,6 +159,19 @@ export function isTarget(d) {
   return S(drug.status).trim() === '사용' && S(drug.category).trim() === '경구제'
 }
 
+/* ── ATC 수기 조제 ────────────────────────────────────────────────────
+   ★ ATC 화면(조제관리 › ATC편집)에서 「수기 조제 관리」로 빼 둔 약이다.
+     `drugs.atc_excluded = true` 한 칸으로 정해지고, 사유는 `atc_exclude_reason` 이다.
+   ★ 가루약의 「수기조제」와는 **뜻이 다르다** —
+       가루약 : 빻을 수 없는 약(마약 · 액체·가루 제형)
+       ATC    : 조제기 카세트에 안 넣고 손으로 조제하는 약
+     2026-11-11 실측 — 겹치는 약은 **0종**이었다.
+   ★ 그래도 조제실에서는 **둘 다 「손으로 조제한다」**는 점이 같아,
+     이정화 님 결정으로 **한 묶음에 모아** 보여 준다(2026-11-11).
+     번호는 주지 않는다 — 1~9 목록에서 빼고 수기조제 묶음에만 둔다. */
+export function isAtcManual(d) { return (d && d.atc_excluded) === true }
+export const ATC_MANUAL_LABEL = 'ATC 수기'
+
 const KO = (a, b) => String(a).localeCompare(String(b), 'ko')
 
 /**
@@ -234,10 +247,15 @@ export function srToMap(rows) {
  */
 export function buildPowderTable(drugs, ovMap, srMap) {
   const rows = (drugs || []).filter(isTarget)
-    .map(d => ({ d, r: resolveGroup(d, ovMap), s: resolveSr(d, srMap) }))
+    .map(d => ({ d, r: resolveGroup(d, ovMap), s: resolveSr(d, srMap), atcManual: isAtcManual(d) }))
     .sort((a, b) => KO(a.d.drug_name, b.d.drug_name))
+  /* ★ 「손으로 조제하는 약」을 한 묶음에 모은다 — 번호별 목록에서는 뺀다.
+       ① 가루약 수기조제(마약 · 액체·가루 제형)  ② ATC 수기 조제(atc_excluded)
+     ★ 번호 자체는 그대로 둔다(`x.r.no`) — 검색 결과에서는 번호가 보인다.
+       빼는 것은 **번호별 목록에서만**이다(2026-11-11 이정화 님 결정 2). */
+  const inManual = x => x.r.label === MANUAL || x.atcManual
   const groups = GROUP_NOS.map(no => {
-    const list = rows.filter(x => x.r.no === no)
+    const list = rows.filter(x => x.r.no === no && !inManual(x))
     const g = { no, name: GROUP_NAMES[no], list, folded: FOLDED_NOS.includes(no) }
     /* ★ 1번만 「서방정 / 그 밖」 두 토막으로 나눠 준다. 번호는 그대로 1번이다. */
     if (no === SR_GROUP_NO) {
@@ -246,7 +264,8 @@ export function buildPowderTable(drugs, ovMap, srMap) {
     }
     return g
   })
-  const manual = rows.filter(x => x.r.label === MANUAL)
+  /* 수기조제 묶음 = 가루약 수기조제 + ATC 수기 조제 */
+  const manual = rows.filter(inManual)
   const check = rows.filter(x => x.r.label === CHECK)
   return {
     rows, groups, manual, check,
@@ -254,9 +273,12 @@ export function buildPowderTable(drugs, ovMap, srMap) {
     hazard: rows.filter(x => !!x.r.hazard),
     /* 사람이 고친 줄 — 요약 띠에 쓴다. 「수기조제(MANUAL)」와 헷갈리지 않게 이름을 edited 로 둔다. */
     edited: rows.filter(x => x.r.manual),
-    /* 서방정으로 보이는 1번 약 · 그 가운데 사람이 손댄 것 */
-    sr: rows.filter(x => x.r.no === SR_GROUP_NO && x.s.sr),
+    /* 서방정으로 보이는 1번 약 · 그 가운데 사람이 손댄 것 — 수기조제로 간 약은 뺀다 */
+    sr: rows.filter(x => x.r.no === SR_GROUP_NO && x.s.sr && !inManual(x)),
     srEdited: rows.filter(x => x.s.manual),
+    /* 수기조제 묶음의 속내 — 요약 띠에 쓴다 */
+    manualPowder: manual.filter(x => x.r.label === MANUAL),
+    manualAtc: manual.filter(x => x.atcManual),
   }
 }
 

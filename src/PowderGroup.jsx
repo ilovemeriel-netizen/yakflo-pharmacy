@@ -21,12 +21,13 @@ import { HIGH_ALERT_BG, HIGH_ALERT_FG } from './lib/cautionDefs'
 import { WarnTriangle } from './CautionChips'
 import {
   buildPowderTable, searchPowder, overridesToMap, srToMap,
-  GROUP_NAMES, GROUP_NOS, SR_GROUP_NO, MANUAL, CHECK,
+  GROUP_NAMES, GROUP_NOS, SR_GROUP_NO, MANUAL, CHECK, ATC_MANUAL_LABEL,
 } from './lib/powderGroup'
 import {
   fetchOverrides, setOverrideMany, clearOverride, invalidateOverrides,
 } from './lib/powderOverrides'
 import { fetchSr, setSrMany, clearSr, invalidateSr } from './lib/powderSr'
+import { ingOne } from './lib/ingredientOne'
 
 /* 비상조제와 같은 상수 — 기존 팔레트. 새 색을 만들지 않는다. */
 const PURPLE = '#804A87'
@@ -122,7 +123,7 @@ export default function PowderGroup() {
       for (let i = 0; i < MAX_PAGES; i++) {
         const from = i * PAGE
         const { data, error, count } = await supabase.from('drugs')
-          .select('drug_code,drug_name,status,category,atc_code,narcotic_type,ingredient_kr,ingredient_en',
+          .select('drug_code,drug_name,status,category,atc_code,narcotic_type,ingredient_kr,ingredient_en,atc_excluded',
             { count: 'exact' })
           .order('drug_code')
           .range(from, from + PAGE - 1)
@@ -238,6 +239,15 @@ export default function PowderGroup() {
     borderBottom: '1px solid ' + t.border, fontSize: 11, background: t.bg,
   }
   const td = { padding: '8px 10px', borderBottom: '1px solid ' + t.border, fontSize: 12, color: t.text }
+  /* ★ 긴 글자 — 약품목록(StandardTable)이 쓰는 **같은 규칙**이다.
+       한 줄로 두고, 넘치면 말줄임(…), 마우스를 올리면 전체가 보인다(title).
+       이 규칙이 없으면 성분 칸이 45px 로 쪼그라들어 글자가 세로로 쌓인다
+       (2026-11-11 실측 — 아로나민케어싸이정 줄 높이 1,557px). */
+  const clip = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+  /* 칸 너비 — 좁은 칸을 줄여 성분 칸에 폭을 내준다. 성분 칸만 너비를 주지 않는다. */
+  /* ★ 구분 칸은 「ATC 수기」 표시가 함께 들어가므로 넉넉히 준다 —
+       104px 에서는 「일반 정제 A…」로 잘렸다(2026-11-11 실측). */
+  const W = { chk: 34, name: 190, no: 66, gubun: 150, sr: 52, haz: 104, why: 110, rev: 74, atc: 86 }
 
   const resultRow = x => (
     /* 사람이 고친 줄은 바탕을 옅게 — 한눈에 갈라 보라고(2026-11-10 이정화 님 결정 1).
@@ -249,13 +259,20 @@ export default function PowderGroup() {
           aria-label={x.d.drug_name + ' 고르기'}
           style={{ width: 15, height: 15, accentColor: t.accent, cursor: 'pointer' }} />
       </td>
-      <td style={{ ...td, fontWeight: 600 }}>{x.d.drug_name}</td>
+      <td style={{ ...td, fontWeight: 600, ...clip }} title={x.d.drug_name}>{x.d.drug_name}</td>
       <td style={{ ...td, textAlign: 'center' }}>
         {x.r.no == null
           ? <ManualChip t={t} />
           : <NumBadge t={t} no={x.r.no} manual={x.r.manual} />}
       </td>
-      <td style={td}>{x.r.label}</td>
+      <td style={{ ...td, ...clip }} title={x.r.label}>
+        {x.r.label}
+        {/* ATC 화면에서 「수기 조제」로 빼 둔 약 — 가루약 수기조제와 뜻이 다르므로 따로 적는다 */}
+        {x.atcManual && <span style={{
+          marginLeft: 5, fontSize: 9, fontWeight: 700, color: t.blue,
+          background: t.blueL, padding: '1px 6px', borderRadius: 7, whiteSpace: 'nowrap',
+        }}>{ATC_MANUAL_LABEL}</span>}
+      </td>
       {/* ★ 서방 칸 — 1번(일반 정제)에서만 뜻이 있다. 다른 번호는 「—」. */}
       <td style={{ ...td, textAlign: 'center' }}>
         {x.r.no !== SR_GROUP_NO
@@ -318,7 +335,11 @@ export default function PowderGroup() {
             }}>되돌리기</button>
           : <span style={{ color: t.textL }}>—</span>}
       </td>
-      <td style={{ ...td, color: t.textM, fontSize: 11 }}>{x.d.ingredient_kr || ''}</td>
+      {/* ★ 성분 — ATC 배치 목록과 **같은 함수**(ingOne): 「영문 (한글)」, 복합제는 「… 외 N종」 */}
+      <td style={{ ...td, color: t.textM, fontSize: 11, ...clip }}
+        title={[x.d.ingredient_en, x.d.ingredient_kr].filter(Boolean).join(' / ')}>
+        {ingOne(x.d) || '-'}
+      </td>
       <td style={{ ...td, color: t.textM, fontSize: 11, textAlign: 'center' }}>{x.d.atc_code || ''}</td>
     </tr>
   )
@@ -354,8 +375,9 @@ export default function PowderGroup() {
     }}>
       {x.d.drug_name}
       {/* 1번 안에서 서방정이면 이름 뒤에 작게 「서방」 */}
-      {x.r.no === SR_GROUP_NO && x.s.sr
+      {x.r.no === SR_GROUP_NO && x.s.sr && !x.atcManual
         && <span style={{ fontSize: 9, fontWeight: 700, color: t.accent }}>서방</span>}
+      {x.atcManual && <span style={{ fontSize: 9, fontWeight: 700, color: t.blue }}>{ATC_MANUAL_LABEL}</span>}
       {x.r.manual && <span style={{ fontSize: 9, fontWeight: 700, color: t.amber }}>수기</span>}
       {x.r.hazard && <WarnTriangle />}
     </span>
@@ -558,9 +580,18 @@ export default function PowderGroup() {
             ? <div style={{ padding: '18px 4px', color: t.textL, fontSize: 12 }}>
               「{q.trim()}」로 찾은 약이 없습니다. 약품명 일부나 성분명으로 다시 찾아 보세요.
             </div>
-            : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            /* ★ tableLayout:'fixed' + colgroup — 적은 너비가 **그대로** 지켜진다.
+                 너비를 안 준 성분 칸이 남는 폭을 혼자 먹는다(45px → 186px). */
+            : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: W.chk }} /><col style={{ width: W.name }} />
+                <col style={{ width: W.no }} /><col style={{ width: W.gubun }} />
+                <col style={{ width: W.sr }} /><col style={{ width: W.haz }} />
+                <col style={{ width: W.why }} /><col style={{ width: W.rev }} />
+                <col /><col style={{ width: W.atc }} />
+              </colgroup>
               <thead><tr>
-                <th style={{ ...th, width: 38 }}>
+                <th style={th}>
                   {/* 찾은 약 전부 고르기 */}
                   <input type="checkbox"
                     aria-label="찾은 약 전부 고르기"
@@ -572,15 +603,15 @@ export default function PowderGroup() {
                     })}
                     style={{ width: 15, height: 15, accentColor: t.accent, cursor: 'pointer' }} />
                 </th>
-                <th style={{ ...th, width: 210 }}>약품명</th>
-                <th style={{ ...th, width: 92 }}>번호</th>
-                <th style={{ ...th, width: 130 }}>구분</th>
-                <th style={{ ...th, width: 74 }} title="1번(일반 정제) 안에서만 뜻이 있습니다">서방</th>
-                <th style={{ ...th, width: 150 }}>가루 위험</th>
-                <th style={{ ...th, width: 230 }}>고친 까닭 · 언제</th>
-                <th style={{ ...th, width: 92 }}>되돌리기</th>
-                <th style={th}>성분(한글)</th>
-                <th style={{ ...th, width: 90 }}>ATC</th>
+                <th style={{ ...th, ...clip }}>약품명</th>
+                <th style={th}>번호</th>
+                <th style={{ ...th, ...clip }}>구분</th>
+                <th style={th} title="1번(일반 정제) 안에서만 뜻이 있습니다">서방</th>
+                <th style={th}>가루 위험</th>
+                <th style={{ ...th, ...clip }}>고친 까닭</th>
+                <th style={th}>되돌리기</th>
+                <th style={{ ...th, ...clip }}>성분 (영문 · 한글)</th>
+                <th style={th}>ATC</th>
               </tr></thead>
               <tbody>{hits.map(resultRow)}</tbody>
             </table>}
@@ -622,12 +653,16 @@ export default function PowderGroup() {
             </>,
             g.list, g.folded,
             g.no === SR_GROUP_NO ? srSplit(g) : null))}
-          {/* 수기조제 묶음도 **기본 접힘** (2026-11-11 이정화 님 결정) */}
+          {/* ★ 손으로 조제하는 약을 **한 묶음**에 모은다 — 가루약 수기조제 + ATC 수기 조제.
+              기본 접힘 (2026-11-11 이정화 님 결정) */}
           {section(
             'manual',
             <>
               <ManualChip t={t} />
-              <span style={{ fontWeight: 700, color: t.text }}>마약 · 액체·가루 제형 — 분리번호 없음</span>
+              <span style={{ fontWeight: 700, color: t.text }}>손으로 조제 — 번호별 목록에서 뺐습니다</span>
+              <span style={{ fontSize: 10.5, color: t.textM }}>
+                가루약 {num(p.manualPowder.length)} · ATC {num(p.manualAtc.length)}
+              </span>
             </>,
             p.manual, true)}
         </>

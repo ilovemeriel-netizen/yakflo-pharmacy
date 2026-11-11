@@ -51,7 +51,8 @@ const settle = async (n = 8) => { for (let i = 0; i < n; i++) await act(async ()
 
 const BASE = [
   D({ drug_code: 'SGMT5', drug_name: '시그마트정5mg', atc_code: 'C01DX16', ingredient_kr: '니코란딜', ingredient_en: 'Nicorandil' }),
-  D({ drug_code: 'MGM', drug_name: '마그밀정', atc_code: 'A02AA04', ingredient_kr: '수산화마그네슘' }),
+  D({ drug_code: 'MGM', drug_name: '마그밀정', atc_code: 'A02AA04',
+    ingredient_kr: '수산화마그네슘', ingredient_en: 'Magnesium Hydroxide' }),
   D({ drug_code: 'FNF', drug_name: '피나스테아정5mg', atc_code: 'G04CB01', ingredient_kr: '피나스테리드' }),
   D({ drug_code: 'ANDSC05', drug_name: '아나딘연질캡슐0.5mg', atc_code: 'G04CB02', ingredient_kr: '두타스테리드' }),
   D({ drug_code: 'DUR15', drug_name: '듀락칸이지시럽15mL', atc_code: 'A06AD11', ingredient_kr: '락툴로오즈농축액' }),
@@ -165,6 +166,58 @@ describe('★ 읽기 오류는 반드시 보인다', () => {
   })
 })
 
+describe('★ 표 — 긴 글자는 한 줄 + 말줄임 + 마우스 올리면 전체', () => {
+  const type = s => fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: s } })
+
+  it('성분을 ATC 화면과 같은 「영문 (한글)」로 적는다', async () => {
+    await open()
+    type('마그밀')
+    await settle(2)
+    expect(screen.getByText('Magnesium Hydroxide (수산화마그네슘)')).toBeTruthy()
+  })
+
+  it('★ 성분 칸이 한 줄이고 넘치면 말줄임이다', async () => {
+    await open()
+    type('마그밀')
+    await settle(2)
+    const cell = screen.getByText('Magnesium Hydroxide (수산화마그네슘)')
+    expect(cell.style.whiteSpace).toBe('nowrap')
+    expect(cell.style.textOverflow).toBe('ellipsis')
+    expect(cell.style.overflow).toBe('hidden')
+  })
+
+  it('★ 마우스를 올리면 전체가 보인다 (title)', async () => {
+    await open()
+    type('마그밀')
+    await settle(2)
+    const cell = screen.getByText('Magnesium Hydroxide (수산화마그네슘)')
+    expect(cell.getAttribute('title')).toContain('수산화마그네슘')
+    expect(cell.getAttribute('title')).toContain('Magnesium Hydroxide')
+  })
+
+  it('★ 표가 적은 너비를 지킨다 (tableLayout: fixed + colgroup)', async () => {
+    await open()
+    type('마그밀')
+    await settle(2)
+    const table = screen.getByRole('table')
+    expect(table.style.tableLayout).toBe('fixed')
+    const cols = table.querySelectorAll('colgroup col')
+    expect(cols.length).toBe(10)
+    /* 성분 칸(9번째)만 너비를 주지 않는다 — 남는 폭을 혼자 먹는다 */
+    expect(cols[8].style.width).toBe('')
+    expect(cols[1].style.width).toBe('190px')   /* 약품명 */
+  })
+
+  it('약품명·구분도 한 줄 + 말줄임이다', async () => {
+    await open()
+    type('마그밀')
+    await settle(2)
+    const name = screen.getByText('마그밀정')
+    expect(name.style.whiteSpace).toBe('nowrap')
+    expect(name.getAttribute('title')).toBe('마그밀정')
+  })
+})
+
 describe('검색', () => {
   const type = s => fireEvent.change(screen.getByLabelText(/찾기/), { target: { value: s } })
 
@@ -249,7 +302,7 @@ describe('★ 번호별 목록 — 1·6번만 기본 접힘', () => {
 
   it('수기조제 묶음도 접혀 있고, 누르면 시럽이 나온다', async () => {
     await open()
-    const head = screen.getAllByRole('button').find(b => /마약 · 액체·가루 제형/.test(b.textContent))
+    const head = screen.getAllByRole('button').find(b => /손으로 조제/.test(b.textContent))
     expect(head).toBeTruthy()
     expect(head.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(head)

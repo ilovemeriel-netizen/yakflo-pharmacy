@@ -23,6 +23,8 @@ import { ThemeCtx, useTheme } from './lib/theme'
 import EmergencyDispense from './EmergencyDispense'
 import PowderGroup from './PowderGroup'
 import PowderHint from './PowderHint'
+/* 성분명 한 줄 — ingParts 는 AtcView 가 직접 쓰지 않아 가져오지 않는다(lint) */
+import { ingCount, ingShort, ingOne } from './lib/ingredientOne'
 /* ★ 지연 로드 — 직접 import 하면 백신 화면이 전 사용자 초기 번들에 실린다. */
 const VaccineManage = lazy(() => import('./VaccineManage'))
 import BulkUploadModal from './BulkUploadModal'
@@ -8175,10 +8177,7 @@ function AtcView({ drugs, onReload }) {
        한쪽이 비면 있는 쪽만 쓴다(괄호도 쓰지 않는다).
      ★ 정렬·필터 키로는 **영문만** 따로 쓴다(ingShort) — 지시대로 영문 기준이다.
      ※ 구역별 인쇄(lpSplitTop 쪽)는 판정 기준이 달라 복제본을 그대로 둔다 — 그쪽은 빈칸이 없다. */
-  const ingParts = s => String(s || '').split('/').map(x => x.trim()).filter(Boolean);
-  const ingCount = d => (ingParts(d && d.ingredient_en).length || ingParts(d && d.ingredient_kr).length);
-  const ingShort = (s, cnt) => { const p = ingParts(s); if (!p.length) return ''; return cnt > 1 ? p[0] + ' 외 ' + (cnt - 1) + '종' : p[0]; };
-  const ingOne = d => { const cnt = ingCount(d); const fe = ingParts(d && d.ingredient_en)[0] || ''; const fk = ingParts(d && d.ingredient_kr)[0] || ''; const first = fe && fk ? fe + ' (' + fk + ')' : (fe || fk); return cnt > 1 ? first + ' 외 ' + (cnt - 1) + '종' : first; };
+  /* 성분명 한 줄 — src/lib/ingredientOne.js 로 옮겼다(2026-11-11). 가루약 화면과 같이 쓴다. */
   const printIng = ingOne;   /* 인쇄 표도 같은 함수다 — 이름만 남겨 둔다 */
   /* 슬롯 정렬키(숫자): 카세트 1~80 → 확장 301~308 → FSP5~1(1001~1005). 문자열정렬 금지 */
   const mkRow = (slot, d, fsp) => ({ slot, d, fsp, _slotkey: fsp ? 1000 + (6 - Number(String(slot).replace('FSP', ''))) : Number(slot), drug_code: d.drug_code, drug_name: d.drug_name, ing_one: ingOne(d), ing_en: ingShort(d.ingredient_en, ingCount(d)), lasa: cautionKey(d), light: isShade(d) ? '차광' : '-', kind: fsp ? 'FSP' : '카세트', r3: Number(d.recent_3m_usage) || 0, r1: d.recent_1m_usage == null ? null : Number(d.recent_1m_usage), mavg: d.monthly_avg == null ? null : Number(d.monthly_avg) });

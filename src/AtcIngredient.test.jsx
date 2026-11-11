@@ -16,6 +16,10 @@ import { resolve } from 'node:path'
 
 const APP = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8')
 const CODE = APP.split('\n').filter(l => !/^\s*\/\*|^\s*\*/.test(l)).join('\n')
+/* ★ 2026-11-11 — 네 함수를 `src/lib/ingredientOne.js` 로 **옮겼다**(식은 그대로).
+   가루약 분리번호 화면도 같은 모양이 필요해져, 두 벌로 베끼지 않고 한 자리에 모았다.
+   그래서 「함수가 있다」는 검사는 **그 파일**을 본다. 검사 내용은 전과 같다. */
+const LIB = readFileSync(resolve(process.cwd(), 'src/lib/ingredientOne.js'), 'utf8')
 /* ATC 화면 전체 — 구역별 인쇄(복제본)와 섞이지 않게 잘라 본다.
    `_chip` 은 AtcView 맨 앞, `export default function App()` 은 AtcView 바로 뒤다. */
 const ATC = CODE.slice(CODE.indexOf('const _chip = k => cautionChipColors'), CODE.indexOf('export default function App()'))
@@ -102,15 +106,20 @@ describe('★ 줄임 규칙', () => {
 
 describe('★ 화면 코드가 그 식을 그대로 쓴다', () => {
   it('세 함수가 있다', () => {
-    expect(CODE).toContain('const ingParts = s =>')
-    expect(CODE).toContain('const ingCount = d =>')
-    expect(CODE).toContain('const ingShort = (s, cnt) =>')
+    expect(LIB).toContain('export const ingParts = s =>')
+    expect(LIB).toContain('export const ingCount = d =>')
+    expect(LIB).toContain('export const ingShort = (s, cnt) =>')
   })
 
   it('★ 한 줄 함수 ingOne 이 있고, 괄호 앞 빈칸이 코드에도 그대로 있다', () => {
-    expect(CODE).toContain('const ingOne = d =>')
-    expect(ATC).toContain("fe + ' (' + fk + ')'")
-    expect(ATC).not.toContain("fe + '(' + fk + ')'")   /* ATC 안에 빈칸 없는 옛 모양이 남으면 안 된다 */
+    expect(LIB).toContain('export const ingOne = d =>')
+    expect(LIB).toContain("fe + ' (' + fk + ')'")
+    expect(LIB).not.toContain("fe + '(' + fk + ')'")   /* 빈칸 없는 옛 모양이 남으면 안 된다 */
+  })
+
+  it('★ ATC 화면은 그 함수를 **가져다 쓴다** — 따로 만들지 않는다', () => {
+    expect(CODE).toContain("from './lib/ingredientOne'")
+    expect(ATC).not.toContain('const ingOne = d =>')   /* ATC 안에 베껴 둔 사본이 남으면 안 된다 */
   })
 
   it('★ 인쇄 표도 **같은 함수**를 쓴다 (따로 구현하지 않는다)', () => {
