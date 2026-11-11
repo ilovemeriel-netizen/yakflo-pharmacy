@@ -114,9 +114,21 @@ describe('기본 표시', () => {
     expect(row.style.textAlign).toBe('left')
   })
 
-  it('「확인 필요 0종」 안내가 나온다', async () => {
+  /* ★ 2026-11-11 이정화 님 결정 — 0종이면 띠를 아예 그리지 않는다 */
+  it('★ 「확인 필요」가 0종이면 띠가 없다', async () => {
     await open()
-    expect(screen.getByText(/확인 필요 0종/)).toBeTruthy()
+    expect(screen.queryByText(/확인 필요 0종/)).toBeNull()
+    expect(screen.queryByText(/규칙에 안 걸려/)).toBeNull()
+  })
+
+  it('★ 「확인 필요」가 1종 이상이면 띠가 나온다', async () => {
+    /* 제형을 못 가리는 약(이름에 정·캡슐·액체가 없음) → 「확인 필요」 */
+    from.mockImplementation(() => mockDrugs([
+      D({ drug_code: 'HUH', drug_name: '무엇', atc_code: 'X99XX99' }),
+    ]))
+    await open()
+    expect(screen.getByText(/확인 필요 1종/)).toBeTruthy()
+    expect(screen.getByText(/무엇/)).toBeTruthy()
   })
 })
 
@@ -572,11 +584,37 @@ describe('★ 사람이 고친 번호 — resolveGroup 이 먼저 쓴다', () =>
     expect(screen.getByText('수기 1종')).toBeTruthy()
   })
 
-  it('고친 번호가 없으면 「수기 0종」이라고 적는다', async () => {
+  /* ★ 2026-11-11 이정화 님 결정 — 고친 번호가 0종이면 띠를 아예 그리지 않는다 */
+  it('★ 고친 번호가 없으면 수기 띠가 없다', async () => {
     useOverrides([])
     await open()
-    expect(screen.getByText('수기 0종')).toBeTruthy()
-    expect(screen.getByText(/아직 고친 번호가 없습니다/)).toBeTruthy()
+    expect(screen.queryByText('수기 0종')).toBeNull()
+    expect(screen.queryByText(/아직 고친 번호가 없습니다/)).toBeNull()
+  })
+
+  /* ★ 「1번 안 서방정 N종」은 띠에서 빼고 1번 카드 머리로 옮겼다 (B안) */
+  it('★ 서방정 수가 띠가 아니라 1번 카드에 붙는다', async () => {
+    useOverrides([])
+    await open()
+    expect(screen.queryByText(/1번 안/)).toBeNull()
+    const one = screen.getAllByRole('button')
+      .filter(b => b.hasAttribute('aria-expanded'))
+      .find(b => /일반 정제/.test(b.textContent))
+    /* 가짜 자료에는 1번 서방정이 없으므로 「서방」이 안 붙는다 */
+    expect(/서방 \d/.test(one.textContent)).toBe(false)
+  })
+
+  it('★ 1번에 서방정이 있으면 카드 머리에 「서방 N」이 붙는다', async () => {
+    from.mockImplementation(() => mockDrugs([
+      D({ drug_code: 'SR1', drug_name: '어떤서방정10mg', atc_code: 'N02BE01' }),
+      D({ drug_code: 'TB1', drug_name: '그냥정10mg', atc_code: 'N02BE01' }),
+    ]))
+    await open()
+    const one = screen.getAllByRole('button')
+      .filter(b => b.hasAttribute('aria-expanded'))
+      .find(b => /일반 정제/.test(b.textContent))
+    expect(/서방 1/.test(one.textContent)).toBe(true)
+    expect(screen.queryByText(/1번 안/)).toBeNull()
   })
 
   it('★ 번호를 고쳐도 가루 위험 표시는 그대로다', async () => {

@@ -515,8 +515,11 @@ export default function PowderGroup() {
         }}>{msg.ok ? '✅ ' : '❗ '}{msg.text}</div>
       )}
 
-      {/* ── 수기 요약 띠 ── */}
-      {loaded && !err && (
+      {/* ── 수기 요약 띠 ──
+          ★ 고친 번호가 **하나라도 있을 때만** 보인다 (2026-11-11 이정화 님 결정).
+            0종이면 「아직 없습니다」라는 띠가 늘 자리를 차지했다 — 알릴 것이 없으면 띠도 없앤다.
+          ★ 「1번 안 서방정 N종」은 여기서 뺐다 — 1번 카드 머리에 「서방 N」으로 붙는다. */}
+      {loaded && !err && p.edited.length > 0 && (
         <div style={{
           background: t.amberL, border: '1px solid ' + t.border, borderRadius: 10,
           padding: '9px 13px', fontSize: 11.5, color: t.text, marginBottom: 12,
@@ -524,18 +527,10 @@ export default function PowderGroup() {
         }}>
           <b style={{ color: t.amber }}>수기 {num(p.edited.length)}종</b>
           <span style={{ color: t.textM }}>
-            {p.edited.length
-              ? '— 사람이 고친 번호입니다. 되돌리면 자동 계산으로 돌아갑니다.'
-              : '— 아직 고친 번호가 없습니다. 모두 규칙으로 계산한 값입니다.'}
+            — 사람이 고친 번호입니다. 되돌리면 자동 계산으로 돌아갑니다.
           </span>
-          {p.edited.length > 0 && (
-            <span style={{ color: t.textM }}>
-              {p.edited.map(x => x.d.drug_name).join(' · ')}
-            </span>
-          )}
-          <span style={{ marginLeft: 'auto', color: t.textM }}>
-            1번 안 <b style={{ color: t.accent }}>서방정 {num(p.sr.length)}종</b>
-            {p.srEdited.length > 0 && <span style={{ color: t.textL }}> (손으로 정한 것 {num(p.srEdited.length)})</span>}
+          <span style={{ color: t.textM }}>
+            {p.edited.map(x => x.d.drug_name).join(' · ')}
           </span>
         </div>
       )}
@@ -669,18 +664,17 @@ export default function PowderGroup() {
         </div>
       )}
 
-      {/* ── 「확인 필요」 안내 ── */}
-      {loaded && !err && (
+      {/* ── 「확인 필요」 안내 ──
+          ★ 번호를 못 매긴 약이 **하나라도 있을 때만** 보인다 (2026-11-11 이정화 님 결정).
+            0종이면 띠를 아예 그리지 않는다 — 늘 0이라 읽을 까닭이 없었다. */}
+      {loaded && !err && p.check.length > 0 && (
         <div style={{
-          background: p.check.length ? t.amberL : t.accentL,
-          border: '1px solid ' + (p.check.length ? t.amber : t.border),
+          background: t.amberL, border: '1px solid ' + t.amber,
           borderRadius: 10, padding: '9px 13px', fontSize: 11.5,
-          color: p.check.length ? t.amber : t.text, marginBottom: 12,
+          color: t.amber, marginBottom: 12,
         }}>
-          {p.check.length
-            ? <><b>{CHECK} {num(p.check.length)}종</b> — 규칙에 안 걸려 번호를 매기지 않았습니다:{' '}
-              {p.check.map(x => x.d.drug_name).join(', ')}</>
-            : <><b style={{ color: t.accent }}>{CHECK} 0종</b> — 사용 중인 경구제 {num(p.total)}종 모두 규칙으로 정해졌습니다.</>}
+          <b>{CHECK} {num(p.check.length)}종</b> — 규칙에 안 걸려 번호를 매기지 않았습니다:{' '}
+          {p.check.map(x => x.d.drug_name).join(', ')}
         </div>
       )}
 
@@ -732,6 +726,16 @@ export default function PowderGroup() {
                       fontSize: 13, color: t.textM, fontWeight: 700,
                       marginLeft: 'auto', flexShrink: 0,
                     }}>{num(c.n)}종</span>
+                    {/* ★ 1번만 — 종수 옆에 작게 「서방 N」. 예전에는 수기 띠에 있던 값이다
+                        (2026-11-11 이정화 님 결정 B안). 손으로 정한 수는 마우스를 올리면 보인다. */}
+                    {c.no === SR_GROUP_NO && c.g.sr && c.g.sr.length > 0 && (
+                      <span
+                        title={'1번(일반 정제) 안 서방정 ' + num(c.g.sr.length) + '종'
+                          + (p.srEdited.length ? ' · 손으로 정한 것 ' + num(p.srEdited.length) + '종' : '')}
+                        style={{
+                          fontSize: 10.5, color: t.accent, fontWeight: 700, flexShrink: 0,
+                        }}>서방 {num(c.g.sr.length)}</span>
+                    )}
                   </span>
                   <span style={{ fontSize: 10.5, lineHeight: 1.5, color: t.textM, overflow: 'hidden' }}>
                     {head.map(x => (
