@@ -28,11 +28,22 @@ export const GROUP_NAMES = {
   9: '그 외 분리 필요한 약제',
 }
 export const GROUP_NOS = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-/* 약이 많아 **기본으로 접어 두는** 번호 (2026-11-10 이정화 님 결정) */
-export const FOLDED_NOS = [1, 6]
+/* 기본으로 접어 두는 번호 — **전부**다 (2026-11-11 이정화 님 결정).
+   처음엔 1·6번만 접었는데, 화면을 열면 검색창이 한참 아래로 밀려 내려갔다.
+   이제 1~9번과 수기조제 묶음이 **모두 접힌 채로** 열린다. 머리를 누르면 펴진다. */
+export const FOLDED_NOS = GROUP_NOS
 
 export const MANUAL = '수기조제'   /* 마약 · 액체·가루 제형 — 분리번호를 매기지 않는다 */
 export const CHECK = '확인 필요'   /* 규칙에 안 걸림 — 번호를 추측하지 않는다 */
+
+/* ── 서방정 — 1번(일반 정제) 안에서만 따로 묶어 본다 ─────────────────
+   ★ 2~9번은 이미 「가루로 하지 않는 약」이라 번호를 준 것이다. 서방 구분이
+     필요한 곳은 1번 안뿐이다(2026-11-11 이정화 님 결정).
+   ★ 번호를 **바꾸지 않는다** — 서방정이어도 1번 그대로다. 보여 주는 방법만 달라진다.
+   ★ 자동은 **이름에 「서방」**이 있는지로만 본다. 약품코드를 박지 않는다. */
+export const SR_RE = /서방/
+export const SR_GROUP_NO = 1
+export function isSrAuto(d) { return SR_RE.test(S(d && d.drug_name)) }
 
 /* ── 예외 — 전부 ATC 로 지정한다 ──────────────────────────────────── */
 
@@ -186,20 +197,55 @@ export function resolveGroup(d, ovMap) {
 }
 
 /**
+ * ★ 서방정인지 정하는 **유일한 길목** — 번호의 resolveGroup() 과 같은 모양이다.
+ *
+ *   ① 사람이 정한 줄이 있으면  →  그 값 (true=넣기 · false=빼기)
+ *   ② 없으면                   →  이름에 「서방」이 있는지
+ *
+ *   ★ 번호를 바꾸지 않는다. 이 함수는 **보여 주는 방법**만 정한다.
+ *
+ * @param {object} d        약 한 줄
+ * @param {object} [srMap]  { 약품코드: { is_sr, note, … } }
+ */
+export function resolveSr(d, srMap) {
+  const auto = isSrAuto(d)
+  const ov = (srMap || {})[(d && d.drug_code) || '']
+  if (ov && typeof ov.is_sr === 'boolean') {
+    return { sr: ov.is_sr, manual: true, override: ov, auto }
+  }
+  return { sr: auto, manual: false, override: null, auto }
+}
+
+/** 서방정 줄들을 { 약품코드: 줄 } 로 바꾼다. */
+export function srToMap(rows) {
+  const m = {}
+  for (const r of rows || []) {
+    const k = S(r && r.drug_code).trim()
+    if (k) m[k] = r
+  }
+  return m
+}
+
+/**
  * 기준표 한 벌을 만든다.
  * @param {Array} drugs    약품 전체(상태·구분은 여기서 거른다)
  * @param {object} [ovMap] 사람이 고친 번호 { 약품코드: {group_no, …} }
+ * @param {object} [srMap] 사람이 정한 서방정 표시 { 약품코드: {is_sr, …} }
  */
-export function buildPowderTable(drugs, ovMap) {
+export function buildPowderTable(drugs, ovMap, srMap) {
   const rows = (drugs || []).filter(isTarget)
-    .map(d => ({ d, r: resolveGroup(d, ovMap) }))
+    .map(d => ({ d, r: resolveGroup(d, ovMap), s: resolveSr(d, srMap) }))
     .sort((a, b) => KO(a.d.drug_name, b.d.drug_name))
-  const groups = GROUP_NOS.map(no => ({
-    no,
-    name: GROUP_NAMES[no],
-    list: rows.filter(x => x.r.no === no),
-    folded: FOLDED_NOS.includes(no),
-  }))
+  const groups = GROUP_NOS.map(no => {
+    const list = rows.filter(x => x.r.no === no)
+    const g = { no, name: GROUP_NAMES[no], list, folded: FOLDED_NOS.includes(no) }
+    /* ★ 1번만 「서방정 / 그 밖」 두 토막으로 나눠 준다. 번호는 그대로 1번이다. */
+    if (no === SR_GROUP_NO) {
+      g.sr = list.filter(x => x.s.sr)
+      g.nonSr = list.filter(x => !x.s.sr)
+    }
+    return g
+  })
   const manual = rows.filter(x => x.r.label === MANUAL)
   const check = rows.filter(x => x.r.label === CHECK)
   return {
@@ -208,6 +254,9 @@ export function buildPowderTable(drugs, ovMap) {
     hazard: rows.filter(x => !!x.r.hazard),
     /* 사람이 고친 줄 — 요약 띠에 쓴다. 「수기조제(MANUAL)」와 헷갈리지 않게 이름을 edited 로 둔다. */
     edited: rows.filter(x => x.r.manual),
+    /* 서방정으로 보이는 1번 약 · 그 가운데 사람이 손댄 것 */
+    sr: rows.filter(x => x.r.no === SR_GROUP_NO && x.s.sr),
+    srEdited: rows.filter(x => x.s.manual),
   }
 }
 

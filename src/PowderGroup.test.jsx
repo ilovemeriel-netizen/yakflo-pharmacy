@@ -226,17 +226,16 @@ describe('검색', () => {
 })
 
 describe('★ 번호별 목록 — 1·6번만 기본 접힘', () => {
-  it('1번·6번은 접혀 있고 「기본 접힘」이라고 적혀 있다', async () => {
+  /* ★ 2026-11-11 — 1·6번만 접던 것을 **전부 접기**로 바꿨다(이정화 님 결정).
+     화면을 열면 검색창이 한참 아래로 밀려 내려가던 것을 고치기 위해서다. */
+  it('★ 1~9번과 수기조제 묶음이 **모두** 접혀 있다', async () => {
     await open()
-    const folded = screen.getAllByText('기본 접힘')
-    expect(folded.length).toBe(2)
+    expect(screen.getAllByText('기본 접힘').length).toBe(10)
   })
 
-  it('나머지 번호는 펴져 있다', async () => {
+  it('★ 처음에는 펴진 묶음이 하나도 없다', async () => {
     await open()
-    const btns = screen.getAllByRole('button', { expanded: true })
-    /* 2~9번 중 약이 있는 묶음 + 수기조제 — 모두 펴진 상태로 그려진다 */
-    expect(btns.length).toBeGreaterThanOrEqual(8)
+    expect(screen.queryAllByRole('button', { expanded: true }).length).toBe(0)
   })
 
   it('머리를 누르면 1번이 펴진다', async () => {
@@ -248,10 +247,13 @@ describe('★ 번호별 목록 — 1·6번만 기본 접힘', () => {
     expect(head.getAttribute('aria-expanded')).toBe('true')
   })
 
-  it('수기조제 묶음에 시럽이 들어 있다', async () => {
+  it('수기조제 묶음도 접혀 있고, 누르면 시럽이 나온다', async () => {
     await open()
     const head = screen.getAllByRole('button').find(b => /마약 · 액체·가루 제형/.test(b.textContent))
     expect(head).toBeTruthy()
+    expect(head.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(head)
+    await settle(2)
     expect(head.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getAllByText('듀락칸이지시럽15mL').length).toBeGreaterThan(0)
   })
