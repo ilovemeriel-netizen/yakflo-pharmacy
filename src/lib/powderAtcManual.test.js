@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildPowderTable, isAtcManual, decideGroup, ATC_MANUAL_LABEL, MANUAL, GROUP_NOS,
 } from './powderGroup'
-import FIX from './__fixtures__/powderGroup.2026-11-10.json'
+import FIX from './__fixtures__/powderGroup.2026-11-11.json'
 
 const D = o => ({ drug_code: 'X', drug_name: '', atc_code: '', narcotic_type: '일반', status: '사용', category: '경구제', ...o })
 const 정 = D({ drug_code: 'T1', drug_name: '우루사정100mg', atc_code: 'A05AA02' })
@@ -89,14 +89,14 @@ describe('★ ④ atc_excluded 가 없는 자료에서는 아무것도 안 바�
     status: '사용', category: '경구제',
   }))
   const p = buildPowderTable(drugs, {}, {})
-  it('359종 그대로', () => { expect(p.total).toBe(359) })
-  it('수기조제는 24종 — ATC 수기가 0종이므로 전과 같다', () => {
-    expect(p.manual.length).toBe(24)
+  it('358종 그대로', () => { expect(p.total).toBe(358) })
+  it('수기조제는 23종 — ATC 수기가 0종이므로 전과 같다', () => {
+    expect(p.manual.length).toBe(23)
     expect(p.manualAtc.length).toBe(0)
-    expect(p.manualPowder.length).toBe(24)
+    expect(p.manualPowder.length).toBe(23)
   })
   it('번호별 수가 보고한 값 그대로', () => {
-    const want = { 1: 173, 2: 65, 3: 12, 4: 5, 5: 23, 6: 42, 7: 9, 8: 3, 9: 3 }
+    const want = { 1: 168, 2: 65, 3: 12, 4: 5, 5: 23, 6: 42, 7: 9, 8: 3, 9: 3, 10: 5 }
     for (const n of GROUP_NOS) {
       expect(p.groups.find(g => g.no === n).list.length, n + '번').toBe(want[n])
     }
@@ -114,11 +114,11 @@ describe('지금 운영 값 — ATC 수기 8종이 1번·6번에서 빠진다', 
     atc_excluded: names1.includes(x.name) || names6.includes(x.name),
   }))
   const p = buildPowderTable(drugs, {}, {})
-  it('1번 173 → 167', () => { expect(p.groups.find(g => g.no === 1).list.length).toBe(167) })
+  it('1번 168 → 162', () => { expect(p.groups.find(g => g.no === 1).list.length).toBe(162) })
   it('6번 42 → 40', () => { expect(p.groups.find(g => g.no === 6).list.length).toBe(40) })
-  it('수기조제 24 → 32', () => { expect(p.manual.length).toBe(32) })
-  it('★ 합계는 359 그대로 — 옮긴 것이지 사라진 것이 아니다', () => {
-    expect(p.total).toBe(359)
+  it('수기조제 23 → 31', () => { expect(p.manual.length).toBe(31) })
+  it('★ 합계는 358 그대로 — 옮긴 것이지 사라진 것이 아니다', () => {
+    expect(p.total).toBe(358)
   })
   it('★ 번호는 그대로다 — 검색에서 1번·6번으로 보인다', () => {
     for (const n of names1) expect(p.rows.find(x => x.d.drug_name === n).r.no, n).toBe(1)

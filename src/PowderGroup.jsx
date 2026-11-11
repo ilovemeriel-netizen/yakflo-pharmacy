@@ -21,8 +21,9 @@ import { HIGH_ALERT_BG, HIGH_ALERT_FG } from './lib/cautionDefs'
 import { WarnTriangle } from './CautionChips'
 import {
   buildPowderTable, searchPowder, overridesToMap, srToMap,
-  GROUP_NAMES, GROUP_NOS, SR_GROUP_NO, MANUAL, CHECK, ATC_MANUAL_LABEL,
+  GROUP_NAMES, SR_GROUP_NO, MANUAL, CHECK, ATC_MANUAL_LABEL,
 } from './lib/powderGroup'
+import { fetchGroupVocab, invalidateVocab, fallbackVocab } from './lib/powderGroupVocab'
 import {
   fetchOverrides, setOverrideMany, clearOverride, invalidateOverrides,
 } from './lib/powderOverrides'
@@ -87,9 +88,10 @@ export default function PowderGroup() {
   const [cutMsg, setCutMsg] = useState('')
   const [q, setQ] = useState('')
   const [open, setOpen] = useState({})
-  /* 사람이 고친 번호 · 사람이 정한 서방정 표시 */
+  /* 사람이 고친 번호 · 사람이 정한 서방정 표시 · 번호 목록 */
   const [ovMap, setOvMap] = useState({})
   const [srMap, setSrMap] = useState({})
+  const [vocab, setVocab] = useState(() => fallbackVocab())
   const [ovErr, setOvErr] = useState('')
   /* 여러 개 한꺼번에 — 체크한 약품코드 */
   const [picked, setPicked] = useState(() => new Set())
@@ -102,9 +104,11 @@ export default function PowderGroup() {
   useEffect(() => {
     let dead = false
     ;(async () => {
-      invalidateOverrides(); invalidateSr()
-      const [ov, sr] = await Promise.all([fetchOverrides(), fetchSr()])
+      invalidateOverrides(); invalidateSr(); invalidateVocab()
+      const [ov, sr, vo] = await Promise.all([fetchOverrides(), fetchSr(), fetchGroupVocab()])
       if (dead) return
+      /* 번호 목록은 못 읽어도 기본값으로 돌아간다 — 화면이 비면 안 된다 */
+      setVocab(vo.vocab)
       const bad = ov.error || sr.error
       if (bad) { setOvErr('고친 값을 읽지 못했습니다: ' + dbErrorMsg(bad)); return }
       setOvErr('')
@@ -141,7 +145,7 @@ export default function PowderGroup() {
     return () => { dead = true }
   }, [])
 
-  const p = useMemo(() => buildPowderTable(drugs, ovMap, srMap), [drugs, ovMap, srMap])
+  const p = useMemo(() => buildPowderTable(drugs, ovMap, srMap, vocab), [drugs, ovMap, srMap, vocab])
   const hits = useMemo(() => searchPowder(p.rows, q), [p, q])
   const asked = q.trim() !== ''
 
@@ -497,8 +501,10 @@ export default function PowderGroup() {
           <span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>고른 약 {num(picked.size)}종</span>
           <span style={{ fontSize: 11, color: t.textM }}>번호를 누르면 한꺼번에 바꿉니다</span>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            {GROUP_NOS.map(n => (
-              <button key={n} type="button" title={GROUP_NAMES[n]}
+            {/* ★ 단추는 **번호 목록**에서 그린다 — 번호를 더하면 단추도 저절로 는다.
+                10개까지는 한 줄에 들어가고, 넘치면 flexWrap 이 줄을 바꾼다. */}
+            {vocab.map(({ no: n, label }) => (
+              <button key={n} type="button" title={label || GROUP_NAMES[n]}
                 disabled={!picked.size || busy}
                 onClick={() => applyNo(n)}
                 style={{
