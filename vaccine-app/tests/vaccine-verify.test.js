@@ -105,7 +105,7 @@ describe('성공 응답 — initial 이 stock 과 같은 형식으로 함께 온
     expect(Object.keys(j.initial).sort()).toEqual(['items', 'season', 'updated_at'])
     for (const it of j.initial.items) {
       /* ★ 2026-11-13 — group(시즌/상시) 한 칸이 늘었다 */
-      expect(Object.keys(it).sort()).toEqual(['drug_name', 'group', 'label', 'maker', 'qty', 'status'])
+      expect(Object.keys(it).sort()).toEqual(['drug_name', 'funding', 'group', 'label', 'maker', 'qty', 'status'])
     }
   })
 

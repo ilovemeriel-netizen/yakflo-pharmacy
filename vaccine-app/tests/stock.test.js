@@ -207,7 +207,8 @@ describe('loadStock — 응답 형식', () => {
     expect(Object.keys(got.data).sort()).toEqual(['items', 'season', 'updated_at'])
     for (const it of got.data.items) {
       /* ★ 2026-11-13 — group(시즌/상시) 한 칸이 늘었다. 품목 식별 정보는 여전히 없다. */
-      expect(Object.keys(it).sort()).toEqual(['drug_name', 'group', 'label', 'maker', 'qty', 'status'])
+      /* ★ 2026-11-13 — funding(재원) 한 칸이 늘었다. 「보건소」 이름표에 쓴다. */
+      expect(Object.keys(it).sort()).toEqual(['drug_name', 'funding', 'group', 'label', 'maker', 'qty', 'status'])
     }
   })
 
@@ -245,7 +246,7 @@ describe('loadStock — 응답 형식', () => {
       vaccine_events: ok([]),
     })
     const got = await loadStock(admin, TENANT, TODAY)
-    expect(got.data.items).toEqual([{ label: '독감 4가', qty: 0, status: '소진', group: '시즌', drug_name: '', maker: '' }])
+    expect(got.data.items).toEqual([{ label: '독감 4가', qty: 0, status: '소진', group: '시즌', funding: '', drug_name: '', maker: '' }])
     expect(got.data.updated_at).toBe(null)
   })
 
@@ -366,5 +367,56 @@ describe('loadStock — 오류', () => {
   it('실패 응답에는 data 를 싣지 않는다', async () => {
     const admin = fakeAdmin({ vaccine_accounts: fail('boom-acc') })
     expect((await loadStock(admin, TENANT, TODAY)).data).toBeUndefined()
+  })
+})
+
+/* ═══ ★ 재원(funding) — 「보건소」 이름표에 쓴다 (2026-11-13) ═══════════════
+   못 박는 것
+     ① 계정의 funding_source 를 그대로 싣는다 — 화면이 무엇을 보일지 정한다
+     ② 값이 없어도 빈 글자로 나가 화면이 터지지 않는다
+     ③ 단가·입고량 같은 다른 열은 여전히 읽지 않는다 */
+describe('★ 재원 — items[].funding', () => {
+  const ACC_F = (id, label, funding, group) =>
+    ({ id, season: '2026-2027', public_label: label, drug_code: 'X', public_group: group || '시즌', funding_source: funding })
+
+  it('재원을 그대로 싣는다 — 보건소·지자체·일반 모두', async () => {
+    const admin = fakeAdmin({
+      vaccine_accounts: ok([
+        ACC_F('a1', '독감(국가무료)', '보건소'),
+        ACC_F('a2', '독감(지자체)', '지자체'),
+        ACC_F('a3', '독감(유료)', '일반'),
+      ]),
+      v_vaccine_balance: ok([BAL('a1', 27, 100), BAL('a2', 10, 20), BAL('a3', 21, 150)]),
+      vaccine_events: ok([]),
+      drugs: ok([]),
+    })
+    const got = await loadStock(admin, TENANT, TODAY)
+    const of = lab => got.data.items.find(x => x.label === lab).funding
+    expect(of('독감(국가무료)')).toBe('보건소')
+    expect(of('독감(지자체)')).toBe('지자체')
+    expect(of('독감(유료)')).toBe('일반')
+  })
+
+  it('재원이 비어 있어도 빈 글자로 나간다', async () => {
+    const admin = fakeAdmin({
+      vaccine_accounts: ok([ACC_F('a1', '독감', null)]),
+      v_vaccine_balance: ok([BAL('a1', 5, 10)]),
+      vaccine_events: ok([]), drugs: ok([]),
+    })
+    const got = await loadStock(admin, TENANT, TODAY)
+    expect(got.data.items[0].funding).toBe('')
+  })
+
+  it('★ 재원이 늘어도 품목 식별 정보는 실리지 않는다', async () => {
+    const admin = fakeAdmin({
+      vaccine_accounts: ok([ACC_F('a1', '독감(국가무료)', '보건소')]),
+      v_vaccine_balance: ok([BAL('a1', 27, 100)]),
+      vaccine_events: ok([]), drugs: ok([]),
+    })
+    const got = await loadStock(admin, TENANT, TODAY)
+    const text = JSON.stringify(got.data)
+    for (const bad of ['funding_source', 'received_qty', 'current_qty', 'account_id', 'drug_code', 'a1']) {
+      expect(text, bad).not.toContain(bad)
+    }
   })
 })

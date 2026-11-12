@@ -116,7 +116,7 @@ export async function loadStock(admin, tenantId, today) {
   /* 1) 대상 계정 — tenant · 활성 · 오늘(KST)이 절기 안 · 공개 표시명 있음 */
   const { data: accs, error: aErr } = await admin
     .from('vaccine_accounts')
-    .select('id, season, public_label, drug_code, public_group')
+    .select('id, season, public_label, drug_code, public_group, funding_source')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
     .lte('season_start', today)
@@ -197,6 +197,9 @@ export async function loadStock(admin, tenantId, today) {
     /* 값이 없으면 빈 문자열 — 화면이 그 줄을 그리지 않는다 */
     return {
       label: String(a.public_label), qty, status, group,
+      /* ★ 재원 — 「보건소」만 화면에 뱃지로 보인다(2026-11-13 결정).
+           값 자체는 그대로 보낸다 — 무엇을 보일지는 화면이 정한다. */
+      funding: String(a.funding_source || ''),
       drug_name: publicDrugName(d.drug_name), maker: String(d.manufacturer || ''),
     }
   }).sort((x, y) => x.label.localeCompare(y.label, 'ko'))

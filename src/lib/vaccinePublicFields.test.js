@@ -23,12 +23,13 @@ const code = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm
   const fn = has ? readFileSync(P_FN, 'utf8') : ''
 
   /* ★ 2026-11-13 — public_group(시즌/상시) 한 열이 늘었다. 공개 화면이 두 칸으로 나뉜다. */
-  it('★ 계정에서 읽는 열은 id · season · public_label · drug_code · public_group 뿐이다', () => {
+  it('★ 계정에서 읽는 열은 id · season · public_label · drug_code · public_group · funding_source 뿐이다', () => {
     const body = code(stock)
     const m = /\.select\('([^']*)'\)/.exec(body.slice(body.indexOf('vaccine_accounts')))
     expect(m, 'vaccine_accounts select 를 찾지 못했다').toBeTruthy()
     expect(m[1].split(',').map(s => s.trim()).sort())
-      .toEqual(['drug_code', 'id', 'public_group', 'public_label', 'season'])
+      /* ★ 2026-11-13 — funding_source 한 열이 늘었다(「보건소」 이름표). 단가·입고량은 여전히 금지. */
+      .toEqual(['drug_code', 'funding_source', 'id', 'public_group', 'public_label', 'season'])
   })
 
   it('★ drugs 에서 읽는 열은 drug_name · manufacturer · current_qty 뿐이다 — 단가는 읽지 않는다', () => {
@@ -67,7 +68,7 @@ const code = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm
     }
   })
 
-  it('★ 품목 한 건이 담는 키는 label · qty · status · group · drug_name · maker 여섯뿐이다', () => {
+  it('★ 품목 한 건이 담는 키는 label · qty · status · group · funding · drug_name · maker 일곱뿐이다', () => {
     const m = /return \{\s*label:[\s\S]*?\n\s*\}/.exec(code(stock))
     expect(m, '품목을 만드는 자리를 찾지 못했다').toBeTruthy()
     /* 중괄호 안을 쉼표로 끊어 각 조각의 **이름만** 센다(`qty` 처럼 줄여 쓴 것 포함) */
@@ -75,7 +76,7 @@ const code = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm
     const keys = inner.split(/,(?![^(]*\))/)
       .map(s => s.trim().split(':')[0].trim()).filter(Boolean)
     /* ★ 2026-11-13 — group(시즌/상시) 한 칸이 늘었다. 그 밖에는 늘지 않았다. */
-    expect([...new Set(keys)].sort()).toEqual(['drug_name', 'group', 'label', 'maker', 'qty', 'status'])
+    expect([...new Set(keys)].sort()).toEqual(['drug_name', 'funding', 'group', 'label', 'maker', 'qty', 'status'])
   })
 
   it('★ 응답 묶음은 season · updated_at · items 셋뿐이다', () => {
