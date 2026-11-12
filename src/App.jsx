@@ -11,6 +11,7 @@ import { formDirty, anyFilled } from './lib/pwaUpdate'
 import { useBusy } from './lib/useBusy.js'
 import { screenLabel, EC_COPY } from './lib/errorText.js'
 import { setReadOnlyRole, VIEWER_ROLE } from './lib/readOnly.js'
+import { toLoginEmail, ID_RULE_TEXT, displayAccount, rolePrefix, isLoginId } from './lib/loginId.js'
 import { decomposeAtc } from './lib/atcMap'
 import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLabel, TX_NEVER_DROP } from './lib/txTypes'
 import { vaccineTabFromHash } from './lib/vaccineRoute'
@@ -7586,6 +7587,137 @@ export function LocationVocab() {
 }
 
 /* ═══ 관리자 — 가입자 조회 ═══ */
+
+/* ═══ 약국 역할 칩 — tenant_members.role (2026-11-12) ═══
+   owner·admin 은 보라, member 는 흐린 회색, viewer 는 남색(읽기 전용 띠와 같은 색).
+   기존 토큰만 쓴다. 새 색을 만들지 않는다. */
+function TenantRoleChip({ t, role }) {
+  const M = {
+    owner: ['대표', t.purple, t.purpleL],
+    admin: ['관리', t.purple, t.purpleL],
+    member: ['일반', t.textM, t.bg],
+    viewer: ['읽기 전용', t.blue, t.blueL],
+  }
+  const v = M[role]
+  if (!v) return <span style={{ color: t.textL }}>-</span>
+  return <span style={{
+    background: v[2], color: v[1], padding: '3px 10px', borderRadius: 8,
+    fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
+    border: role === 'member' ? '1px solid ' + t.border : 'none',
+  }}>{v[0]}</span>
+}
+
+/* ═══ 계정 만들기 창 — 아이디 + 비밀번호 (2026-11-12 이정화 님 승인) ═══
+   ★ 비밀번호는 **자동으로 만들지 않는다.** 관리자가 적고, 보낸 뒤 화면에서 지운다.
+   ★ 계정 생성은 Edge Function(admin-create-user)이 한다 — 서비스 키는 서버에만 있다.
+     화면에서 signUp 을 쓰면 **관리자가 새 계정으로 로그인**되어 튕겨 나간다.
+   ★ 역할을 고르면 아이디를 자동으로 채운다(admin-suggest-id). 고쳐 쓸 수 있다. */
+function AdminUserNewModal({ onClose, onMade }) {
+  const { t } = useTheme()
+  const [role, setRole] = useState('viewer')
+  const [id, setId] = useState('')
+  const [touched, setTouched] = useState(false)   /* 아이디를 사람이 고쳤나 */
+  const [pw, setPw] = useState('')
+  const [pw2, setPw2] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [errMsg, setErrMsg] = useState(null)
+  const [noAuto, setNoAuto] = useState(false)
+  useBusy('adminuser-new', true)
+
+  /* 역할이 바뀌면 아이디를 다시 채운다 — **사람이 고쳐 둔 글자는 건드리지 않는다.** */
+  useEffect(() => {
+    let dead = false
+    if (touched) return undefined
+    ;(async () => {
+      /* 대표(owner)는 자동으로 넣지 않는다 — 비워 두고 끝낸다.
+         ★ setState 를 effect 안에서 **바로** 부르지 않으려고 여기 안에서 처리한다(lint 규칙). */
+      if (!rolePrefix(role)) { if (!dead) { setId(''); setNoAuto(false) } return }
+      const { data, error } = await supabase.functions.invoke('admin-suggest-id', { body: { role } })
+      if (dead || touched) return
+      if (error || !data || data.ok === false) { setNoAuto(false); return }
+      if (data.id) { setId(data.id); setNoAuto(false) } else { setId(''); setNoAuto(data.reason === 'full') }
+    })()
+    return () => { dead = true }
+  }, [role, touched])
+
+  const idOk = isLoginId(id)
+  const pwOk = pw.length >= 8 && pw === pw2
+  const canSubmit = idOk && pwOk && !busy
+
+  async function handleCreate() {
+    if (!canSubmit) return
+    setBusy(true); setErrMsg(null)
+    let r
+    try {
+      r = await supabase.functions.invoke('admin-create-user', { body: { id, password: pw, role } })
+    } catch (e) { r = { error: e } }
+    /* ★ 보낸 뒤에는 화면에서 비밀번호를 **바로 지운다** */
+    setPw(''); setPw2('')
+    setBusy(false)
+    const d = r && r.data
+    if (d && d.ok) { onMade(d.id); return }
+    setErrMsg((d && d.message) || '계정을 만들지 못했습니다. 잠시 뒤 다시 해 주세요.')
+  }
+
+  const lb = { fontSize: 11, color: t.textM, display: 'block', marginBottom: 6, fontWeight: 600 }
+  const ip2 = {
+    width: '100%', padding: '9px 12px', border: '1px solid ' + t.border, borderRadius: 8,
+    fontSize: 12.5, background: t.bg, color: t.text, boxSizing: 'border-box', fontFamily: 'inherit',
+  }
+  const rb = (val, label, col, coll) => (
+    <button key={val} type="button" onClick={() => setRole(val)} style={{
+      flex: 1, padding: '9px 6px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
+      border: '1.5px solid ' + (role === val ? col : t.border),
+      background: role === val ? coll : 'transparent',
+      color: role === val ? col : t.textM, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',
+    }}>{label}</button>
+  )
+
+  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+    <div onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 16, padding: '22px 26px', maxWidth: 420, width: '100%', border: '1px solid ' + t.border, boxShadow: t.shadowH, textAlign: 'left' }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: t.text, marginBottom: 4 }}>계정 만들기</div>
+      <div style={{ fontSize: 11, color: t.textL, marginBottom: 16 }}>아이디와 비밀번호로 만듭니다 · 메일은 보내지 않습니다</div>
+
+      {errMsg && <div className="no-print" style={{ background: t.redL, color: t.red, borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 600 }}>{errMsg}</div>}
+
+      <label style={lb}>약국 역할</label>
+      <div style={{ display: 'flex', gap: 5, marginBottom: 14 }}>
+        {rb('owner', '대표', t.purple, t.purpleL)}
+        {rb('admin', '관리', t.purple, t.purpleL)}
+        {rb('member', '일반', t.green, t.greenL)}
+        {rb('viewer', '읽기 전용', t.blue, t.blueL)}
+      </div>
+
+      <label style={lb}>아이디</label>
+      <input value={id} onChange={e => { setTouched(true); setId(e.target.value.trim().toLowerCase()) }}
+        placeholder="아이디를 적어 주세요" autoCapitalize="none" autoCorrect="off"
+        aria-label="아이디" style={{ ...ip2, marginBottom: 4 }} />
+      <div style={{ fontSize: 10.5, color: (noAuto || (id && !idOk)) ? t.amber : t.textL, marginBottom: 14, lineHeight: 1.55 }}>
+        {ID_RULE_TEXT}
+        {!rolePrefix(role) && ' · 대표는 자동으로 넣지 않습니다 — 직접 적어 주세요'}
+        {noAuto && ' · 자동 번호가 다 찼습니다 — 직접 적어 주세요'}
+        {id && !idOk && ' · 규칙에 맞지 않습니다'}
+      </div>
+
+      <label style={lb}>비밀번호</label>
+      <input type="password" value={pw} onChange={e => setPw(e.target.value)} autoComplete="new-password"
+        aria-label="비밀번호" style={{ ...ip2, marginBottom: 10 }} />
+      <label style={lb}>비밀번호 확인</label>
+      <input type="password" value={pw2} onChange={e => setPw2(e.target.value)} autoComplete="new-password"
+        aria-label="비밀번호 확인" style={{ ...ip2, marginBottom: 14 }} />
+
+      <div style={{ background: t.blueL, border: '1px solid ' + t.border, borderRadius: 8, padding: '9px 11px', fontSize: 10.5, color: t.blue, lineHeight: 1.6 }}>
+        비밀번호는 <b>자동으로 만들지 않습니다</b> · 어디에도 저장되지 않으니 본인에게 바로 알려 주세요
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
+        <button onClick={onClose} disabled={busy} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, fontSize: 12, fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>취소</button>
+        <button onClick={handleCreate} disabled={!canSubmit} style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: canSubmit ? t.accent : t.textL, color: '#fff', fontSize: 12, fontWeight: 700, cursor: canSubmit ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>{busy ? '만드는 중…' : '만들기'}</button>
+      </div>
+    </div>
+  </div>
+}
+
 function AdminUsers() {
   const { t, user } = useTheme()
   const [rows, setRows] = useState([])
@@ -7593,6 +7725,8 @@ function AdminUsers() {
   const [q, setQ] = useState('')
   const [errMsg, setErrMsg] = useState(null)
   const [editRow, setEditRow] = useState(null) /* 수정 모달용 — null이면 닫힘 */
+  const [members, setMembers] = useState({})  /* user_id → { role, is_active } */
+  const [newOpen, setNewOpen] = useState(false)
   const [toast, setToast] = useState(null)
   /* ★ 사용자 수정 모달이 열려 있으면 미룬다 */
   useBusy('adminuser-edit', editRow != null)
@@ -7601,6 +7735,11 @@ function AdminUsers() {
   async function load() {
     setLoading(true); setErrMsg(null)
     const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
+    /* ★ 약국 역할·사용 상태는 tenant_members 에 있다 (0123·0124). 함께 읽어 표에 보인다. */
+    const { data: mem } = await supabase.from('tenant_members').select('user_id,role,is_active')
+    const mm = {}
+    for (const m of mem || []) mm[m.user_id] = m
+    setMembers(mm)
     setLoading(false)
     if (error) { setErrMsg(error.message); return }
     setRows(data || [])
@@ -7618,7 +7757,10 @@ function AdminUsers() {
         <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, margin: 0, letterSpacing: -0.3 }}>가입자 관리</h2>
         <div style={{ fontSize: 12, color: t.textL, marginTop: 6 }}>가입된 사용자 {rows.length}명 · 검색 결과 {filtered.length}명</div>
       </div>
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="이메일·이름·부서·직책 검색" style={{ minWidth: 260, padding: '10px 14px', border: `1.5px solid ${t.border}`, borderRadius: 10, fontSize: 13, outline: 'none', background: t.card, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="아이디·이메일·이름·부서·직책 검색" style={{ minWidth: 260, padding: '10px 14px', border: `1.5px solid ${t.border}`, borderRadius: 10, fontSize: 13, outline: 'none', background: t.card, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />
+      <button onClick={() => setNewOpen(true)} style={{ padding: '10px 16px', borderRadius: 9, border: 'none', background: t.accent, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ 계정 만들기</button>
+      </div>
     </div>
 
     {errMsg && <div className="no-print" style={{ background: t.redL, color: t.red, borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, fontWeight: 500, border: `1px solid ${t.red}30` }}>{errMsg.includes('profiles') ? '프로필 테이블이 아직 준비되지 않았습니다. DB 스키마(profiles_schema.sql)를 먼저 실행해 주세요.' : errMsg}</div>}
@@ -7629,17 +7771,19 @@ function AdminUsers() {
         : <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead><tr style={{ background: t.bg }}>
-              <th onClick={() => hs('email')} style={TS('email')}>이메일<SI col="email" /></th>
+              <th onClick={() => hs('email')} style={TS('email')}>아이디 · 이메일<SI col="email" /></th>
               <th onClick={() => hs('full_name')} style={TS('full_name')}>이름<SI col="full_name" /></th>
               <th onClick={() => hs('phone')} style={TS('phone')}>전화번호<SI col="phone" /></th>
               <th onClick={() => hs('dept')} style={TS('dept')}>부서<SI col="dept" /></th>
               <th onClick={() => hs('position')} style={TS('position')}>직책<SI col="position" /></th>
               <th onClick={() => hs('role')} style={TS('role')}>권한<SI col="role" /></th>
+              <th style={{ ...TS('trole'), cursor: 'default' }}>약국 역할</th>
+              <th style={{ ...TS('tactive'), cursor: 'default' }}>사용</th>
               <th onClick={() => hs('created_at')} style={TS('created_at')}>가입일<SI col="created_at" /></th>
               <th style={{ ...TS('actions'), cursor: 'default', textAlign: 'center', width: 80 }}>수정</th>
             </tr></thead>
             <tbody>{sorted.map(r => <tr key={r.id} style={{ borderTop: `1px solid ${t.border}` }}>
-              <td style={{ padding: '10px 12px', color: t.text, fontWeight: 500 }}>{r.email || '-'}</td>
+              <td style={{ padding: '10px 12px', color: t.text, fontWeight: 500 }}>{displayAccount(r.email) || '-'}</td>
               <td style={{ padding: '10px 12px', color: t.text }}>{r.full_name || <span style={{ color: t.textL }}>-</span>}</td>
               <td style={{ padding: '10px 12px', color: t.textM, fontFamily: 'monospace', fontSize: 11 }}>{r.phone || <span style={{ color: t.textL }}>-</span>}</td>
               <td style={{ padding: '10px 12px', color: t.textM }}>{r.dept || <span style={{ color: t.textL }}>-</span>}</td>
@@ -7649,6 +7793,13 @@ function AdminUsers() {
                   ? <span style={{ background: t.purpleL, color: t.purple, padding: '3px 10px', borderRadius: 8, fontSize: 10, fontWeight: 700 }}>관리자</span>
                   : <span style={{ background: t.greenL, color: t.green, padding: '3px 10px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>일반</span>}
               </td>
+              {/* ★ 약국 역할 · 사용 — tenant_members 값. 지금은 **보기만** 한다(바꾸기는 다음 단계). */}
+              <td style={{ padding: '10px 12px' }}><TenantRoleChip t={t} role={members[r.id]?.role} /></td>
+              <td style={{ padding: '10px 12px' }}>{members[r.id]
+                ? (members[r.id].is_active === false
+                  ? <span style={{ background: t.bg, color: t.textM, padding: '3px 10px', borderRadius: 8, fontSize: 10, fontWeight: 700, border: '1px solid ' + t.border }}>중지</span>
+                  : <span style={{ background: t.greenL, color: t.green, padding: '3px 10px', borderRadius: 8, fontSize: 10, fontWeight: 700 }}>사용 중</span>)
+                : <span style={{ color: t.textL }}>-</span>}</td>
               <td style={{ padding: '10px 12px', color: t.textM, fontSize: 11 }}>{fmtDate(r.created_at)}</td>
               <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                 <button
@@ -7663,6 +7814,8 @@ function AdminUsers() {
         </div>}
     </div>
     <Toast msg={toast?.msg} kind={toast?.kind} onClose={() => setToast(null)} />
+    {newOpen && <AdminUserNewModal onClose={() => setNewOpen(false)}
+      onMade={id => { setNewOpen(false); setToast({ msg: id + ' 계정을 만들었습니다', kind: 'ok' }); load() }} />}
     {editRow && <AdminUserEditModal
       row={editRow}
       currentUserId={user?.id}
@@ -7674,6 +7827,46 @@ function AdminUsers() {
 }
 
 /* ═══ 관리자 — 사용자 권한 수정 모달 (role 변경 전용) ═══ */
+
+/* ═══ 비밀번호 다시 정하기 — 아이디 계정 전용 (2026-11-12 이정화 님 승인) ═══
+   ★ 비밀번호는 **자동으로 만들지 않는다.** 관리자가 적고, 보낸 뒤 화면에서 지운다. */
+function ResetPwBox({ t, row }) {
+  const [open, setOpen] = useState(false)
+  const [pw, setPw] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+  const ip2 = {
+    flex: 1, minWidth: 140, padding: '8px 11px', border: '1px solid ' + t.border, borderRadius: 8,
+    fontSize: 12, background: t.bg, color: t.text, boxSizing: 'border-box', fontFamily: 'inherit',
+  }
+  async function go() {
+    if (pw.length < 8 || busy) return
+    setBusy(true); setMsg(null)
+    let r
+    try { r = await supabase.functions.invoke('admin-reset-password', { body: { target: row.id, password: pw } }) }
+    catch (e) { r = { error: e } }
+    setPw('')              /* ★ 보낸 뒤 바로 지운다 */
+    setBusy(false)
+    const d = r && r.data
+    setMsg(d && d.ok
+      ? { ok: true, text: '비밀번호를 바꿨습니다 — 본인에게 알려 주세요' }
+      : { ok: false, text: (d && d.message) || '바꾸지 못했습니다' })
+  }
+  return <div style={{ borderTop: '1px dashed ' + t.border, paddingTop: 12, marginTop: 4, marginBottom: 8 }}>
+    {!open
+      ? <button type="button" onClick={() => setOpen(true)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>비밀번호 다시 정하기</button>
+      : <>
+        <div style={{ fontSize: 11, color: t.textM, fontWeight: 600, marginBottom: 6 }}>새 비밀번호 (8자 이상)</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input type="password" value={pw} onChange={e => setPw(e.target.value)} autoComplete="new-password"
+            aria-label="새 비밀번호" style={ip2} />
+          <button type="button" onClick={go} disabled={pw.length < 8 || busy} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: (pw.length >= 8 && !busy) ? t.accent : t.textL, color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: (pw.length >= 8 && !busy) ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>{busy ? '바꾸는 중…' : '바꾸기'}</button>
+        </div>
+      </>}
+    {msg && <div className="no-print" style={{ marginTop: 8, fontSize: 11, fontWeight: 600, color: msg.ok ? t.green : t.red }}>{msg.text}</div>}
+  </div>
+}
+
 function AdminUserEditModal({ row, currentUserId, onClose, onSaved }) {
   const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const { t } = useTheme()
@@ -7711,7 +7904,7 @@ function AdminUserEditModal({ row, currentUserId, onClose, onSaved }) {
     <div ref={_dmBox} onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 16, padding: '22px 26px', maxWidth: 420, width: '100%', border: `1px solid ${t.border}`, boxShadow: t.shadowH, transform: `translate(${_dmPos.x}px, ${_dmPos.y}px)` }}>
       <div onMouseDown={_dmH} style={{ cursor: 'move', userSelect: 'none', fontSize: 15, fontWeight: 700, color: t.text, marginBottom: 4 }}>사용자 권한 수정</div>
       <div style={{ fontSize: 11, color: t.textL, marginBottom: 18 }}>
-        {row.email}{row.full_name ? ` · ${row.full_name}` : ''}
+        {displayAccount(row.email)}{row.full_name ? ` · ${row.full_name}` : ''}
         {isSelf && <span style={{ marginLeft: 6, background: t.accentL, color: t.accent, padding: '2px 6px', borderRadius: 6, fontSize: 10, fontWeight: 700 }}>본인</span>}
       </div>
 
@@ -7722,6 +7915,10 @@ function AdminUserEditModal({ row, currentUserId, onClose, onSaved }) {
         {roleBtn('admin', t.purple, t.purpleL, '관리자')}
         {roleBtn('user',  t.green,  t.greenL,  '일반')}
       </div>
+
+      {/* ★ 아이디 계정은 메일을 못 받는다 — 관리자가 새 비밀번호를 정해 준다 (2026-11-12).
+          Edge Function(admin-reset-password)이 하고, 비밀번호는 어디에도 남지 않는다. */}
+      {displayAccount(row.email) !== row.email && !isSelf && <ResetPwBox t={t} row={row} />}
 
       {wantsToRemoveOwnAdmin && <div style={{ background: t.amberL, border: `1px solid ${t.amber}40`, borderRadius: 8, padding: '10px 12px', fontSize: 11.5, color: t.text, lineHeight: 1.55, marginBottom: 8, marginTop: 6 }}>
         ⚠️ 본인의 관리자 권한은 직접 해제할 수 없습니다. 다른 관리자가 변경해야 합니다.
@@ -7750,7 +7947,11 @@ function LoginPage() {
   async function handleLogin() {
     if (!email || !pw) { setMsg('이메일과 비밀번호를 입력해주세요'); return }
     setLoading(true); setMsg(null)
-    const { error } = await supabase.auth.signInWithPassword({ email, password: pw })
+    /* ★ 「@」가 없으면 **아이디**로 본다 — 내부 주소로 바꿔 로그인한다 (lib/loginId.js).
+       이메일 로그인은 글자를 건드리지 않고 그대로 쓴다. */
+    const loginEmail = toLoginEmail(email)
+    if (!loginEmail) { setLoading(false); setMsg('아이디 또는 이메일을 확인해 주세요 (' + ID_RULE_TEXT + ')'); return }
+    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: pw })
     setLoading(false)
     if (error) setMsg(error.message === 'Invalid login credentials' ? '이메일 또는 비밀번호가 올바르지 않습니다' : error.message)
   }
@@ -7795,7 +7996,7 @@ function LoginPage() {
         <div style={{ fontSize: 12, color: t.textL, marginTop: 4 }}>약품 통합 관리 솔루션</div>
       </div>
       {msg && <div className="no-print" style={{ background: msg.startsWith('✅') ? t.greenL : t.redL, borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: msg.startsWith('✅') ? t.green : t.red, fontSize: 13, fontWeight: 500 }}>{msg}</div>}
-      <div style={{ marginBottom: 14 }}><label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 4, fontWeight: 500 }}>이메일</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@example.com" style={ip} onKeyDown={e => e.key === 'Enter' && (mode === 'login' ? handleLogin() : mode === 'signup' ? handleSignup() : handleReset())} /></div>
+      <div style={{ marginBottom: 14 }}><label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 4, fontWeight: 500 }}>{mode === 'login' ? '아이디 또는 이메일' : '이메일'}</label><input type={mode === 'login' ? 'text' : 'email'} value={email} onChange={e => setEmail(e.target.value)} placeholder={mode === 'login' ? '아이디 또는 email@example.com' : 'email@example.com'} autoCapitalize="none" autoCorrect="off" style={ip} onKeyDown={e => e.key === 'Enter' && (mode === 'login' ? handleLogin() : mode === 'signup' ? handleSignup() : handleReset())} /></div>
       {mode !== 'reset' && <div style={{ marginBottom: 14 }}><label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 4, fontWeight: 500 }}>비밀번호</label><input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="••••••" style={ip} onKeyDown={e => e.key === 'Enter' && (mode === 'login' ? handleLogin() : handleSignup())} /></div>}
       {mode === 'signup' && <div style={{ marginBottom: 14 }}><label style={{ fontSize: 11, color: t.textM, display: 'block', marginBottom: 4, fontWeight: 500 }}>비밀번호 확인</label><input type="password" value={pw2} onChange={e => setPw2(e.target.value)} placeholder="••••••" style={ip} onKeyDown={e => e.key === 'Enter' && handleSignup()} /></div>}
       <button onClick={mode === 'login' ? handleLogin : mode === 'signup' ? handleSignup : handleReset} disabled={loading} style={{ width: '100%', padding: 14, borderRadius: 10, border: 'none', background: loading ? t.textL : `linear-gradient(135deg, #804A87, #019748)`, color: '#fff', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', marginBottom: 16 }}>{loading ? '처리 중...' : mode === 'login' ? '로그인' : mode === 'signup' ? '회원가입' : '재설정 링크 보내기'}</button>
@@ -7819,7 +8020,8 @@ function LoginPage() {
 
       <div style={{ display: 'flex', justifyContent: 'center', gap: 16, fontSize: 12 }}>
         {mode !== 'login' && <button onClick={() => { setMode('login'); setMsg(null) }} style={{ background: 'none', border: 'none', color: '#804A87', cursor: 'pointer', fontWeight: 500 }}>로그인</button>}
-        {mode !== 'signup' && <button onClick={() => { setMode('signup'); setMsg(null) }} style={{ background: 'none', border: 'none', color: '#019748', cursor: 'pointer', fontWeight: 500 }}>회원가입</button>}
+        {/* ★ 공개 회원가입은 닫았다 (2026-11-12 이정화 님 승인) — 계정은 관리자가 가입자 관리에서 만든다.
+            단추만 숨기는 것은 안내다. 진짜 자물쇠는 Supabase 대시보드의 「Allow new users to sign up」이다. */}
         {mode !== 'reset' && <button onClick={() => { setMode('reset'); setMsg(null) }} style={{ background: 'none', border: 'none', color: t.textL, cursor: 'pointer' }}>비밀번호 찾기</button>}
       </div>
     </div>

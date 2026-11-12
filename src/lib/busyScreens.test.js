@@ -116,6 +116,7 @@ const FLAGS = [
   { key: 'locdrugs-edit', 화면: '위치별 약품 수정·이동', file: 'src/App.jsx' },
   { key: 'locvocab-edit', 화면: '위치 이름 등록·수정', file: 'src/App.jsx' },
   { key: 'adminuser-edit', 화면: '사용자 수정 모달', file: 'src/App.jsx' },
+  { key: 'adminuser-new', 화면: '계정 만들기 모달', file: 'src/App.jsx' },
   { key: 'schedule-edit', 화면: '일정 수정', file: 'src/App.jsx' },
   { key: 'atc-edit', 화면: 'ATC 배치 편집·제외 사유', file: 'src/App.jsx' },
   { key: 'modal-edit-drug', 화면: '약품 수정 모달(열림)', file: 'src/App.jsx' },
