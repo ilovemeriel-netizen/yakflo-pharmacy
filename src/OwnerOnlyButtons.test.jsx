@@ -178,13 +178,13 @@ describe('③ 조건을 소스로 못 박는다', () => {
        마감 전 「거래일 모두 바꾸기」 단추도 같은 역할(owner·admin)을 쓰며,
        DB 쪽 0107 RPC 가 **같은 기준**으로 다시 판정한다. 화면만 숨기는 것이 아니다. */
   it('★ 이름이 뜻을 드러낸다 — isOwner 가 아니라 isTenantManager', () => {
-    expect((APP.match(/const isTenantManager=memberRole==='owner'\|\|memberRole==='admin'/g) || []).length,
+    expect((APP.match(/const isTenantManager=memberRole!==VIEWER_ROLE&&\(memberRole==='owner'\|\|memberRole==='admin'\)/g) || []).length,
       '재고현황·출고관리·보고서 세 곳').toBe(3)
     expect(APP).toContain('const canRecompute=isTenantManager')
   })
 
   it('★ 전역 프로필 admin 은 새 조건에 들어가지 않는다', () => {
-    const i = APP.indexOf("const isTenantManager=memberRole==='owner'||memberRole==='admin'")
+    const i = APP.indexOf("const isTenantManager=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin')")
     const line = APP.slice(i, APP.indexOf('\n', i))
     expect(line, "profile?.role 을 보면 DB 기준과 어긋난다").not.toContain('profile')
   })
@@ -199,7 +199,7 @@ describe('③ 조건을 소스로 못 박는다', () => {
 
   it('★ 출고관리 canDel 은 **그대로** 두고 탭별로 갈랐다', () => {
     expect(APP, 'canDel 원래 식이 살아 있어야 한다')
-      .toContain("const canDel=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin'")
+      .toContain("const canDel=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin'||profile?.role==='admin')")
     expect(APP).toContain("const isLedgerTab=tab==='입고'||tab==='출고'")
     expect(APP).toContain('const canDelTab=isLedgerTab?isTenantManager:canDel')
   })
@@ -211,8 +211,8 @@ describe('③ 조건을 소스로 못 박는다', () => {
   })
 
   it('★ 발주관리·약품변경의 canDel 은 그대로 (건드리지 않았다)', () => {
-    const n = (APP.match(/const canDel = memberRole === 'owner' \|\| memberRole === 'admin' \|\| profile\?\.role === 'admin'/g) || []).length
-    expect(n, '두 화면은 옛 조건 그대로여야 한다').toBe(2)
+    const n = (APP.match(/const canDel = memberRole !== VIEWER_ROLE && \(memberRole === 'owner' \|\| memberRole === 'admin' \|\| profile\?\.role === 'admin'\)/g) || []).length
+    expect(n, '두 화면은 뷰어 조건만 더하고 나머지는 그대로여야 한다').toBe(2)
   })
 
   it('★ 월마감 isOwner 도 그대로', () => {
