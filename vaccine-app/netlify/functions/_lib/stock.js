@@ -8,6 +8,13 @@
    ★ 잔량 수식을 새로 만들지 않는다 — v_vaccine_balance 의 balance_qty · received_qty 를
      그대로 쓴다. (뷰 정의: 입고 − 접종 − 반납 − 폐기. 0089 에서 한 번만 정의한다)
 
+   ★★ 2026-11-13 — 묶음에 따라 **잔량의 출처가 다르다** (0127 public_group)
+       시즌 백신(독감·코로나) : 백신관리 기록 — v_vaccine_balance.balance_qty, 상태 4단계
+       상시 백신(폐렴구균·대상포진) : **약플로 재고현황 drugs.current_qty**, 상태 3단계
+       까닭 — 상시 백신은 절기가 없고 접종 때마다 약플로 입출고로 적는다.
+       같은 일을 백신관리에도 적으면 **두 장부가 갈라진다**. 그래서 상시는 읽기만 한다.
+       ★ 공개 화면은 어느 쪽에도 **쓰지 않는다** — 금액·마감에 영향이 없다.
+
    ★ service_role 은 RLS 를 우회한다 — 모든 조회에 tenant_id 조건을 **직접** 건다.
 
    ★ 반환 필드 최소화 — { season, updated_at, items:[{label, qty, status}] } 가 전부다.
@@ -31,6 +38,23 @@ export function stockStatus(balance, received) {
   if (r > 0 && b < r * WARN_RATIO) return '주의'
   return '충분'
 }
+
+/* ── 상시 백신(폐렴구균·대상포진)의 상태 — **3단계뿐이다** ────────────────
+   ★ 「주의」가 없는 까닭: 그 판정은 「입고량의 1/4 아래」인데, 상시 백신의 잔량은
+     약플로 재고현황(drugs.current_qty)에서 오고 **거기에는 입고 누계가 없다**.
+     없는 값으로 비율을 내면 거짓이 된다 — 그래서 아예 판정하지 않는다.
+   ★ 소진·부족의 기준값은 시즌 백신과 **같다**(2026-11-13 결정). */
+export function stockStatusAlways(qty) {
+  const b = Number(qty || 0)
+  if (b <= 0) return '소진'
+  if (b <= LOW_QTY) return '부족'
+  return '충분'
+}
+
+/* 묶음 이름 — vaccine_accounts.public_group (0127). 아는 값이 아니면 '시즌'(DB 기본값). */
+export const GROUP_SEASON = '시즌'
+export const GROUP_ALWAYS = '상시'
+export const normGroup = v => (v === GROUP_ALWAYS ? GROUP_ALWAYS : GROUP_SEASON)
 
 /* ── 공개 화면에 보일 약품명 ──────────────────────────────────────────────
    drugs 의 약품명에는 약제과 내부 구분용 앞머리가 붙어 있다
@@ -92,7 +116,7 @@ export async function loadStock(admin, tenantId, today) {
   /* 1) 대상 계정 — tenant · 활성 · 오늘(KST)이 절기 안 · 공개 표시명 있음 */
   const { data: accs, error: aErr } = await admin
     .from('vaccine_accounts')
-    .select('id, season, public_label, drug_code')
+    .select('id, season, public_label, drug_code, public_group')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
     .lte('season_start', today)
@@ -114,7 +138,11 @@ export async function loadStock(admin, tenantId, today) {
      ★ 이 조회는 잔량·시각과 서로 독립이므로 같은 Promise.all 에 넣는다 — 왕복이 늘지 않는다.
      ★ 실패해도 잔량 조회는 살린다 — 약품명은 덧붙이는 정보지 본문이 아니다. */
   const codes = [...new Set(list.map(a => (a.drug_code || '').trim()).filter(Boolean))]
-  const [balRes, lastRes, drugRes] = await Promise.all([
+  /* ★ 상시 백신의 약품코드 — 이 품목만 입출고 시각을 본다(2026-11-13) */
+  const alwaysCodes = [...new Set(list
+    .filter(a => normGroup(a.public_group) === GROUP_ALWAYS)
+    .map(a => (a.drug_code || '').trim()).filter(Boolean))]
+  const [balRes, lastRes, drugRes, txRes] = await Promise.all([
     admin
       .from('v_vaccine_balance')
       .select('account_id, balance_qty, received_qty')
@@ -127,8 +155,20 @@ export async function loadStock(admin, tenantId, today) {
       .in('account_id', ids)
       .order('created_at', { ascending: false })
       .limit(1),
+    /* ★ current_qty 를 함께 읽는다 — 상시 백신의 잔량이 여기서 온다.
+       조회가 늘지 않는다(이미 약품명을 읽고 있던 그 조회에 칸만 더했다).
+       ★ tenant_id 조건을 건다 — 이 파일 머리말의 규칙대로다(service_role 은 RLS 를 건너뛴다). */
     codes.length
-      ? admin.from('drugs').select('drug_code, drug_name, manufacturer').in('drug_code', codes)
+      ? admin.from('drugs').select('drug_code, drug_name, manufacturer, current_qty')
+        .eq('tenant_id', tenantId).in('drug_code', codes)
+      : Promise.resolve({ data: [], error: null }),
+    /* ★ 상시 백신은 약플로 입출고로 줄어든다 — 그 마지막 시각도 「마지막 입력」에 넣는다.
+       넣지 않으면 재고가 줄어도 시각이 그대로라 **오래된 숫자로 오해**한다.
+       상시 계정이 없으면 보내지 않는다. */
+    alwaysCodes.length
+      ? admin.from('transactions').select('created_at')
+        .eq('tenant_id', tenantId).in('drug_code', alwaysCodes)
+        .order('created_at', { ascending: false }).limit(1)
       : Promise.resolve({ data: [], error: null }),
   ])
   if (balRes.error) return { ok: false, step: '잔량', message: balRes.error.message }
@@ -143,21 +183,49 @@ export async function loadStock(admin, tenantId, today) {
   const items = list.map(a => {
     const b = balOf[a.id] || {}
     const d = drugOf[(a.drug_code || '').trim()] || {}
-    const qty = Number(b.balance_qty || 0)
+    const group = normGroup(a.public_group)
+    /* ★ 잔량이 어디서 오는가 — 묶음에 따라 다르다 (2026-11-13 결정)
+         시즌: 백신관리 기록(입고−접종−반납−폐기)
+         상시: **약플로 재고현황**(drugs.current_qty) — 절기가 없어 백신관리에 적지 않는다.
+       ★ 상시인데 약품이 안 잡히면 0 이다(소진으로 보인다) — 없는 숫자를 지어내지 않는다. */
+    const qty = group === GROUP_ALWAYS
+      ? Number(d.current_qty || 0)
+      : Number(b.balance_qty || 0)
+    const status = group === GROUP_ALWAYS
+      ? stockStatusAlways(qty)
+      : stockStatus(qty, b.received_qty)
     /* 값이 없으면 빈 문자열 — 화면이 그 줄을 그리지 않는다 */
     return {
-      label: String(a.public_label), qty, status: stockStatus(qty, b.received_qty),
+      label: String(a.public_label), qty, status, group,
       drug_name: publicDrugName(d.drug_name), maker: String(d.manufacturer || ''),
     }
   }).sort((x, y) => x.label.localeCompare(y.label, 'ko'))
 
-  /* ★ season 은 대상 계정의 값. 여럿이면 첫 번째를 쓴다(현재 운영은 한 절기만 열린다). */
+  /* ★ 머리글 절기 — **시즌 계정만** 보고 정한다 (2026-11-13).
+       예전에는 계정 중 아무거나 하나를 집어, 상시 계정이 먼저 잡히면
+       머리글이 「상시절기」로 나올 수 있었다. 시즌 계정이 없으면 아무것도 보이지 않는다. */
+  const seasonAcc = list.find(a => normGroup(a.public_group) === GROUP_SEASON)
+
+  /* ★ 마지막 입력 — 백신관리 기록과 상시 품목의 입출고 중 **나중 것**.
+       한쪽이 비어 있어도 다른 쪽이 그대로 쓰인다. */
+  const lastVax = (lastRes.data || [])[0]?.created_at || null
+  const lastTx = (!txRes.error && (txRes.data || [])[0]?.created_at) || null
+  const updatedAt = laterOf(lastVax, lastTx)
+
   return {
     ok: true,
     data: {
-      season: list[0].season || null,
-      updated_at: (lastRes.data || [])[0]?.created_at || null,
+      season: (seasonAcc && seasonAcc.season) || null,
+      updated_at: updatedAt,
       items,
     },
   }
+}
+
+/* 둘 중 나중 시각. 읽을 수 없는 값은 없는 것으로 본다(시각이 사라지지 않게). */
+function laterOf(a, b) {
+  const ta = Date.parse(a || ''), tb = Date.parse(b || '')
+  if (!Number.isFinite(ta)) return Number.isFinite(tb) ? b : null
+  if (!Number.isFinite(tb)) return a
+  return tb > ta ? b : a
 }
