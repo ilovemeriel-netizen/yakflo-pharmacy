@@ -149,3 +149,40 @@ describe('새 색을 만들지 않았다', () => {
     }
   })
 })
+
+/* ═══ ★ 전체 잔량 옆 「도즈」 (2026-11-13 이정화 님 승인) ═══════════════════
+   못 박는 것
+     ① 숫자 옆에 「도즈」가 있다 · 아랫줄에 맞춘다(baseline)
+     ② 글자 색·크기는 「N종」과 **같은 값**이다 — 새 색·새 크기를 만들지 않는다
+     ③ 휴대폰은 한 줄로 「93 도즈 · 9종」, PC 는 「도즈」 아래에 「9종」 */
+describe('★ 전체 잔량 옆 「도즈」', () => {
+  const t = totalBox()
+
+  it('① 숫자 옆에 「도즈」가 있고 아랫줄에 맞춘다', () => {
+    expect(t).toContain('도즈')
+    expect(t).toContain("alignItems: 'baseline'")
+  })
+
+  it('② 글자 색은 「N종」과 같은 흰색 88% 다 — 새 색이 아니다', () => {
+    /* 합계 카드 안의 흰색 글자 값은 한 가지뿐이어야 한다 */
+    const whites = [...new Set((t.match(/rgba\(255, 255, 255, [0-9.]+\)/g) || []))]
+    expect(whites.sort()).toEqual(['rgba(255, 255, 255, 0.28)', 'rgba(255, 255, 255, 0.88)'])
+  })
+
+  it('② 글자 크기도 「N종」과 같은 12 다', () => {
+    /* 주석이 아니라 **실제로 그리는 자리**를 본다 */
+    const i = t.indexOf('도즈{wide ? null :')
+    expect(i, '도즈를 그리는 자리를 찾지 못했다').toBeGreaterThan(0)
+    const before = t.slice(Math.max(0, i - 160), i)
+    expect(before).toContain('fontSize: 12')
+  })
+
+  it('③ 휴대폰은 한 줄로 「도즈 · N종」, PC 는 따로 그린다', () => {
+    expect(t).toContain('도즈{wide ? null :')
+    expect(t).toContain("{state === 'loading' || !wide ? null :")
+  })
+
+  it('★ 숫자 크기는 바뀌지 않았다 — PC 56 · 휴대폰 30', () => {
+    expect(t).toContain('fontSize: wide ? 56 : 30')
+  })
+})

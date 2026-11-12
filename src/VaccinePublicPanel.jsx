@@ -20,6 +20,9 @@ import { anyFilled } from './lib/pwaUpdate'
 import { useBusy } from './lib/useBusy.js'
 import { supabase } from './lib/supabase'
 import { useTheme } from './lib/theme'
+/* ★ 「공개 제품명」을 비웠을 때 무엇이 나올지 미리 보여 주는 규칙 (0128).
+     공개 서버와 같은 답을 내는지는 src/lib/publicDrugName.test.js 가 못 박는다. */
+import { autoDrugName, normDrugName, DRUG_NAME_MAX } from './lib/publicDrugName.js'
 /* ★ 복수 선택 필터 규칙은 보관위치·LOT 표와 **같은 함수**를 쓴다(이름은 Category 지만 일반 함수) */
 import { filterByCategory, toggleCategory, isCategoryOn } from './lib/locPick'
 import { dbErrorMsg } from './lib/dbError'
@@ -64,18 +67,30 @@ export default function VaccinePublicPanel({ accounts, season, drugNames, onRelo
     rows.forEach(a => { m[a.id] = a.public_label || '' })
     return m
   }, [rows])
+  /* ★ 공개 제품명의 기준값 (0128) — 비어 있으면 빈 글자다 */
+  const baseName = useMemo(() => {
+    const m = {}
+    rows.forEach(a => { m[a.id] = a.public_drug_name || '' })
+    return m
+  }, [rows])
 
   /* ★ draft 는 사용자가 **건드린 칸만** 담는다. 나머지는 baseline(= DB 값)이 그대로 보인다.
      저장·되돌리기에서 setDraft({}) 로 비우므로, 재조회가 끝나면 새 DB 값이 바로 보인다.
      effect 로 draft 를 비우지 않는다 — set-state-in-effect 규칙에 걸리고, 입력 중 포커스도 튄다. */
   const [draft, setDraft] = useState({})
+  /* ★ 공개 제품명의 draft — 표시명과 **따로** 담되 저장은 함께 한다 (0128) */
+  const [draftName, setDraftName] = useState({})
   const [savingLabels, setSavingLabels] = useState(false)
 
   const valOf = a => (a.id in draft ? draft[a.id] : (baseline[a.id] ?? ''))
+  const nameOf = a => (a.id in draftName ? draftName[a.id] : (baseName[a.id] ?? ''))
+  /* 공개 제품명이 바뀌었나 — 공백만 적은 것은 비운 것으로 본다(DB CHECK 와 같은 규칙) */
+  const nameDirty = a => normDrugName(nameOf(a)) !== (a.public_drug_name || null)
+  const nameTooLong = a => String(nameOf(a)).trim().length > DRUG_NAME_MAX
   /* ★ dirty·tooLong·저장은 **거르기 전 rows** 를 본다 — 필터는 보이는 줄만 바꾼다.
      여기서 shownRows 를 쓰면 「거른 뒤 저장하니 안 보이던 수정이 사라지는」 일이 생긴다. */
-  const dirty = rows.filter(a => normLabel(valOf(a)) !== (a.public_label || null))
-  const tooLong = rows.filter(a => labelTooLong(valOf(a)))
+  const dirty = rows.filter(a => normLabel(valOf(a)) !== (a.public_label || null) || nameDirty(a))
+  const tooLong = rows.filter(a => labelTooLong(valOf(a)) || nameTooLong(a))
 
   /* ── 약품명 머리글 — 정렬 + 복수 필터. 보이는 줄만 바꾼다 ── */
   /* ★ 이름을 한 번만 뽑아 표로 들고 있는다 — 매 렌더 새로 만드는 함수를 memo 안에서 쓰면
@@ -107,13 +122,14 @@ export default function VaccinePublicPanel({ accounts, season, drugNames, onRelo
     for (const a of dirty) {
       /* ★ updAccount 와 같은 클라이언트·RLS 경로. public_label 하나만 보낸다. */
       const { error } = await supabase.from('vaccine_accounts')
-        .update({ public_label: normLabel(valOf(a)) }).eq('id', a.id)
+        .update({ public_label: normLabel(valOf(a)), public_drug_name: normDrugName(nameOf(a)) }).eq('id', a.id)
       if (error) { fail++; if (!firstErr) firstErr = error } else ok++
     }
     setSavingLabels(false)
     if (fail) onFlash?.(ok + '건 저장, ' + fail + '건 실패했습니다: ' + dbErrorMsg(firstErr), 'err')
     else onFlash?.('공개 표시명 ' + ok + '건을 저장했습니다')
     setDraft({})
+    setDraftName({})
     onReload?.()
   }
 
@@ -216,7 +232,7 @@ export default function VaccinePublicPanel({ accounts, season, drugNames, onRelo
     <div style={{ marginTop: 14, marginBottom: 6, display: 'flex', alignItems: 'baseline', gap: 8 }}>
       <span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>공개 표시명</span>
       <span style={{ fontSize: 11, color: t.textM, fontWeight: 600 }}>{shownRows.length}건{drugF ? ' / 전체 ' + rows.length : ''}</span>
-      <span style={{ fontSize: 11, color: t.textL }}>{season} · 비우면 공개 화면에서 숨깁니다 · 최대 {LABEL_MAX}자</span>
+      <span style={{ fontSize: 11, color: t.textL }}>{season} · 비우면 공개 화면에서 숨깁니다 · 최대 {LABEL_MAX}자 · 제품명을 비우면 약품명에서 자동으로 만듭니다</span>
     </div>
 
     {!rows.length
@@ -232,6 +248,7 @@ export default function VaccinePublicPanel({ accounts, season, drugNames, onRelo
                 isOn: v => isCategoryOn(drugF, v),
                 on: v => setDrugF(v === null ? null : toggleCategory(drugF, v, drugItems)) }} /></th>
             <th style={th}>공개 표시명</th>
+            <th style={th}>공개 제품명</th>
             <th style={{ ...th, textAlign: 'center' }}>공개</th>
           </tr></thead>
           <tbody>{shownRows.map(a => {
@@ -242,7 +259,7 @@ export default function VaccinePublicPanel({ accounts, season, drugNames, onRelo
               <td style={{ ...td, fontSize: 11, color: t.textM, whiteSpace: 'nowrap' }}>{a.drug_code}</td>
               <td style={{ ...td, fontSize: 11, whiteSpace: 'nowrap' }}>{a.funding_source}</td>
               <td style={{ ...td, color: t.textM }}>{drugNames?.[(a.drug_code || '').trim()] || '—'}</td>
-              <td style={{ ...td, width: '36%' }}>
+              <td style={{ ...td, width: '26%' }}>
                 <input
                   value={v}
                   onChange={e => setDraft(d => ({ ...d, [a.id]: e.target.value }))}
@@ -251,6 +268,19 @@ export default function VaccinePublicPanel({ accounts, season, drugNames, onRelo
                   style={{ ...ip, width: '100%', ...(long ? { borderColor: t.purple } : {}) }} />
                 {long && <span style={{ display: 'block', marginTop: 4, fontSize: 10, color: t.purple }}>
                   {LABEL_MAX}자를 넘었습니다 ({String(v).trim().length}자)
+                </span>}
+              </td>
+              {/* ★ 공개 제품명 (0128) — 비우면 흐린 글씨로 「지금 나올 이름」이 보인다.
+                   그 이름은 약품명을 규칙으로 다듬은 것이라 틀릴 수 있다. 틀리면 여기에 적는다. */}
+              <td style={{ ...td, width: '26%' }}>
+                <input
+                  value={nameOf(a)}
+                  onChange={e => setDraftName(d => ({ ...d, [a.id]: e.target.value }))}
+                  placeholder={autoDrugName(drugNames?.[(a.drug_code || '').trim()]) || '자동'}
+                  maxLength={DRUG_NAME_MAX + 10}
+                  style={{ ...ip, width: '100%', ...(nameTooLong(a) ? { borderColor: t.purple } : {}) }} />
+                {nameTooLong(a) && <span style={{ display: 'block', marginTop: 4, fontSize: 10, color: t.purple }}>
+                  {DRUG_NAME_MAX}자를 넘었습니다 ({String(nameOf(a)).trim().length}자)
                 </span>}
               </td>
               <td style={{ ...td, textAlign: 'center', whiteSpace: 'nowrap' }}>
@@ -267,7 +297,7 @@ export default function VaccinePublicPanel({ accounts, season, drugNames, onRelo
       {tooLong.length > 0 && <span style={{ fontSize: 11, color: t.purple }}>{LABEL_MAX}자를 넘은 칸이 {tooLong.length}개 있어 저장할 수 없습니다</span>}
       {!tooLong.length && dirty.length > 0 && <span style={{ fontSize: 11, color: t.textM }}>바뀐 칸 {dirty.length}개</span>}
       <div style={{ flex: 1 }} />
-      <button disabled={!dirty.length || savingLabels} onClick={() => setDraft({})}
+      <button disabled={!dirty.length || savingLabels} onClick={() => { setDraft({}); setDraftName({}) }}
         style={{ ...btn(t.bg, t.textM, t.border), ...(!dirty.length || savingLabels ? { cursor: 'not-allowed', opacity: 0.55 } : {}) }}>되돌리기</button>
       <button disabled={!dirty.length || !!tooLong.length || savingLabels} onClick={saveLabels}
         style={{ ...btn(t.green, '#fff'), ...(!dirty.length || tooLong.length || savingLabels ? { cursor: 'not-allowed', opacity: 0.55 } : {}) }}>

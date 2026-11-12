@@ -116,7 +116,7 @@ export async function loadStock(admin, tenantId, today) {
   /* 1) 대상 계정 — tenant · 활성 · 오늘(KST)이 절기 안 · 공개 표시명 있음 */
   const { data: accs, error: aErr } = await admin
     .from('vaccine_accounts')
-    .select('id, season, public_label, drug_code, public_group')
+    .select('id, season, public_label, drug_code, public_group, public_drug_name')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
     .lte('season_start', today)
@@ -195,9 +195,14 @@ export async function loadStock(admin, tenantId, today) {
       ? stockStatusAlways(qty)
       : stockStatus(qty, b.received_qty)
     /* 값이 없으면 빈 문자열 — 화면이 그 줄을 그리지 않는다 */
+    /* ★ 공개 제품명 (0128) — 적어 두었으면 **그대로** 쓴다.
+         비어 있으면 예전처럼 약품명을 규칙으로 다듬는다(publicDrugName).
+         규칙은 추측이라 「스카이조스터주(대상포진생바이러스백신)」 같은 이름에서
+         엉뚱한 글자를 보여 준 적이 있다 — 적어 두면 그 길을 타지 않는다. */
+    const fixedName = String(a.public_drug_name || '').trim()
     return {
       label: String(a.public_label), qty, status, group,
-      drug_name: publicDrugName(d.drug_name), maker: String(d.manufacturer || ''),
+      drug_name: fixedName || publicDrugName(d.drug_name), maker: String(d.manufacturer || ''),
     }
   }).sort((x, y) => x.label.localeCompare(y.label, 'ko'))
 

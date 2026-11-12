@@ -454,12 +454,22 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
         fontSize: wide ? 20 : 15, fontWeight: 600, color: 'rgba(255, 255, 255, 0.88)', lineHeight: 1.1,
         marginTop: wide ? 6 : 0,
       }}>{LOADING}</div>
-      : <div className="num" style={{
-        fontSize: wide ? 56 : 30, fontWeight: 700, color: '#FFFFFF', lineHeight: 1.1,
-        marginTop: wide ? 6 : 0,
-      }}>{total.toLocaleString()}</div>}
-    {/* 종 수도 응답 전에는 비워 둔다 — "0종" 이 사실과 다르게 보이지 않게 */}
-    {state === 'loading' ? null : <div style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.88)', marginTop: wide ? 4 : 0 }}>
+      : <div style={{
+        display: 'flex', alignItems: 'baseline', gap: 6,
+        justifyContent: wide ? 'center' : 'flex-start', marginTop: wide ? 6 : 0,
+      }}>
+        <div className="num" style={{
+          fontSize: wide ? 56 : 30, fontWeight: 700, color: '#FFFFFF', lineHeight: 1.1,
+        }}>{total.toLocaleString()}</div>
+        {/* ★ 「도즈」 — 숫자 아랫줄에 맞춘다(2026-11-13). 글자 색·크기는 「N종」과 같다.
+             휴대폰은 한 줄이라 「93 도즈 · 9종」으로 이어 적는다. */}
+        <div style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.88)' }}>
+          도즈{wide ? null : <> · <span className="num">{items.length}</span>종</>}
+        </div>
+      </div>}
+    {/* 종 수도 응답 전에는 비워 둔다 — "0종" 이 사실과 다르게 보이지 않게.
+        ★ 휴대폰에서는 위 줄에 함께 적었으므로 여기서는 PC 만 그린다. */}
+    {state === 'loading' || !wide ? null : <div style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.88)', marginTop: 4 }}>
       <span className="num">{items.length}</span>종
     </div>}
     {/* ★ 묶음별 내역 (2026-11-13 ⓑ안) — 두 묶음이 모두 있을 때만 보인다.
