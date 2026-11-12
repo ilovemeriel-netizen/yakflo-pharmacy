@@ -74,3 +74,73 @@ describe('totalOf', () => {
     expect(totalOf(resp([{ label: '가' }, one('나', '7', '부족'), null]))).toBe(7)
   })
 })
+
+/* ═══ 시즌 백신 / 상시 백신 두 칸 (2026-11-13 이정화 님 승인) ═══════════════
+   못 박는 것
+     ① group 칸만 본다 — 이름 글자를 해석하지 않는다
+     ② 두 묶음이 모두 있을 때만 제목을 그린다(한쪽뿐이면 지금 화면 그대로)
+     ③ 묶음별 합계가 전체 합계와 어긋나지 않는다 */
+import { groupsOf, sumOf, GROUP_ALWAYS } from './stockView'
+
+const IT = (label, qty, group) => ({ label, qty, status: '충분', group, drug_name: '', maker: '' })
+
+describe('★ groupsOf — 시즌/상시 가르기', () => {
+  it('group 칸으로 가른다 — 이름은 보지 않는다', () => {
+    const g = groupsOf({ items: [
+      IT('폐렴구균(프리베나20)', 2, '상시'),
+      IT('독감(유료)', 21, '시즌'),
+      IT('대상포진(싱그릭스)', 5, '상시'),
+    ] })
+    expect(g.season.map(x => x.label)).toEqual(['독감(유료)'])
+    expect(g.always.map(x => x.label)).toEqual(['폐렴구균(프리베나20)', '대상포진(싱그릭스)'])
+    expect(g.split).toBe(true)
+  })
+
+  it('★ 이름이 「상시」여도 group 이 시즌이면 시즌이다', () => {
+    const g = groupsOf({ items: [IT('상시 독감', 1, '시즌'), IT('폐렴구균', 1, '상시')] })
+    expect(g.season.map(x => x.label)).toEqual(['상시 독감'])
+  })
+
+  it('아는 값이 아니면 시즌으로 센다 — 서버 기본값과 같다', () => {
+    for (const v of [undefined, null, '', '기타']) {
+      const g = groupsOf({ items: [IT('가', 1, v), IT('나', 1, '상시')] })
+      expect(g.season.map(x => x.label), String(v)).toEqual(['가'])
+    }
+  })
+
+  it('★ 한쪽만 있으면 제목을 그리지 않는다 (지금까지의 화면 그대로)', () => {
+    expect(groupsOf({ items: [IT('독감', 1, '시즌')] }).split).toBe(false)
+    expect(groupsOf({ items: [IT('폐렴구균', 1, '상시')] }).split).toBe(false)
+  })
+
+  it('목록이 비었거나 응답 전이면 가르지 않는다', () => {
+    expect(groupsOf({ items: [] })).toEqual({ season: [], always: [], split: false })
+    expect(groupsOf(null)).toEqual({ season: [], always: [], split: false })
+    expect(groupsOf(undefined).split).toBe(false)
+  })
+
+  it('상시의 글자는 한 곳에만 둔다', () => {
+    expect(GROUP_ALWAYS).toBe('상시')
+  })
+})
+
+describe('★ sumOf — 묶음별 합계', () => {
+  it('묶음 합이 전체 합과 같다 — 운영 실측값(2026-11-13)', () => {
+    const items = [
+      IT('독감(국가무료)', 27, '시즌'), IT('독감(유료)', 21, '시즌'), IT('독감(지자체)', 10, '시즌'),
+      IT('코로나(모더나)', 0, '시즌'), IT('코로나(화이자)', 16, '시즌'),
+      IT('대상포진(스카이조스터)', 2, '상시'), IT('대상포진(싱그릭스)', 5, '상시'),
+      IT('폐렴구균(프로디악스23)', 10, '상시'), IT('폐렴구균(프리베나20)', 2, '상시'),
+    ]
+    const g = groupsOf({ items })
+    expect(sumOf(g.season)).toBe(74)
+    expect(sumOf(g.always)).toBe(19)
+    expect(sumOf(g.season) + sumOf(g.always)).toBe(totalOf({ items }))
+  })
+
+  it('값이 없어도 터지지 않는다', () => {
+    expect(sumOf([])).toBe(0)
+    expect(sumOf(null)).toBe(0)
+    expect(sumOf([{ qty: null }, { qty: undefined }, {}])).toBe(0)
+  })
+})

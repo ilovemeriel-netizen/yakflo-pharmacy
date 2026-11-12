@@ -36,3 +36,24 @@ export function totalOf(data) {
   if (!items) return 0
   return items.reduce((s, x) => s + Number(x?.qty || 0), 0)
 }
+
+/* ═══ 시즌 백신 / 상시 백신 두 칸 (2026-11-13) ═══════════════════════════════
+   ★ 서버가 보내 주는 group 칸만 본다 — **이름 글자를 해석하지 않는다**.
+     (예전에는 "독감 82 · 코로나 16" 을 내려다가 label 을 해석해야 해서 접었다.)
+   ★ split — 두 묶음이 **모두 있을 때만** 참이다. 한쪽만 있으면 제목을 그리지 않아
+     지금까지의 화면과 **똑같이** 보인다(쓸데없는 제목 한 줄이 생기지 않는다).
+   ★ 아는 값이 아니면 시즌으로 센다 — 서버 기본값과 같다. */
+export const GROUP_ALWAYS = '상시'
+
+export function groupsOf(data) {
+  const items = itemsOf(data)
+  if (!items) return { season: [], always: [], split: false }
+  const always = items.filter(x => x?.group === GROUP_ALWAYS)
+  const season = items.filter(x => x?.group !== GROUP_ALWAYS)
+  return { season, always, split: season.length > 0 && always.length > 0 }
+}
+
+/* 묶음 하나의 잔량 합계 */
+export function sumOf(list) {
+  return (list || []).reduce((s, x) => s + Number(x?.qty || 0), 0)
+}
