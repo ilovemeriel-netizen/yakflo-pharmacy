@@ -10,6 +10,7 @@ import { ErrorBoundary } from './lib/errorBoundary.jsx'
 import { formDirty, anyFilled } from './lib/pwaUpdate'
 import { useBusy } from './lib/useBusy.js'
 import { screenLabel, EC_COPY } from './lib/errorText.js'
+import { setReadOnlyRole, VIEWER_ROLE } from './lib/readOnly.js'
 import { decomposeAtc } from './lib/atcMap'
 import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLabel, TX_NEVER_DROP } from './lib/txTypes'
 import { vaccineTabFromHash } from './lib/vaccineRoute'
@@ -498,7 +499,7 @@ function LocVocabDatalist({ id }) {
 /* ★ 시험에서 진짜 컴포넌트로 렌더하려고 내보낸다(ColMenu 와 같은 이유). 컴포넌트라 react-refresh 규칙에 걸리지 않는다. */
 export function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   const { t, profile, memberRole } = useTheme(); const oc = dr.drug_code || ''
-  const canDelete = profile?.role === 'admin' || memberRole === 'owner' || memberRole === 'admin'
+  const canDelete = memberRole !== VIEWER_ROLE && (profile?.role === 'admin' || memberRole === 'owner' || memberRole === 'admin')
   const isNew = !!dr.__register
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [f, sF] = useState({ drug_code: oc, drug_name: dr.drug_name || '', category: dr.category || '', ingredient_en: dr.ingredient_en || '', ingredient_kr: dr.ingredient_kr || '', efficacy_class: dr.efficacy_class || '', efficacy: dr.efficacy || '', manufacturer: dr.manufacturer || '', specification: dr.specification || '', unit: dr.unit || '', packaging: dr.packaging || dr.unit || '', total_qty: dr.total_qty ?? '', price_unit: dr.price_unit || 0, insurance_price: dr.insurance_price || 0, purchase_price: dr.purchase_price ?? '', edi_price: dr.edi_price ?? '', insurance_code: dr.insurance_code || '', current_qty: dr.current_qty || 0, expiry_date: dr.expiry_date || '', status: dr.status || '사용', narcotic_type: (dr.narcotic_type === '한외마약' ? '한외마약' : getNT(dr)), safety_stock: dr.safety_stock || 0, max_stock: dr.max_stock || 0, lot_no: dr.lot_no || '', insurance_type: dr.insurance_type || '급여', unit_mgmt: dr.unit_mgmt || '', prescription_type: dr.prescription_type || '', atc_code: dr.atc_code || '', storage_method: dr.storage_method || '실온', storage_location: dr.storage_location || '', memo: dr.memo || '', standard_code: dr.standard_code || '', additive: dr.additive || '', compound_type: dr.compound_type || '단일제', supplier_id: dr.supplier_id || '', is_high_alert: !!dr.is_high_alert, is_public_supply: !!dr.is_public_supply, caution_dose: !!dr.caution_dose, caution_shape: !!dr.caution_shape, caution_sound: !!dr.caution_sound })
@@ -1364,7 +1365,7 @@ function AlertCenter({ drugs, onNav }) {
 
 /* ═══ 발주 관리 (현재고+safety 기반·사용량 비의존) ═══ */
 function Ordering({ drugs, onAdjust }) {
-  const { t, open360, memberRole, profile } = useTheme(); const canDel = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin';
+  const { t, open360, memberRole, profile } = useTheme(); const canDel = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin');
   const [suppliers, setSuppliers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [tid, setTid] = useState(null);
@@ -1689,6 +1690,28 @@ function Dashboard({ drugs, inv, txns, onNav, onEdit }) {
 
 
 
+/* ═══ 읽기 전용(뷰어) 안내 띠 — 2026-11-12 이정화 님 승인 ═══
+   ★ 자리: 메뉴띠(Header) 바로 아래, 모든 화면 공통 · 높이 한 줄.
+   ★ 색: 기존 토큰만 (blueL 바탕 · blue 글자). 새 색을 만들지 않는다.
+   ★ 이 띠는 **안내**다. 쓰기를 실제로 막는 것은 DB 트리거(0123)와
+     lib/readOnly.js 의 감쌈개다. 띠를 지워도 뷰어는 아무것도 못 쓴다. */
+function ReadOnlyBand({ t }) {
+  return (
+    <div className="no-print" style={{
+      background: t.blueL, borderBottom: '1px solid ' + t.border,
+      padding: '9px 24px', fontSize: 12, color: t.blue,
+      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', textAlign: 'left',
+    }}>
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', padding: '2px 9px', borderRadius: 7,
+        background: t.card, border: '1px solid ' + t.border,
+        fontSize: 10.5, fontWeight: 700, color: t.blue, whiteSpace: 'nowrap',
+      }}>읽기 전용</span>
+      <b style={{ fontWeight: 700 }}>읽기 전용 계정입니다</b>
+      <span style={{ color: t.textM }}>— 보기만 할 수 있고 저장·수정·삭제는 되지 않습니다</span>
+    </div>
+  )
+}
 /* ═══ 약품목록 전용 ATC 도넛(대시보드 AtcDonut 미수정·드릴다운 위해 중앙클릭 지원 추가) ═══ */
 function LDonut({ data, total, onSlice, onCenter, centerTop, centerBot, t }) {
   const R = 58, CIRC = 2 * Math.PI * R; const tot = total || 1;
@@ -1920,7 +1943,7 @@ function DrugList({ drugs, navFilter: nf, onEdit, onReload, nonins }) {
   return <div style={{ padding: '20px 24px' }}>
     <div className="no-print" style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, padding: '16px 18px', marginBottom: 12, boxShadow: t.shadow }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}><input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} placeholder="약품명, 코드, 성분명, 제조사, ATC 검색..." style={{ flex: 1, minWidth: 0, padding: '10px 14px', border: `1px solid ${t.border}`, borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: t.bg, color: t.text }} onFocus={e => e.target.style.borderColor = t.accent} onBlur={e => e.target.style.borderColor = t.border} />{_showReset && <button onClick={_resetF} title="필터·정렬 전체 초기화" style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent + '12', color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>필터 초기화{_df > 0 ? ' (' + _df + ')' : ''}</button>}<ColumnSelector t={t} groups={selGroups} value={selCols} onChange={applyCols} presets={selPresets} /><button onClick={exportXlsx} title="현재 화면 컬럼·필터로 엑셀 다운로드" style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.green, background: 'transparent', color: t.green, cursor: 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>엑셀 다운로드</button><button onClick={() => setBulkOpen(true)} title="엑셀·CSV 대량 업로드" style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.accent, background: 'transparent', color: t.accent, cursor: 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>엑셀 업로드</button><button onClick={() => onEdit({ __register: true })} title="새 약품 등록" style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>+ 약품 등록</button></div>
-      {bulkOpen && <BulkUploadModal t={t} isOwner={memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'} drugs={drugs} onClose={() => setBulkOpen(false)} onReload={onReload} />}
+      {bulkOpen && <BulkUploadModal t={t} isOwner={memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin')} drugs={drugs} onClose={() => setBulkOpen(false)} onReload={onReload} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <MP items={CATS} selected={cats} onChange={v => { setCats(v); setPage(1) }} color={t.accent} label="구분" />
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}><MP items={STATS} selected={stats} onChange={v => { setStats(v); setPage(1) }} color={t.accent} label="상태" /><div style={{ width: 1, height: 16, background: t.border }} /><button onClick={() => { setNarcOnly(!narcOnly); setPage(1) }} style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${narcOnly ? t.accent : t.border}`, cursor: 'pointer', fontSize: 11, fontWeight: 600, background: narcOnly ? t.accent : 'transparent', color: narcOnly ? '#fff' : t.textM }}>향정마약</button><button onClick={() => { setHanoeOnly(!hanoeOnly); setPage(1) }} style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${hanoeOnly ? t.accent : t.border}`, cursor: 'pointer', fontSize: 11, fontWeight: 600, background: hanoeOnly ? t.accent : 'transparent', color: hanoeOnly ? '#fff' : t.textM }}>한외마약</button><button onClick={() => { setHiAlertOnly(!hiAlertOnly); setPage(1) }} style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${hiAlertOnly ? '#D9342B' : t.border}`, cursor: 'pointer', fontSize: 11, fontWeight: 600, background: hiAlertOnly ? '#D9342B' : 'transparent', color: hiAlertOnly ? '#fff' : t.textM }}>고위험</button><button onClick={() => { setPubOnly(!pubOnly); setPage(1) }} style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${pubOnly ? t.blue : t.border}`, cursor: 'pointer', fontSize: 11, fontWeight: 600, background: pubOnly ? t.blue : 'transparent', color: pubOnly ? t.card : t.textM }}>보건소</button></div>
@@ -2051,7 +2074,7 @@ export function ET({ items, color, label, sub, editRow, editField, startEdit, sa
         <td style={{padding:'5px 6px'}}><SB s={d.status}/></td>
       </tr>})}</tbody></StandardTable>}</>}
 function ExpiryAlert({drugs,onEdit,focusLevel,onReload,onDispose}){
-  const{t,memberRole,profile}=useTheme();const canDispose=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
+  const{t,memberRole,profile}=useTheme();const canDispose=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin'||profile?.role==='admin');const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
   const[editRow,setEditRow]=useState(null);const[editField,setEditField]=useState(null);const[resetKey,setResetKey]=useState(0);const[fb,setFb]=useState({})
   /* ★ 표의 칸을 고치는 중이면 미룬다 */
   useBusy('expiry-edit', editRow != null)
@@ -2243,7 +2266,7 @@ function AtcTable({ t, cols, rows, minWidth, colWidths, resetable, qfilter }) {
    Report·ColMenu 와 같은 이유다(실제 컴포넌트를 렌더해 봐야 「칸 수가 맞나」
    「뱃지가 뜨나」를 눈이 아니라 시험으로 지킬 수 있다). */
 export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onDispose}){
-  const{t,memberRole,profile}=useTheme();const canDispose=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';
+  const{t,memberRole,profile}=useTheme();const canDispose=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin'||profile?.role==='admin');
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
   const[surge,setSurge]=useState(SURGE_ALL)   /* 급변 필터 — 머리글 메뉴와 칩이 **이 하나**를 같이 쓴다 */
   const[xlAsk,setXlAsk]=useState(false)              /* 엑셀 범위 선택 창 */
@@ -2272,7 +2295,7 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
      전역 프로필의 admin 은 **빼고** tenant_members 의 역할만 본다. DB 기준과 맞추기 위해서다.
      이름을 isOwner 로 두지 않는 이유는 이 파일에 isOwner 가 이미 두 가지 뜻으로
      있기 때문이다(2601 느슨 · 5707 엄격). 「이 테넌트의 관리자」라는 뜻을 이름에 담는다. */
-  const isTenantManager=memberRole==='owner'||memberRole==='admin'
+  const isTenantManager=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin')
   const canRecompute=isTenantManager
   const[recomfirm,setRecomfirm]=useState(false)
   async function recomputeUsage(){setUBusy(true);const{data,error}=await supabase.rpc('app_recompute_usage',{p_overwrite_manual:false});setUBusy(false);if(error){setUMsg('자동집계 오류: '+error.message);setTimeout(()=>setUMsg(null),4000);return}setUMsg('출고 자동집계 완료 — '+(data??0)+'품목 갱신 (수기 manual 보존)');setTimeout(()=>setUMsg(null),4000);onReload?.()}
@@ -2810,7 +2833,7 @@ function _mergeDrugMaster(prev, dm) {
   }
 }
 export function DrugRegister({onRefresh, drugs}) {
-  const { memberRole, profile } = useTheme(); const isOwner = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
+  const { memberRole, profile } = useTheme(); const isOwner = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin')
   const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:'',purchase_price:'',storage_location:'',memo:'',additive:'',compound_type:'단일제',is_high_alert:false,is_public_supply:false,caution_dose:false,caution_shape:false,caution_sound:false}
   const[form,setForm]=useState(initForm)
   const[msg,setMsg]=useState(null)
@@ -3381,13 +3404,13 @@ const txValidQty = v => {
 }
 /* ★ 시험에서 진짜 컴포넌트로 렌더하려고 내보낸다(ColMenu 와 같은 이유). 컴포넌트라 react-refresh 규칙에 걸리지 않는다. */
 export function TransactionForm({drugs,onReload,navFilter}){
-  const{t,memberRole,profile}=useTheme();const canDel=memberRole==='owner'||memberRole==='admin'||profile?.role==='admin';const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
+  const{t,memberRole,profile}=useTheme();const canDel=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin'||profile?.role==='admin');const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
   const[tab,setTab]=useState(subFromHash()||'입고')
   /* ★ 입고·출고는 **장부의 정본**이라 지우는 길을 더 좁게 본다 — 2026-11-02 이정화 님 결정.
      이 약국의 관리자(tenant_members 의 owner·admin)만. 전역 프로필의 admin 은 빼서 DB 기준과 맞춘다.
      폐기·반품은 **지금까지 쓰던 canDel 그대로** 둔다(바꾸지 않기로 했다).
      canDelTab 하나가 그 탭의 체크박스·선택 삭제·전체삭제를 함께 쥔다. */
-  const isTenantManager=memberRole==='owner'||memberRole==='admin'
+  const isTenantManager=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin')
   const isLedgerTab=tab==='입고'||tab==='출고'
   const canDelTab=isLedgerTab?isTenantManager:canDel
   const[search,setSearch]=useState('');const[selDrug,setSelDrug]=useState(null)
@@ -3811,7 +3834,7 @@ const CHANGE_SEL_W = 34
 const CHANGE_MGMT_W = 165
 function DrugChangePlans({ drugs, onReload, navFilter }) {
   const { t, memberRole, profile, user, setProfile } = useTheme()
-  const canDel = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
+  const canDel = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin')
   const canEdit = canDel
   const { so, TS, sk, sd, setSort } = useSort('base_date', 'desc')
   const [plans, setPlans] = useState([]); const [snap, setSnap] = useState({}); const [ld, setLd] = useState(true)
@@ -5934,7 +5957,7 @@ export function Report({drugs,onNav,onReload}){
   const isOwner=memberRole==='owner'; // 마감·업로드 권한(고위험 체크박스와 동일 패턴)
   /* 거래일 정정 「모두 바꾸기」 권한 — 0107 RPC 와 **같은 기준**(owner·admin).
      화면에만 단추를 숨기는 것이 아니라 DB 함수도 같은 역할을 본다. */
-  const isTenantManager=memberRole==='owner'||memberRole==='admin'
+  const isTenantManager=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin')
   /* ★ 마감 뒤 사용량 비교표 — 보기만 하고 저장하지 않는다(2026-11-09) */
   const[ucOpen,setUcOpen]=useState(false)
   const[ucMsg,setUcMsg]=useState(null)
@@ -8606,15 +8629,17 @@ export default function App() {
   /* 테넌트 멤버십 role 로드 — tenant_members 테이블이 아직 없거나 매핑 미존재 시 silent fail
      (앱은 정상 동작하되 관리자 전용 UI만 숨겨짐) */
   async function loadMemberRole() {
-    if (!user) { setMemberRole(null); return }
+    if (!user) { setMemberRole(null); setReadOnlyRole(null); return }
     const { data, error } = await supabase
       .from('tenant_members')
       .select('role')
       .eq('user_id', user.id)
       .limit(1)
       .maybeSingle()
-    if (error || !data) { setMemberRole(null); return }
+    if (error || !data) { setMemberRole(null); setReadOnlyRole(null); return }
     setMemberRole(data.role)
+    /* ★ 읽기 전용(뷰어)인지를 supabase 감싸개에 알려 준다 (lib/readOnly.js) */
+    setReadOnlyRole(data.role)
   }
   useEffect(() => { loadMemberRole() }, [user])
 
@@ -8757,6 +8782,9 @@ export default function App() {
       `}</style>
       <div className="cnc-app-root" style={{ minHeight: '100vh', background: t.bg }}>
         <Header menu={menu} setMenu={setMenu} onRegister={() => setMenu('register')} />
+        {/* ★ 읽기 전용(뷰어) 안내 띠 — 뷰어일 때만 보인다 (2026-11-12 이정화 님 승인).
+            진짜 자물쇠는 DB 트리거(0123)다. 이 띠는 **알리기 위한 것**이다. */}
+        {memberRole === VIEWER_ROLE && <ReadOnlyBand t={t} />}
         {/* ★ 화면 내용만 감싼다 — 메뉴(Header)는 남는다. key={menu} 라서
             화면을 옮기면 경계가 새로 만들어져 오류 상태가 저절로 풀린다. */}
         <ErrorBoundary key={menu} t={t} screen={screenLabel(menu)} onHome={() => handleNav({ menu: 'dashboard' })}>

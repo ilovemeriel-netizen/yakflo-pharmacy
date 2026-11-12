@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { makeGuardedFetch } from './session'
+import { guardWrites } from './readOnly'
 
 /* 환경변수에서 Supabase 설정 로드 (보안 분리)
    - 로컬: .env 파일 (반드시 .gitignore에 포함)
@@ -18,6 +19,9 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
    읽기·로그인 경로·비로그인 사용자는 건드리지 않는다. 자세한 이유는 그 파일 머리말에. */
 const guardedFetch = makeGuardedFetch({ getAuth: () => supabase && supabase.auth })
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+/* ★ 읽기 전용(뷰어) 계정이면 쓰기 호출이 **나가기 전에** 멈춘다 (lib/readOnly.js).
+   진짜 자물쇠는 DB 트리거(0123)다 — 여기는 헛수고를 줄이는 안내용이다.
+   읽기는 전혀 건드리지 않는다. */
+export const supabase = guardWrites(createClient(SUPABASE_URL, SUPABASE_KEY, {
   global: { fetch: guardedFetch },
-})
+}))
