@@ -529,8 +529,8 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
   </div>
 
   /* 칸 하나 — 제 색 바탕 + 테두리, 안은 카드(흰 바탕)
-     ★ 선반 막대는 **PC 에서 카드 줄 사이**에만 넣는다. 휴대폰은 한 줄에 카드가 하나라
-       줄마다 막대가 생기면 줄무늬처럼 보인다 — 그래서 칸과 칸 사이에만 둔다(2026-11-13). */
+     ★ 선반 막대는 카드 줄 사이에 넣는다. 휴대폰은 한 줄에 카드가 하나라
+       카드마다 선반이 하나씩 놓인 모양이 된다(2026-11-13 결정). */
   const compartment = (title, list, cols) => {
     const t = TINT[title === '상시 백신' ? '상시' : '시즌']
     return <div style={{
@@ -545,8 +545,9 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
         }}>
           {row.map((x, j) => <Card key={x.label + ':' + j} item={x} wide={wide} />)}
         </div>
-        {wide && i < all.length - 1 ? <div aria-hidden="true" style={{
-          marginTop: 14, marginBottom: 14, height: 5, borderRadius: 3, background: t.shelf,
+        {i < all.length - 1 ? <div aria-hidden="true" style={{
+          marginTop: wide ? 14 : 10, marginBottom: wide ? 14 : 10,
+          height: 5, borderRadius: 3, background: t.shelf,
         }} /> : null}
       </div>)}
     </div>
@@ -566,10 +567,6 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
       }} />
       <div style={{ display: 'grid', gap: wide ? 12 : 10, padding: wide ? '4px 8px 8px' : '2px 4px 6px' }}>
         {compartment('시즌 백신', grp.season, wide ? 3 : 1)}
-        {/* 휴대폰에서 두 칸을 가르는 선반 — PC 는 칸마다 테두리가 있어 필요 없다 */}
-        {wide ? null : <div aria-hidden="true" style={{
-          height: 5, borderRadius: 3, background: NAVY(0.14), margin: '2px 0',
-        }} />}
         {compartment('상시 백신', grp.always, wide ? 3 : 1)}
       </div>
       <div aria-hidden="true" style={{
@@ -634,46 +631,47 @@ function drugLine(item) {
   return maker ? name + ' · ' + maker : name
 }
 
-/* ★ 재원 이름표 — 「보건소」에만 붙인다 (2026-11-13 결정).
-     지자체·일반에는 붙이지 않는다. 색은 브랜드 보라, 글자는 흰색(대비 6.47:1).
-     상태 뱃지(둥근 알약 모양)와 생김새가 달라 헷갈리지 않는다. */
-const FUND_TAG = '보건소'
+/* 같은 값을 **조각으로** — 제약사를 한 덩이로 묶어 그리기 위해서다.
+   ★ 「(주)」 앞은 줄바꿈이 허용되는 자리라, keep-all 만으로는 「한국화이자제약 / (주)」처럼
+     쪼개진다. 제약사 전체를 nowrap 한 덩이로 두어 그 일이 생기지 않게 한다(2026-11-13). */
+function drugParts(item) {
+  const name = String(item?.drug_name || '').trim()
+  const maker = String(item?.maker || '').trim()
+  return { name, maker }
+}
+
+/* 약품명 줄 높이 — 두 줄 높이를 고정하는 데에도 쓴다(한 곳에만 둔다) */
+const DRUG_LH = 1.45
 
 function Card({ item, wide }) {
   const badge = BADGE[item.status] || BADGE['충분']
-  const tag = item.funding === FUND_TAG ? FUND_TAG : null
   return <div style={{
-    /* ★ 이름표가 카드 윗변에 걸리므로 자리를 잡아 준다(overflow 로 모서리 밖은 자른다) */
-    position: 'relative', overflow: 'hidden',
     background: 'var(--v-card)', border: '1px solid var(--v-line)', borderRadius: 16,
     padding: wide ? '18px 18px 16px' : '14px 16px',
-    paddingTop: tag ? (wide ? 26 : 22) : undefined,
     display: 'flex', flexDirection: wide ? 'column' : 'row', alignItems: wide ? 'stretch' : 'center',
     gap: wide ? 10 : 12, minWidth: 0,
   }}>
-    {/* ★ 이름표 탭 — 윗변에 걸려 아래로 내려온다. 이름·숫자·상태 뱃지를 가리지 않는다. */}
-    {tag ? <span style={{
-      position: 'absolute', top: 0, left: wide ? 18 : 16,
-      background: 'var(--v-purple)', color: '#FFFFFF',
-      fontSize: 10, fontWeight: 700, padding: '2px 8px 3px', borderRadius: '0 0 8px 8px',
-    }}>{tag}</span> : null}
     <div style={{ minWidth: 0, flex: wide ? undefined : 1 }}>
       <div style={{
         fontSize: wide ? 15 : 14, fontWeight: 700, color: 'var(--v-navy)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }} title={item.label}>{item.label}</div>
-      {/* ★ 약품명 · 제약사 — 표시명만으로는 어느 제품인지 알 수 없다는 문의가 잦았다.
-          이 앱의 기존 보조 글씨(var(--v-ink-dim)) 그대로, 새 색을 만들지 않는다.
-          한 줄을 넘으면 … 로 줄이고 전체는 title 로 본다.
-          ★ 값이 없으면(약품 마스터에 없는 코드) 줄 자체를 그리지 않는다. */}
-      {/* ★ 약품명·제약사 (2026-11-13 승인) — 11px 한 줄에서 **13px 두 줄**로.
-           색도 남색 78% → 92% 로 올렸다(대비 5.00:1 → 7.40:1).
-           두 줄까지 보이고 그보다 길면 「…」로 줄인다 — 긴 이름이 거의 잘리지 않는다.
-           ★ 카드가 127px → 148px 로 21px 높아진다(실측). */}
+      {/* ★ 약품명·제약사 — 표시명만으로는 어느 제품인지 알 수 없다는 문의가 잦았다.
+           13px 두 줄까지, 색은 남색 92%(대비 7.40:1). 넘치면 「…」로 줄이고 전체는 title 로 본다.
+           ★ 높이는 **내용만큼**이다 — 한 줄짜리는 한 줄만 차지한다.
+         ★ 낱말 가운데서 끊지 않는다(keep-all) — 「보령/바이오파마」·「모/더나」처럼 쪼개지던 것을 막는다.
+           다만 한 줄에 도저히 안 들어가는 긴 낱말은 넘긴다(break-word) —
+           그러지 않으면 넘치는 글자가 **조용히 잘려 사라진다**(2026-11-13 실측). */}
       {drugLine(item) ? <div style={{
-        fontSize: 13, color: 'rgba(46, 74, 98, 0.92)', marginTop: 2, lineHeight: 1.45,
+        fontSize: 13, color: 'rgba(46, 74, 98, 0.92)', marginTop: 2, lineHeight: DRUG_LH,
+        wordBreak: 'keep-all', overflowWrap: 'break-word',
         display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-      }} title={drugLine(item)}>{drugLine(item)}</div> : null}
+      }} title={drugLine(item)}>
+        {drugParts(item).name}
+        {drugParts(item).name && drugParts(item).maker ? ' · ' : ''}
+        {/* ★ 제약사는 한 덩이 — 「(주)」가 혼자 다음 줄로 넘어가지 않는다 */}
+        {drugParts(item).maker ? <span style={{ whiteSpace: 'nowrap' }}>{drugParts(item).maker}</span> : null}
+      </div> : null}
     </div>
     <div style={{
       display: 'flex', alignItems: wide ? 'flex-end' : 'center',
