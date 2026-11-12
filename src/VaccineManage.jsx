@@ -23,6 +23,11 @@ import { useTheme } from './lib/theme'
 import { dbErrorMsg } from './lib/dbError'
 import { VACCINE_TAB_DEFAULT, vaccineTabFromHash, vaccineHash } from './lib/vaccineRoute'
 import VaccinePublicPanel from './VaccinePublicPanel'
+/* ★ 시즌/상시 판단은 순수 함수로 빼 두었다 — 화면 없이 시험한다 (0127) */
+import {
+  GROUP_SEASON, GROUP_ALWAYS, GROUPS, ALWAYS,
+  normGroup, isAlways, presetsOf, defPresetOf, formForGroup,
+} from './lib/vaccineGroup.js'
 import VaccineSurveyPanel from './VaccineSurveyPanel'
 /* ★ GS1-128 파서는 scan.js 의 것을 **호출만** 한다(무수정).
    AI 10 = LOT · AI 17 = 유효기한을 이미 파싱한다. 카메라 라이브러리는 쓰지 않는다 —
@@ -63,11 +68,18 @@ const LEDGER_FIX_MSG = '기록은 수정·삭제할 수 없습니다. 잘못 입
    같은 문구를 쓰면 중지된 것을 없는 것으로 오인해 원인을 못 찾는다. */
 const CAT_NONE_MSG = '이 계정에 대상 구분이 없습니다 — 카드의 「대상 구분」에서 먼저 추가해 주세요.'
 const CAT_ALL_OFF_MSG = '대상 구분이 모두 중지되어 있습니다 — 카드의 「대상 구분」에서 [다시 사용]을 눌러 주세요.'
+/* ★ 상시 백신 창의 안내 — DB 가 실제로 막는 규칙이라 미리 알린다
+   (CHECK: event_type <> '접종' OR category_id IS NOT NULL) */
+const CAT_NEEDED_MSG = '불출(접종) 기록에는 대상 구분이 반드시 있어야 합니다 — 하나는 만들어 두세요.'
 /* 카테고리 프리셋 — ★ funding_source 로 자동 결정하지 않는다.
    같은 '보건소'에 독감 어르신과 코로나가 함께 들어가는데 카테고리가 서로 다르다. */
 const PRESETS = [
   { id: 'staff', label: '직원 · 일반 · 간병사', items: ['직원', '일반', '간병사'], hint: '유료 독감용' },
   { id: 'elder', label: '75세이상 · 70~74세 · 65~69세', items: ['75세이상', '70~74세', '65~69세'], hint: '보건소 어르신용' },
+  /* ★ 상시 백신용 — 불출(접종) 기록에는 대상 구분이 **반드시** 있어야 한다
+     (DB CHECK: event_type <> '접종' OR category_id IS NOT NULL). 그래서 1개를 만들어 둔다.
+     재원이 이미 유료/무료를 가르므로 상시 백신은 구분 하나면 충분하다. */
+  { id: 'always', label: '일반', items: ['일반'], hint: '상시 백신용' },
   { id: 'none', label: '없음 — 나중에 직접 추가', items: [], hint: '지자체 · 코로나용' },
 ]
 const DEF = { season: '2026-2027', start: '2026-09-01', end: '2027-06-30' }
@@ -394,6 +406,8 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
     const { data, error } = await supabase.from('vaccine_accounts').insert([{
       tenant_id: tm.tenant_id, season: f.season, season_start: f.season_start, season_end: f.season_end,
       drug_code: dc, funding_source: f.funding_source,
+      /* ★ 0127 — 공개 화면 묶음(시즌/상시). 아는 값이 아니면 '시즌'(DB 기본값과 같다). */
+      public_group: normGroup(f.public_group),
       settlement_body: f.settlement_body || null, storage_location: f.storage_location || null,
       admin_end: f.admin_end || null, return_due: f.return_due || null,
     }]).select('id').maybeSingle()
@@ -810,7 +824,7 @@ function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onA
   /* ★ 수정·삭제 모달은 대상 계정을 먼저 집는다. 초기화 함수 안에서만 쓰므로 상태가 아니다. */
   const tgt = (modal.kind === 'edit' || modal.kind === 'del') ? rows.find(r => r.id === modal.account_id) || null : null
   const [f, setF] = useState(() => modal.kind === 'acct'
-    ? { season: DEF.season, season_start: DEF.start, season_end: DEF.end, drug_code: '', funding_source: '일반', settlement_body: '', storage_location: '', admin_end: DEF.end, return_due: DEF.end }
+    ? { public_group: GROUP_SEASON, season: DEF.season, season_start: DEF.start, season_end: DEF.end, drug_code: '', funding_source: '일반', settlement_body: '', storage_location: '', admin_end: DEF.end, return_due: DEF.end }
     : modal.kind === 'edit'
       ? {
         /* ★ date 입력은 'YYYY-MM-DD' 만 받는다. DB 가 timestamptz 로 돌려주는 경우가 있어 앞 10자만 쓴다. */
@@ -826,6 +840,13 @@ function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onA
   const [newCat, setNewCat] = useState('')
   const [restrictAsk, setRestrictAsk] = useState(null)
   const set = (k, v) => setF(p => ({ ...p, [k]: v }))
+  /* ★ 상시 백신인가 — 창의 칸 구성을 이 한 값이 정한다 (0127) */
+  const alwaysOn = isAlways(f.public_group)
+  /* 묶음을 바꾸면 절기 관련 칸도 함께 맞춘다 — 판단은 lib/vaccineGroup.js 에 있다 */
+  const pickGroup = (g) => {
+    setF(p => formForGroup(p, g, todayYmd(), DEF))
+    setPreset(defPresetOf(g))
+  }
   /* ── GS1-128 스캔 ────────────────────────────────────────────────────────
      ★ scan.js 의 decodeGs1 을 호출만 한다. 파서를 여기서 다시 만들지 않는다.
      ★ 실패해도 저장을 막지 않는다 — 안내만 내고 수기 입력을 그대로 둔다. */
@@ -879,13 +900,32 @@ function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onA
 
         {/* ── 계정 만들기 ── */}
         {modal.kind === 'acct' && <>
+          {/* ★ 백신 종류 — 「상시」를 고르면 절기와 상관없는 칸만 남는다 (0127) */}
+          <div style={lb}>백신 종류</div>
+          <div style={{ display: 'flex', gap: 7, marginBottom: 10 }}>
+            {GROUPS.map(g => {
+              const on = alwaysOn ? g === GROUP_ALWAYS : g === GROUP_SEASON
+              return <button key={g} type="button" onClick={() => pickGroup(g)}
+                style={{ ...btn(on ? t.accent : t.bg, on ? '#fff' : t.textM, on ? t.accent : t.border), flex: 1 }}>
+                {g} 백신</button>
+            })}
+          </div>
           <div style={row2}>
-            <div><div style={lb}>시즌</div><input value={f.season} onChange={e => set('season', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+            <div><div style={lb}>시즌{alwaysOn && <span style={{ color: t.textL }}> (고정)</span>}</div>
+              {alwaysOn
+                ? <input value={ALWAYS.season} readOnly disabled style={ro} />
+                : <input value={f.season} onChange={e => set('season', e.target.value)} style={{ ...ip, width: '100%' }} />}
+              {alwaysOn && <div style={{ fontSize: 11, color: t.textL, marginTop: 3 }}>상시 백신은 절기가 없습니다</div>}
+            </div>
             <div><div style={lb}>재원</div><select value={f.funding_source} onChange={e => set('funding_source', e.target.value)} style={{ ...ip, width: '100%' }}>{FUNDINGS.map(v => <option key={v}>{v}</option>)}</select></div>
           </div>
           <div style={row2}>
-            <div><div style={lb}>시즌 시작</div><input type="date" value={f.season_start} onChange={e => set('season_start', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
-            <div><div style={lb}>시즌 종료</div><input type="date" value={f.season_end} onChange={e => set('season_end', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+            <div><div style={lb}>{alwaysOn ? '시작일' : '시즌 시작'}</div><input type="date" value={f.season_start} onChange={e => set('season_start', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+            <div><div style={lb}>{alwaysOn ? '종료일' : '시즌 종료'}{alwaysOn && <span style={{ color: t.textL }}> (고정)</span>}</div>
+              {alwaysOn
+                ? <input value={ALWAYS.end} readOnly disabled style={ro} />
+                : <input type="date" value={f.season_end} onChange={e => set('season_end', e.target.value)} style={{ ...ip, width: '100%' }} />}
+            </div>
           </div>
           <div style={{ marginBottom: 10 }}>
             <div style={lb}>약품 <span style={{ color: t.purple }}>*</span></div>
@@ -904,21 +944,31 @@ function VaccineModal({ t, ip, btn, badge, modal, rows, cats, evts, onClose, onA
             {/* ★ 약품이 없으면 이름 없는 계정이 생긴다 — 저장 버튼도 함께 막힌다 */}
             {noDrug && <div style={{ marginTop: 5, fontSize: 11, color: t.text, borderLeft: '3px solid ' + t.purple, paddingLeft: 8, lineHeight: 1.6 }}>{DRUG_REQ_MSG}</div>}
           </div>
-          <div style={row2}>
-            <div><div style={lb}>정산 주체</div><input value={f.settlement_body} onChange={e => set('settlement_body', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
-            <div><div style={lb}>보관 위치</div><input value={f.storage_location} onChange={e => set('storage_location', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
-          </div>
-          <div style={row2}>
-            <div><div style={lb}>접종 종료</div><input type="date" value={f.admin_end} onChange={e => set('admin_end', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
-            <div><div style={lb}>반납 기한</div><input type="date" value={f.return_due} onChange={e => set('return_due', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
-          </div>
+          {/* ★ 상시 백신에는 뜻이 없는 칸 3개(정산 주체·접종 종료·반납 기한)를 숨긴다.
+               숨긴 칸은 값을 보내지 않으므로 DB 에 null 로 들어간다(모두 비워도 되는 칸이다). */}
+          {alwaysOn
+            ? <div style={{ marginBottom: 10 }}>
+              <div style={lb}>보관 위치</div>
+              <input value={f.storage_location} onChange={e => set('storage_location', e.target.value)} style={{ ...ip, width: '100%' }} />
+            </div>
+            : <>
+              <div style={row2}>
+                <div><div style={lb}>정산 주체</div><input value={f.settlement_body} onChange={e => set('settlement_body', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+                <div><div style={lb}>보관 위치</div><input value={f.storage_location} onChange={e => set('storage_location', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+              </div>
+              <div style={row2}>
+                <div><div style={lb}>접종 종료</div><input type="date" value={f.admin_end} onChange={e => set('admin_end', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+                <div><div style={lb}>반납 기한</div><input type="date" value={f.return_due} onChange={e => set('return_due', e.target.value)} style={{ ...ip, width: '100%' }} /></div>
+              </div>
+            </>}
           <div style={{ marginBottom: 4 }}>
             <div style={lb}>대상 구분 프리셋</div>
-            {PRESETS.map(p => <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 2px', fontSize: 12, color: t.text, cursor: 'pointer' }}>
+            {presetsOf(alwaysOn ? GROUP_ALWAYS : GROUP_SEASON, PRESETS).map(p => <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 2px', fontSize: 12, color: t.text, cursor: 'pointer' }}>
               <input type="radio" name="preset" checked={preset === p.id} onChange={() => setPreset(p.id)} />
               <span style={{ flex: 1 }}>{p.label}</span>
               <span style={{ fontSize: 10, color: t.textL }}>{p.hint}</span>
             </label>)}
+            {alwaysOn && <div style={{ marginTop: 5, fontSize: 11, color: t.text, borderLeft: '3px solid ' + t.lavender, paddingLeft: 8, lineHeight: 1.6 }}>{CAT_NEEDED_MSG}</div>}
           </div>
         </>}
 
