@@ -12,6 +12,7 @@ import { useBusy } from './lib/useBusy.js'
 import { screenLabel, EC_COPY } from './lib/errorText.js'
 import { setReadOnlyRole, VIEWER_ROLE } from './lib/readOnly.js'
 import { toLoginEmail, ID_RULE_TEXT, displayAccount, rolePrefix, isLoginId } from './lib/loginId.js'
+import { leaveBlockReason } from './lib/leaveNotice.js'
 import { decomposeAtc } from './lib/atcMap'
 import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLabel, TX_NEVER_DROP } from './lib/txTypes'
 import { vaccineTabFromHash } from './lib/vaccineRoute'
@@ -6622,7 +6623,28 @@ function Toast({ msg, kind = 'ok', onClose }) {
 
 /* ═══ 마이페이지 — 내 정보 조회 및 수정 + 탈퇴 ═══ */
 function MyPage({ profile, onProfileUpdated }) {
-  const { t, user, logout } = useTheme()
+  const { t, user, logout, memberRole } = useTheme()
+  /* ★ 막아야 할 계정인가 (2026-11-12) — 발급 계정 · 마지막 대표.
+       진짜 자물쇠는 서버(account-delete.js)다. 여기서는 누를 수 없는 단추를 안 보이게 한다.
+       대표일 때만 「켜진 대표가 몇 명인지」를 센다 — 0126 으로 관리자는 같은 약국 멤버를 읽을 수 있다. */
+  const [ownerCount, setOwnerCount] = useState(null)
+  useEffect(() => {
+    let dead = false
+    ;(async () => {
+      if (memberRole !== 'owner') { if (!dead) setOwnerCount(null); return }
+      const { count } = await supabase.from('tenant_members')
+        .select('user_id', { count: 'exact', head: true }).eq('role', 'owner').eq('is_active', true)
+      if (!dead) setOwnerCount(count == null ? null : count)
+    })()
+    return () => { dead = true }
+  }, [memberRole])
+  const leaveBlock = leaveBlockReason({
+    email: user?.email,
+    createdBy: user?.user_metadata?.created_by,
+    role: memberRole,
+    isActive: true,
+    activeOwnerCount: ownerCount == null ? 99 : ownerCount,
+  })
   const [form, setForm] = useState({ full_name: '', phone: '', dept: '', position: '' })
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
@@ -6752,8 +6774,18 @@ function MyPage({ profile, onProfileUpdated }) {
       </div>
     )}
 
-    {/* 회원 탈퇴 섹션 */}
-    <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.red}30`, padding: '16px 20px' }}>
+    {/* 회원 탈퇴 섹션 — ★ 막아야 할 계정이면 단추 대신 **안내 한 줄**만 보인다 (2026-11-12) */}
+    {leaveBlock ? <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, padding: '16px 20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 8,
+          background: t.blueL, color: t.blue, fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
+        }}>탈퇴 불가</span>
+        <div style={{ flex: 1, minWidth: 240, fontSize: 11.5, color: t.textM, lineHeight: 1.6 }}>
+          <b style={{ color: t.text }}>{leaveBlock.title}</b> · {leaveBlock.help}
+        </div>
+      </div>
+    </div> : <div style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.red}30`, padding: '16px 20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: t.red, marginBottom: 4 }}>회원 탈퇴</div>
@@ -6761,7 +6793,7 @@ function MyPage({ profile, onProfileUpdated }) {
         </div>
         <button onClick={() => setShowDeleteModal(true)} style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${t.red}`, background: 'transparent', color: t.red, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }} onMouseEnter={e => { e.currentTarget.style.background = t.redL }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>탈퇴하기</button>
       </div>
-    </div>
+    </div>}
 
     {showDeleteModal && <DeleteAccountModal isEmailUser={isEmailUser} onClose={() => setShowDeleteModal(false)} onDeleted={async () => { setShowDeleteModal(false); await logout() }} />}
     <Ft />

@@ -11,6 +11,7 @@
    ════════════════════════════════════════════════════════════════ */
 import { createClient } from '@supabase/supabase-js'
 import { checkEnv, SUPABASE_ENV } from './_lib/env.js'
+import { canDeleteAccount } from './_lib/accountDeleteRules.js'
 
 const CONFIRM_WORD = '탈퇴'
 
@@ -62,6 +63,31 @@ export default async (req) => {
 
   /* 3) 본인 계정 삭제 — admin 권한 (service_role) */
   const admin = createClient(supaUrl, supaSrv, { auth: { persistSession: false, autoRefreshToken: false } })
+
+  /* ★ 2026-11-12 — 막아야 할 계정인가 (_lib/accountDeleteRules.js 가 판단한다)
+       ① 발급 계정(아이디 계정 · created_by 있음) ② 마지막 대표
+     탈퇴는 되돌릴 수 없다 — auth 계정을 지우면 profiles·tenant_members 가 CASCADE 로 사라진다. */
+  const { data: mem } = await admin
+    .from('tenant_members').select('tenant_id, role, is_active').eq('user_id', user.id).maybeSingle()
+  let ownerCount = 0
+  if (mem && mem.role === 'owner') {
+    const { count } = await admin
+      .from('tenant_members').select('user_id', { count: 'exact', head: true })
+      .eq('tenant_id', mem.tenant_id).eq('role', 'owner').eq('is_active', true)
+    ownerCount = count || 0
+  }
+  const verdict = canDeleteAccount({
+    email: user.email,
+    createdBy: user.user_metadata && user.user_metadata.created_by,
+    role: mem && mem.role,
+    isActive: mem && mem.is_active,
+    activeOwnerCount: ownerCount,
+  })
+  if (!verdict.ok) {
+    console.warn('[account-delete] 막음 — ' + verdict.code)
+    return json({ ok: false, msg: verdict.msg }, 403, cors)
+  }
+
   const { error: delErr } = await admin.auth.admin.deleteUser(user.id)
   if (delErr) return json({ ok: false, msg: '삭제 실패: ' + delErr.message }, 500, cors)
 
