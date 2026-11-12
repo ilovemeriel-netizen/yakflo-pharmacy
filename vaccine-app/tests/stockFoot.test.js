@@ -37,7 +37,9 @@ describe('① 마지막 입력 — 전체 잔량 카드 안으로', () => {
     const t = totalBox()
     expect(t.indexOf('종\n'), '종 표시를 찾지 못했다').toBeGreaterThan(-1)
     expect(t.indexOf('마지막 입력')).toBeGreaterThan(t.indexOf('</span>종'))
-    expect(t).toContain("borderTop: '1px solid var(--v-line)'")
+    /* ★ 2026-11-13 — 합계 카드가 보라 채움이 되면서 구분선도 흰색 28% 로 바뀌었다.
+       보는 뜻은 그대로다: 「N종」 아래에 **구분선과 함께** 온다. */
+    expect(t).toContain("borderTop: '1px solid rgba(255, 255, 255, 0.28)'")
   })
   it('★ 시각 숫자는 .num 이다 — tabular-nums 가 붙는다', () => {
     expect(totalBox()).toContain('<span className="num">{when}</span>')

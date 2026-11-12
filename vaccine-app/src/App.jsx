@@ -437,27 +437,29 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
   /* ── 합계 — PC 는 왼쪽 기둥, 휴대폰은 맨 위 띠 ──
      ★ 분류별 합계("독감 82 · 코로나 16")는 넣지 않는다 — label 을 해석하지 않기 위해서다. */
   const totalBox = <div style={{
-    background: 'var(--v-card)', border: '1px solid var(--v-line)', borderRadius: 16,
+    /* ★ 보라 채움 + 흰 글씨 (2026-11-13 승인). 보라는 기존 브랜드 보라(--v-purple) 그대로.
+       흰 글씨 대비 — 큰 숫자 6.47:1 · 보조 글씨(88%) 5.43:1 로 둘 다 AA 를 넘는다. */
+    background: 'var(--v-purple)', border: '1px solid var(--v-purple)', borderRadius: 16,
     padding: wide ? '26px 22px' : '16px 18px',
     display: wide ? 'block' : 'flex', alignItems: 'center', gap: 12,
     flexWrap: wide ? undefined : 'wrap',
     textAlign: wide ? 'center' : 'left',
   }}>
-    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-ink-dim)' }}>전체 잔량</div>
+    <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255, 255, 255, 0.88)' }}>전체 잔량</div>
     <div style={{ flex: wide ? undefined : 1 }} />
     {/* ★ 숫자 자리 — 응답 전에는 0 을 보여 주지 않고 같은 자리에 문구를 적는다.
         큰 숫자 크기로는 문구가 넘치므로 글자 크기만 줄인다(색·자리·구조는 그대로). */}
     {state === 'loading'
       ? <div style={{
-        fontSize: wide ? 20 : 15, fontWeight: 600, color: 'var(--v-ink-dim)', lineHeight: 1.1,
+        fontSize: wide ? 20 : 15, fontWeight: 600, color: 'rgba(255, 255, 255, 0.88)', lineHeight: 1.1,
         marginTop: wide ? 6 : 0,
       }}>{LOADING}</div>
       : <div className="num" style={{
-        fontSize: wide ? 56 : 30, fontWeight: 700, color: 'var(--v-navy)', lineHeight: 1.1,
+        fontSize: wide ? 56 : 30, fontWeight: 700, color: '#FFFFFF', lineHeight: 1.1,
         marginTop: wide ? 6 : 0,
       }}>{total.toLocaleString()}</div>}
     {/* 종 수도 응답 전에는 비워 둔다 — "0종" 이 사실과 다르게 보이지 않게 */}
-    {state === 'loading' ? null : <div style={{ fontSize: 12, color: 'var(--v-ink-dim)', marginTop: wide ? 4 : 0 }}>
+    {state === 'loading' ? null : <div style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.88)', marginTop: wide ? 4 : 0 }}>
       <span className="num">{items.length}</span>종
     </div>}
     {/* ★ 묶음별 내역 (2026-11-13 ⓑ안) — 두 묶음이 모두 있을 때만 보인다.
@@ -465,16 +467,16 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
         ★ 새 색·새 글자 크기를 만들지 않는다 — 전체 잔량 줄과 같은 토큰이다. */}
     {state === 'loading' || !grp.split ? null : <div style={{
       marginTop: wide ? 14 : 10, paddingTop: wide ? 12 : 10,
-      borderTop: '1px solid var(--v-line)',
+      borderTop: '1px solid rgba(255, 255, 255, 0.28)',
       flexBasis: wide ? undefined : '100%',
     }}>
       {[['시즌 백신', sumOf(grp.season)], ['상시 백신', sumOf(grp.always)]].map(([lab, n]) =>
         <div key={lab} style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '5px 0', fontSize: 13, color: 'var(--v-ink-dim)',
+          padding: '5px 0', fontSize: 13, color: 'rgba(255, 255, 255, 0.88)',
         }}>
           <span>{lab}</span>
-          <b className="num" style={{ fontSize: 14, fontWeight: 700, color: 'var(--v-navy)' }}>
+          <b className="num" style={{ fontSize: 14, fontWeight: 700, color: '#FFFFFF' }}>
             {n.toLocaleString()}</b>
         </div>)}
     </div>}
@@ -483,8 +485,8 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
         휴대폰에서는 이 카드가 가로 한 줄이라 flexBasis 100% 로 이 줄만 아래로 뺀다. */}
     {state === 'loading' ? null : <div style={{
       marginTop: wide ? 14 : 10, paddingTop: wide ? 12 : 10,
-      borderTop: '1px solid var(--v-line)',
-      fontSize: 13, color: 'var(--v-ink-dim)', lineHeight: 1.5,
+      borderTop: '1px solid rgba(255, 255, 255, 0.28)',
+      fontSize: 13, color: 'rgba(255, 255, 255, 0.88)', lineHeight: 1.5,
       textAlign: wide ? 'center' : 'left',
       flexBasis: wide ? undefined : '100%',
     }}>
@@ -501,18 +503,77 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
     {list.map((x, i) => <Card key={x.label + ':' + i} item={x} wide={wide} />)}
   </div>
 
-  /* ★ 묶음 제목 — 이번에 **새로 생기는 것은 이것뿐**이다.
-       크기·굵기·색 모두 이 앱에 이미 있는 값이다(카드 이름과 같은 남색). */
-  const groupTitle = text => <div style={{
-    margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: 'var(--v-navy)',
-  }}>{text}</div>
+  /* ═══ 냉장고 모양 — 칸마다 색 (2026-11-13 이정화 님 승인) ═══════════════
+     ★ 쓰는 색은 팔레트 2색의 투명도뿐이다. 새 색을 만들지 않는다.
+         시즌 칸 — 남색(--v-navy) : 바탕 5% · 테두리 16% · 선반 14% · 제목 100%
+         상시 칸 — 보라(--v-purple) : 바탕 14% · 테두리 26% · 선반 24% · 제목 100%
+       초록은 칸 색으로 쓰지 않는다 — 「충분」 뱃지와 헷갈린다.
+     ★ 카드 안은 흰 바탕 그대로. 카드·뱃지·글자 크기는 한 군데도 바꾸지 않는다. */
+  const NAVY = a => 'rgba(46, 74, 98, ' + a + ')'
+  const PURPLE = a => 'rgba(128, 74, 135, ' + a + ')'
+  const TINT = {
+    시즌: { bg: NAVY(0.05), line: NAVY(0.16), shelf: NAVY(0.14), ink: 'var(--v-navy)' },
+    상시: { bg: PURPLE(0.14), line: PURPLE(0.26), shelf: PURPLE(0.24), ink: 'var(--v-purple)' },
+  }
+  const chunk = (arr, n) => { const o = []; for (let i = 0; i < arr.length; i += n) o.push(arr.slice(i, i + n)); return o }
 
-  const cards = grp.split
-    ? <div style={{ display: 'grid', gap: wide ? 18 : 12 }}>
-      <div>{groupTitle('시즌 백신')}{grid(grp.season)}</div>
-      <div>{groupTitle('상시 백신')}{grid(grp.always)}</div>
+  /* 칸 머리 — 제목 + 「N 도즈 · N종」. 글자 색은 그 칸의 색이다. */
+  const doorHead = (title, list, t) => <div style={{
+    display: 'flex', alignItems: 'baseline', gap: 8, margin: '0 0 8px',
+  }}>
+    <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{title}</div>
+    <div style={{ flex: 1 }} />
+    <div style={{ fontSize: 12, color: t.ink }}>
+      <span className="num">{sumOf(list).toLocaleString()}</span> 도즈 · <span className="num">{list.length}</span>종
     </div>
-    : grid(items)
+  </div>
+
+  /* 칸 하나 — 제 색 바탕 + 테두리, 안은 카드(흰 바탕)
+     ★ 선반 막대는 카드 줄 사이에 넣는다. 휴대폰은 한 줄에 카드가 하나라
+       카드마다 선반이 하나씩 놓인 모양이 된다(2026-11-13 결정). */
+  const compartment = (title, list, cols) => {
+    const t = TINT[title === '상시 백신' ? '상시' : '시즌']
+    return <div style={{
+      background: t.bg, border: '1px solid ' + t.line, borderRadius: 14,
+      padding: wide ? '12px 12px 14px' : '10px 10px 12px',
+    }}>
+      {doorHead(title, list, t)}
+      {chunk(list, cols).map((row, i, all) => <div key={i}>
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(' + cols + ', minmax(0, 1fr))',
+          gap: wide ? 14 : 10,
+        }}>
+          {row.map((x, j) => <Card key={x.label + ':' + j} item={x} wide={wide} />)}
+        </div>
+        {i < all.length - 1 ? <div aria-hidden="true" style={{
+          marginTop: wide ? 14 : 10, marginBottom: wide ? 14 : 10,
+          height: 5, borderRadius: 3, background: t.shelf,
+        }} /> : null}
+      </div>)}
+    </div>
+  }
+
+  /* 냉장고 몸체 — 문 윗단 띠 + 손잡이. 몸체는 아주 옅은 남색이다. */
+  const cards = !grp.split
+    ? grid(items)
+    : <div style={{
+      position: 'relative', background: NAVY(0.03),
+      border: '1px solid var(--v-line)', borderRadius: 18,
+      padding: wide ? 10 : 6, paddingTop: wide ? 20 : 16,
+      paddingRight: wide ? 26 : 18,
+    }}>
+      <div aria-hidden="true" style={{
+        position: 'absolute', left: 10, right: 10, top: 6, height: 8, borderRadius: 4, background: NAVY(0.07),
+      }} />
+      <div style={{ display: 'grid', gap: wide ? 12 : 10, padding: wide ? '4px 8px 8px' : '2px 4px 6px' }}>
+        {compartment('시즌 백신', grp.season, wide ? 3 : 1)}
+        {compartment('상시 백신', grp.always, wide ? 3 : 1)}
+      </div>
+      <div aria-hidden="true" style={{
+        position: 'absolute', right: wide ? 10 : 6, top: '50%', transform: 'translateY(-50%)',
+        width: 8, height: wide ? 130 : 92, borderRadius: 4, background: NAVY(0.22),
+      }} />
+    </div>
 
   /* ── 탭 띠 — 열린 회차가 있을 때만 그린다.
      ★ survey 가 null 이면 이 블록 전체가 null 이라 **기존 화면과 DOM 이 같다**. */
@@ -570,6 +631,18 @@ function drugLine(item) {
   return maker ? name + ' · ' + maker : name
 }
 
+/* 같은 값을 **조각으로** — 제약사를 한 덩이로 묶어 그리기 위해서다.
+   ★ 「(주)」 앞은 줄바꿈이 허용되는 자리라, keep-all 만으로는 「한국화이자제약 / (주)」처럼
+     쪼개진다. 제약사 전체를 nowrap 한 덩이로 두어 그 일이 생기지 않게 한다(2026-11-13). */
+function drugParts(item) {
+  const name = String(item?.drug_name || '').trim()
+  const maker = String(item?.maker || '').trim()
+  return { name, maker }
+}
+
+/* 약품명 줄 높이 — 두 줄 높이를 고정하는 데에도 쓴다(한 곳에만 둔다) */
+const DRUG_LH = 1.45
+
 function Card({ item, wide }) {
   const badge = BADGE[item.status] || BADGE['충분']
   return <div style={{
@@ -583,14 +656,22 @@ function Card({ item, wide }) {
         fontSize: wide ? 15 : 14, fontWeight: 700, color: 'var(--v-navy)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }} title={item.label}>{item.label}</div>
-      {/* ★ 약품명 · 제약사 — 표시명만으로는 어느 제품인지 알 수 없다는 문의가 잦았다.
-          이 앱의 기존 보조 글씨(var(--v-ink-dim)) 그대로, 새 색을 만들지 않는다.
-          한 줄을 넘으면 … 로 줄이고 전체는 title 로 본다.
-          ★ 값이 없으면(약품 마스터에 없는 코드) 줄 자체를 그리지 않는다. */}
+      {/* ★ 약품명·제약사 — 표시명만으로는 어느 제품인지 알 수 없다는 문의가 잦았다.
+           13px 두 줄까지, 색은 남색 92%(대비 7.40:1). 넘치면 「…」로 줄이고 전체는 title 로 본다.
+           ★ 높이는 **내용만큼**이다 — 한 줄짜리는 한 줄만 차지한다.
+         ★ 낱말 가운데서 끊지 않는다(keep-all) — 「보령/바이오파마」·「모/더나」처럼 쪼개지던 것을 막는다.
+           다만 한 줄에 도저히 안 들어가는 긴 낱말은 넘긴다(break-word) —
+           그러지 않으면 넘치는 글자가 **조용히 잘려 사라진다**(2026-11-13 실측). */}
       {drugLine(item) ? <div style={{
-        fontSize: 11, color: 'var(--v-ink-dim)', marginTop: 2,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }} title={drugLine(item)}>{drugLine(item)}</div> : null}
+        fontSize: 13, color: 'rgba(46, 74, 98, 0.92)', marginTop: 2, lineHeight: DRUG_LH,
+        wordBreak: 'keep-all', overflowWrap: 'break-word',
+        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+      }} title={drugLine(item)}>
+        {drugParts(item).name}
+        {drugParts(item).name && drugParts(item).maker ? ' · ' : ''}
+        {/* ★ 제약사는 한 덩이 — 「(주)」가 혼자 다음 줄로 넘어가지 않는다 */}
+        {drugParts(item).maker ? <span style={{ whiteSpace: 'nowrap' }}>{drugParts(item).maker}</span> : null}
+      </div> : null}
     </div>
     <div style={{
       display: 'flex', alignItems: wide ? 'flex-end' : 'center',
