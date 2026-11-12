@@ -1,7 +1,10 @@
 /* 잔량 조회·판정 공용 모듈 — DB 없이 가짜 client 를 주입해 확인한다.
    보는 것: 상태 경계값 / 응답 필드가 딱 세 개 / 조회 순서와 병렬 / tenant_id 조건 유지 */
 import { describe, it, expect } from 'vitest'
-import { LOW_QTY, WARN_RATIO, stockStatus, loadStock } from '../netlify/functions/_lib/stock.js'
+import {
+  LOW_QTY, WARN_RATIO, stockStatus, stockStatusAlways, normGroup,
+  GROUP_SEASON, GROUP_ALWAYS, loadStock,
+} from '../netlify/functions/_lib/stock.js'
 
 const TENANT = 'tenant-1'
 const TODAY = '2026-10-27'
@@ -39,6 +42,11 @@ const ok = data => ({ data, error: null })
 const fail = message => ({ data: null, error: { message } })
 
 const ACC = (id, label, season = '2026-2027') => ({ id, season, public_label: label })
+/* 상시 계정 — 0127 public_group. 약품코드가 있어야 재고현황에서 잔량이 온다. */
+const ACC_ALWAYS = (id, label, drug_code) =>
+  ({ id, season: '상시', public_label: label, drug_code, public_group: '상시' })
+const DRUG = (drug_code, current_qty, drug_name = '', manufacturer = '') =>
+  ({ drug_code, drug_name, manufacturer, current_qty })
 const BAL = (account_id, balance_qty, received_qty) => ({ account_id, balance_qty, received_qty })
 
 describe('stockStatus — 경계값', () => {
@@ -67,6 +75,126 @@ describe('stockStatus — 경계값', () => {
   })
 })
 
+describe('★ stockStatusAlways — 상시 백신은 3단계뿐', () => {
+  it('소진·부족의 기준값은 시즌과 같다', () => {
+    expect(stockStatusAlways(0)).toBe('소진')
+    expect(stockStatusAlways(-1)).toBe('소진')
+    expect(stockStatusAlways(null)).toBe('소진')
+    expect(stockStatusAlways(1)).toBe('부족')
+    expect(stockStatusAlways(LOW_QTY)).toBe('부족')
+    expect(stockStatusAlways(LOW_QTY + 1)).toBe('충분')
+  })
+  it('★ 「주의」가 절대 나오지 않는다 — 입고 누계가 없어 비율을 낼 수 없다', () => {
+    for (let q = -5; q <= 500; q++) expect(stockStatusAlways(q), String(q)).not.toBe('주의')
+  })
+})
+
+describe('★ normGroup — 아는 값이 아니면 시즌', () => {
+  it('두 값만 그대로', () => {
+    expect(normGroup('상시')).toBe(GROUP_ALWAYS)
+    expect(normGroup('시즌')).toBe(GROUP_SEASON)
+  })
+  it('빈 값·이상한 값은 시즌 (DB 기본값과 같다)', () => {
+    for (const v of [null, undefined, '', '기타', 'always']) expect(normGroup(v)).toBe(GROUP_SEASON)
+  })
+})
+
+describe('★ 시즌/상시 — 잔량의 출처가 다르다 (2026-11-13)', () => {
+  const base = {
+    vaccine_accounts: ok([
+      ACC('a1', '독감(유료)'),
+      ACC_ALWAYS('a2', '폐렴구균(프로디악스23)', 'PRDX23-6'),
+    ]),
+    v_vaccine_balance: ok([BAL('a1', 21, 150), BAL('a2', 0, 0)]),
+    vaccine_events: ok([{ created_at: '2026-11-12T08:34:35Z' }]),
+    drugs: ok([DRUG('PRDX23-6', 10, '프로디악스-23', '한국엠에스디(주)')]),
+    transactions: ok([{ created_at: '2026-11-13T01:00:00Z' }]),
+  }
+
+  it('★ 상시는 약플로 재고현황(current_qty) 을 쓴다 — 백신관리 기록(0)이 아니다', async () => {
+    const got = await loadStock(fakeAdmin(base), TENANT, TODAY)
+    const a = got.data.items.find(x => x.group === '상시')
+    expect(a.qty).toBe(10)
+    expect(a.status).toBe('부족')
+  })
+
+  it('★ 시즌은 지금까지와 똑같다 — 백신관리 잔량·4단계', async () => {
+    const got = await loadStock(fakeAdmin(base), TENANT, TODAY)
+    const s = got.data.items.find(x => x.group === '시즌')
+    expect(s.qty).toBe(21)
+    expect(s.status).toBe('주의')      /* 150 의 25% 인 37.5 미만 */
+  })
+
+  it('★ 상시인데 약품이 안 잡히면 0(소진) — 없는 숫자를 지어내지 않는다', async () => {
+    const got = await loadStock(fakeAdmin({ ...base, drugs: ok([]) }), TENANT, TODAY)
+    const a = got.data.items.find(x => x.group === '상시')
+    expect(a.qty).toBe(0)
+    expect(a.status).toBe('소진')
+  })
+
+  it('★ 약품 조회가 실패해도 시즌 잔량은 그대로 나온다', async () => {
+    const got = await loadStock(fakeAdmin({ ...base, drugs: fail('boom') }), TENANT, TODAY)
+    expect(got.ok).toBe(true)
+    expect(got.data.items.find(x => x.group === '시즌').qty).toBe(21)
+    expect(got.data.items.find(x => x.group === '상시').qty).toBe(0)
+  })
+
+  it('★ 머리글 절기는 시즌 계정만 보고 정한다', async () => {
+    const got = await loadStock(fakeAdmin(base), TENANT, TODAY)
+    expect(got.data.season).toBe('2026-2027')
+  })
+
+  it('★ 상시 계정만 있으면 절기가 보이지 않는다 (「상시절기」가 나오지 않는다)', async () => {
+    const got = await loadStock(fakeAdmin({
+      ...base,
+      vaccine_accounts: ok([ACC_ALWAYS('a2', '폐렴구균(프로디악스23)', 'PRDX23-6')]),
+    }), TENANT, TODAY)
+    expect(got.data.season).toBe(null)
+  })
+
+  it('★ 마지막 입력은 백신관리와 입출고 중 나중 것', async () => {
+    const got = await loadStock(fakeAdmin(base), TENANT, TODAY)
+    expect(got.data.updated_at).toBe('2026-11-13T01:00:00Z')   /* 입출고 쪽이 나중 */
+  })
+
+  it('입출고가 없으면 백신관리 시각을 그대로 쓴다', async () => {
+    const got = await loadStock(fakeAdmin({ ...base, transactions: ok([]) }), TENANT, TODAY)
+    expect(got.data.updated_at).toBe('2026-11-12T08:34:35Z')
+  })
+
+  it('입출고 조회가 실패해도 시각이 사라지지 않는다', async () => {
+    const got = await loadStock(fakeAdmin({ ...base, transactions: fail('boom') }), TENANT, TODAY)
+    expect(got.ok).toBe(true)
+    expect(got.data.updated_at).toBe('2026-11-12T08:34:35Z')
+  })
+
+  it('★ 상시 계정이 없으면 입출고를 아예 읽지 않는다', async () => {
+    const log = []
+    await loadStock(fakeAdmin({
+      ...base, vaccine_accounts: ok([ACC('a1', '독감(유료)')]),
+    }, log), TENANT, TODAY)
+    expect(log.map(r => r.table)).not.toContain('transactions')
+  })
+
+  it('★ drugs·transactions 에도 약국 조건을 건다', async () => {
+    const log = []
+    await loadStock(fakeAdmin(base, log), TENANT, TODAY)
+    for (const tb of ['drugs', 'transactions']) {
+      const rec = log.find(r => r.table === tb)
+      expect(rec, tb + ' 조회가 없다').toBeTruthy()
+      expect(rec.filters.some(x => x[0] === 'eq' && x[1] === 'tenant_id' && x[2] === TENANT), tb).toBe(true)
+    }
+  })
+
+  it('★ 품목 식별 정보는 여전히 실리지 않는다', async () => {
+    const got = await loadStock(fakeAdmin(base), TENANT, TODAY)
+    const text = JSON.stringify(got.data)
+    for (const bad of ['current_qty', 'received_qty', 'account_id', 'drug_code', 'PRDX23-6', 'a1', 'a2']) {
+      expect(text, bad).not.toContain(bad)
+    }
+  })
+})
+
 describe('loadStock — 응답 형식', () => {
   it('필드가 season · updated_at · items 셋뿐이고 item 은 다섯 키뿐이다', async () => {
     const admin = fakeAdmin({
@@ -78,7 +206,8 @@ describe('loadStock — 응답 형식', () => {
     expect(got.ok).toBe(true)
     expect(Object.keys(got.data).sort()).toEqual(['items', 'season', 'updated_at'])
     for (const it of got.data.items) {
-      expect(Object.keys(it).sort()).toEqual(['drug_name', 'label', 'maker', 'qty', 'status'])
+      /* ★ 2026-11-13 — group(시즌/상시) 한 칸이 늘었다. 품목 식별 정보는 여전히 없다. */
+      expect(Object.keys(it).sort()).toEqual(['drug_name', 'group', 'label', 'maker', 'qty', 'status'])
     }
   })
 
@@ -116,7 +245,7 @@ describe('loadStock — 응답 형식', () => {
       vaccine_events: ok([]),
     })
     const got = await loadStock(admin, TENANT, TODAY)
-    expect(got.data.items).toEqual([{ label: '독감 4가', qty: 0, status: '소진', drug_name: '', maker: '' }])
+    expect(got.data.items).toEqual([{ label: '독감 4가', qty: 0, status: '소진', group: '시즌', drug_name: '', maker: '' }])
     expect(got.data.updated_at).toBe(null)
   })
 
