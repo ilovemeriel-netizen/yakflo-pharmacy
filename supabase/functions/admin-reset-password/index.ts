@@ -21,6 +21,7 @@
 import {
   emailToId, adminClient, requireTenantAdmin, json, corsHeaders, safeLog,
 } from "../_shared/adminAuth.ts";
+import { writeAccountAudit } from "../_shared/audit.ts";
 
 const PW_MIN = 8;
 
@@ -81,15 +82,15 @@ Deno.serve(async (req) => {
     return json({ ok: false, code: "update_failed", message: "비밀번호를 바꾸지 못했습니다" }, 500);
   }
 
-  await admin.from("drug_usage_audit").insert({
-    tenant_id: caller.tenantId,
-    drug_code: "(계정)",
+  // ★ 감사가 실패해도 **비밀번호는 이미 바뀌었다.** 성공으로 끝낸다.
+  const audit = await writeAccountAudit(admin, {
+    tenantId: caller.tenantId,
     field: "account_password_reset",
-    old_value: null,
-    new_value: loginId,
-    changed_by: caller.userId,
-  }).catch(() => {});
+    oldValue: null,
+    newValue: loginId,
+    changedBy: caller.userId,
+  });
 
-  safeLog({ fn: "admin-reset-password", step: "done", ok: true, id: loginId, target });
-  return json({ ok: true });
+  safeLog({ fn: "admin-reset-password", step: "done", ok: true, id: loginId, target, reason: audit });
+  return json({ ok: true, audit });
 });

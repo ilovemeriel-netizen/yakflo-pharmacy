@@ -67,19 +67,30 @@ export function adminClient(): SupabaseClient {
 }
 
 /**
- * 부른 사람이 **이 약국의 관리자(owner·admin)이고 사용 중**인지 서버에서 확인한다.
+ * 부른 사람이 **이 약국의 관리자(owner·admin)이고 사용 중**인지 확인한다.
  * 아니면 null 을 돌려준다(부르는 쪽은 403 으로 끝낸다).
+ *
+ * ★ 서비스 키를 **쓰지 않는다** (2026-11-12 이정화 님 요구).
+ *   부른 사람의 토큰 + anon 키로만 본다 — 자기 줄은 RLS(tenant_members_select_own)로 읽힌다.
+ *   서비스 키는 **이 확인을 통과한 뒤에** adminClient() 를 부를 때 비로소 쓰인다.
+ *   그래야 확인 전에 서비스 키가 손에 들려 있는 일이 없다.
  */
 export async function requireTenantAdmin(req: Request): Promise<Caller | null> {
   const auth = req.headers.get("Authorization") ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token) return null;
 
-  const admin = adminClient();
-  const { data: who, error: whoErr } = await admin.auth.getUser(token);
+  /* anon 키 + 부른 사람의 토큰 — 서비스 키가 아니다 */
+  const asCaller = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!,
+    { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${token}` } } },
+  );
+
+  const { data: who, error: whoErr } = await asCaller.auth.getUser(token);
   if (whoErr || !who?.user) return null;
 
-  const { data: m, error: mErr } = await admin
+  const { data: m, error: mErr } = await asCaller
     .from("tenant_members")
     .select("tenant_id, role, is_active")
     .eq("user_id", who.user.id)
