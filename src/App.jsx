@@ -7655,7 +7655,10 @@ function AdminUserNewModal({ onClose, onMade }) {
     setPw(''); setPw2('')
     setBusy(false)
     const d = r && r.data
-    if (d && d.ok) { onMade(d.id); return }
+    if (d && d.ok) { onMade(d.id, d.audit); return }
+    /* ★ 이미 있는 아이디 — 다시 눌러 생긴 일일 수 있다. 「만들어졌다」고 알려 주고 목록을 새로고침한다.
+       (2026-11-12 사고: 만들어졌는데 「실패」로 보여 같은 아이디를 다시 누르게 됐다) */
+    if (d && d.code === 'duplicate') { onMade(id, 'dup'); return }
     setErrMsg((d && d.message) || '계정을 만들지 못했습니다. 잠시 뒤 다시 해 주세요.')
   }
 
@@ -7815,9 +7818,20 @@ function AdminUsers() {
     </div>
     <Toast msg={toast?.msg} kind={toast?.kind} onClose={() => setToast(null)} />
     {newOpen && <AdminUserNewModal onClose={() => setNewOpen(false)}
-      onMade={id => { setNewOpen(false); setToast({ msg: id + ' 계정을 만들었습니다', kind: 'ok' }); load() }} />}
+      onMade={(id, note) => {
+        setNewOpen(false)
+        /* ★ note: 'dup' = 이미 있던 계정(다시 누른 것) · 'skipped' = 감사 기록만 못 남김 */
+        setToast({
+          msg: note === 'dup' ? id + ' 계정은 이미 만들어져 있습니다'
+            : note === 'skipped' ? id + ' 계정을 만들었습니다 (감사 기록은 남기지 못했습니다)'
+              : id + ' 계정을 만들었습니다',
+          kind: 'ok',
+        })
+        load()
+      }} />}
     {editRow && <AdminUserEditModal
       row={editRow}
+      member={members[editRow.id]}
       currentUserId={user?.id}
       onClose={() => setEditRow(null)}
       onSaved={() => { setEditRow(null); setToast({ msg: '권한이 변경되었습니다', kind: 'ok' }); load() }}
@@ -7867,29 +7881,73 @@ function ResetPwBox({ t, row }) {
   </div>
 }
 
-function AdminUserEditModal({ row, currentUserId, onClose, onSaved }) {
+function AdminUserEditModal({ row, currentUserId, member, onClose, onSaved }) {
   const _dmBox = useRef(null); const [_dmPos, _dmSetPos] = useState({ x: 0, y: 0 }); const { onHeaderMouseDown: _dmH } = useDraggableModal(_dmBox, _dmPos, _dmSetPos);
   const { t } = useTheme()
   const [role, setRole] = useState(row.role || 'user')
   const [saving, setSaving] = useState(false)
   const [errMsg, setErrMsg] = useState(null)
+  /* ★ 약국 역할·사용 — tenant_members 값. 화면에서는 못 쓰므로 Edge Function(admin-set-role)이 바꾼다.
+       (tenant_members 는 쓰기 정책이 없다 — 정책을 열면 누구나 자기 역할을 올릴 수 있다.) */
+  const [tRole, setTRole] = useState(member ? member.role : null)
+  const [tActive, setTActive] = useState(member ? member.is_active !== false : true)
 
   const isSelf = currentUserId && row.id === currentUserId
   const isOriginallyAdmin = row.role === 'admin'
   const wantsToRemoveOwnAdmin = isSelf && isOriginallyAdmin && role !== 'admin'  /* 본인 admin 해제 시도 */
-  const isUnchanged = role === (row.role || 'user')
+  const tRoleWas = member ? member.role : null
+  const tActiveWas = member ? member.is_active !== false : true
+  const tChanged = !!member && (tRole !== tRoleWas || tActive !== tActiveWas)
+  const isUnchanged = role === (row.role || 'user') && !tChanged
   const canSubmit = !isUnchanged && !wantsToRemoveOwnAdmin && !saving
 
   async function handleSave() {
     if (!canSubmit) return
     setSaving(true); setErrMsg(null)
-    const { error } = await supabase.from('profiles').update({ role }).eq('id', row.id)
+    /* ① 전역 권한(profiles.role) — 바뀐 때만 */
+    if (role !== (row.role || 'user')) {
+      const { error } = await supabase.from('profiles').update({ role }).eq('id', row.id)
+      if (error) {
+        setSaving(false)
+        setErrMsg(error.message.includes('row-level') ? 'DB 권한 정책이 아직 적용되지 않았습니다. SQL 마이그레이션(0005)을 먼저 실행해 주세요.' : error.message)
+        return
+      }
+    }
+    /* ② 약국 역할·사용 — 바뀐 때만. 관리자 확인·마지막 대표 보호는 **서버**가 본다. */
+    if (tChanged) {
+      let r
+      try {
+        r = await supabase.functions.invoke('admin-set-role', {
+          body: { target: row.id, role: tRole, is_active: tActive },
+        })
+      } catch (e) { r = { error: e } }
+      const d = r && r.data
+      if (!d || !d.ok) {
+        setSaving(false)
+        setErrMsg((d && d.message) || '약국 역할을 바꾸지 못했습니다. 잠시 뒤 다시 해 주세요.')
+        return
+      }
+    }
     setSaving(false)
-    if (error) { setErrMsg(error.message.includes('row-level') ? 'DB 권한 정책이 아직 적용되지 않았습니다. SQL 마이그레이션(0005)을 먼저 실행해 주세요.' : error.message); return }
     onSaved?.()
   }
 
   const lb = { fontSize: 11, color: t.textM, display: 'block', marginBottom: 6, fontWeight: 600 }
+  /* 약국 역할·사용 단추 — 지금 권한 단추와 **같은 모양**이다. 새 색을 만들지 않는다. */
+  const pill = (on, label, color, colorL, onClick, disabled) => (
+    <button key={label} type="button" onClick={() => !disabled && onClick()} disabled={disabled}
+      style={{
+        flex: 1, padding: '9px 6px', borderRadius: 8, fontFamily: 'inherit',
+        border: '1.5px solid ' + (on ? color : t.border),
+        background: on ? colorL : 'transparent',
+        color: on ? color : (disabled ? t.textL : t.textM),
+        fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',
+        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+      }}>{label}</button>
+  )
+  const tRoleBtn = (val, label, color, colorL) => pill(tRole === val, label, color, colorL, () => setTRole(val), isSelf)
+  const tActiveBtn = (val, label, color, colorL) => pill(tActive === val, label, color, colorL, () => setTActive(val), isSelf)
+
   const roleBtn = (val, color, colorL, label) => {
     const active = role === val
     const disabled = isSelf && val === 'user' && isOriginallyAdmin  /* 본인 admin 해제 비활성 */
@@ -7918,6 +7976,28 @@ function AdminUserEditModal({ row, currentUserId, onClose, onSaved }) {
 
       {/* ★ 아이디 계정은 메일을 못 받는다 — 관리자가 새 비밀번호를 정해 준다 (2026-11-12).
           Edge Function(admin-reset-password)이 하고, 비밀번호는 어디에도 남지 않는다. */}
+      {/* ★ 약국 역할 — 자료를 어디까지 보고 쓸 수 있는지 정한다 (0123·0124).
+          본인 것은 바꿀 수 없다(서버도 막는다). 마지막 대표도 서버가 지킨다. */}
+      {member && <>
+        <label style={lb}>약국 역할</label>
+        <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
+          {tRoleBtn('owner', '대표', t.purple, t.purpleL)}
+          {tRoleBtn('admin', '관리', t.purple, t.purpleL)}
+          {tRoleBtn('member', '일반', t.green, t.greenL)}
+          {tRoleBtn('viewer', '읽기 전용', t.blue, t.blueL)}
+        </div>
+        <label style={lb}>사용</label>
+        <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
+          {tActiveBtn(true, '사용 중', t.green, t.greenL)}
+          {tActiveBtn(false, '중지', t.textM, t.bg)}
+        </div>
+        <div style={{ fontSize: 10.5, color: t.textL, lineHeight: 1.6, marginBottom: 10 }}>
+          {tRole === 'viewer' && '읽기 전용은 단가·금액까지 모두 볼 수 있고 저장·수정·삭제만 되지 않습니다. '}
+          {!tActive && '중지하면 로그인은 되지만 약국 자료가 하나도 보이지 않습니다. '}
+          {isSelf && '본인 계정은 바꿀 수 없습니다.'}
+        </div>
+      </>}
+
       {displayAccount(row.email) !== row.email && !isSelf && <ResetPwBox t={t} row={row} />}
 
       {wantsToRemoveOwnAdmin && <div style={{ background: t.amberL, border: `1px solid ${t.amber}40`, borderRadius: 8, padding: '10px 12px', fontSize: 11.5, color: t.text, lineHeight: 1.55, marginBottom: 8, marginTop: 6 }}>

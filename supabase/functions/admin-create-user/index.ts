@@ -23,6 +23,7 @@
 import {
   ID_RE, idToEmail, adminClient, requireTenantAdmin, json, corsHeaders, safeLog,
 } from "../_shared/adminAuth.ts";
+import { writeAccountAudit } from "../_shared/audit.ts";
 
 const ROLES = ["owner", "admin", "member", "viewer"];
 const PW_MIN = 8;
@@ -102,16 +103,16 @@ Deno.serve(async (req) => {
   // ── profiles 보강 (트리거가 이미 만들었다면 덮어쓰기만) ──
   await admin.from("profiles").upsert({ id: newId, email }, { onConflict: "id" });
 
-  // ── 감사 ──
-  await admin.from("drug_usage_audit").insert({
-    tenant_id: caller.tenantId,
-    drug_code: "(계정)",
+  // ── 감사 — ★ 실패해도 **계정은 이미 만들어졌다.** 성공으로 끝내고 답에만 적는다.
+  //    (2026-11-12 사고: 여기서 터져 「만들었는데 실패」로 보였다) ──
+  const audit = await writeAccountAudit(admin, {
+    tenantId: caller.tenantId,
     field: "account_create",
-    old_value: null,
-    new_value: `${id} · ${role}`,
-    changed_by: caller.userId,
-  }).catch(() => {});
+    oldValue: null,
+    newValue: `${id} · ${role}`,
+    changedBy: caller.userId,
+  });
 
-  safeLog({ fn: "admin-create-user", step: "done", ok: true, id, role, target: newId });
-  return json({ ok: true, id, email, role });
+  safeLog({ fn: "admin-create-user", step: "done", ok: true, id, role, target: newId, reason: audit });
+  return json({ ok: true, id, email, role, audit });
 });
