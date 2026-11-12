@@ -214,7 +214,11 @@ describe('기존 분기가 그대로다', () => {
     spy.mockRestore()
   })
 
-  it('잠겨 있으면 429 LOCKED 이고 설정조회까지 가지 않는다', async () => {
+  /* ★ 2026-11-12 — 왕복을 줄이면서 **설정 조회가 함께 나가게** 바뀌었다.
+       그래서 「설정조회까지 가지 않는다」가 아니라
+       「설정 값을 **쓰지 않는다**(해시·토큰·initial 없음)」를 못 박는다.
+       잠긴 호출에 조회 2건이 더 나가지만 20회 실패한 드문 경우뿐이고 표가 작다. */
+  it('잠겨 있으면 429 LOCKED 이고 설정 값을 쓰지 않는다 — 토큰·initial 없음', async () => {
     const until = new Date(Date.now() + PW_LOCK_MIN * 60_000).toISOString()
     const log = []
     stub.admin = fakeAdmin(makeAnswer({
@@ -225,7 +229,14 @@ describe('기존 분기가 그대로다', () => {
     const j = await body(res)
     expect(res.status).toBe(429)
     expect(j.code).toBe('LOCKED')
-    expect(log.map(r => r.table)).toEqual(['vaccine_public_attempts'])
+    expect(j.token).toBeUndefined()
+    expect(j.initial).toBeUndefined()
+    /* ★ 잔량·회차는 **한 번도** 읽지 않는다 — 잠긴 사람에게 데이터를 주지 않는다 */
+    for (const t of ['vaccine_accounts', 'v_vaccine_balance', 'vaccine_events', 'vaccine_surveys', 'drugs']) {
+      expect(log.map(r => r.table), t).not.toContain(t)
+    }
+    /* 나간 조회는 첫 묶음 3건뿐 — 그 뒤로는 아무것도 없다 */
+    expect(log).toHaveLength(3)
   })
 
   it('자릿수가 안 맞으면 400 이고 DB 에 닿지 않는다', async () => {
@@ -234,6 +245,58 @@ describe('기존 분기가 그대로다', () => {
     expect(res.status).toBe(400)
     expect((await body(res)).message).toBe(PW_MSG)
     expect(stub.admin._log).toHaveLength(0)
+  })
+
+  /* ═══ ★ 왕복 줄이기 (2026-11-12) ═══
+     이 Function 은 미국에서 돌고 DB 는 서울에 있다. 왕복 한 번이 약 0.2초라
+     「차례로 기다리는 횟수」가 곧 로그인 체감 시간이다. 그 횟수를 못 박는다. */
+  it('★ 잠금·설정·묵은기록 정리가 **한 묶음**으로 나간다 — 서로를 기다리지 않는다', async () => {
+    const log = []
+    const base = makeAnswer({ settings: await settingsRow() })
+    const seen = []
+    /* answer 가 불릴 때마다 「그때까지 나간 조회 수」를 적어 둔다.
+       한 묶음이면 첫 답을 받기 전에 이미 3건이 나가 있다. */
+    stub.admin = fakeAdmin(rec => { seen.push(log.length); return base(rec) }, log)
+    await handler(req())
+
+    expect(seen[0], '첫 답을 받기 전에 세 조회가 모두 나가 있어야 한다').toBe(3)
+    expect(log.slice(0, 3).map(r => r.table + ':' + r.op)).toEqual([
+      'vaccine_public_attempts:select',
+      'vaccine_public_settings:select',
+      'vaccine_public_attempts:delete',
+    ])
+  })
+
+  it('★ 묵은기록 정리는 tenant 안에서만, 풀린 행만 지운다 — 묶은 뒤에도 그대로', async () => {
+    const log = []
+    stub.admin = fakeAdmin(makeAnswer({ settings: await settingsRow() }), log)
+    await handler(req())
+    const clean = log.find(r => r.table === 'vaccine_public_attempts' && r.op === 'delete'
+      && r.filters.some(x => x[0] === 'lt' && x[1] === 'updated_at'))
+    expect(clean, '묵은기록 정리가 없다').toBeTruthy()
+    expect(clean.filters.some(x => x[0] === 'eq' && x[1] === 'tenant_id')).toBe(true)
+    expect(clean.filters.some(x => x[0] === 'or' && /locked_until/.test(String(x[1])))).toBe(true)
+  })
+
+  it('★ 설정 조회가 실패하면 그대로 500 이다 — 묶어도 오류 처리가 사라지지 않는다', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    stub.admin = fakeAdmin(makeAnswer({
+      settings: await settingsRow(), fail: { vaccine_public_settings: 'boom-set' },
+    }))
+    const res = await handler(req())
+    expect(res.status).toBe(500)
+    expect((await body(res)).message).toBe('일시적인 오류입니다')
+    spy.mockRestore()
+  })
+
+  it('★ 잠금 조회가 실패하면 그대로 500 이다', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    stub.admin = fakeAdmin(makeAnswer({
+      settings: await settingsRow(), fail: { vaccine_public_attempts: 'boom-att' },
+    }))
+    const res = await handler(req())
+    expect(res.status).toBe(500)
+    spy.mockRestore()
   })
 
   it('GET 은 405', async () => {

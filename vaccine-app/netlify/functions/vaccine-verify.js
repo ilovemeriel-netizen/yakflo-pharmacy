@@ -153,11 +153,40 @@ export default async (req) => {
 
   const admin = createClient(supaUrl, supaSrv, { auth: { persistSession: false, autoRefreshToken: false } })
 
-  /* 1) 잠금 확인 — 비밀번호를 보기 전에 끊는다 */
-  const { data: atts, error: aErr } = await admin
-    .from('vaccine_public_attempts')
-    .select('fail_count, locked_until')
-    .eq('tenant_id', tenantId).eq('ip_hash', ih).limit(1)
+  /* 1) 잠금 확인 · 설정 조회 · 묵은 기록 정리 — ★ 셋을 **한 번에** 보낸다 (2026-11-12)
+     ─────────────────────────────────────────────────────────────────────────
+     ★ 왜 묶었나 — 이 Function 은 미국(us-east-2)에서 돌고 DB 는 서울에 있다.
+       왕복 한 번이 약 0.2초라, 차례로 보내면 그것만으로 로그인이 0.6초 길어진다.
+       세 조회는 서로의 답을 **쓰지 않으므로** 기다릴 이유가 없다.
+     ★ 바뀌지 않는 것 — 잠김 판단은 여전히 **비밀번호를 확인하기 전**에 끝난다.
+       잠겨 있으면 해시를 돌리지도, 설정 값을 쓰지도, 응답에 싣지도 않는다.
+     ★ 바뀌는 것 하나 — 잠긴 호출에도 설정 조회가 함께 나간다(답은 버린다).
+       20회 실패로 잠긴 드문 경우에만 생기고, 표가 작아 비용이 사실상 없다.
+     ★ 묵은 기록 정리는 지금 잠겨 있는 행을 건드리지 않는다(locked_until 조건).
+       정리가 이 호출의 잠금 조회보다 먼저 닿더라도, 지워지는 행은 24시간 넘게
+       손대지 않은 **풀린** 행뿐이라 잠김 판단이 달라지지 않는다. */
+  const nowIso = new Date().toISOString()
+  const cutoff = new Date(Date.now() - ATTEMPT_TTL_H * 60 * 60 * 1000).toISOString()
+  const [attRes, setRes, cleanRes] = await Promise.all([
+    admin
+      .from('vaccine_public_attempts')
+      .select('fail_count, locked_until')
+      .eq('tenant_id', tenantId).eq('ip_hash', ih).limit(1),
+    admin
+      .from('vaccine_public_settings')
+      .select('pw_hash, pw_salt, updated_at')
+      .eq('tenant_id', tenantId).limit(1),
+    /* ★ tenant_id 조건은 필수다 — service_role 은 RLS 를 우회하므로 빼면 남의 테넌트 행까지 지운다. */
+    admin
+      .from('vaccine_public_attempts')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .lt('updated_at', cutoff)
+      .or(`locked_until.is.null,locked_until.lt.${nowIso}`),
+  ])
+  if (cleanRes.error) console.error('[vaccine-verify] 묵은 실패 기록 정리 실패:', cleanRes.error.message)
+
+  const { data: atts, error: aErr } = attRes
   if (aErr) { console.error('[vaccine-verify] 잠금 조회 실패:', aErr.message); return json({ ok: false, message: '일시적인 오류입니다' }, 500) }
   const att = (atts || [])[0] || null
 
@@ -166,27 +195,8 @@ export default async (req) => {
     return json({ ok: false, code: 'LOCKED', message: `잠시 후 다시 시도해 주세요 (약 ${mins}분)` }, 429)
   }
 
-  /* 1-b) 묵은 실패 기록 정리 — 잠금이 없거나 이미 풀렸고 24시간 넘게 손대지 않은 행만 지운다.
-     ★ tenant_id 조건은 필수다 — service_role 은 RLS 를 우회하므로 빼면 남의 테넌트 행까지 지운다.
-     ★ 지금 잠겨 있는 행은 locked_until 조건에 걸려 살아남는다(잠금을 앞당겨 풀지 않는다).
-     실패해도 인증을 막지 않는다 — 청소는 부가 작업이라 로그만 남긴다. */
-  {
-    const nowIso = new Date().toISOString()
-    const cutoff = new Date(Date.now() - ATTEMPT_TTL_H * 60 * 60 * 1000).toISOString()
-    const { error: cErr } = await admin
-      .from('vaccine_public_attempts')
-      .delete()
-      .eq('tenant_id', tenantId)
-      .lt('updated_at', cutoff)
-      .or(`locked_until.is.null,locked_until.lt.${nowIso}`)
-    if (cErr) console.error('[vaccine-verify] 묵은 실패 기록 정리 실패:', cErr.message)
-  }
-
-  /* 2) 설정 조회 */
-  const { data: sets, error: sErr } = await admin
-    .from('vaccine_public_settings')
-    .select('pw_hash, pw_salt, updated_at')
-    .eq('tenant_id', tenantId).limit(1)
+  /* 2) 설정 — 위에서 함께 받아 둔 것을 여기서 처음 **쓴다** */
+  const { data: sets, error: sErr } = setRes
   if (sErr) { console.error('[vaccine-verify] 설정 조회 실패:', sErr.message); return json({ ok: false, message: '일시적인 오류입니다' }, 500) }
   const st = (sets || [])[0] || null
 
