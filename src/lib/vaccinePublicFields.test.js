@@ -23,12 +23,14 @@ const code = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm
   const fn = has ? readFileSync(P_FN, 'utf8') : ''
 
   /* ★ 2026-11-13 — public_group(시즌/상시) 한 열이 늘었다. 공개 화면이 두 칸으로 나뉜다. */
-  it('★ 계정에서 읽는 열은 id · season · public_label · drug_code · public_group 뿐이다', () => {
+  it('★ 계정에서 읽는 열은 id · season · public_label · drug_code · public_group · public_drug_name 뿐이다', () => {
     const body = code(stock)
     const m = /\.select\('([^']*)'\)/.exec(body.slice(body.indexOf('vaccine_accounts')))
     expect(m, 'vaccine_accounts select 를 찾지 못했다').toBeTruthy()
     expect(m[1].split(',').map(s => s.trim()).sort())
-      .toEqual(['drug_code', 'id', 'public_group', 'public_label', 'season'])
+      /* ★ 2026-11-13 — public_drug_name 한 열이 늘었다(0128). 적어 두면 규칙을 타지 않는다.
+         단가 3종·입고량·배정량·LOT·유효기한은 여전히 금지다(아래 목록이 지킨다). */
+      .toEqual(['drug_code', 'id', 'public_drug_name', 'public_group', 'public_label', 'season'])
   })
 
   it('★ drugs 에서 읽는 열은 drug_name · manufacturer · current_qty 뿐이다 — 단가는 읽지 않는다', () => {
