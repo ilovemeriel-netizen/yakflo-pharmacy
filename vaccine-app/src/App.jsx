@@ -20,7 +20,7 @@
    ★ 자동 갱신은 **화면이 보일 때만** 60초마다 — 배경 탭에서 Function 을 두드리지 않는다.
    ═══════════════════════════════════════════════════════════════════════════ */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { itemsOf, viewState, totalOf } from './lib/stockView'
+import { itemsOf, viewState, totalOf, groupsOf, sumOf } from './lib/stockView'
 import { pwReady } from './lib/pwInput'
 import PinBoxes from './PinBoxes'
 import SurveyTab from './SurveyTab'
@@ -369,6 +369,9 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
   const state = viewState(data, loading)
   const items = itemsOf(data) || []
   const total = totalOf(data)
+  /* ★ 시즌/상시 두 칸 — 판단은 lib/stockView.js 에 있다 (2026-11-13).
+       두 묶음이 모두 있을 때만 제목을 그린다(한쪽뿐이면 지금까지와 같은 화면). */
+  const grp = groupsOf(data)
   const when = fmtKst(data?.updated_at)
 
   const head = <header style={{
@@ -457,6 +460,25 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
     {state === 'loading' ? null : <div style={{ fontSize: 12, color: 'var(--v-ink-dim)', marginTop: wide ? 4 : 0 }}>
       <span className="num">{items.length}</span>종
     </div>}
+    {/* ★ 묶음별 내역 (2026-11-13 ⓑ안) — 두 묶음이 모두 있을 때만 보인다.
+        ★ group 칸으로 세므로 이름 글자를 해석하지 않는다.
+        ★ 새 색·새 글자 크기를 만들지 않는다 — 전체 잔량 줄과 같은 토큰이다. */}
+    {state === 'loading' || !grp.split ? null : <div style={{
+      marginTop: wide ? 14 : 10, paddingTop: wide ? 12 : 10,
+      borderTop: '1px solid var(--v-line)',
+      flexBasis: wide ? undefined : '100%',
+    }}>
+      {[['시즌 백신', sumOf(grp.season)], ['상시 백신', sumOf(grp.always)]].map(([lab, n]) =>
+        <div key={lab} style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '5px 0', fontSize: 13, color: 'var(--v-ink-dim)',
+        }}>
+          <span>{lab}</span>
+          <b className="num" style={{ fontSize: 14, fontWeight: 700, color: 'var(--v-navy)' }}>
+            {n.toLocaleString()}</b>
+        </div>)}
+    </div>}
+
     {/* ★ 마지막 입력 — 숫자 바로 곁으로 옮겼다(하단까지 내려가 눈에 띄지 않았다).
         휴대폰에서는 이 카드가 가로 한 줄이라 flexBasis 100% 로 이 줄만 아래로 뺀다. */}
     {state === 'loading' ? null : <div style={{
@@ -470,13 +492,27 @@ function Stock({ data, loading, err, onLock, onReload, survey, tab, onTab, token
     </div>}
   </div>
 
-  const cards = <div style={{
+  /* 카드 격자 한 덩이 — 치수는 예전 그대로다(바꾼 것이 없다) */
+  const grid = list => <div style={{
     display: 'grid',
     gridTemplateColumns: wide ? 'repeat(3, minmax(0, 1fr))' : '1fr',
     gap: wide ? 14 : 10,
   }}>
-    {items.map((x, i) => <Card key={x.label + ':' + i} item={x} wide={wide} />)}
+    {list.map((x, i) => <Card key={x.label + ':' + i} item={x} wide={wide} />)}
   </div>
+
+  /* ★ 묶음 제목 — 이번에 **새로 생기는 것은 이것뿐**이다.
+       크기·굵기·색 모두 이 앱에 이미 있는 값이다(카드 이름과 같은 남색). */
+  const groupTitle = text => <div style={{
+    margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: 'var(--v-navy)',
+  }}>{text}</div>
+
+  const cards = grp.split
+    ? <div style={{ display: 'grid', gap: wide ? 18 : 12 }}>
+      <div>{groupTitle('시즌 백신')}{grid(grp.season)}</div>
+      <div>{groupTitle('상시 백신')}{grid(grp.always)}</div>
+    </div>
+    : grid(items)
 
   /* ── 탭 띠 — 열린 회차가 있을 때만 그린다.
      ★ survey 가 null 이면 이 블록 전체가 null 이라 **기존 화면과 DOM 이 같다**. */
