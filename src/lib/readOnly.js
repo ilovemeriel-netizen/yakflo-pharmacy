@@ -42,6 +42,22 @@ export function readOnlyError() {
 /* 막을 메서드 — 읽기(select·order·eq·range…)는 건드리지 않는다 */
 const BLOCKED = ['insert', 'update', 'upsert', 'delete']
 
+/* ★ 읽기만 하는 RPC — **이 명단에 있는 것만** 뷰어가 부를 수 있다.
+ *   대시보드·보고서·발주·바코드 화면이 이 함수들로 값을 읽는다. 막으면 화면이 빈다.
+ *   ★ 명단(allowlist)으로 두는 까닭: 앞으로 새 함수가 생기면 **기본이 「막힘」**이다.
+ *     반대로 「쓰는 것만 막기」로 두면 새 함수가 조용히 열린다.
+ *   (2026-11-12 운영 DB 전수 확인 — 이 여덟은 insert·update·delete 를 하지 않는다) */
+export const READ_RPCS = new Set([
+  'app_dashboard',
+  'app_low_stock',
+  'app_monthly_report',
+  'app_monthly_report_detail',
+  'drug_change_forecast',
+  'usage_monthly_amount',
+  'usage_monthly_trend',
+  'gtin_check_ok',
+])
+
 /**
  * supabase 클라이언트를 감싼다. **한 곳**에서 모든 쓰기를 멈춘다.
  * 쓰기 메서드는 await 하면 `{ data:null, error }` 를 주는 객체를 돌려준다
@@ -78,9 +94,10 @@ export function guardWrites(client) {
         }
       }
       if (prop === 'rpc') {
-        return (...args) => (readOnly
+        /* ★ 읽기 전용 RPC 는 뷰어도 불러야 한다 — 막으면 대시보드·보고서가 빈다 */
+        return (name, ...rest) => ((readOnly && !READ_RPCS.has(name))
           ? stub()
-          : target.rpc(...args))
+          : target.rpc(name, ...rest))
       }
       const v = Reflect.get(target, prop, recv)
       return typeof v === 'function' ? v.bind(target) : v

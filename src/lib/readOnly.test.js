@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   guardWrites, setReadOnlyRole, isReadOnly, readOnlyError,
-  VIEWER_ROLE, READ_ONLY_MSG,
+  VIEWER_ROLE, READ_ONLY_MSG, READ_RPCS,
 } from './readOnly'
 
 /* supabase 흉내 — 사슬을 그대로 돌려준다 */
@@ -79,12 +79,39 @@ describe('② 뷰어면 쓰기가 나가지 않는다', () => {
     })
   }
 
-  it('rpc 가 막힌다', async () => {
+  it('쓰는 rpc 가 막힌다', async () => {
     const spy = []
     const c = guardWrites(fakeClient(spy))
     const r = await c.rpc('app_save_usage_bulk')
     expect(spy).toEqual([])
     expect(r.error.code).toBe('42501')
+  })
+
+  /* ★ 2026-11-12 — 읽기 전용 RPC 까지 막으면 대시보드·보고서가 **빈 화면**이 된다.
+     「모든 화면 조회 가능」이라는 결정과 어긋나므로 명단으로 열어 둔다. */
+  it('★ 읽기만 하는 rpc 는 뷰어도 부를 수 있다', async () => {
+    const spy = []
+    const c = guardWrites(fakeClient(spy))
+    for (const n of READ_RPCS) {
+      const r = await c.rpc(n)
+      expect(r.error, n).toBeNull()
+    }
+    expect(spy.length).toBe(READ_RPCS.size)
+  })
+
+  it('★ 명단에 없는 rpc 는 **기본이 막힘** — 새 함수가 조용히 열리지 않는다', async () => {
+    const c = guardWrites(fakeClient([]))
+    for (const n of ['app_recompute_usage', 'app_move_drug_location', 'bulk_stock_adjust',
+      'purge_vaccine_survey', 'swap_atc_slots', '아직_없는_새_함수']) {
+      const r = await c.rpc(n)
+      expect(r.error?.code, n).toBe('42501')
+    }
+  })
+
+  it('읽기 명단이 운영에서 확인한 8개다', () => {
+    expect(READ_RPCS.size).toBe(8)
+    expect(READ_RPCS.has('app_dashboard')).toBe(true)
+    expect(READ_RPCS.has('app_save_usage_bulk')).toBe(false)
   })
 
   it('★ 뒤에 .eq().select() 를 붙여도 터지지 않는다', async () => {
