@@ -1,0 +1,16 @@
+# supabase/config.toml — Edge Function 설정만 둔다 (2026-11-12)
+#
+# ★ verify_jwt = true — 로그인 토큰이 없는 호출은 **Supabase 관문에서** 막는다.
+#   함수 안에서도 requireTenantAdmin() 이 역할을 다시 보므로 **두 겹**이다.
+#   (admin-create-user 는 처음 배포 때 실수로 꺼져 있었다. 이 파일로 되돌린다.)
+
+project_id = "phgkjrvdtcdrdiuigici"
+
+[functions.admin-create-user]
+verify_jwt = true
+
+[functions.admin-reset-password]
+verify_jwt = true
+
+[functions.admin-suggest-id]
+verify_jwt = true
