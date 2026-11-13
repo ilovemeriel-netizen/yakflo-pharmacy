@@ -233,7 +233,14 @@ describe('★ ⑧⑨ 그 밖', () => {
   it('새 라이브러리를 들여오지 않았다', () => {
     const imports = (SRC.match(/^import .*$/gm) || []).join('\n')
     const froms = [...imports.matchAll(/from '([^']+)'/g)].map(m => m[1])
-    for (const fr of froms) expect(fr === 'react' || fr.startsWith('./'), '새 라이브러리: ' + fr).toBe(true)
+    /* ★ react-dom 은 **새 라이브러리가 아니다**(2026-11-13 추가) — 이미 쓰고 있는 것이다.
+         App.jsx 가 2줄에서 createPortal 을 같은 데서 들여오고, package.json 에도 들어 있다.
+         인쇄할 표를 덮개 밖(body 바로 밑)으로 내보내려면 createPortal 이 있어야 한다.
+       ★ 엑셀(xlsx)은 **동적으로**(await import) 부르므로 이 목록에 잡히지 않는다 —
+         그것도 이미 저장소에 있는 것이다. 진짜 새 라이브러리는 여전히 걸린다. */
+    for (const fr of froms) {
+      expect(fr === 'react' || fr === 'react-dom' || fr.startsWith('./'), '새 라이브러리: ' + fr).toBe(true)
+    }
   })
   it('★ ⑨ 부품은 부모가 넘긴다 — 화면 **두 곳** 모두', () => {
     expect(SRC.includes("from './App"), '이 파일이 App.jsx 를 들여왔다').toBe(false)
