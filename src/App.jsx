@@ -2464,7 +2464,8 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
         ColMenu={ColMenu} useSort={useSort} />}
       {ucOpen&&<UsageCompareModal t={t} drugs={drugs.filter(d=>String(d.status||'').trim()==='사용')}
         isTenantManager={isTenantManager} onClose={()=>setUcOpen(false)} onReload={onReload}
-        onDone={r=>setUcMsg(r)} Confirm={CountConfirmModal} />}
+        onDone={r=>setUcMsg(r)} Confirm={CountConfirmModal}
+        ColMenu={ColMenu} useSort={useSort} />}
     </div><Ft/>
   </div>
 }
@@ -6398,7 +6399,8 @@ export function Report({drugs,onNav,onReload}){
       </div>}
         {ucOpen&&<UsageCompareModal t={t} drugs={drugs.filter(d=>String(d.status||'').trim()==='사용')}
       year={year} month={month} isTenantManager={isTenantManager}
-      onClose={()=>setUcOpen(false)} onReload={onReload} onDone={r=>setUcMsg(r)} Confirm={CountConfirmModal} />}
+      onClose={()=>setUcOpen(false)} onReload={onReload} onDone={r=>setUcMsg(r)} Confirm={CountConfirmModal}
+      ColMenu={ColMenu} useSort={useSort} />}
 
     {/* 앱 내 확인/안내 모달(alert·confirm 대체) — 기존 DrugDeleteConfirm 스타일 재사용 */}
     {dialog&&<div onClick={()=>setDialog(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>

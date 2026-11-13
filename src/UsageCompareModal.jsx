@@ -28,10 +28,14 @@ function monthLabel(year, month) {
   return m.join('·') + '월'
 }
 
-export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixedM, isTenantManager, onClose, onReload, onDone, Confirm }) {
+export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixedM, isTenantManager, onClose, onReload, onDone, Confirm, ColMenu, useSort }) {
   const box = useRef(null)
   const [loaded, setLoaded] = useState(null)
   const [onlyMoved, setOnlyMoved] = useState(true)
+  /* ★ 머리 정렬 — ⇅ 만. ColMenu 에 filter 를 주지 않으므로 거르기 메뉴는 나오지 않는다.
+       ★ JSX 태그 이름으로만 쓰인 식별자는 이 저장소 eslint 가 미사용으로 본다 — 변수로 한 번 받는다. */
+  const HeadMenu = ColMenu
+  const sortTbl = useSort('')
   const [off, setOff] = useState(() => new Set())   /* 체크를 **푼** 약품코드 */
 
   /* ── 기준월 — 가장 최근에 **마감된** 달 ──────────────────────────────
@@ -177,6 +181,20 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
     <span style={{ background: bg, color, padding: '3px 10px', borderRadius: 8, fontSize: 10,
       fontWeight: 600, whiteSpace: 'nowrap', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>{text}</span>
   )
+  /* ★★ 보여 줄 때만 줄을 세운다 — **원본(p.rows·p.moved)은 한 줄도 건드리지 않는다.**
+       체크는 약품코드(Set)로 기억하고 「적용」도 원본 p.rows 로 만들기 때문에,
+       보이는 차례가 바뀌어도 **체크와 적용 대상이 달라지지 않는다**(시험으로 못 박는다). */
+  const sortRows = (list, st) => {
+    if (!st || !st.sk) return list
+    const dir = st.sd === 'desc' ? -1 : 1
+    return [...list].sort((a, b) => {
+      const x = a[st.sk], y = b[st.sk]
+      const nx = Number(x), ny = Number(y)
+      const bothNum = x != null && y != null && !Number.isNaN(nx) && !Number.isNaN(ny) && String(x).trim() !== '' && String(y).trim() !== ''
+      if (bothNum) return (nx - ny) * dir
+      return String(x ?? '').localeCompare(String(y ?? ''), 'ko') * dir
+    })
+  }
   const th = { padding: '8px 10px', textAlign: 'left', color: t.textM, fontWeight: 600,
     borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap', fontSize: 11, background: t.bg }
   const thR = { ...th, textAlign: 'right' }
@@ -279,16 +297,15 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, textAlign: 'left' }}>
           <thead><tr>
             <th style={{ ...th, width: 34 }} aria-label="고르기" />
-            <th style={th}>약품</th>
-            <th style={thR}>직전3개월</th>
-            <th style={thR}>직전1개월</th>
-            <th style={thR}>월평균</th>
-            <th style={thR}>안전재고</th>
-            <th style={th}>상태</th>
+            {[['name', '약품', th], ['n3', '직전3개월', thR], ['n1', '직전1개월', thR],
+              ['nm', '월평균', thR], ['nsf', '안전재고', thR], ['after', '상태', th]].map(([k, lab, stl]) =>
+              <th key={k} style={stl}>
+                <HeadMenu colKey={k} label={lab} sk={sortTbl.sk} sd={sortTbl.sd} setSort={sortTbl.setSort} />
+              </th>)}
             <th style={th}>비고</th>
           </tr></thead>
           <tbody>
-            {shown.map(r => (
+            {sortRows(shown, sortTbl).map(r => (
               <tr key={r.code}>
                 <td style={td}>
                   <input type="checkbox" checked={finalPicked.has(r.code)} onChange={() => toggle(r)}
