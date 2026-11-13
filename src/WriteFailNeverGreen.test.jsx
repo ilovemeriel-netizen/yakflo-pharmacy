@@ -51,8 +51,14 @@ beforeEach(async () => {
 })
 afterEach(() => cleanup())
 
+/* ★ 머리 정렬 부품 — 화면에서는 App.jsx 가 넘긴다(순환 import 회피).
+   시험에서도 같은 자리를 채워야 창이 뜬다. 정렬 동작 자체는
+   src/NarcoticUsageSort.test.jsx 가 따로 못 박는다. */
+const Head = ({ label }) => <>{label}</>
+const useSortStub = () => ({ sk: '', sd: 'asc', setSort: () => {} })
 const open = () => render(
-  <Modal t={T} drugs={DRUGS} onClose={() => {}} isTenantManager onReload={() => {}} Confirm={Confirm} />)
+  <Modal t={T} drugs={DRUGS} onClose={() => {}} isTenantManager onReload={() => {}} Confirm={Confirm}
+    ColMenu={Head} useSort={useSortStub} />)
 
 const applyBtn = () => screen.queryByRole('button', { name: /기준으로 적용/ })
 const greenBand = () => screen.queryByText(/적용 완료/)
