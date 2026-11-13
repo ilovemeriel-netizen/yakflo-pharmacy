@@ -36,6 +36,9 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
        ★ JSX 태그 이름으로만 쓰인 식별자는 이 저장소 eslint 가 미사용으로 본다 — 변수로 한 번 받는다. */
   const HeadMenu = ColMenu
   const sortTbl = useSort('')
+  /* ★ 「3개월 출고 0」만 보기 — **보기만** 좁힌다. 한 번 더 누르면 풀린다.
+       적용 대상 규칙(원본 p.rows + 약품코드 Set)은 **한 글자도 바뀌지 않는다**. */
+  const [zeroOnly, setZeroOnly] = useState(false)
   const [off, setOff] = useState(() => new Set())   /* 체크를 **푼** 약품코드 */
 
   /* ── 기준월 — 가장 최근에 **마감된** 달 ──────────────────────────────
@@ -228,7 +231,12 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
       : r.tiny ? badge('극소량 — 3개월 그대로', t.purpleL, t.purple)
         : !r.changed ? badge('차이 없음', '#F0F0EB', t.textL) : null
 
-  const shown = p ? (onlyMoved ? p.moved : p.rows) : []
+  const base0 = p ? (onlyMoved ? p.moved : p.rows) : []
+  const shown = zeroOnly ? base0.filter(r => r.zeroOut) : base0
+  /* ★★ 걸러서 **화면 밖으로 간 체크**를 센다 — 「적용」은 여전히 체크한 모두에 들어가므로
+       조용히 두지 않고 말해 준다. 세기만 할 뿐 **적용 대상을 바꾸지 않는다.** */
+  const shownSet = new Set(shown.map(r => r.code))
+  const hiddenPicked = [...finalPicked].filter(c => !shownSet.has(c)).length
   const s = p ? p.summary : null
   const as = p ? applySummary(p.rows, finalPicked) : null
 
@@ -266,7 +274,20 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
         {badge('달라짐 ' + s.changed + '종', t.accentL, t.accent)}
         {badge('적용 ' + finalPicked.size + '종', t.greenL, t.green)}
         {badge('백신 제외 ' + s.vac + '종', t.blueL, t.blue)}
-        {badge('3개월 출고 0 ' + s.zero + '종', t.amberL, t.amber)}
+        {/* ★ 누를 수 있는 칩은 **이것 하나뿐**이다(2026-11-13 이정화 님 승인).
+             눌림 모양은 재고현황 「급변」 단추와 **같은 꼴** — 테두리 + 같은 색 18%.
+             ★ 새 색을 만들지 않는다: t.amberL·t.amber 는 이미 쓰던 색이고
+               t.amber + '18' 은 그 주황을 옅게 쓴 것이다(App.jsx 와 같은 방식).
+             ★ 안 눌렸을 때도 테두리 자리를 비워 둔다 — 누를 때 칩이 들썩이지 않게. */}
+        <button type="button" onClick={() => setZeroOnly(v => !v)} aria-pressed={zeroOnly}
+          title={zeroOnly ? '모두 보기' : '이 약만 보기'}
+          style={{ padding: '3px 10px', borderRadius: 8, fontSize: 10, whiteSpace: 'nowrap',
+            cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+            border: '1px solid ' + (zeroOnly ? t.amber : 'transparent'),
+            background: zeroOnly ? t.amber + '18' : t.amberL,
+            color: t.amber, fontWeight: zeroOnly ? 700 : 600 }}>
+          {'3개월 출고 0 ' + s.zero + '종'}
+        </button>
         {badge('극소량 ' + s.tiny + '종', t.purpleL, t.purple)}
       </div>}
 
@@ -289,6 +310,13 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
       {result && <div style={{ background: t.greenL, border: `1px solid ${t.border}`, borderRadius: 8,
         padding: '10px 14px', fontSize: 12, color: t.green, marginBottom: 10 }}>
         적용 완료 — {num(result.saved)}종을 저장했습니다.
+      </div>}
+
+      {/* ★ 걸러서 안 보이게 된 체크를 **말해 준다** — 「적용」은 체크한 모두에 들어간다.
+           2026-11-13 이정화 님이 정한 문구 그대로. 숨은 체크가 있을 때만 뜬다. */}
+      {hiddenPicked > 0 && <div style={{ background: t.amberL, border: `1px solid ${t.border}`, borderRadius: 8,
+        padding: '10px 14px', fontSize: 12, color: t.amber, marginBottom: 10 }}>
+        체크한 {finalPicked.size}종 중 {hiddenPicked}종이 지금 안 보입니다 · 「적용」을 누르면 체크한 {finalPicked.size}종 모두 바뀝니다
       </div>}
 
       {!ready && !err && <div style={{ padding: '28px 0', textAlign: 'center', color: t.textL, fontSize: 12 }}>거래를 읽는 중…</div>}
