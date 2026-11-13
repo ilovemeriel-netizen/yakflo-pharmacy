@@ -186,7 +186,24 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
 
   const [prnPages, setPrnPages] = useState(null)   /* 인쇄 쪽 나눔 결과 */
   const [printing, setPrinting] = useState(false)  /* 「인쇄」를 누른 동안만 참 */
+  const offRef = useRef(null)                      /* afterprint 를 떼어 낼 자리 */
   const prnRef = useRef(null)
+
+  /* ★★ 거르기를 바꿀 때는 인쇄 표시를 **반드시 끈다.**
+       안 끄면 거르기를 풀었다가 **다시 걸었을 때**, 「인쇄」를 누르지도 않았는데
+       종이를 가로로 바꾸는 규칙이 되살아난다(= 다른 화면 인쇄에 번진다).
+       칩이든 비고 메뉴든 **이 문 하나로만** 바꾼다. */
+  function changeNote(v) {
+    setPrinting(false)
+    if (offRef.current) { window.removeEventListener('afterprint', offRef.current); offRef.current = null }
+    setNoteF(v)
+  }
+  /* ★ 창이 사라질 때도 손잡이를 떼어 낸다 — 인쇄 규칙은 포털과 함께 사라지지만
+       걸어 둔 afterprint 는 저절로 사라지지 않는다.
+       (상태를 바꾸지 않으므로 효과에 둬도 된다) */
+  useEffect(() => () => {
+    if (offRef.current) { window.removeEventListener('afterprint', offRef.current); offRef.current = null }
+  }, [])
 
   const year = ym ? ym.y : null
   const month = ym ? ym.m : null
@@ -468,7 +485,8 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
     /* ★ 끝나면 규칙을 **반드시** 뺀다 — 남겨 두면 다른 화면 인쇄까지 가로로 바뀐다.
          ★ 뒤늦게 빼는 받침(setTimeout)은 두지 않는다 — 브라우저가 인쇄를 그리기 전에
            빼 버리면 **앱이 그대로 찍힌다.** */
-    const off = () => { setPrinting(false); window.removeEventListener('afterprint', off) }
+    const off = () => { setPrinting(false); window.removeEventListener('afterprint', off); offRef.current = null }
+    offRef.current = off
     window.addEventListener('afterprint', off)
     window.print()
   }
@@ -520,7 +538,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
              ★ 새 색을 만들지 않는다: t.amberL·t.amber 는 이미 쓰던 색이고
                t.amber + '18' 은 그 주황을 옅게 쓴 것이다(App.jsx 와 같은 방식).
              ★ 안 눌렸을 때도 테두리 자리를 비워 둔다 — 누를 때 칩이 들썩이지 않게. */}
-        <button type="button" onClick={() => setNoteF(v => (v === 'zero' ? null : 'zero'))} aria-pressed={zeroOnly}
+        <button type="button" onClick={() => changeNote(zeroOnly ? null : 'zero')} aria-pressed={zeroOnly}
           title={zeroOnly ? '모두 보기' : '이 약만 보기'}
           style={{ padding: '3px 10px', borderRadius: 8, fontSize: 10, whiteSpace: 'nowrap',
             cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
@@ -586,7 +604,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
                  줄바꿈하고, **약품 칸 너비는 그대로**다(2026-11-13 이정화 님 승인 ㉡안). */}
             <th style={{ ...th, ...noteCell }}>
               <HeadMenu colKey="note" label="비고" sk={sortTbl.sk} sd={sortTbl.sd} setSort={sortTbl.setSort}
-                filter={{ items: noteItems, value: noteLabelOf(noteF), on: v => setNoteF(v ? noteKeyOf(v) : null) }} />
+                filter={{ items: noteItems, value: noteLabelOf(noteF), on: v => changeNote(v ? noteKeyOf(v) : null) }} />
             </th>
           </tr></thead>
           <tbody>

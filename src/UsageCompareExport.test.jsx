@@ -276,6 +276,43 @@ describe('★ ⑬ 인쇄 — A4 가로 · 머리 반복 · 줄 안 잘림 · 약
     const styles = [...document.querySelectorAll('style')].map(s => s.textContent).join('\n')
     expect(styles).toContain('@page{size:A4 landscape')
   })
+  it('★ ⑬-0-4 거르기를 풀었다 다시 걸면 종이 규칙이 **되살아나지 않는다**', async () => {
+    /* ★★ afterprint 가 안 불리는 자리를 메운다.
+         인쇄 표시(printing)를 안 끄면, 거르기를 풀었다 다시 걸었을 때
+         「인쇄」를 누르지도 않았는데 @page 가 돌아와 **다른 화면 인쇄에 번진다.** */
+    const pageRule = () => [...document.querySelectorAll('style')]
+      .map(s => s.textContent).join('\n').includes('@page{size:A4 landscape')
+    await open(); await pressChip()
+    expect(pageRule(), '누르기 전엔 없어야 한다').toBe(false)
+    await act(async () => { fireEvent.click(btn('인쇄')) }); await settle(6)
+    expect(pageRule(), '누르면 들어와야 한다').toBe(true)
+    await pressChip()                       /* 거르기 해제 → 인쇄 블록째 사라진다 */
+    expect(pageRule(), '거르기를 풀면 없어야 한다').toBe(false)
+    await pressChip()                       /* 다시 걸기 — 여기서 되살아나면 안 된다 */
+    expect(pageRule(), '★ 누르지도 않았는데 되살아났다').toBe(false)
+  })
+  it('★ ⑬-0-5 비고 메뉴로 풀었다 걸어도 되살아나지 않는다', async () => {
+    const pageRule = () => [...document.querySelectorAll('style')]
+      .map(s => s.textContent).join('\n').includes('@page{size:A4 landscape')
+    await open(); await pickMenu('3개월 출고 0')
+    await act(async () => { fireEvent.click(btn('인쇄')) }); await settle(6)
+    expect(pageRule()).toBe(true)
+    const all = document.querySelector('[data-menu="note"] button[data-item="전체"]')
+    await act(async () => { fireEvent.click(all) }); await settle(6)
+    expect(pageRule(), '전체로 풀면 없어야 한다').toBe(false)
+    await pickMenu('3개월 출고 0')
+    expect(pageRule(), '★ 누르지도 않았는데 되살아났다').toBe(false)
+  })
+  it('★ ⑬-0-6 창을 닫으면 인쇄용 CSS 가 문서에서 사라진다', async () => {
+    const r = await open(); await pressChip()
+    await act(async () => { fireEvent.click(btn('인쇄')) }); await settle(6)
+    expect(document.querySelector('.uc-print'), '인쇄 블록이 있어야 한다').toBeTruthy()
+    r.unmount()
+    const styles = [...document.querySelectorAll('style')].map(s => s.textContent).join('\n')
+    expect(styles.includes('@page{size:A4 landscape'), '창을 닫았는데 @page 가 남았다').toBe(false)
+    expect(styles.includes('.uc-print'), '창을 닫았는데 인쇄 CSS 가 남았다').toBe(false)
+    expect(document.querySelector('.uc-print'), '창을 닫았는데 인쇄 블록이 남았다').toBeNull()
+  })
   it('⑬ 인쇄 CSS 에 정해진 규칙이 다 있다', () => {
     expect(SRC).toContain('@page{size:A4 landscape')
     expect(SRC).toContain('thead{display:table-header-group}')
