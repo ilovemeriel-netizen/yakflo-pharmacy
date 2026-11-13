@@ -14,6 +14,7 @@
 
    ★ 계산식은 `lib/usageCompare.js` 에만 있다. 여기서 셈하지 않는다. */
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { createPortal, flushSync } from 'react-dom'
 import { supabase } from './lib/supabase'
 import { buildUsageCompare, applyRows, applySummary, APPLY_FIELDS, closedWindow } from './lib/usageCompare'
 import { checkRowLimit } from './lib/rowLimit'
@@ -28,6 +29,100 @@ const num = v => Number(v || 0).toLocaleString()
        그냥 149 를 주면 169 가 되어 약품 칸이 22px 줄어든다. 그래서 border-box 로 못 박는다. */
 const NOTE_W = 149
 const noteCell = { width: NOTE_W, boxSizing: 'border-box' }
+
+/* ── 인쇄 — 「3개월 출고 0」 재고 실사 리스트 ────────────────────────────
+   ★ NARC_PRINT_CSS(향정 인쇄)와 **같은 방식**이다. 새 방식을 만들지 않는다.
+   ★ 이 창은 덮개 위에 뜨는 모달이라 그대로 찍으면 검은 덮개까지 인쇄된다.
+     그래서 인쇄할 표만 **body 바로 밑으로 따로 내보내고**(createPortal),
+     인쇄 때 body 의 다른 자식(= #root 전체)을 숨긴다.
+   ★ 앱 전역에 @page{size:A4 portrait} 가 걸려 있다 — 이 블록이 문서에서
+     **뒤에 오므로** 가로가 이긴다(실제 인쇄로 297×210mm 확인).
+   ★★ 쪽 번호 「1 / 2」 때문에 **쪽을 직접 나눈다.** 크롬·엣지는 @page 여백 상자
+     (@bottom-right{content:counter(page)})를 **지원하지 않아** CSS 만으로는 못 적는다.
+     병동 인쇄(.wp-page)와 같은 길이다. 줄 높이를 재서 끊고, 브라우저의
+     break-inside:avoid 를 **받침**으로 남겨 둔다(재기가 어긋나도 줄이 안 잘린다). */
+const A4L_H_MM = 210, A4L_MARGIN_MM = 10
+/* ★ 한 쪽에 담을 높이. 여유 **8mm** 를 둔다.
+     ★ 재기는 바깥 여백(margin)을 세지 않는다 — 제목 아래 4mm 처럼 셈에서 빠지는 높이가 있어
+       여유가 없으면 쪽이 종이보다 커진다(2026-11-13 실측: 여유 3mm 일 때 190mm 로 턱걸이).
+   ★★ 쪽 상자에 **높이를 고정하지 않는다.** 고정하면 인쇄 때 1px만 넘쳐도 그 쪽이
+      다음 장으로 밀리고 break-after 가 또 한 장을 만들어 **빈 장이 생긴다**
+      (2026-11-13 실제로 겪었다: 2쪽짜리가 3쪽이 됐다).
+      대신 쪽 번호를 표 바로 아래에 둔다 — 자리는 아래쪽이 아니지만 **빈 장이 없다.** */
+const PRINT_CONTENT_H_MM = A4L_H_MM - A4L_MARGIN_MM * 2 - 8   /* 182mm */
+const MM_PX = 96 / 25.4
+const UC_PRINT_CSS = `
+.uc-print{display:none}
+.uc-print-measure{position:absolute;left:-99999px;top:0;width:${297 - A4L_MARGIN_MM * 2}mm}
+@media print{
+  @page{size:A4 landscape;margin:${A4L_MARGIN_MM}mm}
+  body>*:not(.uc-print){display:none!important}
+  .uc-print{display:block!important;background:#fff!important;color:#000!important}
+  .uc-print *{background:transparent!important;color:#000!important;box-shadow:none!important}
+  .uc-print-measure{display:none!important}
+}
+.uc-pr .up-page{break-after:page;page-break-after:always}
+.uc-pr .up-page:last-child{break-after:auto;page-break-after:auto}
+.uc-pr .up-h{font-size:15pt;font-weight:700;margin:0 0 1.5mm;text-align:left}
+.uc-pr .up-h::after{content:"";display:block;width:70mm;height:0;border-top:1.6pt solid #000;margin-top:1.2mm}
+.uc-pr .up-m{font-size:8.5pt;line-height:1.5;margin:2.5mm 0 4mm;text-align:left}
+.uc-pr table{width:100%;border-collapse:collapse;table-layout:fixed}
+.uc-pr thead{display:table-header-group}
+.uc-pr tr{break-inside:avoid;page-break-inside:avoid}
+/* ★ !important 를 붙인다 — 앱 전역 인쇄 CSS 에 th,td{padding:4px 6px!important;font-size:9px!important}
+     가 있어서, 안 붙이면 **우리가 잰 크기와 다른 크기로 인쇄된다.** */
+.uc-pr th,.uc-pr td{border:0.5pt solid #666;padding:1.4mm 2mm!important;font-size:9pt!important;line-height:1.3;vertical-align:middle}
+.uc-print th{font-weight:700;border-bottom:3pt double #000;text-align:center}
+/* ★ 칸마다 정렬을 직접 적는다 — #root{text-align:center} 가 전 화면에 상속된다(함정 #31) */
+.uc-pr .up-l{text-align:left}
+.uc-pr .up-r{text-align:right}
+.uc-pr .up-c{text-align:center}
+/* 약품명 — 글씨를 줄여 한 줄 우선, 넘치면 두 줄까지만 */
+.uc-pr .up-name{font-size:8pt!important;word-break:keep-all;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* 서명 칸 — 향정 인쇄 .np-sign 과 같은 모양 */
+.uc-pr .up-sign{margin-top:8mm;font-size:9pt;width:auto}
+.uc-pr .up-sign td{border:none;padding:0 6mm 0 0;white-space:nowrap}
+/* 쪽 번호 — 쪽 맨 아래 가운데 */
+.uc-pr .up-ft{padding-top:3mm;text-align:center;font-size:8.5pt}
+.uc-pr col.c1{width:12%} .uc-pr col.c2{width:26%} .uc-pr col.c3{width:7%}
+.uc-pr col.c4{width:8%}  .uc-pr col.c5{width:13%} .uc-pr col.c6{width:14%}
+.uc-pr col.c7{width:8%}  .uc-pr col.c8{width:6%}  .uc-pr col.c9{width:6%}
+`
+
+/* ── 인쇄 조각 — **창 밖(모듈)에 둔다.** 렌더 안에서 만들면 리액트가 매번
+     새 부품으로 보고 통째로 다시 그린다(이 저장소 eslint 도 막는다).
+   ★ 재는 자리와 진짜 쪽이 **같은 모양**이어야 잰 높이가 맞는다 — 둘 다 이 조각을 쓴다. */
+const PrnCols = () => <colgroup>
+  <col className="c1" /><col className="c2" /><col className="c3" /><col className="c4" />
+  <col className="c5" /><col className="c6" /><col className="c7" /><col className="c8" /><col className="c9" />
+</colgroup>
+const PrnHead = () => <thead><tr>
+  <th>약품코드</th><th>약품명</th><th>구분</th><th>현재고</th>
+  <th>직전3개월</th><th>비고</th><th>실사수량</th><th>차이</th><th>확인</th>
+</tr></thead>
+const PrnRow = ({ r }) => <tr>
+  <td className="up-l">{r.code}</td>
+  <td className="up-l"><span className="up-name">{r.name}</span></td>
+  <td className="up-c">{r.category}</td>
+  <td className="up-r">{num(r.qty)}</td>
+  <td className="up-r">{num(r.o3)} → {num(r.n3)}</td>
+  <td className="up-l">{r.note}</td>
+  {/* ★ 실사수량·차이·확인은 **종이에서 손으로 적는 자리**다 — 빈칸으로 둔다 */}
+  <td /><td /><td />
+</tr>
+/* 서명 칸 — 향정 인쇄 .np-sign 과 같은 모양 */
+const PrnSign = () => <table className="up-sign"><tbody><tr>
+  <td>실사자 ______________________ (서명)</td>
+  <td>확인자 ______________________ (서명)</td>
+</tr></tbody></table>
+
+/* 오늘 YYYYMMDD — ★ toISOString() 은 UTC 라 한국 시각 자정 언저리에 하루가 밀린다.
+   파일 이름에 쓰이므로 **그 지역 날짜**로 적는다. */
+function ymdToday() {
+  const d = new Date()
+  return String(d.getFullYear()) + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0')
+}
 
 /* 「8·9·10월」처럼 석 달을 적는다. 해가 바뀌어도 맞게 — 1월이면 11·12·1월이 된다. */
 function monthLabel(year, month) {
@@ -50,6 +145,10 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
         붙고, 메뉴에서 풀면 칩도 풀린다. 두 벌로 두면 **서로 어긋난 상태**가 생긴다.
         null = 전체. (2026-11-13 이정화 님 승인) */
   const [noteF, setNoteF] = useState(null)
+  /* 인쇄 머리말에 적을 약국 이름 — Header 가 쓰는 것과 **같은 한 줄**(tenants.name).
+     ★ 「3개월 출고 0」으로 걸렀을 때만 읽는다 — 창을 열기만 해서는 조회하지 않는다.
+     ★ 못 읽어도 인쇄는 그대로 된다(이름만 비고 나머지는 같다). */
+  const [org, setOrg] = useState('')
   const zeroOnly = noteF === 'zero'
   const [off, setOff] = useState(() => new Set())   /* 체크를 **푼** 약품코드 */
 
@@ -74,6 +173,9 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
       })
     return () => { dead = true }
   }, [fixedY, fixedM])
+
+  const [prnPages, setPrnPages] = useState(null)   /* 인쇄 쪽 나눔 결과 */
+  const prnRef = useRef(null)
 
   const year = ym ? ym.y : null
   const month = ym ? ym.m : null
@@ -117,6 +219,14 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
     })()
     return () => { dead = true }
   }, [year, month, key])
+
+  useEffect(() => {
+    if (noteF !== 'zero' || org) return undefined
+    let dead = false
+    supabase.from('tenants').select('name').limit(1).maybeSingle()
+      .then(({ data }) => { if (!dead && data && data.name) setOrg(String(data.name)) })
+    return () => { dead = true }
+  }, [noteF, org])
 
   const ready = ym != null && loaded != null && loaded.key === key
   const txns = ready ? loaded.rows : null
@@ -269,8 +379,89 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
        조용히 두지 않고 말해 준다. 세기만 할 뿐 **적용 대상을 바꾸지 않는다.** */
   const shownSet = new Set(shown.map(r => r.code))
   const hiddenPicked = [...finalPicked].filter(c => !shownSet.has(c)).length
+
+  /* ── 인쇄·엑셀 — 「3개월 출고 0」으로 걸렀을 때만 ────────────────────────
+     ★ **읽기만 한다.** 체크·적용과 아무 상관이 없다 — 지금 **보이는 줄**을
+       보이는 차례 그대로 내보낸다. 적용 대상 규칙은 건드리지 않는다. */
+  const zeroPicked = noteF === 'zero'
+  const prnRows = sortRows(shown, sortTbl)
+    .map(r => ({ ...r, note: noteHit(r).map(d => d.label).join(' · ') }))
+
+  /* 엑셀 — 저장소에 이미 있는 xlsx(SheetJS)를 **동적으로** 불러 쓴다.
+     실사양식·재고·유효기한 등 아홉 곳이 같은 방식이다. **새 라이브러리 없음.** */
+  async function dlXlsx() {
+    try {
+      const XL = await import('xlsx')
+      const HDR = ['약품코드', '약품명', '구분', '현재고',
+        '직전3개월(예전)', '직전3개월(지금)', '비고', '실사수량', '차이', '확인']
+      const aoa = [HDR, ...prnRows.map(r => [
+        r.code, r.name, r.category, r.qty, r.o3, r.n3,
+        r.note, '', '', '',
+      ])]
+      const ws = XL.utils.aoa_to_sheet(aoa)
+      for (let i = 0; i < prnRows.length; i++) {
+        const rowNo = i + 2                       /* 엑셀 행 번호(머리 1줄 다음부터) */
+        /* ★ 약품코드는 **텍스트 서식**으로 둔다 — 2026-08 마감에서 APR2 가 46114 로
+             자동 변환된 사고가 실재한다(실사양식과 같은 처리). */
+        const a = XL.utils.encode_cell({ c: 0, r: i + 1 })
+        if (ws[a]) { ws[a].t = 's'; ws[a].z = '@' }
+        /* ★ 「차이」 = 실사수량 − 현재고. 실사수량이 비어 있으면 **빈칸으로 보이게** 한다.
+             값을 미리 박지 않고 **식**을 넣는다 — 종이에서 옮겨 적으면 바로 셈이 된다. */
+        const d = XL.utils.encode_cell({ c: 8, r: i + 1 })
+        ws[d] = { t: 's', v: '', f: 'IF(H' + rowNo + '="","",H' + rowNo + '-D' + rowNo + ')' }
+      }
+      ws['!cols'] = [{ wch: 14 }, { wch: 30 }, { wch: 9 }, { wch: 10 },
+        { wch: 15 }, { wch: 15 }, { wch: 26 }, { wch: 11 }, { wch: 9 }, { wch: 9 }]
+      const wb = XL.utils.book_new()
+      XL.utils.book_append_sheet(wb, ws, '3개월출고0')
+      XL.writeFile(wb, '재고실사_3개월출고0_' + ymdToday() + '.xlsx')
+      onDone?.({ ok: true, message: '엑셀을 내려받았습니다 — ' + num(prnRows.length) + '줄' })
+    } catch (e) {
+      onDone?.({ ok: false, message: '엑셀을 만들지 못했습니다: ' + (e && e.message ? e.message : String(e)) })
+    }
+  }
   const s = p ? p.summary : null
   const as = p ? applySummary(p.rows, finalPicked) : null
+
+  /* ★★ 쪽 나눔 — 화면 밖에 한 벌 그려 **줄 높이를 재고** 끊는다.
+       크롬·엣지는 @page 여백 상자(@bottom-right{content:counter(page)})를 **지원하지 않아**
+       CSS 만으로는 쪽 번호를 못 적는다. 병동 인쇄(.wp-page)와 같은 길이다.
+     ★ 재기가 어긋나도 break-inside:avoid 가 받쳐 주므로 **줄이 잘리지는 않는다.**
+     ★ 「인쇄」를 누를 때만 잰다 — 창이 떠 있는 내내 재면 괜히 다시 그려진다. */
+  function measurePages() {
+    const el = prnRef.current
+    if (!el) return null
+    const H = PRINT_CONTENT_H_MM * MM_PX
+    const hOf = sel => { const x = el.querySelector(sel); return x ? x.getBoundingClientRect().height : 0 }
+    /* ★★ 서명 칸도 table 이다 — 이름(.up-main)을 따로 주지 않으면 **서명 줄까지 세어**
+         줄이 하나 더 있는 줄 알고 없는 줄을 찾다 터진다(향정 인쇄 np-main 과 같은 처리).
+         2026-11-13 에 실제로 겪었다: 42줄인데 43으로 세어 42번째에서 멈췄다. */
+    const headH = hOf('.up-main thead'), titleH = hOf('.up-title'), footH = hOf('.up-ft'), signH = hOf('.up-sign')
+    const trs = [...el.querySelectorAll('.up-main tbody tr')].map(x => x.getBoundingClientRect().height)
+    const out = []; let cur = []; let used = titleH + headH + footH
+    for (let i = 0; i < trs.length; i++) {
+      if (used + trs[i] > H && cur.length) { out.push(cur); cur = []; used = headH + footH }
+      cur.push(i); used += trs[i]
+    }
+    if (cur.length) out.push(cur)
+    /* 서명 칸이 마지막 쪽에 안 들어가면 쪽을 하나 더 둔다 — 서명만 잘려 나가지 않게 */
+    if (out.length && used + signH > H) out.push([])
+    return out
+  }
+  /* 쪽을 나눠 **그려 놓은 뒤에** 인쇄 창을 연다 — flushSync 가 그 차례를 지킨다 */
+  function doPrint() {
+    const pages = measurePages()
+    if (pages) flushSync(() => setPrnPages(pages))
+    window.print()
+  }
+
+  const prnTitle = <div className="up-title">
+    <div className="up-h">3개월 출고 0 재고 실사 리스트</div>
+    <div className="up-m">
+      {org ? org + '  ·  ' : ''}출력 {new Date().toLocaleString('ko-KR', { hour12: false })}
+      {'  ·  '}기준 최근 마감 {year}년 {month}월{'  ·  '}모두 {num(prnRows.length)}줄
+    </div>
+  </div>
 
   return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
     zIndex: 1100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
@@ -353,6 +544,17 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
 
       {!ready && !err && <div style={{ padding: '28px 0', textAlign: 'center', color: t.textL, fontSize: 12 }}>거래를 읽는 중…</div>}
 
+      {/* ★ 「3개월 출고 0」으로 걸렀을 때만 나온다 — 칩이든 비고 메뉴든 같은 상태(noteF)다.
+           단추 모양은 보고서 화면의 「엑셀」·「인쇄」와 **같은 값**이다(글자만·아이콘 없음·새 색 없음). */}
+      {ready && zeroPicked && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
+        <button onClick={dlXlsx} title="지금 보이는 줄을 엑셀로 내려받습니다" style={{ padding: '6px 14px', borderRadius: 8,
+          border: `1px solid ${t.green}`, background: t.greenL, color: t.green,
+          cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>엑셀</button>
+        <button onClick={doPrint} title="지금 보이는 줄을 A4 가로로 인쇄합니다" style={{ padding: '6px 14px', borderRadius: 8,
+          border: `1px solid ${t.blue}`, background: t.blueL, color: t.blue,
+          cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>인쇄</button>
+      </div>}
+
       {ready && <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, textAlign: 'left' }}>
           <thead><tr>
@@ -419,6 +621,31 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
           닫히지 않았다**(UsageCompareClose.test.jsx). 2026-11-10 의 「적용했는데
           0건」의 원인은 **아직 못 찾았다.** 이 한 줄은 그 가설을 막아 두는 빗장일 뿐,
           원인 규명이 아니다. 원인은 onDone 이 남기는 띠로 다음 번에 잡는다. */}
+    {/* ★★ 인쇄할 표 — **body 바로 밑**으로 내보낸다(createPortal).
+           이 창은 덮개 위에 뜨는 모달이라 그대로 찍으면 검은 덮개까지 인쇄된다.
+           화면에는 안 보이고 **종이에만** 나온다. */}
+    {ready && zeroPicked && createPortal(<>
+      <style>{UC_PRINT_CSS}</style>
+      {/* 재는 자리 — 화면 밖에 한 벌 그려 높이만 잰다. 인쇄에는 안 나온다. */}
+      <div ref={prnRef} className="uc-pr uc-print-measure" aria-hidden="true">
+        {prnTitle}
+        <table className="up-main"><PrnCols /><PrnHead /><tbody>{prnRows.map(r => <PrnRow key={r.code} r={r} />)}</tbody></table>
+        <PrnSign />
+        <div className="up-ft">1 / 1</div>
+      </div>
+      <div className="uc-pr uc-print">
+        {(prnPages || [prnRows.map((_, i) => i)]).map((idx, pi, all) => (
+          <section className="up-page" key={pi}>
+            {pi === 0 ? prnTitle : null}
+            <table className="up-main"><PrnCols /><PrnHead />
+              <tbody>{idx.map(i => <PrnRow key={prnRows[i].code} r={prnRows[i]} />)}</tbody></table>
+            {pi === all.length - 1 ? <PrnSign /> : null}
+            <div className="up-ft">{pi + 1} / {all.length}</div>
+          </section>
+        ))}
+      </div>
+    </>, document.body)}
+
     {confirming && Confirm && <div onClick={e => e.stopPropagation()}><Confirm t={t} title="사용량 적용"
       tone={t.accent} escClose focusCancel
       head={`${year}년 ${month}월 마감 기준으로 ${finalPicked.size}종을 저장합니다.`}
