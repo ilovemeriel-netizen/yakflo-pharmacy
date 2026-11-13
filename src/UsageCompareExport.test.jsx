@@ -240,6 +240,42 @@ describe('★ ⑫ 새 라이브러리 없음', () => {
 })
 
 describe('★ ⑬ 인쇄 — A4 가로 · 머리 반복 · 줄 안 잘림 · 약국 · 서명 · 쪽 번호', () => {
+  it('★ ⑬-0 다른 화면 인쇄에 번지지 않는다 — @page 는 누를 때만 문서에 넣는다', async () => {
+    /* ★★ @page 는 **선택자로 범위를 좁힐 수 없다.** 문서에 있기만 하면 그 문서의
+         모든 인쇄에 걸린다. 2026-11-13 실측: 늘 띄워 두니 향정 인쇄 종이가
+         216×279mm → 297×210mm 로 바뀌었다. 그래서 두 덩어리로 나눠 둔다. */
+    expect(SRC).toContain('const UC_PRINT_ON_CSS')
+    /* ★ **CSS 본문만** 본다 — 주석에 적힌 「@page」 글자를 잡으면 뜻이 없다 */
+    const body = name => {
+      const m = SRC.match(new RegExp('const ' + name + ' = `([\\s\\S]*?)`'))
+      expect(m, name + ' 을 찾지 못했다').not.toBeNull()
+      return m[1]
+    }
+    /* 늘 떠 있는 쪽에는 종이를 바꾸거나 앱을 숨기는 규칙이 **없어야** 한다 */
+    const always = body('UC_PRINT_CSS')
+    expect(always.includes('@page'), '늘 떠 있는 CSS 에 @page 가 있다').toBe(false)
+    expect(always.includes('body>*'), '늘 떠 있는 CSS 가 앱을 숨긴다').toBe(false)
+    /* 누를 때만 넣는 쪽에 둘 다 있다 */
+    const onCss = body('UC_PRINT_ON_CSS')
+    expect(onCss).toContain('@page{size:A4 landscape')
+    expect(onCss).toContain('body>*:not(.uc-print){display:none!important}')
+    /* 화면에 그려지는 것은 **인쇄를 누른 동안만** */
+    expect(SRC).toContain('{printing ? <style>{UC_PRINT_ON_CSS}</style> : null}')
+    /* 끝나면 반드시 뺀다 */
+    expect(SRC).toContain("window.addEventListener('afterprint', off)")
+  })
+  it('★ ⑬-0-2 창을 열어 걸러 두기만 해서는 종이를 바꾸는 규칙이 문서에 없다', async () => {
+    await open(); await pressChip()
+    const styles = [...document.querySelectorAll('style')].map(s => s.textContent).join('\n')
+    expect(styles, '인쇄 블록이 붙어 있어야 한다').toContain('.uc-print')
+    expect(styles.includes('@page'), '누르지도 않았는데 @page 가 문서에 있다').toBe(false)
+  })
+  it('★ ⑬-0-3 「인쇄」를 누르면 그때 들어온다', async () => {
+    await open(); await pressChip()
+    await act(async () => { fireEvent.click(btn('인쇄')) }); await settle(6)
+    const styles = [...document.querySelectorAll('style')].map(s => s.textContent).join('\n')
+    expect(styles).toContain('@page{size:A4 landscape')
+  })
   it('⑬ 인쇄 CSS 에 정해진 규칙이 다 있다', () => {
     expect(SRC).toContain('@page{size:A4 landscape')
     expect(SRC).toContain('thead{display:table-header-group}')

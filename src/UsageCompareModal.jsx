@@ -55,10 +55,6 @@ const UC_PRINT_CSS = `
 .uc-print{display:none}
 .uc-print-measure{position:absolute;left:-99999px;top:0;width:${297 - A4L_MARGIN_MM * 2}mm}
 @media print{
-  @page{size:A4 landscape;margin:${A4L_MARGIN_MM}mm}
-  body>*:not(.uc-print){display:none!important}
-  .uc-print{display:block!important;background:#fff!important;color:#000!important}
-  .uc-print *{background:transparent!important;color:#000!important;box-shadow:none!important}
   .uc-print-measure{display:none!important}
 }
 .uc-pr .up-page{break-after:page;page-break-after:always}
@@ -71,7 +67,7 @@ const UC_PRINT_CSS = `
 .uc-pr tr{break-inside:avoid;page-break-inside:avoid}
 /* ★ !important 를 붙인다 — 앱 전역 인쇄 CSS 에 th,td{padding:4px 6px!important;font-size:9px!important}
      가 있어서, 안 붙이면 **우리가 잰 크기와 다른 크기로 인쇄된다.** */
-.uc-pr th,.uc-pr td{border:0.5pt solid #666;padding:1.4mm 2mm!important;font-size:9pt!important;line-height:1.3;vertical-align:middle}
+.uc-pr th,.uc-pr td{border:0.5pt solid #666;padding:0.8mm 2mm!important;font-size:9pt!important;line-height:1.15;vertical-align:middle}
 .uc-print th{font-weight:700;border-bottom:3pt double #000;text-align:center}
 /* ★ 칸마다 정렬을 직접 적는다 — #root{text-align:center} 가 전 화면에 상속된다(함정 #31) */
 .uc-pr .up-l{text-align:left}
@@ -116,6 +112,20 @@ const PrnSign = () => <table className="up-sign"><tbody><tr>
   <td>실사자 ______________________ (서명)</td>
   <td>확인자 ______________________ (서명)</td>
 </tr></tbody></table>
+
+/* ★★ **「인쇄」를 누른 동안에만** 문서에 넣는 규칙이다.
+     ★ @page 는 선택자로 범위를 좁힐 수 없다 — 문서에 있기만 하면 **그 문서의 모든 인쇄**에
+       걸린다. 늘 띄워 두면 창이 열려 있는 동안 다른 화면을 Ctrl+P 로 뽑을 때
+       종이가 가로로 바뀐다(2026-11-13 실측: 향정 인쇄가 216×279mm → 297×210mm 로 변했다).
+       그래서 이 덩어리는 누를 때 넣고 afterprint 에서 뺀다.
+     ★ 앱 전체를 숨기는 규칙도 여기 둔다 — 같은 이유다. */
+const UC_PRINT_ON_CSS = `
+@media print{
+  @page{size:A4 landscape;margin:${A4L_MARGIN_MM}mm}
+  body>*:not(.uc-print){display:none!important}
+  .uc-print{display:block!important;background:#fff!important;color:#000!important}
+  .uc-print *{background:transparent!important;color:#000!important;box-shadow:none!important}
+}`
 
 /* 오늘 YYYYMMDD — ★ toISOString() 은 UTC 라 한국 시각 자정 언저리에 하루가 밀린다.
    파일 이름에 쓰이므로 **그 지역 날짜**로 적는다. */
@@ -175,6 +185,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
   }, [fixedY, fixedM])
 
   const [prnPages, setPrnPages] = useState(null)   /* 인쇄 쪽 나눔 결과 */
+  const [printing, setPrinting] = useState(false)  /* 「인쇄」를 누른 동안만 참 */
   const prnRef = useRef(null)
 
   const year = ym ? ym.y : null
@@ -438,20 +449,27 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
          2026-11-13 에 실제로 겪었다: 42줄인데 43으로 세어 42번째에서 멈췄다. */
     const headH = hOf('.up-main thead'), titleH = hOf('.up-title'), footH = hOf('.up-ft'), signH = hOf('.up-sign')
     const trs = [...el.querySelectorAll('.up-main tbody tr')].map(x => x.getBoundingClientRect().height)
-    const out = []; let cur = []; let used = titleH + headH + footH
+    /* ★★ 서명 칸 자리를 **모든 쪽에서 미리 뺀다.** 마지막 쪽에만 빼려 하면
+         어느 쪽이 마지막인지 끝나야 알 수 있어, 그 쪽이 종이를 넘겨 버린다
+         (2026-11-13 실측: 안 빼니 2쪽이 199.9mm 로 190mm 를 넘었다). */
+    const out = []; let cur = []; let used = titleH + headH + footH + signH
     for (let i = 0; i < trs.length; i++) {
-      if (used + trs[i] > H && cur.length) { out.push(cur); cur = []; used = headH + footH }
+      if (used + trs[i] > H && cur.length) { out.push(cur); cur = []; used = headH + footH + signH }
       cur.push(i); used += trs[i]
     }
     if (cur.length) out.push(cur)
-    /* 서명 칸이 마지막 쪽에 안 들어가면 쪽을 하나 더 둔다 — 서명만 잘려 나가지 않게 */
-    if (out.length && used + signH > H) out.push([])
     return out
   }
   /* 쪽을 나눠 **그려 놓은 뒤에** 인쇄 창을 연다 — flushSync 가 그 차례를 지킨다 */
   function doPrint() {
     const pages = measurePages()
-    if (pages) flushSync(() => setPrnPages(pages))
+    /* 쪽을 나눠 **그려 놓고** 인쇄 규칙을 문서에 넣은 **뒤에** 인쇄 창을 연다 */
+    flushSync(() => { if (pages) setPrnPages(pages); setPrinting(true) })
+    /* ★ 끝나면 규칙을 **반드시** 뺀다 — 남겨 두면 다른 화면 인쇄까지 가로로 바뀐다.
+         ★ 뒤늦게 빼는 받침(setTimeout)은 두지 않는다 — 브라우저가 인쇄를 그리기 전에
+           빼 버리면 **앱이 그대로 찍힌다.** */
+    const off = () => { setPrinting(false); window.removeEventListener('afterprint', off) }
+    window.addEventListener('afterprint', off)
     window.print()
   }
 
@@ -626,6 +644,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
            화면에는 안 보이고 **종이에만** 나온다. */}
     {ready && zeroPicked && createPortal(<>
       <style>{UC_PRINT_CSS}</style>
+      {printing ? <style>{UC_PRINT_ON_CSS}</style> : null}
       {/* 재는 자리 — 화면 밖에 한 벌 그려 높이만 잰다. 인쇄에는 안 나온다. */}
       <div ref={prnRef} className="uc-pr uc-print-measure" aria-hidden="true">
         {prnTitle}
