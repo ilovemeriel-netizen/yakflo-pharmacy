@@ -29,12 +29,19 @@ const num = v => (v == null ? '—' : Number(v).toLocaleString())
 /* ★ Confirm = 부모가 넘겨 주는 `CountConfirmModal`(App.jsx:5676).
      import 하지 않고 prop 으로 받는다 — App.jsx 가 이 파일을 import 하므로
      거꾸로 import 하면 **순환 import** 가 된다. 부품은 같은 것을 그대로 쓴다. */
-export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager, onReload, Confirm }) {
+export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager, onReload, Confirm, ColMenu, useSort }) {
   const now = new Date()
   /* 기준월 기본값 = 지난달. 월마감을 매월 초에 전달 것으로 하므로 그 달이 궁금한 달이다. */
   const [year, setYear] = useState(() => (now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()))
   const [month, setMonth] = useState(() => (now.getMonth() === 0 ? 12 : now.getMonth()))
   const [onlyMoved, setOnlyMoved] = useState(true)
+  /* ★ 표마다 따로 기억한다 — 위(잣대 섞임)·아래(다시 세기)가 서로 영향을 주지 않는다.
+       ★ ColMenu 에 filter 를 주지 않으면 **⇅ 정렬만** 나온다(거르기 메뉴 없음). */
+  /* ★ JSX 태그 이름으로만 쓰인 식별자는 이 저장소 eslint(react 플러그인 없음)가
+     미사용으로 본다 — 한 번 변수로 받아 식이 되게 한다(VaccinePublicPanel 과 같은 방식). */
+  const HeadMenu = ColMenu
+  const sortMix = useSort('')
+  const sortMain = useSort('')
   const box = useRef(null)
 
   /* 읽어 온 것을 **기준월과 함께** 담는다. 그래야 effect 안에서 「읽는 중」을 따로 적지 않아도
@@ -115,6 +122,18 @@ export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager,
     <span style={{ background: bg, color, padding: '3px 10px', borderRadius: 8, fontSize: 10,
       fontWeight: 600, whiteSpace: 'nowrap', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>{text}</span>
   )
+  /* ★ 보여 줄 때만 줄을 세운다 — 원본 배열은 그대로 둔다(복사본을 정렬한다). */
+  const sortRows = (list, st) => {
+    if (!st || !st.sk) return list
+    const dir = st.sd === 'desc' ? -1 : 1
+    return [...list].sort((a, b) => {
+      const x = a[st.sk], y = b[st.sk]
+      const nx = Number(x), ny = Number(y)
+      const bothNum = x != null && y != null && !Number.isNaN(nx) && !Number.isNaN(ny) && String(x).trim() !== '' && String(y).trim() !== ''
+      if (bothNum) return (nx - ny) * dir
+      return String(x ?? '').localeCompare(String(y ?? ''), 'ko') * dir
+    })
+  }
   const th = { padding: '8px 10px', textAlign: 'left', color: t.textM, fontWeight: 600,
     borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap', fontSize: 11, background: t.bg }
   const thR = { ...th, textAlign: 'right' }
@@ -139,7 +158,11 @@ export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager,
     zIndex: 1100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
     <div ref={box} onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 14,
       padding: '22px 26px', maxWidth: 980, width: '100%', border: `1px solid ${t.border}`,
-      boxShadow: t.shadowH, boxSizing: 'border-box' }}>
+      boxShadow: t.shadowH, boxSizing: 'border-box',
+      /* ★ 함정 #31 — index.css 의 #root { text-align:center } 가 여기까지 내려온다.
+           머리글(th)에는 left 가 적혀 있지만 본문 칸(td)에는 없어 약품코드·약품명이
+           가운데로 보였다. **이 창 안에서만** 왼쪽으로 돌려 놓는다. */
+      textAlign: 'left' }}>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: t.text }}>마약·향정 사용량 — 달력 기준으로 보기</div>
@@ -199,13 +222,15 @@ export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager,
             <div style={{ border: `1px solid ${t.border}`, borderRadius: 8, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr>
-                  <th style={th}>약품코드</th><th style={th}>약품명</th>
-                  <th style={th}>구분</th><th style={th}>상태</th>
-                  <th style={thR}>전년</th><th style={thR}>월평균</th>
-                  <th style={thR}>안전재고</th><th style={thR}>최대재고</th><th style={thR}>현재고</th>
+                  {[['code', '약품코드', th], ['name', '약품명', th], ['nt', '구분', th], ['status', '상태', th],
+                    ['prevYear', '전년', thR], ['maBefore', '월평균', thR], ['safetyBefore', '안전재고', thR],
+                    ['maxBefore', '최대재고', thR], ['qty', '현재고', thR]].map(([k, lab, stl]) =>
+                    <th key={k} style={stl}>
+                      <HeadMenu colKey={k} label={lab} sk={sortMix.sk} sd={sortMix.sd} setSort={sortMix.setSort} />
+                    </th>)}
                 </tr></thead>
                 <tbody>
-                  {p.mixed.map(r => (
+                  {sortRows(p.mixed, sortMix).map(r => (
                     <tr key={r.code}>
                       <td style={td}>{r.code}</td>
                       <td style={{ ...td, color: t.text }}>{r.name}</td>
@@ -236,12 +261,15 @@ export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager,
         <div style={{ border: `1px solid ${t.border}`, borderRadius: 8, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
             <thead><tr>
-              <th style={th}>약품코드</th><th style={th}>약품명</th><th style={th}>상태</th>
-              <th style={thR}>직전1개월</th><th style={thR}>최근3개월</th>
-              <th style={thR}>월평균</th><th style={thR}>안전재고</th><th style={thR}>최대재고</th>
+              {[['code', '약품코드', th], ['name', '약품명', th], ['status', '상태', th],
+                ['m1After', '직전1개월', thR], ['m3After', '최근3개월', thR],
+                ['maAfter', '월평균', thR], ['safetyAfter', '안전재고', thR], ['maxAfter', '최대재고', thR]].map(([k, lab, stl]) =>
+                <th key={k} style={stl}>
+                  <HeadMenu colKey={k} label={lab} sk={sortMain.sk} sd={sortMain.sd} setSort={sortMain.setSort} />
+                </th>)}
             </tr></thead>
             <tbody>
-              {shown.map(r => (
+              {sortRows(shown, sortMain).map(r => (
                 <tr key={r.code}>
                   <td style={td}>{r.code}</td>
                   <td style={{ ...td, color: t.text }}>

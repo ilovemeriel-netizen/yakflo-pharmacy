@@ -2460,7 +2460,8 @@ export function StockStatus({drugs,inv,navFilter:nf,onEdit,onAdjust,onReload,onD
       {uOpen&&<UsageUploadModal t={t} isTenantManager={isTenantManager} drugs={drugs}
         onClose={()=>setUOpen(false)} onReload={onReload} onBulkFile={f=>uploadUsage(f)} />}
       {npOpen&&<NarcoticUsageModal t={t} drugs={drugs} onClose={()=>setNpOpen(false)}
-        isTenantManager={isTenantManager} onReload={onReload} Confirm={CountConfirmModal} />}
+        isTenantManager={isTenantManager} onReload={onReload} Confirm={CountConfirmModal}
+        ColMenu={ColMenu} useSort={useSort} />}
       {ucOpen&&<UsageCompareModal t={t} drugs={drugs.filter(d=>String(d.status||'').trim()==='사용')}
         isTenantManager={isTenantManager} onClose={()=>setUcOpen(false)} onReload={onReload}
         onDone={r=>setUcMsg(r)} Confirm={CountConfirmModal} />}

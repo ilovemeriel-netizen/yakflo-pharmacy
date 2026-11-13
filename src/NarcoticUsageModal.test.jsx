@@ -57,6 +57,11 @@ vi.mock('./lib/theme', async (orig) => {
   return { ...real, useTheme: () => ({ t: T, dark: false, setTheme: () => {}, memberRole: 'owner', profile: { role: 'user' } }) }
 })
 
+/* ★ 머리 정렬 부품 — 화면에서는 App.jsx 가 넘긴다(순환 import 회피).
+   시험에서도 같은 자리를 채워야 창이 뜬다. 정렬 동작 자체는
+   src/NarcoticUsageSort.test.jsx 가 따로 못 박는다. */
+const Head = ({ label }) => <>{label}</>
+const useSortStub = () => ({ sk: '', sd: 'asc', setSort: () => {} })
 let Modal, Confirm
 beforeEach(async () => {
   calls.length = 0
@@ -69,7 +74,8 @@ beforeEach(async () => {
 afterEach(() => { cleanup(); vi.useRealTimers() })
 
 const open = async (props = {}) => {
-  render(<Modal t={T} drugs={DRUGS} onClose={() => {}} Confirm={Confirm} {...props} />)
+  render(<Modal t={T} drugs={DRUGS} onClose={() => {}} Confirm={Confirm}
+    ColMenu={Head} useSort={useSortStub} {...props} />)
   await screen.findByText(/달력 기준으로 다시 세면/)
 }
 

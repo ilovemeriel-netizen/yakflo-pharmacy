@@ -62,10 +62,15 @@ beforeEach(async () => {
 })
 afterEach(() => cleanup())
 
+/* ★ 머리 정렬 부품 — 화면에서는 App.jsx 가 넘긴다(순환 import 회피).
+   시험에서도 같은 자리를 채워야 창이 뜬다. 정렬 동작 자체는
+   src/NarcoticUsageSort.test.jsx 가 따로 못 박는다. */
+const Head = ({ label }) => <>{label}</>
+const useSortStub = () => ({ sk: '', sd: 'asc', setSort: () => {} })
 const Confirm = () => null
 const open = (extra = {}) => render(
   <Modal t={T} drugs={DRUGS} onClose={() => {}} isTenantManager onReload={() => {}}
-    Confirm={Confirm} {...extra} />)
+    Confirm={Confirm} ColMenu={Head} useSort={useSortStub} {...extra} />)
 
 const applyBtn = () => screen.queryByRole('button', { name: /기준으로 적용/ })
 const warn = () => screen.queryByTestId('narc-cut-warn')
@@ -169,14 +174,14 @@ describe('③ 여전히 DB 에 쓰지 않는다', () => {
 
 describe('④ 약품이 아직 안 왔으면 읽지 않는다', () => {
   it('★ 빈 목록으로 `.in()` 하지 않는다 — 「출고 0」으로 조용히 틀리는 쪽을 막는다', async () => {
-    render(<Modal t={T} drugs={[]} onClose={() => {}} isTenantManager onReload={() => {}} Confirm={Confirm} />)
+    render(<Modal t={T} drugs={[]} onClose={() => {}} isTenantManager onReload={() => {}} Confirm={Confirm} ColMenu={Head} useSort={useSortStub} />)
     await waitFor(() => expect(screen.queryByText(/거래를 읽는 중/)).not.toBeNull())
     expect(calls.filter(c => c[0] === 'from')).toHaveLength(0)
     expect(calls.filter(c => c[0] === 'in')).toHaveLength(0)
   })
   it('마약·향정이 하나도 없어도 읽지 않는다', async () => {
     const onlyPlain = DRUGS.filter(d => !['마약', '향정'].includes(d.narcotic_type))
-    render(<Modal t={T} drugs={onlyPlain} onClose={() => {}} isTenantManager onReload={() => {}} Confirm={Confirm} />)
+    render(<Modal t={T} drugs={onlyPlain} onClose={() => {}} isTenantManager onReload={() => {}} Confirm={Confirm} ColMenu={Head} useSort={useSortStub} />)
     await waitFor(() => expect(screen.queryByText(/거래를 읽는 중/)).not.toBeNull())
     expect(calls.filter(c => c[0] === 'from')).toHaveLength(0)
   })
