@@ -20,6 +20,12 @@ vi.mock('./lib/supabase', () => ({ supabase: { rpc: (...a) => rpc(...a), from: (
 
 const UsageCompareModal = (await import('./UsageCompareModal')).default
 const SRC = readFileSync(resolve(process.cwd(), 'src/UsageCompareModal.jsx'), 'utf8')
+/* ★ 머리 정렬 부품 — 화면에서는 App.jsx 가 넘긴다(순환 import 회피).
+   시험에서도 같은 자리를 채워야 창이 뜬다. 정렬 동작은
+   src/UsageCompareSort.test.jsx 가 따로 못 박는다. */
+const Head = ({ label }) => <>{label}</>
+const useSortStub = () => ({ sk: '', sd: 'asc', setSort: () => {} })
+
 
 const T = { mode: 'light', bg: '#F7F6F3', card: '#FFFFFF', cardSolid: '#FFFFFF', border: '#E8E6E1',
   text: '#2E4A62', textM: '#52524E', textL: '#A3A39E', accent: '#804A87', accentL: '#F5EDF6',
@@ -78,7 +84,8 @@ const Confirm = ({ confirm, onConfirm }) => <button type="button" onClick={onCon
 async function open(props = {}) {
   from.mockImplementation(() => mockTx(TXNS))
   const r = render(<UsageCompareModal t={T} drugs={DRUGS} year={2026} month={10}
-    isTenantManager onClose={() => {}} onReload={() => {}} Confirm={Confirm} {...props} />)
+    isTenantManager onClose={() => {}} onReload={() => {}} Confirm={Confirm}
+    ColMenu={Head} useSort={useSortStub} {...props} />)
   await act(async () => { await Promise.resolve(); await Promise.resolve() })
   return r
 }
@@ -210,7 +217,8 @@ describe('★ 1,000줄 조용한 절단 — 쪽을 나눠 끝까지 읽는다', 
   it('1,079줄을 두 쪽으로 나눠 **전부** 읽는다', async () => {
     from.mockImplementation(() => mockTx(many(1079)))
     render(<UsageCompareModal t={T} drugs={[D({ drug_code: 'CFO', drug_name: '칼페온정' })]}
-      year={2026} month={10} isTenantManager onClose={() => {}} Confirm={Confirm} />)
+      year={2026} month={10} isTenantManager onClose={() => {}} Confirm={Confirm}
+      ColMenu={Head} useSort={useSortStub} />)
     await settle(10)
     /* 1,079 이 다 들어왔으면 직전3개월이 1,079 로 보인다 */
     expect(screen.getByText('1,079')).toBeTruthy()
@@ -221,7 +229,8 @@ describe('★ 1,000줄 조용한 절단 — 쪽을 나눠 끝까지 읽는다', 
     /* 전체는 1,079 인데 1,000 만 왔다고 흉내낸다 */
     from.mockImplementation(() => mockTx(many(1000), { count: 1079 }))
     render(<UsageCompareModal t={T} drugs={[D({ drug_code: 'CFO', drug_name: '칼페온정' })]}
-      year={2026} month={10} isTenantManager onClose={() => {}} Confirm={Confirm} />)
+      year={2026} month={10} isTenantManager onClose={() => {}} Confirm={Confirm}
+      ColMenu={Head} useSort={useSortStub} />)
     await settle(10)
     expect(screen.getByText(/다 읽지 못했습니다/)).toBeTruthy()
     const btn = screen.getByRole('button', { name: /적용$/ })

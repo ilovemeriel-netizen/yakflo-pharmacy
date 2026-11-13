@@ -20,6 +20,12 @@ const from = vi.fn()
 vi.mock('./lib/supabase', () => ({ supabase: { rpc: (...a) => rpc(...a), from: (...a) => from(...a) } }))
 
 const UsageCompareModal = (await import('./UsageCompareModal')).default
+/* ★ 머리 정렬 부품 — 화면에서는 App.jsx 가 넘긴다(순환 import 회피).
+   시험에서도 같은 자리를 채워야 창이 뜬다. 정렬 동작은
+   src/UsageCompareSort.test.jsx 가 따로 못 박는다. */
+const Head = ({ label }) => <>{label}</>
+const useSortStub = () => ({ sk: '', sd: 'asc', setSort: () => {} })
+
 const { CountConfirmModal } = await import('./App')
 
 const T = { mode: 'light', bg: '#F7F6F3', card: '#FFFFFF', cardSolid: '#FFFFFF', border: '#E8E6E1',
@@ -57,7 +63,8 @@ function Parent() {
       {msg.ok ? '✅ ' : '❗ '}{msg.message}
     </div>}
     {open && <UsageCompareModal t={T} drugs={DRUGS} year={2026} month={10} isTenantManager
-      onClose={() => setOpen(false)} onReload={() => {}} onDone={setMsg} Confirm={CountConfirmModal} />}
+      onClose={() => setOpen(false)} onReload={() => {}} onDone={setMsg} Confirm={CountConfirmModal}
+      ColMenu={Head} useSort={useSortStub} />}
     <div data-testid="open">{open ? 'yes' : 'no'}</div>
   </div>
 }
