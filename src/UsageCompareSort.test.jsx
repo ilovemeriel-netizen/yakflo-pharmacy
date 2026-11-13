@@ -190,25 +190,37 @@ describe('★ ③ 「적용」에 넘어가는 줄이 정렬 전·후로 같다'
   })
 })
 
-describe('★ ⑥⑦ 거르기 없음 · 붙는 자리', () => {
-  it('머리글 부품에 filter 를 주지 않는다 (소스)', () => {
+describe('★ ⑥⑦ 거르기는 「비고」에만 · 붙는 자리', () => {
+  /* ★ 2026-11-13 이정화 님 승인으로 **「비고」에만** 거르기가 생겼다.
+       값 칸 6개(약품·직전3개월·직전1개월·월평균·안전재고·상태)는 **그대로 ⇅ 만** 이다 —
+       거르기가 그쪽으로 번지지 않게 막는 것이 이 시험의 원래 목적이고, 그 목적은 그대로다. */
+  it('값 칸 6개에는 filter 를 주지 않는다 · 「비고」에만 준다 (소스)', () => {
     const uses = SRC.match(/<HeadMenu[^/]*\/>/g) || []
     expect(uses.length, '머리글 부품이 없다').toBeGreaterThan(0)
-    for (const u of uses) expect(u, '거르기가 붙었다: ' + u).not.toContain('filter')
+    const note = uses.filter(u => u.includes('colKey="note"'))
+    expect(note.length, '비고 머리글이 하나여야 한다').toBe(1)
+    expect(note[0], '비고에 거르기가 없다').toContain('filter')
+    for (const u of uses.filter(u => !u.includes('colKey="note"'))) {
+      expect(u, '값 칸에 거르기가 붙었다: ' + u).not.toContain('filter')
+    }
   })
-  it('실제로 그려진 머리글에도 거르기가 없다', async () => {
+  it('실제로 그려진 머리글 — 값 칸 6개는 거르기 없음, 「비고」만 있음', async () => {
     from.mockImplementation(() => mockTx(TXNS))
     await open()
     const heads = [...document.querySelectorAll('thead button')]
     expect(heads.length).toBeGreaterThan(0)
-    for (const h of heads) expect(h.getAttribute('data-filter')).toBe('no')
+    for (const h of heads) {
+      const want = h.textContent === '비고' ? 'yes' : 'no'
+      expect(h.getAttribute('data-filter'), h.textContent + ' 의 거르기').toBe(want)
+    }
   })
-  it('★ ⑦ 고르기 칸과 「비고」에는 ⇅ 가 안 붙는다', async () => {
+  it('★ ⑦ ⇅ 는 값 칸 6개 + 「비고」에 붙고, 고르기 칸에는 안 붙는다', async () => {
     from.mockImplementation(() => mockTx(TXNS))
     await open()
     const names = [...document.querySelectorAll('thead button')].map(b => b.textContent)
-    expect(names).toEqual(['약품', '직전3개월', '직전1개월', '월평균', '안전재고', '상태'])
-    expect(names).not.toContain('비고')
+    expect(names).toEqual(['약품', '직전3개월', '직전1개월', '월평균', '안전재고', '상태', '비고'])
+    /* 맨 앞 고르기 칸에는 머리글 부품이 없다 — 칸 수보다 부품이 하나 적다 */
+    expect(document.querySelectorAll('thead th').length).toBe(names.length + 1)
   })
 })
 

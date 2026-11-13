@@ -213,6 +213,6 @@ describe('★ ⑪⑫⑬ 모양·색·적용 규칙', () => {
     expect(/\b(p\.rows|p\.moved)\.(sort|splice|reverse)\(/.test(SRC), '원본을 건드렸다').toBe(false)
   })
   it('⑬-2 거르기는 **보기만** 좁힌다 — 복사본을 거른다', () => {
-    expect(SRC).toContain('const shown = zeroOnly ? base0.filter(r => r.zeroOut) : base0')
+    expect(SRC).toContain('const shown = noteDef ? base0.filter(noteDef.hit) : base0')
   })
 })

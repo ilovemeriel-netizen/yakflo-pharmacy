@@ -21,6 +21,14 @@ import { dbErrorMsg } from './lib/dbError'
 
 const num = v => Number(v || 0).toLocaleString()
 
+/* ★ 비고 칸 너비 — 뱃지가 둘·셋이어도 **이 칸 안에서만** 줄바꿈시켜
+     약품 칸 너비를 PR 459 와 같게 지킨다. 한곳에서 정한다.
+   ★ 149 는 PR 459 화면에서 **실제로 재어 본** 비고 칸 너비다(약품 칸 234px).
+     ★ 표 칸은 기본이 content-box 라 width 에 안쪽 여백(좌우 10px)이 **안 들어간다** —
+       그냥 149 를 주면 169 가 되어 약품 칸이 22px 줄어든다. 그래서 border-box 로 못 박는다. */
+const NOTE_W = 149
+const noteCell = { width: NOTE_W, boxSizing: 'border-box' }
+
 /* 「8·9·10월」처럼 석 달을 적는다. 해가 바뀌어도 맞게 — 1월이면 11·12·1월이 된다. */
 function monthLabel(year, month) {
   if (!year || !month) return ''
@@ -36,9 +44,13 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
        ★ JSX 태그 이름으로만 쓰인 식별자는 이 저장소 eslint 가 미사용으로 본다 — 변수로 한 번 받는다. */
   const HeadMenu = ColMenu
   const sortTbl = useSort('')
-  /* ★ 「3개월 출고 0」만 보기 — **보기만** 좁힌다. 한 번 더 누르면 풀린다.
-       적용 대상 규칙(원본 p.rows + 약품코드 Set)은 **한 글자도 바뀌지 않는다**. */
-  const [zeroOnly, setZeroOnly] = useState(false)
+  /* ★ 거르기 — **보기만** 좁힌다. 적용 대상 규칙(원본 p.rows + 약품코드 Set)은
+       **한 글자도 바뀌지 않는다**.
+     ★★ 칩과 비고 머리글 메뉴가 **상태 하나**를 함께 쓴다 — 칩을 누르면 메뉴에 ✓ 가
+        붙고, 메뉴에서 풀면 칩도 풀린다. 두 벌로 두면 **서로 어긋난 상태**가 생긴다.
+        null = 전체. (2026-11-13 이정화 님 승인) */
+  const [noteF, setNoteF] = useState(null)
+  const zeroOnly = noteF === 'zero'
   const [off, setOff] = useState(() => new Set())   /* 체크를 **푼** 약품코드 */
 
   /* ── 기준월 — 가장 최근에 **마감된** 달 ──────────────────────────────
@@ -184,12 +196,30 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
     <span style={{ background: bg, color, padding: '3px 10px', borderRadius: 8, fontSize: 10,
       fontWeight: 600, whiteSpace: 'nowrap', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>{text}</span>
   )
+  /* ★★ 비고 — 해당하는 뱃지를 **모두** 보여 준다(한 약에 둘·셋이 붙을 수 있다).
+       ★ 거르기는 **글자가 아니라 약의 성질**로 한다. 글자로 거르면 「백신이면서
+         3개월 출고 0」인 약이 백신 쪽에만 걸려 **숫자가 어긋난다**
+         (2026-11-13 실측: 글자 기준 40줄 vs 성질 기준 42줄 — 칩은 42종).
+       ★ 차례(= 비고 정렬 차례)도 이 줄 차례를 따른다. */
+  const NOTE_DEFS = [
+    { k: 'vac', label: '백신 — 제외', hit: r => r.vac, bg: t.blueL, fg: t.blue },
+    { k: 'zero', label: '3개월 출고 0', hit: r => r.zeroOut, bg: t.amberL, fg: t.amber },
+    { k: 'tiny', label: '극소량 — 3개월 그대로', hit: r => r.tiny, bg: t.purpleL, fg: t.purple },
+    { k: 'same', label: '차이 없음', hit: r => !r.changed, bg: '#F0F0EB', fg: t.textL },
+  ]
+  const noteHit = r => NOTE_DEFS.filter(d => d.hit(r))
+  /* 비고 정렬은 **첫 뱃지** 차례로 센다. 뱃지가 없으면 맨 뒤로 */
+  const noteRank = r => { const i = NOTE_DEFS.findIndex(d => d.hit(r)); return i < 0 ? NOTE_DEFS.length : i }
+
   /* ★★ 보여 줄 때만 줄을 세운다 — **원본(p.rows·p.moved)은 한 줄도 건드리지 않는다.**
        체크는 약품코드(Set)로 기억하고 「적용」도 원본 p.rows 로 만들기 때문에,
        보이는 차례가 바뀌어도 **체크와 적용 대상이 달라지지 않는다**(시험으로 못 박는다). */
   const sortRows = (list, st) => {
     if (!st || !st.sk) return list
     const dir = st.sd === 'desc' ? -1 : 1
+    /* ★ 비고는 표에 **없는 값**이다 — 첫 뱃지 차례로 센다.
+         계산식 파일(lib/usageCompare.js)에 칸을 더하지 않는다. */
+    if (st.sk === 'note') return [...list].sort((a, b) => (noteRank(a) - noteRank(b)) * dir)
     return [...list].sort((a, b) => {
       const x = a[st.sk], y = b[st.sk]
       const nx = Number(x), ny = Number(y)
@@ -226,13 +256,15 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
     const [bg, c] = m[s] || ['#F0F0EB', t.textL]
     return badge(s, bg, c)
   }
-  const why = r => r.vac ? badge('백신 — 제외', t.blueL, t.blue)
-    : r.zeroOut ? badge('3개월 출고 0', t.amberL, t.amber)
-      : r.tiny ? badge('극소량 — 3개월 그대로', t.purpleL, t.purple)
-        : !r.changed ? badge('차이 없음', '#F0F0EB', t.textL) : null
-
   const base0 = p ? (onlyMoved ? p.moved : p.rows) : []
-  const shown = zeroOnly ? base0.filter(r => r.zeroOut) : base0
+  const noteDef = NOTE_DEFS.find(d => d.k === noteF)
+  const shown = noteDef ? base0.filter(noteDef.hit) : base0
+  /* 메뉴에 올릴 거리 — **지금 화면에서 0줄인 것은 올리지 않는다**(눌러도 빈 표다).
+     ★ 다만 **지금 고른 것**은 0줄이 돼도 남긴다 — 메뉴에서 사라지면 ✓ 를 풀 길이 없다. */
+  const noteOpts = NOTE_DEFS.filter(d => d.k === noteF || base0.some(d.hit))
+  const noteItems = noteOpts.map(d => d.label)
+  const noteKeyOf = v => { const d = noteOpts.find(x => x.label === v); return d ? d.k : null }
+  const noteLabelOf = k => { const d = NOTE_DEFS.find(x => x.k === k); return d ? d.label : null }
   /* ★★ 걸러서 **화면 밖으로 간 체크**를 센다 — 「적용」은 여전히 체크한 모두에 들어가므로
        조용히 두지 않고 말해 준다. 세기만 할 뿐 **적용 대상을 바꾸지 않는다.** */
   const shownSet = new Set(shown.map(r => r.code))
@@ -279,7 +311,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
              ★ 새 색을 만들지 않는다: t.amberL·t.amber 는 이미 쓰던 색이고
                t.amber + '18' 은 그 주황을 옅게 쓴 것이다(App.jsx 와 같은 방식).
              ★ 안 눌렸을 때도 테두리 자리를 비워 둔다 — 누를 때 칩이 들썩이지 않게. */}
-        <button type="button" onClick={() => setZeroOnly(v => !v)} aria-pressed={zeroOnly}
+        <button type="button" onClick={() => setNoteF(v => (v === 'zero' ? null : 'zero'))} aria-pressed={zeroOnly}
           title={zeroOnly ? '모두 보기' : '이 약만 보기'}
           style={{ padding: '3px 10px', borderRadius: 8, fontSize: 10, whiteSpace: 'nowrap',
             cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
@@ -330,7 +362,12 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
               <th key={k} style={stl}>
                 <HeadMenu colKey={k} label={lab} sk={sortTbl.sk} sd={sortTbl.sd} setSort={sortTbl.setSort} />
               </th>)}
-            <th style={th}>비고</th>
+            {/* ★ 비고 칸은 **너비를 정해 둔다** — 뱃지가 둘·셋이어도 이 칸 안에서만
+                 줄바꿈하고, **약품 칸 너비는 그대로**다(2026-11-13 이정화 님 승인 ㉡안). */}
+            <th style={{ ...th, ...noteCell }}>
+              <HeadMenu colKey="note" label="비고" sk={sortTbl.sk} sd={sortTbl.sd} setSort={sortTbl.setSort}
+                filter={{ items: noteItems, value: noteLabelOf(noteF), on: v => setNoteF(v ? noteKeyOf(v) : null) }} />
+            </th>
           </tr></thead>
           <tbody>
             {sortRows(shown, sortTbl).map(r => (
@@ -351,7 +388,11 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
                 <td style={td}>{r.before === r.after ? stBadge(r.before)
                   : <span style={{ whiteSpace: 'nowrap' }}>{stBadge(r.before)}
                     <span style={{ color: t.textL, margin: '0 4px' }}>→</span>{stBadge(r.after)}</span>}</td>
-                <td style={td}>{why(r)}</td>
+                <td style={{ ...td, ...noteCell }}>
+                  <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {noteHit(r).map(d => <span key={d.k}>{badge(d.label, d.bg, d.fg)}</span>)}
+                  </span>
+                </td>
               </tr>
             ))}
             {shown.length === 0 && <tr><td colSpan={8}
