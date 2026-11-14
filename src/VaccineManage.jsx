@@ -570,7 +570,7 @@ export default function VaccineManage({ ColMenu, useSort, ymd, todayYmd }) {
   return <div style={{ padding: '20px 24px' }}>
     {/* ═══ 1. 헤더 ═══ */}
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-      <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: t.text }}>백신관리</h2>
+      <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: t.accent }}>백신관리</h2>
       <select value={sel} onChange={e => setSeason(e.target.value)} style={{ ...ip, width: 138, fontWeight: 600 }}>
         {seasons.map(s => <option key={s} value={s}>{s}</option>)}
       </select>

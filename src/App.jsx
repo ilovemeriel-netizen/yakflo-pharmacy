@@ -1407,7 +1407,7 @@ function AlertCenter({ drugs, onNav }) {
   };
   const [colA, colB] = wide ? alcSplit(SECTIONS) : [SECTIONS, null];
   return <div style={{ padding: '20px 24px' }}>
-    <div style={{ fontSize: 18, fontWeight: 800, color: t.text, marginBottom: 4 }}>🔔 통합 알림센터</div>
+    <div style={{ fontSize: 16, fontWeight: 700, color: t.accent, marginBottom: 4 }}>🔔 통합 알림센터</div>
     <div style={{ fontSize: 11, color: t.textL, marginBottom: 16 }}>사용·휴면 약품 기준 · 중지(아카이브) 제외</div>
     <style>{'.alc-grid{display:grid;grid-template-columns:1fr;gap:0 14px;align-items:start}@media(min-width:' + ALC_BP + 'px){.alc-grid{grid-template-columns:repeat(2,1fr)}}'}</style>
     <div className="alc-grid">{colB ? <><div>{colA.map(renderSec)}</div><div>{colB.map(renderSec)}</div></> : colA.map(renderSec)}</div>
@@ -3041,7 +3041,7 @@ export function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter,onReload}){
 
   return<div className="narc-root" style={{padding:'20px 24px'}}>
     <style>{NARC_PRINT_CSS}</style>
-    <div className="no-print" style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><div style={{fontSize:16,fontWeight:700,color:t.purple}}>향정·마약류 관리</div><span style={{display:'flex',gap:8}}>{/* ★ 재고현황에 있던 단추를 여기로 옮겼다 — 마약 일은 마약 화면에서 (2026-11-14) */}{(_narcMgr||_narcRO)&&<button onClick={()=>setNpOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.bg,color:t.purple,cursor:'pointer',fontSize:11,fontWeight:600}}>마약·향정 사용량 보기</button>}{npOpen&&<NarcoticUsageModal t={t} drugs={drugs} onClose={()=>setNpOpen(false)} isTenantManager={_narcMgr} readOnly={_narcRO} onReload={onReload} Confirm={CountConfirmModal} ColMenu={ColMenu} useSort={useSort} />}<button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button><button onClick={narcPrint} title="브라우저 인쇄 창이 열립니다 — 「PDF로 저장」도 됩니다" style={{padding:'6px 16px',borderRadius:8,border:'1px solid '+t.blue,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11.5,fontWeight:700}}>인쇄</button></span></div>
+    <div className="no-print" style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><div style={{fontSize:16,fontWeight:700,color:t.accent}}>향정·마약류 관리</div><span style={{display:'flex',gap:8}}>{/* ★ 재고현황에 있던 단추를 여기로 옮겼다 — 마약 일은 마약 화면에서 (2026-11-14) */}{(_narcMgr||_narcRO)&&<button onClick={()=>setNpOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.bg,color:t.purple,cursor:'pointer',fontSize:11,fontWeight:600}}>마약·향정 사용량 보기</button>}{npOpen&&<NarcoticUsageModal t={t} drugs={drugs} onClose={()=>setNpOpen(false)} isTenantManager={_narcMgr} readOnly={_narcRO} onReload={onReload} Confirm={CountConfirmModal} ColMenu={ColMenu} useSort={useSort} />}<button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button><button onClick={narcPrint} title="브라우저 인쇄 창이 열립니다 — 「PDF로 저장」도 됩니다" style={{padding:'6px 16px',borderRadius:8,border:'1px solid '+t.blue,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11.5,fontWeight:700}}>인쇄</button></span></div>
     {/* ═══ 인쇄 전용 — 화면에는 안 보이고 종이에만 나온다 ═══ */}
     <div className="narc-print">
       <div className="np-h">향정·마약류 보유 목록</div>
@@ -7110,7 +7110,7 @@ function MyPage({ profile, onProfileUpdated }) {
   return <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 20px 80px' }}>
     <Toast msg={toast?.msg} kind={toast?.kind} onClose={() => setToast(null)} />
     <div style={{ marginBottom: 24 }}>
-      <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, margin: 0, letterSpacing: -0.3 }}>마이페이지</h2>
+      <h2 style={{ fontSize: 16, fontWeight: 700, color: t.accent, margin: 0, letterSpacing: -0.3 }}>마이페이지</h2>
       <div style={{ fontSize: 12, color: t.textL, marginTop: 6 }}>내 프로필 정보를 확인하고 수정할 수 있습니다.</div>
     </div>
 
@@ -7852,7 +7852,7 @@ export function LocationVocab() {
   return <div className="lp-root" style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 20px 80px' }}>
     <div style={{ marginBottom: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, margin: 0, letterSpacing: -0.3 }}>보관위치</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: t.accent, margin: 0, letterSpacing: -0.3 }}>보관위치</h2>
         <button onClick={() => setPrintOpen(v => !v)} style={{ padding: '5px 13px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{printOpen ? '인쇄 닫기' : '인쇄'}</button>
       </div>
       <div style={{ fontSize: 12, color: t.textL, marginTop: 6 }}>대시보드 위치 필터가 이 목록에서 선택지를 읽습니다 · 등록 {rows.length}종 (사용 {rows.filter(r => r.is_active).length}종)</div>
@@ -8200,7 +8200,7 @@ function AdminUsers() {
   return <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 20px 80px' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20, gap: 16, flexWrap: 'wrap' }}>
       <div>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, margin: 0, letterSpacing: -0.3 }}>가입자 관리</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: t.accent, margin: 0, letterSpacing: -0.3 }}>가입자 관리</h2>
         <div style={{ fontSize: 12, color: t.textL, marginTop: 6 }}>가입된 사용자 {rows.length}명 · 검색 결과 {filtered.length}명</div>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -8655,7 +8655,7 @@ function Schedule({ drugs, onNav }) {
   const dayList = dayDetail ? (byDate[dayDetail] || []) : [];
   return <div style={{ padding: '20px 24px' }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 18, fontWeight: 800, color: t.text, marginRight: 4 }}>🗓️ 일정</span>
+      <span style={{ fontSize: 16, fontWeight: 700, color: t.accent, marginRight: 4 }}>🗓️ 일정</span>
       <button onClick={() => shift(-1)} style={navBtn}>‹</button>
       <select value={y} onChange={e => setY(Number(e.target.value))} style={selStyle}>{[2024, 2025, 2026, 2027, 2028].map(yy => <option key={yy} value={yy}>{yy}년</option>)}</select>
       <select value={m} onChange={e => setM(Number(e.target.value))} style={selStyle}>{Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}월</option>)}</select>

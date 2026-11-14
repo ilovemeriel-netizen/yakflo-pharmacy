@@ -159,7 +159,9 @@ export default function EmergencyDispense() {
     {/* ─── 컨트롤(인쇄 제외) ─── */}
     <div className="ed-noprint">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 16, fontWeight: 700, color: PURPLE }}>비상조제</span>
+        {/* ★ PURPLE 은 **고정 상수**(#804A87)라 어두운 화면에서도 안 바뀌었다.
+          t.accent 로 바꾸면 밝은 화면은 같은 색이고, 어두운 화면에서는 제대로 밝아진다. */}
+        <span style={{ fontSize: 16, fontWeight: 700, color: t.accent }}>비상조제</span>
         <span style={{ fontSize: 12, color: t.textM }}>조제기 고장 시 수기 약포지 인쇄 </span>
         {loaded && (loadErr || cache.length === 0) && <span style={{ fontSize: 11, fontWeight: 700, color: '#a06b00', background: '#fff7e6', border: '1px solid #ffe1a6', borderRadius: 6, padding: '2px 8px' }}>⚠ 약품 0종 — 로그인·권한을 확인하세요{loadErr ? ' (' + loadErr + ')' : ''}</span>}
         <div style={{ flex: 1 }} />

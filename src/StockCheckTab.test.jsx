@@ -149,7 +149,8 @@ describe('★★ ② 두 화면을 그려서 — 단추가 서로 새지 않는�
   it('★ 기준확인 화면 — 제목과 한 줄 설명', async () => {
     await drawCheck()
     const txt = document.body.textContent || ''
-    expect(txt, '제목').toContain('기준확인 — 마감된 달 기준')
+    expect(txt, '제목').toContain('기준확인')
+    expect(txt, '부제').toContain('· 마감된 달 기준')
     expect(txt.includes('사용량 갱신'), '옛 제목이 남아 있다').toBe(false)
     expect(txt).toContain('월평균·안전재고를 마감월 출고로 다시 센 결과입니다')
     expect(txt).toContain('마감할 때 저절로 다시 셉니다')
@@ -237,7 +238,9 @@ describe('★★ ③ 배선 — 메뉴·라우팅·띠·모양', () => {
   })
 
   it('★ 화면 제목이 「기준확인」이다 — 창일 때는 「사용량 비교」 그대로', () => {
-    expect(UCM).toContain(`{asScreen ? '기준확인' : '사용량 비교'} — 마감된 달 기준`)
+    expect(UCM, '화면은 기준확인').toContain(`>기준확인{' '}`)
+    expect(UCM, '부제가 갈라졌다').toContain(`· 마감된 달 기준</span>`)
+    expect(UCM, '창은 그대로').toContain(`>사용량 비교 — 마감된 달 기준</div>`)
   })
 })
 

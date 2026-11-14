@@ -160,7 +160,7 @@ describe('★★ ② 재고현황 단추 3개가 사라졌다', () => {
 describe('★★ ③ 창이 아니라 화면', () => {
   it('★ asScreen 이면 덮개·✕가 **없다**', async () => {
     await open({ asScreen: true })
-    expect(document.body.textContent).toContain('기준확인 — 마감된 달 기준')
+    expect(document.body.textContent).toContain('기준확인')
     /* 닫는 단추는 둘이다 — 머리의 ✕ 와 아래의 「닫기」. 화면에서는 **둘 다** 없어야 한다. */
     expect(screen.queryAllByRole('button', { name: '닫기' }), '닫는 단추가 남아 있다').toHaveLength(0)
     const fixed = [...document.querySelectorAll('div')].filter(d => d.style && d.style.position === 'fixed')
