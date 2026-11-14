@@ -6304,6 +6304,8 @@ export function Report({drugs,onNav,onReload}){
   const[search,setSearch]=useState('');const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(STATS);
   const[page,setPage]=useState(1);const RPP=100; // 상세표 페이지네이션(화면 전용) — 한 페이지 100행
   const[closing,setClosing]=useState(false);const[closeMsg,setCloseMsg]=useState(null);
+  /* ★ 마감 뒤 자동으로 다시 센 결과 — {n, rows:[{code,name,om,nm,osf,nsf}]} 또는 {err} (2026-11-14) */
+  const[reCalc,setReCalc]=useState(null);const[reOpen,setReOpen]=useState(false);
   const[mono,setMono]=useState(false);const[dling,setDling]=useState(false); // 결산 엑셀 흑백판 선택 · 내려받는 중(exceljs 동적 로드)
   const[uploadOpen,setUploadOpen]=useState(false);const[dialog,setDialog]=useState(null);const[closeReason,setCloseReason]=useState('단가 정정'); // 스냅샷 업로드 모달 · 앱 내 확인/안내 모달 · 마감 잔차 사유
   const{hs,so,SI,TS,sk,sd}=useSort('drug_code');
@@ -6559,8 +6561,47 @@ export function Report({drugs,onNav,onReload}){
         setCloseMsg(`⚠ ${label} 스냅샷은 저장됐으나 사이드카 총계 기록 실패: ${_sideErr.message} — 다시 시도해 주세요`);loadS();setClosing(false);return;
       }
       setCloseMsg(`✅ ${label} 마감 완료! (${rows.length}건)`);loadS()
+      /* ★★ 마감이 **끝난 뒤에** 사용량을 이 마감 기준으로 다시 센다 (2026-11-14 이정화 님 승인).
+           ★ 여기서 터져도 마감은 이미 저장되어 있다 — 띠로만 알리고 되돌리지 않는다.
+             (사이드카 실패 처리와 **같은 방식**이다.)
+           ★ 마약·향정·한외마약·백신(ATC J07)·수기는 함수의 'normal' 갈래가 빼 준다. */
+      await recalcAfterClose(year,month,label)
     }catch(err){setCloseMsg('❌ 오류: '+err.message)}
     setClosing(false)
+  }
+
+  /* ★ 마감 뒤 사용량 다시 세기 — 전·후를 견주어 「바뀐 약」 목록을 만든다.
+       ★ 전 값을 **부르기 전에** 찍어 둔다. 뒤에 읽으면 이미 바뀐 값이라 견줄 수 없다. */
+  async function recalcAfterClose(y,m,label){
+    try{
+      const before={};(drugs||[]).forEach(d=>{before[d.drug_code]={name:d.drug_name,om:d.monthly_avg,osf:d.safety_stock}})
+      const{error}=await supabase.rpc('app_recompute_usage',
+        {p_overwrite_manual:false,p_scope:'normal',p_year:y,p_month:m})
+      if(error)throw error
+      /* 바뀐 줄만 다시 읽는다 — 쪽 나눠 읽기(1,000줄 조용한 절단 방지) */
+      let after=[],_f=0;const _P=1000
+      for(;;){
+        const{data,error:e2}=await supabase.from('drugs')
+          .select('drug_code,drug_name,monthly_avg,safety_stock')
+          .eq('status','사용').order('drug_code').range(_f,_f+_P-1)
+        if(e2)throw e2
+        after=after.concat(data||[])
+        if(!data||data.length<_P)break
+        _f+=_P
+      }
+      const moved=[]
+      for(const a of after){
+        const b=before[a.drug_code];if(!b)continue
+        if(Number(b.om||0)===Number(a.monthly_avg||0)&&Number(b.osf||0)===Number(a.safety_stock||0))continue
+        moved.push({code:a.drug_code,name:a.drug_name||b.name,om:b.om,nm:a.monthly_avg,osf:b.osf,nsf:a.safety_stock})
+      }
+      moved.sort((x,z)=>Math.abs(Number(z.om||0)-Number(z.nm||0))-Math.abs(Number(x.om||0)-Number(x.nm||0)))
+      setReCalc({n:moved.length,rows:moved})
+      onReload&&onReload()
+    }catch(e){
+      setReCalc({err:e.message||String(e)})
+      setCloseMsg(`⚠ ${label} 마감은 끝났습니다. 다만 사용량 다시 세기만 실패했습니다: ${e.message||e} — 「사용량 갱신」 화면에서 다시 눌러 주세요`)
+    }
   }
 
   /* 연마감 — 로직 미구현. 12개월 월마감 선행 조건 안내만 표시(해당 연도 마감 완료 월 수 N/12) */
@@ -6718,8 +6759,12 @@ export function Report({drugs,onNav,onReload}){
     {closeMsg&&<div className="no-print" style={{background:closeMsg.includes('✅')?t.greenL:t.redL,border:`1px solid ${closeMsg.includes('✅')?t.green:t.red}`,borderRadius:8,padding:'10px 14px',marginBottom:10,color:closeMsg.includes('✅')?t.green:t.red,fontSize:12,fontWeight:600}}>{closeMsg}</div>}
     {/* ★ 마감이 끝나면 비교표를 볼 수 있게 한다 — 저장은 하지 않는다(2026-11-09). */}
     {closeMsg&&closeMsg.includes('✅')&&closeMsg.includes('마감 완료')&&<div className="no-print" style={{background:t.bg,border:'1px solid '+t.border,borderRadius:8,padding:'12px 14px',marginBottom:10,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
-      <span style={{fontSize:12,color:t.textM,lineHeight:1.7}}><b style={{color:t.text}}>사용량 비교표를 볼 수 있습니다.</b> 직전3개월·직전1개월을 이 마감 기준으로 다시 센 숫자입니다. 보기만 하며 저장하지 않습니다.</span>
-      <button type="button" onClick={()=>setUcOpen(true)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.accent,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>사용량 비교 보기</button>
+      {/* ★ 2026-11-14 — 마감 뒤 **저절로** 다시 세므로 글자가 바뀐다. 모양·색은 그대로다. */}
+      <span style={{fontSize:12,color:t.textM,lineHeight:1.7}}>{reCalc&&!reCalc.err
+        ? <><b style={{color:t.text}}>사용량을 이 마감 기준으로 다시 셌습니다 — {reCalc.n.toLocaleString()}종이 바뀌었습니다.</b> 마약·향정·한외마약·백신과 수기로 지킨 약은 그대로입니다.</>
+        : <><b style={{color:t.text}}>사용량 비교표를 볼 수 있습니다.</b> 직전3개월·직전1개월을 이 마감 기준으로 다시 센 숫자입니다. 보기만 하며 저장하지 않습니다.</>}</span>
+      {reCalc&&!reCalc.err&&reCalc.n>0&&<button type="button" onClick={()=>setReOpen(true)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.accent,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>바뀐 약 {reCalc.n.toLocaleString()}종 보기</button>}
+      <button type="button" onClick={()=>setUcOpen(true)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.accent,background:(reCalc&&!reCalc.err&&reCalc.n>0)?t.bg:t.accent,color:(reCalc&&!reCalc.err&&reCalc.n>0)?t.accent:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>사용량 비교 보기</button>
     </div>}
 {ucMsg&&<div className="no-print" style={{background:ucMsg.ok?t.greenL:t.redL,border:'1px solid '+(ucMsg.ok?t.green:t.red),borderRadius:8,padding:'10px 14px',marginBottom:10,color:ucMsg.ok?t.green:t.red,fontSize:12,fontWeight:600,display:'flex',gap:10,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}}>
         <span>{ucMsg.ok?'\u2705 ':'\u2757 '}{ucMsg.message}</span>
@@ -6742,6 +6787,24 @@ export function Report({drugs,onNav,onReload}){
       </div>
     </div>}
     {uploadOpen&&<SnapshotUploadModal t={t} isOwner={isOwner} onClose={()=>setUploadOpen(false)} onReload={loadS} />}
+    {/* ★ 마감 뒤 바뀐 약 목록 — 보기만 한다. 기존 창 골격·색을 그대로 쓴다. */}
+    {reOpen&&reCalc&&!reCalc.err&&<div className="no-print" onClick={()=>setReOpen(false)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:t.cardSolid,borderRadius:12,border:'1px solid '+t.border,boxShadow:t.shadowH,width:'min(760px,96vw)',maxHeight:'86vh',overflow:'auto',padding:18}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,gap:10}}>
+          <div style={{fontSize:16,fontWeight:700,color:t.text}}>마감 뒤 사용량이 바뀐 약 — {reCalc.n.toLocaleString()}종</div>
+          <button type="button" onClick={()=>setReOpen(false)} aria-label="닫기" style={{width:32,height:32,borderRadius:8,border:'1px solid '+t.border,background:t.bg,color:t.textM,cursor:'pointer',fontSize:14}}>✕</button>
+        </div>
+        <div style={{fontSize:11,color:t.textM,marginBottom:10,lineHeight:1.7}}>이 마감월 기준 3개월 출고로 다시 센 값입니다. 마약·향정·한외마약·백신과 수기로 지킨 약은 빠져 있습니다.</div>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+          <thead><tr>{['약품','월평균','안전재고'].map(h=><th key={h} style={{textAlign:h==='약품'?'left':'right',padding:'6px 10px',color:t.textM,borderBottom:'1px solid '+t.border,fontSize:11,whiteSpace:'nowrap'}}>{h}</th>)}</tr></thead>
+          <tbody>{reCalc.rows.map(r=><tr key={r.code}>
+            <td style={{padding:'6px 10px',borderBottom:'1px solid '+t.border}}><div style={{color:t.text,fontWeight:600}}>{r.name}</div><div style={{color:t.textL,fontSize:10}}>{r.code}</div></td>
+            <td style={{padding:'6px 10px',textAlign:'right',borderBottom:'1px solid '+t.border,whiteSpace:'nowrap'}}><span style={{color:t.textL}}>{Number(r.om||0).toLocaleString()}</span><span style={{color:t.textL,margin:'0 4px'}}>→</span><span style={{color:t.text,fontWeight:700}}>{Number(r.nm||0).toLocaleString()}</span></td>
+            <td style={{padding:'6px 10px',textAlign:'right',borderBottom:'1px solid '+t.border,whiteSpace:'nowrap'}}><span style={{color:t.textL}}>{Number(r.osf||0).toLocaleString()}</span><span style={{color:t.textL,margin:'0 4px'}}>→</span><span style={{color:t.text,fontWeight:700}}>{Number(r.nsf||0).toLocaleString()}</span></td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </div>}
 
     {rtype==='annual'&&<div className="cnc-annual-print" style={{marginBottom:14}}>
       <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:12}}>
