@@ -660,3 +660,43 @@ describe('★★ ㉔ 재고상태 메뉴 차례 · 「미사용」 글자', () =
     expect(code.includes('기준 없음'), '지운 「기준 없음」이 되살아났다').toBe(false)
   })
 })
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ★ ㉕ 마약·향정 표시 — 단계 판정은 마약도 그대로 타므로(2026-11-14 ㉮)
+      판·인쇄·엑셀에서 눈에 띄게 한다. **기존 NT 뱃지**를 쓴다 — 새 색 없음.
+   ══════════════════════════════════════════════════════════════════════════ */
+describe('★ ㉕ 판·인쇄·엑셀의 마약·향정 표시', () => {
+  const NARC = [
+    D({ drug_code: 'NARC', drug_name: '마약안나가는주', category: '주사제', narcotic_type: '마약', ...W(0, 0, 0, 0), current_qty: 10, purchase_price: 5000 }),
+    D({ drug_code: 'PSY', drug_name: '향정안나가는정', category: '경구제', narcotic_type: '향정', ...W(0, 0, 5, 5), current_qty: 10, purchase_price: 3000 }),
+    D({ drug_code: 'HAN', drug_name: '한외안나가는정', category: '경구제', narcotic_type: '한외마약', ...W(0, 2, 2, 2), current_qty: 10, purchase_price: 1000 }),
+    D({ drug_code: 'PLAIN', drug_name: '보통안나가는정', category: '경구제', ...W(0, 0, 0, 0), current_qty: 10, purchase_price: 2000 }),
+  ]
+  it('★ ① 판에 마약·향정 뱃지가 붙는다 — 일반·한외마약에는 안 붙는다', async () => {
+    await open({ drugs: NARC }); await clickCard(CARD)
+    const rowOf = nm => [...panelTable().querySelectorAll('tbody tr')].find(r => r.textContent.includes(nm))
+    expect(rowOf('마약안나가는주').textContent).toContain('마약')
+    expect(rowOf('향정안나가는정').textContent).toContain('향정')
+    /* ★ 한외마약은 getNT 가 「일반」으로 본다 — 이정화 님 결정(일반과 같이 규칙 적용) */
+    expect(rowOf('한외안나가는정').textContent.replace('한외안나가는정', '')).not.toContain('마약')
+    expect(rowOf('보통안나가는정').textContent).not.toContain('향정')
+  })
+  it('★ ② 인쇄 「구분」 칸이 마약·향정을 적는다', async () => {
+    await open({ drugs: NARC }); await clickCard(CARD)
+    const prn = document.querySelector('.ps-print')
+    expect(prn.textContent).toContain('주사제 · 마약')
+    expect(prn.textContent).toContain('경구제 · 향정')
+    expect(prn.textContent).toContain('경구제')        /* 한외마약·일반은 구분만 */
+  })
+  it('★ ③ 엑셀 「구분」 칸도 같은 글자다 · 새 색 없음', async () => {
+    await open({ drugs: NARC }); await clickCard(CARD)
+    await act(async () => { fireEvent.click(btn('엑셀')) }); await settle(8)
+    const byCode = c => xl.aoa.slice(1).find(r => r[0] === c)
+    expect(byCode('NARC')[2]).toBe('주사제 · 마약')
+    expect(byCode('PSY')[2]).toBe('경구제 · 향정')
+    expect(byCode('HAN')[2]).toBe('경구제')
+    expect(byCode('PLAIN')[2]).toBe('경구제')
+    /* 판은 **기존 NT 부품**을 쓴다 — 색을 새로 적지 않는다 */
+    expect(SRC).toContain('{d.drug_code}<NT d={d} /></div></td>')
+  })
+})

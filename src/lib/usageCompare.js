@@ -56,10 +56,24 @@ export function isVaccine(d) {
   return String((d && d.atc_code) || '').startsWith(VACCINE_ATC)
 }
 
-/* 월평균 — 계산식 그대로. 둘 다 없으면 null(= 기존 값을 그대로 둔다) */
+/* ★ 「그 창의 기록이 있나」 — 재고현황 「N개월 사용량 0」과 **같은 잣대**를 쓴다.
+     최근 마감 3개월에 그 약의 줄이 3개 있으면 기록이 있는 것이다.
+     재료(__unusedSnaps)는 재고현황이 이미 붙여 둔 것을 그대로 본다 — 새로 읽지 않는다. */
+export const MIN_SNAPS = 3
+export function hasRecord(d) {
+  const s = d && d.__unusedSnaps
+  return !!s && N(s[3]) >= MIN_SNAPS
+}
+
+/* 월평균 —
+   · m3 가 **숫자**면 그 값으로만 센다. **0 이면 0 이다** — 전년으로 넘어가지 않는다.
+     (2026-11-14 이정화 님 결정. 「3개월 출고 0 이면 발주 대상 아님」과 맞춘다.
+      전에는 0 이 전년÷12 로 넘어가 안전재고가 되살아났다 — 5D/W10 월평균 0→1·안전 0→2.)
+   · m3 가 null 이면 **그 창의 기록이 없다**는 뜻이다 → 전년÷12 로 받친다.
+   · 둘 다 없으면 null(= 기존 값을 그대로 둔다). */
 export function monthlyAvgOf(m3, py) {
-  if (N(m3) > 0) return Math.round(N(m3) / 3)
-  if (N(py) > 0) return Math.round(N(py) / 12)
+  if (m3 != null && m3 !== '') return Math.round(N(m3) / 3)
+  if (py != null && py !== '') return Math.round(N(py) / 12)
   return null
 }
 
@@ -68,10 +82,18 @@ export function compareOne(d, m3, m1) {
   const o3 = N(d.recent_3m_usage), o1 = N(d.recent_1m_usage), py = N(d.prev_year_usage)
   const n3 = N(m3), n1 = N(m1)
   const om = N(d.monthly_avg), osf = N(d.safety_stock), omx = N(d.max_stock)
-  const raw = monthlyAvgOf(n3, py)
-  /* ★ 극소량 — 새 월평균이 0 이면 **기존 값을 그대로 둔다**(2026-11-09 규칙 3).
-     3개월에 1~2개 나간 약은 round(1÷3)=0 → 안전재고 0 → 판정 자체를 잃는다. */
-  const tiny = raw === 0
+  /* ★ 출고가 0 일 때만 「기록이 있나」를 따진다 — 출고가 있으면 그 값으로 센다.
+       기록이 모자라면(들인 지 얼마 안 된 약) null 을 넘겨 전년으로 받친다. */
+  const basis = (n3 > 0 || hasRecord(d)) ? n3 : null
+  const raw = monthlyAvgOf(basis, py > 0 ? py : null)
+  /* ★★ 0 이 두 가지다 — 갈라야 한다.
+       ⓐ **기록이 있는데 출고가 0** (basis === 0) → 「안 쓰는 약」이다.
+          월평균·안전재고를 **0 으로 내리는 것이 업무 규칙**이다(2026-11-14 이정화 님 결정).
+       ⓑ 그 밖에 0 이 된 것 — 3개월에 1~2개 나갔거나(round(1÷3)=0), 전년이 1~5 라
+          round(3÷12)=0 이 된 것. 이건 **반올림 탓**이라 기존 값을 그대로 둔다(2026-11-09 규칙 3).
+          안 그러면 안전재고가 0 이 되어 판정 자체를 잃는다. */
+  const zeroByRecord = basis === 0
+  const tiny = raw === 0 && !zeroByRecord
   const keep = raw == null || tiny
   const nm = keep ? om : raw
   const nsf = keep ? osf : Math.ceil(raw * SAFETY_FACTOR)

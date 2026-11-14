@@ -51,6 +51,8 @@ import { attachUnused, foldSnapshots, monthsBack, readyTiers, UNUSED_TIERS, UNUS
   TIER_NS, TIER_LABELS, tierOf, tierLabel, tierByKey, isUnusedLabel, STOP_TIER_N, STOP_SUFFIX,
   stockAmount, isOverStock, sortUnused } from './lib/unusedStock'
 import { SHEET_CSS, SHEET_ON_CSS, measureSheetPages, sheetYmd } from './lib/printSheet'
+/* ★ 월평균 식은 여기 한 곳에서만 정한다 — 화면·한 줄 저장이 같은 함수를 쓴다(2026-11-14) */
+import { monthlyAvgOf } from './lib/usageCompare'
 import { TREND_MONTHS, amountMap } from './lib/usageTrend'
 /* XLSX는 동적 import로 별도 청크 분리(초기 번들 축소). 모든 사용은 사용자 액션 핸들러 내부뿐 → 로드 시점 안전 */
 let XLSX; import('xlsx').then(m => { XLSX = m })
@@ -2358,7 +2360,7 @@ export function StockStatus({drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust
   const pNum=v=>{const x=String(v).trim();if(x==='')return null;const n=Number(x.replace(/,/g,''));return(Number.isFinite(n)&&n>=0)?n:undefined}
   function editUsage(d,field,val){setDrafts(prev=>{const o0=origStr(d.prev_year_usage),o1=origStr(d.recent_3m_usage);const cur=prev[d.drug_code]||{py:o0,r3:o1};const next={...cur,[field]:val};if(next.py===o0&&next.r3===o1){const cp={...prev};delete cp[d.drug_code];return cp}return{...prev,[d.drug_code]:next}})}
   function cancelUsage(code){setDrafts(prev=>{if(!prev[code])return prev;const cp={...prev};delete cp[code];return cp})}
-  async function saveRowUsage(d){const dr=drafts[d.drug_code];if(!dr)return;const pv=pNum(dr.py),rv=pNum(dr.r3);if(pv===undefined||rv===undefined){setUMsg('오류: 숫자(0 이상)만 입력하세요');setTimeout(()=>setUMsg(null),3000);return}const upd={prev_year_usage:pv,recent_3m_usage:rv,usage_source:'manual'};let m=null;if(rv!=null)m=Math.round(rv/3);else if(pv!=null)m=Math.round(pv/12);if(m!=null){upd.monthly_avg=m;upd.safety_stock=Math.ceil(m*SAFETY_FACTOR);upd.max_stock=Math.round(m*3)}const{error}=await supabase.from('drugs').update(upd).eq('drug_code',d.drug_code);if(error){setUMsg('저장 오류: '+error.message);return}cancelUsage(d.drug_code);onReload?.()}
+  async function saveRowUsage(d){const dr=drafts[d.drug_code];if(!dr)return;const pv=pNum(dr.py),rv=pNum(dr.r3);if(pv===undefined||rv===undefined){setUMsg('오류: 숫자(0 이상)만 입력하세요');setTimeout(()=>setUMsg(null),3000);return}const upd={prev_year_usage:pv,recent_3m_usage:rv,usage_source:'manual'};/* ★ 월평균 식은 lib/usageCompare 한 곳에서만 정한다 — 네 군데가 따로 적혀 있어 3개월 0 의 처리가 엇갈렸다(2026-11-14) */const m=monthlyAvgOf(rv,pv);if(m!=null){upd.monthly_avg=m;upd.safety_stock=Math.ceil(m*SAFETY_FACTOR);upd.max_stock=Math.round(m*3)}const{error}=await supabase.from('drugs').update(upd).eq('drug_code',d.drug_code);if(error){setUMsg('저장 오류: '+error.message);return}cancelUsage(d.drug_code);onReload?.()}
   /* ★ 사용량을 건드리는 단추는 **이 약국의 관리자(owner·admin)만** — 2026-11-02 이정화 님 결정.
      canDispose(= owner·admin·**profiles.role='admin'**)보다 좁다 —
      전역 프로필의 admin 은 **빼고** tenant_members 의 역할만 본다. DB 기준과 맞추기 위해서다.
@@ -2411,7 +2413,8 @@ export function StockStatus({drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust
   const _unCols=[
     {k:'drug_code',h:'약품코드',w:'11%',a:'ps-l'},
     {k:'drug_name',h:'약품명',w:'17%',a:'ps-l',nm:true},
-    {k:'category',h:'구분',w:'7%',a:'ps-c'},
+    /* ★ 종이에는 뱃지를 못 쓴다 — 「구분」 칸에 마약·향정을 덧붙인다(칸을 늘리지 않는다) */
+    {k:'category',h:'구분',w:'9%',a:'ps-c',v:d=>{const n=getNT(d);return n==='일반'?d.category:d.category+' · '+n}},
     {k:'status',h:'상태',w:'11%',a:'ps-c',v:d=>d.stockStatus},
     {k:'qty',h:'현재고',w:'8%',a:'ps-r',v:d=>(Number(d.current_qty)||0).toLocaleString()},
     {k:'amt',h:'재고금액',w:'10%',a:'ps-r',v:d=>Math.round(stockAmount(d)).toLocaleString()},
@@ -2452,7 +2455,8 @@ export function StockStatus({drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust
     try{
       const XL=await import('xlsx')
       const HDR=['약품코드','약품명','구분','상태','현재고','구입단가','재고금액','과잉','유효기한','반품검토','비고']
-      const aoa=[HDR,..._unList.map(d=>[d.drug_code,d.drug_name,d.category,d.stockStatus,
+      const _cat=d=>{const n=getNT(d);return n==='일반'?d.category:d.category+' · '+n}
+      const aoa=[HDR,..._unList.map(d=>[d.drug_code,d.drug_name,_cat(d),d.stockStatus,
         Number(d.current_qty)||0,Number(d.purchase_price)||0,Math.round(stockAmount(d)),
         isOverStock(d)?'과잉':'',d.expiry_date||'','',''])]
       const ws=XL.utils.aoa_to_sheet(aoa)
@@ -2639,7 +2643,9 @@ export function StockStatus({drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust
           <tbody>{_unPaged.map(d=><tr key={d.drug_code}>
             <td style={{padding:'6px 10px',fontSize:11,borderBottom:'1px solid '+t.border}}>
               <div style={{color:t.text,fontWeight:600,fontSize:11.5}}>{d.drug_name}</div>
-              <div style={{color:t.textL,fontSize:10}}>{d.drug_code}</div></td>
+              {/* ★ 마약·향정은 **기존 NT 뱃지** 그대로 — 새 색을 만들지 않는다.
+                   단계 판정은 마약도 그대로 타므로(2026-11-14 ㉮), 여기서 눈에 띄게 한다. */}
+              <div style={{color:t.textL,fontSize:10}}>{d.drug_code}<NT d={d} /></div></td>
             <td style={{padding:'6px 10px',fontSize:11,color:t.textM,borderBottom:'1px solid '+t.border}}>{d.category}</td>
             <td style={{padding:'6px 10px',fontSize:11,color:t.textL,whiteSpace:'nowrap',borderBottom:'1px solid '+t.border}}>{d.stockStatus}</td>
             <td style={{padding:'6px 10px',fontSize:11,color:t.textM,textAlign:'right',borderBottom:'1px solid '+t.border}}>{(Number(d.current_qty)||0).toLocaleString()}</td>
