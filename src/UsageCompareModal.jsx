@@ -211,8 +211,12 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
     }
     let data = null, error = null
     try {
+      /* ★ p_source:'auto' — 이 화면에는 **숫자 입력칸이 아예 없다**(체크상자 둘뿐)이라,
+           여기서 나가는 값은 언제나 **화면이 센 값**이다. 수기 도장을 찍으면 그 약이
+           「출고 자동집계」에서 영영 빠진다(2026-11-14 이정화 님 승인 · 0130).
+         ★ 재고현황 표에서 직접 고쳐 저장하는 길과 사용량 업로드는 **그대로 manual** 이다. */
       const r = await supabase.rpc('app_save_usage_bulk', {
-        p_fields: APPLY_FIELDS, p_rows: rows, p_zero_missing: false, p_keep_codes: [],
+        p_fields: APPLY_FIELDS, p_rows: rows, p_zero_missing: false, p_keep_codes: [], p_source: 'auto',
       })
       data = r.data; error = r.error
     } catch (e) {
