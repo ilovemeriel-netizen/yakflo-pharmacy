@@ -240,6 +240,18 @@ describe('★★ ⑪⑫⑬ 체크·적용·알림 띠', () => {
     await pickMenu('극소량 — 3개월 그대로')   /* 체크된 약이 전부 화면 밖으로 간다 */
     expect(JSON.stringify(await applyNow())).toBe(plain)
   })
+  it('★ ⑫-2 거르고 **정렬까지** 해도 적용 대상이 그대로다', async () => {
+    /* ★ 옛 UsageCompareZeroChip.test.jsx ⑭ 가 지키던 자리다 — 칩을 없애며 이리로 옮겼다.
+         거르기와 정렬을 **함께** 걸어도 「적용」에 넘어가는 줄이 흔들리면 안 된다. */
+    const a = await open()
+    const plain = JSON.stringify(await applyNow())
+    a.unmount(); cleanup(); rpc.mockReset()
+    await open()
+    await pickMenu('백신 — 제외')
+    await act(async () => { fireEvent.click(document.querySelector('button[data-sort="note"]')) })
+    await settle(4)
+    expect(JSON.stringify(await applyNow())).toBe(plain)
+  })
   it('⑬ 숨은 체크 알림 띠가 머리글 거르기에서도 뜬다', async () => {
     const BAND = /체크한 (\d+)종 중 (\d+)종이 지금 안 보입니다/
     await open()
