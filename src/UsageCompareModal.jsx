@@ -20,6 +20,10 @@ import { checkRowLimit } from './lib/rowLimit'
 import { dbErrorMsg } from './lib/dbError'
 import { READ_ONLY_MSG } from './lib/readOnly'
 
+/* ★ 「출고 자동집계」 설명 — 약플로가 이미 쓰는 방식(title)이다. 새 부품을 만들지 않는다.
+     ★ 흐린(못 누르는) 단추에서도 브라우저가 띄워 준다. */
+export const RECOMPUTE_TIP = '마감한 달 출고로 사용량·안전재고를 다시 셉니다 · 마약·향정·백신·수기 약은 제외'
+
 const num = v => Number(v || 0).toLocaleString()
 
 /* ── 그 창의 출고를 **끝까지** 읽는다 ────────────────────────────────────
@@ -69,6 +73,9 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
   const box = useRef(null)
   const [loaded, setLoaded] = useState(null)
   const [onlyMoved, setOnlyMoved] = useState(true)
+  /* ★ 「적용 N종」 칩이 쓰는 갈래 — 체크한 약만 보여 준다 (2026-11-14 이정화 님 승인).
+       ★ **보여 주는 것만** 바꾼다. 적용 대상은 늘 원본 전체 + 체크한 코드 집합이다. */
+  const [onlyPicked, setOnlyPicked] = useState(false)
   /* ★ 머리 정렬 — ⇅ 만. ColMenu 에 filter 를 주지 않으므로 거르기 메뉴는 나오지 않는다.
        ★ JSX 태그 이름으로만 쓰인 식별자는 이 저장소 eslint 가 미사용으로 본다 — 변수로 한 번 받는다. */
   const HeadMenu = ColMenu
@@ -105,7 +112,20 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
 
   /* ★ 거르기를 바꾸는 문 하나 — 비고 머리글 메뉴가 이 길로만 바꾼다.
        (칩과 인쇄가 빠진 뒤에도 문은 하나로 둔다 — 나중에 또 갈래가 생기지 않게) */
-  function changeNote(v) { setNoteF(v) }
+  function changeNote(v) { setNoteF(v); setOnlyPicked(false) }
+  /* ★★ 거르기를 바꾸는 **문 하나** — 칩 다섯이 모두 여기로 들어온다.
+       화면 거르기는 이 셋(onlyMoved · noteF · onlyPicked)뿐이다. 다른 길을 만들지 않는다. */
+  function setFilterTo(kind) {
+    if (kind === 'all') { setOnlyMoved(false); setNoteF(null); setOnlyPicked(false); return }
+    if (kind === 'moved') { setOnlyMoved(true); setNoteF(null); setOnlyPicked(false); return }
+    if (kind === 'picked') { setNoteF(null); setOnlyPicked(true); return }
+    /* 비고 갈래(vac·tiny) */
+    setNoteF(kind); setOnlyPicked(false)
+  }
+  /* 지금 어느 칩이 눌려 있나 — 칩 모양과 거르기가 어긋나지 않게 **한 곳**에서 센다 */
+  const chipOn = k => k === 'all' ? (!onlyMoved && !noteF && !onlyPicked)
+    : k === 'moved' ? (onlyMoved && !noteF && !onlyPicked)
+      : k === 'picked' ? onlyPicked : (noteF === k && !onlyPicked)
 
   const year = ym ? ym.y : null
   const month = ym ? ym.m : null
@@ -309,7 +329,8 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
   }
   const base0 = p ? (onlyMoved ? p.moved : p.rows) : []
   const noteDef = NOTE_DEFS.find(d => d.k === noteF)
-  const shown = noteDef ? base0.filter(noteDef.hit) : base0
+  const _shown0 = noteDef ? base0.filter(noteDef.hit) : base0
+  const shown = onlyPicked ? _shown0.filter(r => finalPicked.has(r.code)) : _shown0
   /* 메뉴에 올릴 거리 — **지금 화면에서 0줄인 것은 올리지 않는다**(눌러도 빈 표다).
      ★ 다만 **지금 고른 것**은 0줄이 돼도 남긴다 — 메뉴에서 사라지면 ✓ 를 풀 길이 없다. */
   /* ★ 「0으로 바뀌는 약」은 **뱃지로만** 남기고 거르기 거리에서는 뺀다 (2026-11-14 이정화 님 결정).
@@ -343,7 +364,8 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
         {/* ★ 재고현황에 있던 「출고 자동집계」를 여기로 옮겼다 — 같은 일(사용량 갱신)을 하는 자리다 */}
         {/* ★ 읽기 전용(뷰어)에게도 **보여 준다** — 다만 흐림·못 누름. 기존 「집계 중…」과 같은 모양이다. */}
         {asScreen && onRecompute && <button onClick={onRecompute} disabled={recomputing || !!readOnly}
-          title={readOnly ? READ_ONLY_MSG : undefined} style={{ padding: '6px 14px', borderRadius: 8,
+          title={(readOnly ? READ_ONLY_MSG + ' · ' : '') + RECOMPUTE_TIP}
+          style={{ padding: '6px 14px', borderRadius: 8,
           border: '1px solid ' + t.purple, background: t.purpleL, color: t.purple,
           cursor: (recomputing || readOnly) ? 'default' : 'pointer', fontSize: 11, fontWeight: 600,
           opacity: readOnly ? 0.45 : (recomputing ? 0.6 : 1) }}>
@@ -380,12 +402,21 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
         </span>
       </div>
 
+      {/* ★★ 칩 다섯이 **눌러서 거르는 단추**가 되었다 (2026-11-14 이정화 님 승인).
+          모양은 재고현황 급변 칩과 **같은 꼴**이다 — 새 색을 만들지 않는다.
+          ★ 거르는 것은 **보여 주는 줄**뿐이다. 적용 대상은 원본 전체 + 체크한 코드 집합 그대로다. */}
       {s && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-        {badge('사용 중 ' + s.total + '종', t.bg, t.textM)}
-        {badge('달라짐 ' + s.changed + '종', t.accentL, t.accent)}
-        {badge('적용 ' + finalPicked.size + '종', t.greenL, t.green)}
-        {badge('백신 제외 ' + s.vac + '종', t.blueL, t.blue)}
-        {badge('극소량 ' + s.tiny + '종', t.purpleL, t.purple)}
+        {[['all', '사용 중 ' + s.total + '종', t.textM],
+          ['moved', '달라짐 ' + s.changed + '종', t.accent],
+          ['picked', '적용 ' + finalPicked.size + '종', t.green],
+          ['vac', '백신 제외 ' + s.vac + '종', t.blue],
+          ['tiny', '극소량 ' + s.tiny + '종', t.purple]].map(([k, label, c]) => {
+          const on = chipOn(k)
+          return <button key={k} type="button" onClick={() => setFilterTo(k)} aria-pressed={on}
+            style={{ padding: '3px 9px', borderRadius: 7, border: '1px solid ' + (on ? c : t.border),
+              background: on ? c + '18' : 'transparent', color: on ? c : t.textM,
+              cursor: 'pointer', fontSize: 10, fontWeight: on ? 700 : 500 }}>{label}</button>
+        })}
       </div>}
 
       {as && <div style={{ fontSize: 11.5, color: t.textM, marginBottom: 8 }}>
@@ -395,7 +426,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
 
       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
         fontSize: 11.5, color: t.textM, marginBottom: 8 }}>
-        <input type="checkbox" checked={onlyMoved} onChange={e => setOnlyMoved(e.target.checked)}
+        <input type="checkbox" checked={onlyMoved} onChange={e => setFilterTo(e.target.checked ? 'moved' : 'all')}
           style={{ width: 15, height: 15, accentColor: t.accent, cursor: 'pointer' }} />
         달라지는 약만 보기
       </label>
@@ -496,7 +527,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
       onClose={() => setConfirming(false)} onConfirm={apply} /></div>}
   </>
   return asScreen
-    ? <div style={{ textAlign: 'left' }}>{_inner}</div>
+    ? <div style={{ textAlign: 'left', maxWidth: 980, margin: '0 auto' }}>{_inner}</div>
     : <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
         zIndex: 1100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>{_inner}</div>
 }
