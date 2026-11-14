@@ -1182,7 +1182,10 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 
 /* ═══ 헤더 — 반응형 (모바일 햄버거) ═══ */
 function Header({ menu: m, setMenu: sm, onRegister }) {
-  const { t, dark, toggle, user, profile, setProfile, logout, openSearch, open360 } = useTheme()
+  const { t, dark, toggle, user, profile, setProfile, logout, openSearch, open360, memberRole } = useTheme()
+  /* ★ 「사용량 갱신」은 사용량을 **고치는** 화면이라 관리자에게만 보인다 —
+       옮기기 전 단추(canRecompute)와 **같은 잣대**다. 뷰어에게는 칸 자체가 안 생긴다. */
+  const _mgr = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tenant, setTenant] = useState('')
   useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, [])
@@ -1190,7 +1193,7 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
     { id: 'dashboard', l: '대시보드' },
     { id: 'alerts', l: '🔔 알림' },
     { id: 'druglist', l: '약품관리', landing: 'druglist', children: [{ id: 'druglist', l: '약품목록' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'locvocab', l: '보관위치' }] },
-    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'count', l: '실사' }, { id: 'vaccine', l: '백신관리' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }, { id: 'ward', l: '병동신청' }] },
+    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, ...(_mgr ? [{ id: 'usageupdate', l: '사용량 갱신' }] : []), { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'count', l: '실사' }, { id: 'vaccine', l: '백신관리' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }, { id: 'ward', l: '병동신청' }] },
     { id: 'transaction', l: '입출고' },
     { id: 'report', l: '보고서' },
     /* 가루약분리 — 조제관리 내림 목록에 한 칸만 더한다. 2026-11-10 이정화 님 승인 */
@@ -2338,7 +2341,7 @@ export function StockStatus({drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust
     ;(async()=>{const{data}=await supabase.from('tenants').select('name').limit(1).maybeSingle()
       if(on&&data&&data.name)setUnOrg(String(data.name))})()
     return()=>{on=false}},[filter,unOrg])              /* 엑셀 범위 선택 창 */
-  const[uMsg,setUMsg]=useState(null);const[uOpen,setUOpen]=useState(false);const[npOpen,setNpOpen]=useState(false);const[ucOpen,setUcOpen]=useState(false);const[ucMsg,setUcMsg]=useState(null);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});const[uBusy,setUBusy]=useState(false)
+  const[uMsg,setUMsg]=useState(null);const[uOpen,setUOpen]=useState(false);/* npOpen·ucOpen 은 「사용량 갱신」·향정마약 화면으로 옮겼다 (2026-11-14) */const[ucMsg,setUcMsg]=useState(null);const uRef=useRef();const[uRep,setURep]=useState(null);const[drafts,setDrafts]=useState({});/* uBusy 는 「사용량 갱신」 화면으로 옮겼다 (2026-11-14) */
   /* ★ 아직 저장 안 한 값이 있으면 새 배포 자동 적용을 미룬다(화면에 그리는 것은 없다) */
   useBusy('stock-drafts', Object.keys(drafts).length > 0)
   useEffect(()=>{if(nf?.filter){setFilter(nf.filter);setPage(1)}},[nf])
@@ -2367,9 +2370,7 @@ export function StockStatus({drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust
      이름을 isOwner 로 두지 않는 이유는 이 파일에 isOwner 가 이미 두 가지 뜻으로
      있기 때문이다(2601 느슨 · 5707 엄격). 「이 테넌트의 관리자」라는 뜻을 이름에 담는다. */
   const isTenantManager=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin')
-  const canRecompute=isTenantManager
-  const[recomfirm,setRecomfirm]=useState(false)
-  async function recomputeUsage(){setUBusy(true);const{data,error}=await supabase.rpc('app_recompute_usage',{p_overwrite_manual:false});setUBusy(false);if(error){setUMsg('자동집계 오류: '+error.message);setTimeout(()=>setUMsg(null),4000);return}setUMsg('출고 자동집계 완료 — '+(data??0)+'품목 갱신 (수기 manual 보존)');setTimeout(()=>setUMsg(null),4000);onReload?.()}
+  /* canRecompute·recomfirm·recomputeUsage 는 「사용량 갱신」 화면으로 옮겼다 (2026-11-14) */
   const _u=arr=>[...new Set(arr.filter(v=>v!=null&&String(v).trim()!==''))]
   /* ★ 지금 화면에 있는 재고상태만 올리되, **차례는 STOCK_STAT_ORDER 가 정한다.**
        차례에 없는 값이 생기면 뒤에 붙인다 — 조용히 사라지지 않게. */
@@ -2576,11 +2577,9 @@ export function StockStatus({drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust
         <button onClick={dlAsk} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>
         {isTenantManager&&<button onClick={dlUsageTemplate} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 양식</button>}
         {isTenantManager&&<button onClick={()=>setUOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 업로드</button>}
-        {canRecompute&&<button onClick={()=>setRecomfirm(true)} disabled={uBusy} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.purpleL,color:t.purple,cursor:uBusy?'default':'pointer',fontSize:11,fontWeight:600,opacity:uBusy?0.6:1}}>{uBusy?'집계 중…':'출고 자동집계'}</button>}
-        {/* ★ 마감된 달 기준으로 견주기만 한다 — 「적용」을 눌러야 저장한다(2026-11-09). */}
-        {canRecompute&&<button onClick={()=>setUcOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.accent,background:t.accentL,color:t.accent,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 비교</button>}
-        {/* ★ B-1 — 달력 기준으로 **계산해 보여 주기만** 한다. DB 에 쓰지 않는다(확정 업무 규칙 9). */}
-        {canRecompute&&<button onClick={()=>setNpOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.bg,color:t.purple,cursor:'pointer',fontSize:11,fontWeight:600}}>마약·향정 사용량 보기</button>}
+        {/* ★ 「출고 자동집계」·「사용량 비교」는 재고관리 ▼ 「사용량 갱신」 화면으로 옮겼다 (2026-11-14) */}
+
+        {/* ★ 「마약·향정 사용량 보기」는 향정마약 화면으로 옮겼다 (2026-11-14) */}
         <input ref={uRef} type="file" accept=".xlsx,.xls" onChange={uploadUsage} style={{display:'none'}}/>
       </div>
       <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
@@ -2722,21 +2721,11 @@ export function StockStatus({drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust
         onConfirm={()=>{setXlAsk(false);dl('view')}} />}
       {/* ★ 0105 로 수기(manual) 약품은 보호되므로, 바뀌는 것은 **수기가 아닌 약품**뿐이다.
           {N} 도 그 수로 센다 — 옛 문구는 「값이 들어 있는 약품」을 세어 실제보다 크게 보였다. */}
-      {recomfirm&&<CountConfirmModal t={t} title="출고 자동집계" tone={t.purple} busy={uBusy}
-        head={'출고 기록으로 수기 입력이 없는 약품 '+(drugs||[]).filter(d=>d.usage_source!=='manual').length.toLocaleString()+'종의 사용량을 다시 계산합니다.'}
-        strong="수기로 넣은 약품의 값은 바뀌지 않습니다."
-        body="계속할까요?" confirm="계속" escClose focusCancel
-        onClose={()=>setRecomfirm(false)}
-        onConfirm={()=>{setRecomfirm(false);recomputeUsage()}} />}
+
       {uOpen&&<UsageUploadModal t={t} isTenantManager={isTenantManager} drugs={drugs}
         onClose={()=>setUOpen(false)} onReload={onReload} onBulkFile={f=>uploadUsage(f)} />}
-      {npOpen&&<NarcoticUsageModal t={t} drugs={drugs} onClose={()=>setNpOpen(false)}
-        isTenantManager={isTenantManager} onReload={onReload} Confirm={CountConfirmModal}
-        ColMenu={ColMenu} useSort={useSort} />}
-      {ucOpen&&<UsageCompareModal t={t} drugs={drugs.filter(d=>String(d.status||'').trim()==='사용')}
-        isTenantManager={isTenantManager} onClose={()=>setUcOpen(false)} onReload={onReload}
-        onDone={r=>setUcMsg(r)} Confirm={CountConfirmModal}
-        ColMenu={ColMenu} useSort={useSort} />}
+
+
     </div><Ft/>
   </div>
 }
@@ -2865,8 +2854,50 @@ const NARC_PRINT_CSS=`
 }`
 
 /* export 는 시험에서 이 화면만 따로 띄우기 위한 것이다(StockStatus·TransactionForm 과 같은 방식) */
-export function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
-  const{t}=useTheme();
+/* ══════════════════════════════════════════════════════════════════════
+   「사용량 갱신」 화면 — 재고관리 ▼ · 주소 #usageupdate (2026-11-14 이정화 님 승인)
+   재고현황 단추 두 개(출고 자동집계 · 사용량 비교)가 여기로 왔다.
+   ★ 관리자만 — 뷰어는 메뉴 칸부터 안 보이고, 주소로 들어와도 막는다.
+   ══════════════════════════════════════════════════════════════════════ */
+export function UsageUpdateView({ drugs, onReload }) {
+  const { t, memberRole } = useTheme()
+  const isTenantManager = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+  const [ask, setAsk] = useState(false)
+  /* 출고 자동집계 — 재고현황에 있던 것과 **같은 호출**이다(수기 보존 그대로) */
+  async function recompute() {
+    setBusy(true)
+    const { data, error } = await supabase.rpc('app_recompute_usage', { p_overwrite_manual: false })
+    setBusy(false)
+    if (error) { setMsg({ ok: false, message: '자동집계 오류: ' + error.message }); setTimeout(() => setMsg(null), 4000); return }
+    setMsg({ ok: true, message: '출고 자동집계 완료 — ' + (data ?? 0) + '품목 갱신 (수기 manual 보존)' })
+    setTimeout(() => setMsg(null), 4000)
+    onReload?.()
+  }
+  if (!isTenantManager) return <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자만 볼 수 있는 화면입니다.</div>
+  return <div style={{ textAlign: 'left' }}>
+    {msg && <div className="no-print" style={{ background: msg.ok ? t.greenL : t.redL, border: '1px solid ' + (msg.ok ? t.green : t.red),
+      borderRadius: 8, padding: '10px 14px', marginBottom: 10, color: msg.ok ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>
+      {(msg.ok ? '\u2705 ' : '\u2757 ') + msg.message}</div>}
+    <UsageCompareModal asScreen t={t} drugs={drugs.filter(d => String(d.status || '').trim() === '사용')}
+      isTenantManager={isTenantManager} onClose={() => {}} onReload={onReload}
+      onDone={r => { setMsg(r); setTimeout(() => setMsg(null), 6000) }} Confirm={CountConfirmModal}
+      ColMenu={ColMenu} useSort={useSort} onRecompute={() => setAsk(true)} recomputing={busy} />
+    {ask && <CountConfirmModal t={t} title="출고 자동집계" tone={t.purple} busy={busy}
+      head={'출고 기록으로 수기 입력이 없는 약품 ' + (drugs || []).filter(d => d.usage_source !== 'manual').length.toLocaleString() + '종의 사용량을 다시 계산합니다.'}
+      strong="수기로 넣은 약품의 값은 바뀌지 않습니다."
+      body="계속할까요?" confirm="계속" escClose focusCancel
+      onClose={() => setAsk(false)} onConfirm={() => { setAsk(false); recompute() }} />}
+    <div className="no-print"><Ft /></div>
+  </div>
+}
+
+export function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter,onReload}){
+  /* ★ 「마약·향정 사용량 보기」 — 재고현황에서 옮겨 왔다. 관리자만(옮기기 전과 같은 잣대) */
+  const[npOpen,setNpOpen]=useState(false)
+  const{t,memberRole}=useTheme();
+  const _narcMgr=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin');
   const[stats,setStats]=useState(navFilter?.narcStatus||['사용']);
   const[cardF,setCardF]=useState('전체');
   const[search,setSearch]=useState('');
@@ -2973,7 +3004,7 @@ export function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter}){
 
   return<div className="narc-root" style={{padding:'20px 24px'}}>
     <style>{NARC_PRINT_CSS}</style>
-    <div className="no-print" style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><div style={{fontSize:16,fontWeight:700,color:t.purple}}>향정·마약류 관리</div><span style={{display:'flex',gap:8}}><button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button><button onClick={narcPrint} title="브라우저 인쇄 창이 열립니다 — 「PDF로 저장」도 됩니다" style={{padding:'6px 16px',borderRadius:8,border:'1px solid '+t.blue,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11.5,fontWeight:700}}>인쇄</button></span></div>
+    <div className="no-print" style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><div style={{fontSize:16,fontWeight:700,color:t.purple}}>향정·마약류 관리</div><span style={{display:'flex',gap:8}}>{/* ★ 재고현황에 있던 단추를 여기로 옮겼다 — 마약 일은 마약 화면에서 (2026-11-14) */}{_narcMgr&&<button onClick={()=>setNpOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.bg,color:t.purple,cursor:'pointer',fontSize:11,fontWeight:600}}>마약·향정 사용량 보기</button>}{npOpen&&<NarcoticUsageModal t={t} drugs={drugs} onClose={()=>setNpOpen(false)} isTenantManager={_narcMgr} onReload={onReload} Confirm={CountConfirmModal} ColMenu={ColMenu} useSort={useSort} />}<button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button><button onClick={narcPrint} title="브라우저 인쇄 창이 열립니다 — 「PDF로 저장」도 됩니다" style={{padding:'6px 16px',borderRadius:8,border:'1px solid '+t.blue,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11.5,fontWeight:700}}>인쇄</button></span></div>
     {/* ═══ 인쇄 전용 — 화면에는 안 보이고 종이에만 나온다 ═══ */}
     <div className="narc-print">
       <div className="np-h">향정·마약류 보유 목록</div>
@@ -8577,7 +8608,7 @@ function Schedule({ drugs, onNav }) {
   </div>;
 }
 
-const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'count', 'narcotic', 'nonins', 'ordering', 'ward', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive', 'locvocab', 'vaccine', 'label', 'powder'];
+const ROUTES = ['dashboard', 'alerts', 'druglist', 'expiry', 'idle', 'change', 'stock', 'count', 'narcotic', 'nonins', 'ordering', 'ward', 'transaction', 'report', 'emergency', 'atc', 'schedule', 'register', 'mypage', 'admin', 'archive', 'locvocab', 'vaccine', 'label', 'powder', 'usageupdate'];
 function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?/, ''); const m = h.split('/')[0]; return ROUTES.includes(m) ? m : 'dashboard'; }
 function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
 /* 입출고 월 선택: 해시 3번째 세그먼트(#transaction/out/2026-08). 없으면 현재 월(하위호환). 「전체」는 URL에 월 세그먼트 없음(→새로고침 시 현재 월로 복원). */
@@ -9398,10 +9429,11 @@ export default function App() {
           {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} onDispose={setDisposeDrug} />}
           {menu === 'idle' && <IdleCheck drugs={drugs} onReload={load} />}
           {menu === 'ward' && <WardAdmin />}
+          {menu === 'usageupdate' && <UsageUpdateView drugs={drugs} onReload={load} />}
           {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} unusedLatest={unusedLatest} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
           {menu === 'count' && <InventoryCount drugs={drugs} onReload={load} />}
           {menu === 'vaccine' && <><Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: t.textL, fontSize: 12 }}>불러오는 중...</div>}><VaccineManage ColMenu={ColMenu} useSort={useSort} ymd={ymd} todayYmd={todayYmd} /></Suspense><div className="no-print"><Ft /></div></>}
-          {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} />}
+          {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} onReload={load} />}
           {menu === 'transaction' && <TransactionForm drugs={drugs} onReload={load} navFilter={nf} />}
           {menu === 'report' && <Report drugs={drugs} onNav={handleNav} onReload={load} />}
           {menu === 'emergency' && <><EmergencyDispense /><div className="no-print"><Ft /></div></>}

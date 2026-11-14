@@ -244,8 +244,10 @@ describe('★ ⑧⑨ 그 밖', () => {
   })
   it('★ ⑨ 부품은 부모가 넘긴다 — 화면 **두 곳** 모두', () => {
     expect(SRC.includes("from './App"), '이 파일이 App.jsx 를 들여왔다').toBe(false)
-    expect(SRC).toContain('Confirm, ColMenu, useSort }')
+    /* ★ 2026-11-14 — 손잡이가 늘었다(asScreen·onRecompute). 뜻은 「부모가 넘긴다」이므로 거기만 본다. */
+    expect(SRC).toContain('Confirm, ColMenu, useSort')
     const passes = (APP.match(/ColMenu=\{ColMenu\} useSort=\{useSort\}/g) || []).length
+    /* 사용량 갱신 화면 · 향정마약 화면 · 보고서 화면 · 백신 화면 */
     expect(passes, '넘기는 자리가 모자라다').toBeGreaterThanOrEqual(3)
   })
 })
