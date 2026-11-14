@@ -168,7 +168,12 @@ describe('App.jsx 배선 — 고친 곳이 되돌아가지 않게', () => {
     /* ★ 2026-11-01 급변 필터가 끼면서 이 줄이 길어졌다 — 글자 그대로 비교하면 깨진다.
        지키려는 뜻은 「filtered 가 _sb 에서 나온다」이므로 그것만 본다. */
     expect(APP).toContain('const filtered=so(_sb.filter(d=>')
-    expect(APP, '재고상태 칩 조건은 그대로').toContain("filter==='전체'||d.stockStatus===filter")
+    /* ★ 2026-11-14 단계(3/6/9/12개월)가 들어오면서 거르기가 한 줄 함수(_hit)로 빠졌다.
+       「3개월 이상 사용량 0」 카드는 상태 글자가 **여러 개**라 === 로는 하나도 안 걸린다
+       (시안에서 실제로 본 목록이 「없음」이 됐다). 그래서 그 카드만 묶음으로 본다. */
+    expect(APP, '재고상태 칩 조건은 그대로').toContain(
+      "const _hit=(d)=>filter==='전체'||(filter===UNUSED_CARD?isUnusedLabel(d.stockStatus):d.stockStatus===filter)")
+    expect(APP, 'filtered 가 _hit 를 쓰지 않는다').toContain('const filtered=so(_sb.filter(d=>_hit(d)&&')
   })
 
   it('★ 향정마약 카드 숫자가 _cb(카드 선택만 뺀 기준)에서 나온다', () => {
