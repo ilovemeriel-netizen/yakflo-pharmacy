@@ -2605,8 +2605,13 @@ export function StockStatus({onCheck,drugs,inv,navFilter:nf,unusedLatest,onEdit,
         <div style={{width:1,height:16,background:t.border}}/>
         <MP items={STATS} selected={stats} onChange={v=>{setStats(v);setPage(1)}} color={t.green} label="상태"/>
         <div style={{width:1,height:16,background:t.border}}/>
+        {/* ★ 「급변」 글자 + 칩 넷을 **한 덩어리**로 묶는다 (2026-11-14 이정화 님 승인).
+            묶지 않으면 보통 화면(1126px)에서 「? 확인 필요」만 다음 줄 맨 왼쪽으로 떨어진다.
+            nowrap 이라 좁아지면 **넷이 함께** 줄을 바꾼다. 가로 스크롤은 넣지 않는다(결정). */}
+        <span style={{display:'inline-flex',gap:4,alignItems:'center',flexWrap:'nowrap'}}>
         <span style={{fontSize:10,color:t.textM,fontWeight:600}}>급변</span>
         {[[SURGE_ALL,t.textM],['급증',t.red],['급감',t.blue],[SURGE_CHECK,t.textM]].map(([k,c])=>{const on=surge===k;return <button key={k} onClick={()=>{setSurge(k);setPage(1)}} aria-pressed={on} style={{padding:'3px 9px',borderRadius:7,border:'1px solid '+(on?c:t.border),background:on?c+'18':'transparent',color:on?c:t.textM,cursor:'pointer',fontSize:10,fontWeight:on?700:500}}>{surgeLabel(k)}</button>})}
+        </span>
       </div>
     </div>
 
@@ -2900,7 +2905,8 @@ export function UsageUpdateView({ drugs, onReload, onBack }) {
   return <div style={{ textAlign: 'left' }}>
     {/* ★ 돌아가기 + 한 줄 설명. 단추는 **기존 모양** 그대로다(새 색 없음).
         ★ 브라우저 뒤로 가기로도 돌아온다 — 주소가 #stock/check → #stock 으로 바뀌기 때문이다. */}
-    <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+    {/* ★ 흰 상자와 **왼쪽을 맞춘다** — 상자가 가운데(maxWidth 980)라 머리 줄도 같은 틀에 넣는다 */}
+    <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap', maxWidth: 980, margin: '0 auto 10px' }}>
       <button type="button" onClick={() => onBack && onBack()} style={{ padding: '6px 14px', borderRadius: 8,
         border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>← 재고현황</button>
       <span style={{ fontSize: 12, color: t.textM, lineHeight: 1.7 }}>월평균·안전재고를 마감월 출고로 다시 센 결과입니다 · 마감할 때 저절로 다시 셉니다</span>
