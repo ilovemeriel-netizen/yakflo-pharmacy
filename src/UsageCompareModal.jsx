@@ -21,6 +21,34 @@ import { dbErrorMsg } from './lib/dbError'
 
 const num = v => Number(v || 0).toLocaleString()
 
+/* ── 그 창의 출고를 **끝까지** 읽는다 ────────────────────────────────────
+   ★ 한 번에 읽지 않는다. select 는 기본 1,000줄만 주고 넘치면 **오류도 경고도 없이** 잘린다.
+     8·9·10월 출고가 1,079줄이라 79줄이 빠져 합계가 작게 나왔다(2026-11-10 실측).
+   ★ 쪽을 나눌 때 차례를 고정한다(id). 고정하지 않으면 쪽마다 줄이 겹치거나 빠진다.
+   ★ 효과·「다시 읽기」·「적용 직전 검사」가 **모두 이 함수 하나**를 쓴다 — 길이 갈리지 않게. */
+async function fetchWindowTx(year, month) {
+  const w = closedWindow(year, month)
+  const PAGE = 1000
+  let rows = [], from = 0, total = null
+  for (;;) {
+    const { data, error, count } = await supabase.from('transactions')
+      .select('drug_code,type,transaction_date,quantity', { count: 'exact' })
+      .eq('type', '출고')
+      .gte('transaction_date', w.m3From)
+      .lt('transaction_date', w.toExclusive)
+      .order('id')
+      .range(from, from + PAGE - 1)
+    if (error) return { rows: [], err: '거래를 읽지 못했습니다: ' + dbErrorMsg(error), cutMsg: '' }
+    if (count != null) total = count
+    rows = rows.concat(data || [])
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  /* 다 읽었는지 한 번 더 센다 — 쪽 나누기가 잘못돼도 여기서 걸린다 */
+  const lim = checkRowLimit(rows, total)
+  return { rows, err: '', cutMsg: lim.message }
+}
+
 /* ★ 비고 칸 너비 — 뱃지가 둘·셋이어도 **이 칸 안에서만** 줄바꿈시켜
      약품 칸 너비를 PR 459 와 같게 지킨다. 한곳에서 정한다.
    ★ 149 는 PR 459 화면에서 **실제로 재어 본** 비고 칸 너비다(약품 칸 234px).
@@ -36,7 +64,7 @@ function monthLabel(year, month) {
   return m.join('·') + '월'
 }
 
-export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixedM, isTenantManager, onClose, onReload, onDone, Confirm, ColMenu, useSort }) {
+export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixedM, isTenantManager, onClose, onReload, onDone, Confirm, ColMenu, useSort, onRecompute, recomputing, asScreen }) {
   const box = useRef(null)
   const [loaded, setLoaded] = useState(null)
   const [onlyMoved, setOnlyMoved] = useState(true)
@@ -92,34 +120,34 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
   useEffect(() => {
     if (!year || !month) return undefined
     let dead = false
-    const w = closedWindow(year, month)
-    const PAGE = 1000
     ;(async () => {
-      let rows = [], from = 0, total = null
-      for (;;) {
-        const { data, error, count } = await supabase.from('transactions')
-          .select('drug_code,type,transaction_date,quantity', { count: 'exact' })
-          .eq('type', '출고')
-          .gte('transaction_date', w.m3From)
-          .lt('transaction_date', w.toExclusive)
-          .order('id')
-          .range(from, from + PAGE - 1)
-        if (dead) return
-        if (error) {
-          setLoaded({ key, rows: [], err: '거래를 읽지 못했습니다: ' + dbErrorMsg(error), cutMsg: '' })
-          return
-        }
-        if (count != null) total = count
-        rows = rows.concat(data || [])
-        if (!data || data.length < PAGE) break
-        from += PAGE
-      }
-      /* 다 읽었는지 한 번 더 센다 — 쪽 나누기가 잘못돼도 여기서 걸린다 */
-      const lim = checkRowLimit(rows, total)
-      setLoaded({ key, rows, err: '', cutMsg: lim.message })
+      const r = await fetchWindowTx(year, month)
+      if (dead) return
+      setLoaded({ key, ...r })
     })()
     return () => { dead = true }
   }, [year, month, key])
+
+  /* ★★ 그 달 거래가 바뀌면 알려 준다 — 화면이 되면 오래 열어 두기 쉬워져
+       **낡은 숫자로 「적용」을 누를 위험**이 커진다. 읽기만 하고 아무것도 안 바꾼다. */
+  const [txChanged, setTxChanged] = useState(false)
+  const [reloading, setReloading] = useState(false)
+  useEffect(() => {
+    if (!year || !month || !supabase.channel) return undefined
+    const ch = supabase.channel('uc-tx-' + key)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => setTxChanged(true))
+      .subscribe()
+    return () => { try { supabase.removeChannel(ch) } catch { /* 이미 사라졌으면 그만 */ } }
+  }, [year, month, key])
+
+  /* 「다시 읽기」 — 거래를 새로 읽어 화면 숫자를 맞춘다 */
+  async function reloadTx() {
+    setReloading(true)
+    const r = await fetchWindowTx(year, month)
+    setReloading(false)
+    setLoaded({ key, ...r })
+    setTxChanged(false)
+  }
 
   const ready = ym != null && loaded != null && loaded.key === key
   const txns = ready ? loaded.rows : null
@@ -165,6 +193,21 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
   async function apply() {
     setConfirming(false); setApplying(true); setApplyErr(''); setResult(null)
     const rows = applyRows(p ? p.rows : [], finalPicked)
+    /* ★★ 적용 **직전에 거래를 다시 읽는다**(2026-11-14 이정화 님 승인).
+         화면을 열어 둔 사이에 누가 그 달 출고를 넣거나 지웠으면, 지금 보이는 숫자는
+         낡은 것이다. 그대로 보내면 **낡은 값으로 DB 를 덮어쓴다.**
+       ★ 다르면 **저장하지 않고 멈춘다** — 새 숫자를 화면에 올리고 다시 보게 한다. */
+    const fresh = await fetchWindowTx(year, month)
+    if (fresh.err) {
+      setApplying(false); setApplyErr(fresh.err); onDone?.({ ok: false, message: fresh.err }); return
+    }
+    const rows2 = applyRows(buildUsageCompare(drugs || [], fresh.rows, year, month).rows, finalPicked)
+    if (JSON.stringify(rows2) !== JSON.stringify(rows)) {
+      setLoaded({ key, ...fresh }); setTxChanged(false); setApplying(false)
+      const msg = '그새 그 달 거래가 바뀌어 값이 달라졌습니다 — **저장하지 않았습니다.** 새 숫자를 보고 다시 「적용」해 주세요.'
+      setApplyErr(msg); onDone?.({ ok: false, message: msg })
+      return
+    }
     let data = null, error = null
     try {
       const r = await supabase.rpc('app_save_usage_bulk', {
@@ -279,17 +322,38 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
   const s = p ? p.summary : null
   const as = p ? applySummary(p.rows, finalPicked) : null
 
-  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-    zIndex: 1100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
-    <div ref={box} onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 14,
+  /* ★★ asScreen 이면 **화면**, 아니면 지금까지처럼 **창**이다.
+       · 화면(사용량 갱신 메뉴) — 덮개·✕·바깥클릭 닫힘이 없다. 제목이 「사용량 갱신」이다.
+       · 창(보고서 화면의 「사용량 비교 보기」) — **지금과 한 글자도 다르지 않다.**
+       본문·표·단추·계산은 두 길 모두 똑같다. (2026-11-14 이정화 님 승인) */
+  /* ★ 껍데기를 **렌더 안에서 부품으로 만들지 않는다** — 그러면 다시 그릴 때마다 상태가 날아가고
+       이 저장소 eslint 도 막는다. 속을 변수에 담아 두고 감싸기만 고른다. */
+  const _inner = <>
+    <div ref={box} onClick={asScreen ? undefined : (e => e.stopPropagation())} style={{ background: t.cardSolid, borderRadius: 14,
       padding: '22px 26px', maxWidth: 980, width: '100%', border: `1px solid ${t.border}`,
-      boxShadow: t.shadowH, boxSizing: 'border-box', textAlign: 'left' }}>
+      boxShadow: asScreen ? t.shadow : t.shadowH, boxSizing: 'border-box', textAlign: 'left' }}>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: t.text }}>사용량 비교 — 마감된 달 기준</div>
-        <button onClick={onClose} aria-label="닫기" style={{ width: 32, height: 32, borderRadius: 8,
-          border: `1px solid ${t.border}`, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 14 }}>✕</button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: t.text }}>{asScreen ? '사용량 갱신' : '사용량 비교'} — 마감된 달 기준</div>
+        {/* ★ 재고현황에 있던 「출고 자동집계」를 여기로 옮겼다 — 같은 일(사용량 갱신)을 하는 자리다 */}
+        {asScreen && onRecompute && <button onClick={onRecompute} disabled={recomputing} style={{ padding: '6px 14px', borderRadius: 8,
+          border: '1px solid ' + t.purple, background: t.purpleL, color: t.purple,
+          cursor: recomputing ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, opacity: recomputing ? 0.6 : 1 }}>
+          {recomputing ? '집계 중…' : '출고 자동집계'}</button>}
+        {!asScreen && <button onClick={onClose} aria-label="닫기" style={{ width: 32, height: 32, borderRadius: 8,
+          border: `1px solid ${t.border}`, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 14 }}>✕</button>}
       </div>
+
+      {/* ★★ 그 달 거래가 바뀌었다는 띠 — 기존 주황 띠와 **같은 모양**이다(새 색 없음) */}
+      {txChanged && <div style={{ background: t.amberL, border: `1px solid ${t.border}`, borderRadius: 8,
+        padding: '10px 14px', fontSize: 12, color: t.amber, marginBottom: 10,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <span>그 달 출고가 바뀌었습니다 · 아래 숫자가 낡았을 수 있습니다</span>
+        <button onClick={reloadTx} disabled={reloading} style={{ padding: '4px 12px', borderRadius: 8,
+          border: '1px solid ' + t.amber, background: t.card, color: t.amber,
+          cursor: reloading ? 'default' : 'pointer', fontSize: 11, fontWeight: 700 }}>
+          {reloading ? '읽는 중…' : '다시 읽기'}</button>
+      </div>}
 
       {/* ★ 가장 먼저 「고른 약만 저장한다」를 말한다 — 이 창의 성격이다 */}
       <div style={{ background: t.bg, border: `1px solid ${t.border}`, borderRadius: 8,
@@ -400,7 +464,8 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
           보기 {shown.length}줄 / 모두 {s ? s.total : 0}줄 · 체크를 풀면 그 약은 그대로 둡니다
         </span>
         <span style={{ display: 'flex', gap: 8 }}>
-          {btn('닫기', null, onClose)}
+          {/* ★ 화면일 때는 닫을 곳이 없다 — 창일 때만 둔다 */}
+          {!asScreen && btn('닫기', null, onClose)}
           {isTenantManager && btn(applying ? '적용 중…' : '고른 ' + finalPicked.size + '종 적용', 'go',
             () => setConfirming(true), applying || !ready || finalPicked.size === 0 || !!err || !!cutMsg)}
         </span>
@@ -419,5 +484,9 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
         + `전년 사용량은 건드리지 않습니다. 극소량 ${as.tiny}종은 직전1개월만 바뀌고 3개월·안전재고는 그대로입니다.` : ''}
       confirm="적용" busy={applying}
       onClose={() => setConfirming(false)} onConfirm={apply} /></div>}
-  </div>
+  </>
+  return asScreen
+    ? <div style={{ textAlign: 'left' }}>{_inner}</div>
+    : <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+        zIndex: 1100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>{_inner}</div>
 }

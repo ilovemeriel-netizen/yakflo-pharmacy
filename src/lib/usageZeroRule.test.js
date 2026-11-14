@@ -20,7 +20,9 @@ import { resolve } from 'node:path'
 import { monthlyAvgOf, hasRecord, compareOne, applyRows, MIN_SNAPS } from './usageCompare.js'
 
 const APP = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8')
+/* ★ 저장소 파일이 CRLF 라 여러 줄 대조가 어긋난다 — 줄바꿈을 맞춰 읽는다 */
 const SQL = readFileSync(resolve(process.cwd(), 'supabase/migrations/0129_recompute_no_prevyear_fallback.sql'), 'utf8')
+  .split(String.fromCharCode(13) + String.fromCharCode(10)).join(String.fromCharCode(10))
 
 /* 마감 줄이 n개인 약 */
 const snaps = n => ({ 3: n, 6: n * 2, 9: n * 3, 12: n * 3 })

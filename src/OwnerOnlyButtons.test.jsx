@@ -71,21 +71,24 @@ const openTx = async () => {
 
 /* ★ 2026-11-04 B-1 — 「마약·향정 사용량 보기」도 같은 기준이다.
    이 창은 DB 에 쓰지 않지만, **누가 얼마나 쓰는지**가 그대로 드러나므로 사용량 단추와 같이 묶는다. */
-const 사용량단추 = ['사용량 양식', '사용량 업로드', '출고 자동집계', '마약·향정 사용량 보기']
+/* ★ 2026-11-14 — 「출고 자동집계」는 「사용량 갱신」 화면으로, 「마약·향정 사용량 보기」는
+     향정마약 화면으로 옮겼다. 재고현황에 남은 것은 둘이다.
+     옮겨 간 자리의 같은 잣대는 RecomputeGuard.test.jsx · UsageUpdateScreen.test.jsx 가 지킨다. */
+const 사용량단추 = ['사용량 양식', '사용량 업로드']
 
-describe('① 재고현황 — 사용량 단추 4곳', () => {
-  it('owner — 넷 다 보인다', async () => {
+describe('① 재고현황 — 사용량 단추 2곳', () => {
+  it('owner — 둘 다 보인다', async () => {
     ROLE = { memberRole: 'owner', profile: { role: 'user' } }
     await openStock()
     for (const s of 사용량단추) expect(byText(s), s).toBeTruthy()
   })
-  it('★ admin — 넷 다 보인다 (이 약국의 관리자다)', async () => {
+  it('★ admin — 둘 다 보인다 (이 약국의 관리자다)', async () => {
     ROLE = { memberRole: 'admin', profile: { role: 'user' } }
     await openStock()
     for (const s of 사용량단추) expect(byText(s), s).toBeTruthy()
   })
   /* ★ 전역 프로필의 admin 은 **이 약국의 멤버가 아니다** — DB(tenant_members)가 보는 기준과 맞춘다 */
-  it('★ profiles.role=admin 뿐인 사람 — 넷 다 없다', async () => {
+  it('★ profiles.role=admin 뿐인 사람 — 둘 다 없다', async () => {
     ROLE = { memberRole: 'member', profile: { role: 'admin' } }
     await openStock()
     for (const s of 사용량단추) expect(byText(s), s).toBeFalsy()
@@ -180,7 +183,9 @@ describe('③ 조건을 소스로 못 박는다', () => {
   it('★ 이름이 뜻을 드러낸다 — isOwner 가 아니라 isTenantManager', () => {
     expect((APP.match(/const isTenantManager=memberRole!==VIEWER_ROLE&&\(memberRole==='owner'\|\|memberRole==='admin'\)/g) || []).length,
       '재고현황·출고관리·보고서 세 곳').toBe(3)
-    expect(APP).toContain('const canRecompute=isTenantManager')
+    /* ★ 2026-11-14 — 옮겨 간 두 자리도 **같은 잣대**를 쓴다(띄어쓰기만 다르다) */
+    expect(APP).toContain("const isTenantManager = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')")
+    expect(APP).toContain("const _narcMgr=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin');")
   })
 
   it('★ 전역 프로필 admin 은 새 조건에 들어가지 않는다', () => {

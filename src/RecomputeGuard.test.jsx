@@ -34,7 +34,9 @@ vi.mock('./lib/supabase', () => {
   const result = data => Promise.resolve({ data, error: null })
   const q = {
     select: () => q, in: () => q, eq: () => q, gte: () => q, lt: () => q, order: () => q,
-    range: () => result([]), limit: () => result([]), maybeSingle: () => result(null),
+    /* ★ limit() 뒤에 maybeSingle() 이 또 오는 길이 있다(사용량 갱신 화면의 기준월 찾기).
+         q 는 then 을 가진 thenable 이라 await 해도 그대로 동작한다. */
+    range: () => result([]), limit: () => q, maybeSingle: () => result(null),
     insert: () => result(null), upsert: () => result(null), update: () => q, delete: () => q,
     then(res) { return result([]).then(res) },
   }
@@ -61,16 +63,17 @@ vi.mock('./lib/theme', async (orig) => {
   return { ...real, useTheme: () => ({ t: T, dark: false, setTheme: () => {}, ...ROLE }) }
 })
 
-let StockStatus
+/* ★ 2026-11-14 — 「출고 자동집계」가 재고현황에서 **「사용량 갱신」 화면**으로 옮겨 갔다.
+     지키려는 것(관리자만·확인 창을 거쳐야 함·RPC 인자)은 그대로다. 보는 자리만 바꾼다. */
+let UsageUpdateView
 beforeEach(async () => {
   rpcCalls.length = 0
   ROLE = { memberRole: 'owner', profile: { role: 'user' } }
-  if (!StockStatus) StockStatus = (await import('./App.jsx')).StockStatus
+  if (!UsageUpdateView) UsageUpdateView = (await import('./App.jsx')).UsageUpdateView
 })
 afterEach(() => cleanup())
 
-const open = () => render(<StockStatus drugs={DRUGS} inv={[]} navFilter={null}
-  onEdit={() => {}} onAdjust={() => {}} onReload={() => {}} onDispose={() => {}} />)
+const open = () => render(<UsageUpdateView drugs={DRUGS} onReload={() => {}} />)
 const btn = () => [...document.querySelectorAll('button')]
   .find(b => b.textContent.trim() === '출고 자동집계')
 const dialog = () => [...document.querySelectorAll('div')]
@@ -79,7 +82,8 @@ const inDialog = label => [...document.querySelectorAll('button')]
   .find(b => b.textContent.trim() === label)
 async function ready() {
   open()
-  await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBeGreaterThan(0))
+  /* 화면이 그려지면 단추(관리자) 또는 막음 글귀(그 밖)가 뜬다 */
+  await waitFor(() => expect(btn() || document.body.textContent.includes('관리자만 볼 수 있는')).toBeTruthy())
 }
 
 describe('① 관리자에게만 보인다', () => {

@@ -37,7 +37,7 @@ export const EC_DARK = { bg: '#121820', card: '#1A2332', border: '#2A3A4A', text
    ROUTES(App.jsx) 전 키를 덮는다. 빠진 키가 있으면 시험이 걸린다. */
 export const SCREEN_LABEL = {
   dashboard: '대시보드', alerts: '알림', druglist: '약품목록', expiry: '유효기한',
-  idle: '사용점검', change: '약품변경', stock: '재고현황', count: '실사',
+  idle: '사용점검', change: '약품변경', stock: '재고현황', usageupdate: '사용량 갱신', count: '실사',
   narcotic: '향정마약', nonins: '비보험', ordering: '발주업무', ward: '병동신청',
   transaction: '입출고', report: '보고서', emergency: '비상조제', atc: 'ATC편집',
   schedule: '일정', register: '약품등록', mypage: '내 정보', admin: '사용자관리',
