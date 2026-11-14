@@ -624,12 +624,28 @@ describe('★★ ㉔ 재고상태 메뉴 차례 · 「미사용」 글자', () =
     await clickCard(CARD)
     expect(document.body.textContent, '카드를 누른 뒤에도 남으면 안 된다').not.toContain('미사용')
   })
-  it('⑤ 전년·3개월이 둘 다 0 이면 「기준 없음」 뱃지가 붙는다', async () => {
-    await open({ drugs: [D({ drug_code: 'NOBASE', drug_name: '기준없는주', prev_year_usage: 0, recent_3m_usage: 0, safety_stock: 0, monthly_avg: 0 })] })
-    const row = [...(mainTable()?.querySelectorAll('tbody tr') || [])].find(r => r.textContent.includes('기준없는주'))
-    expect(row, '줄이 없다').toBeTruthy()
-    expect(row.textContent).toContain('기준 없음')
-    expect(row.textContent).toContain('기준미설정')     /* 재고상태는 그대로 */
+  it('★ ⑤ 재고상태 칸에 **덧뱃지를 달지 않는다** — 한 줄만 적는다', async () => {
+    /* ★ 2026-11-14 이정화 님 결정 — 「전년·3개월 저장값 둘 다 0」 뱃지를 **지웠다.**
+         31종 모두 이미 「N개월 사용량 0」이나 「기준미설정」으로 보여 정보가 겹쳤고,
+         「기준 없음」이라는 글자가 「기준미설정」과 헷갈렸다. */
+    await open({ drugs: [
+      D({ drug_code: 'NOBASE', drug_name: '기준없는주', prev_year_usage: 0, recent_3m_usage: 0, safety_stock: 0, monthly_avg: 0 }),
+      D({ drug_code: 'K9B', drug_name: '아홉달0이고기준없는주', prev_year_usage: 0, recent_3m_usage: 0, safety_stock: 0, monthly_avg: 0, ...W(0, 0, 0, 0) }),
+    ] })
+    const cellOf = nm => {
+      const row = [...(mainTable()?.querySelectorAll('tbody tr') || [])].find(r => r.textContent.includes(nm))
+      expect(row, nm + ' 줄이 없다').toBeTruthy()
+      return [...row.querySelectorAll('td')].find(td => /사용량 0|기준미설정|긴급|주문필요|정상|과잉|재고없음/.test(td.textContent))
+    }
+    /* 재고상태는 그대로 — 뱃지는 **하나뿐**이다 */
+    const a = cellOf('기준없는주')
+    expect(a.textContent.trim()).toBe('기준미설정')
+    expect(a.querySelectorAll('span span').length, '뱃지가 둘이다').toBeLessThanOrEqual(1)
+    const b = cellOf('아홉달0이고기준없는주')
+    expect(b.textContent.trim()).toBe('9개월 사용량 0')
+    expect(b.querySelectorAll('span span').length, '뱃지가 둘이다').toBeLessThanOrEqual(1)
+    /* 지운 글자가 화면에 없다 */
+    expect(document.body.textContent).not.toContain('기준 없음')
   })
   it('★★ ⑥ 소스의 「미사용」은 **알림(유효기한) 화면 글자에만** 남는다', () => {
     /* 주석은 뺀다 — 화면에 안 나오는 글자다 */
@@ -640,5 +656,7 @@ describe('★★ ㉔ 재고상태 메뉴 차례 · 「미사용」 글자', () =
     for (const a of ALLOWED) rest = rest.split(a).join('')
     const left = [...rest.matchAll(/미사용/g)].map(m => rest.slice(Math.max(0, m.index - 50), m.index + 30))
     expect(left, '알림 화면 말고 「미사용」이 남아 있다:\n' + left.join('\n---\n')).toEqual([])
+    /* 잠깐 썼던 「기준 없음」도 지웠다 — 되살아나지 않게 못 박는다 */
+    expect(code.includes('기준 없음'), '지운 「기준 없음」이 되살아났다').toBe(false)
   })
 })
