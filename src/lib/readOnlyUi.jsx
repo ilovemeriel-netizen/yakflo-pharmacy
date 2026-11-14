@@ -19,7 +19,7 @@
  *   `lib/readOnly.js` 가 쓰기 호출을 네트워크로 나가기 전에 멈춘다.
  *   이 파일을 통째로 지워도 뷰어는 아무것도 못 쓴다.
  */
-import { cloneElement, isValidElement } from 'react'
+import { Children, cloneElement, isValidElement } from 'react'
 import { READ_ONLY_MSG } from './readOnly'
 
 /* 뷰어에게 보일 때의 흐림값 — 기존 「못 누르는 단추」와 같은 느낌으로 맞춘다.
@@ -34,7 +34,13 @@ const FORM = new Set(['button', 'input', 'select', 'textarea', 'fieldset'])
  * 감싸개를 덧대지 않고 **자식 자신의 속성만** 바꾸므로 **자리(레이아웃)가 안 흔들린다.**
  */
 export function RO({ on, children }) {
-  if (!on || !isValidElement(children)) return children
+  if (!on) return children
+  /* ★ 2026-11-14 고침 — 자식이 **하나가 아닐 때** 그냥 돌려주면 아무것도 안 막힌 채
+       조용히 지나간다. 실제로 보고서 화면에서 그렇게 새어 나갔다(괄호식을 통째로 감쌌다).
+       이제 여럿이면 **하나씩** 막는다. 원소가 아닌 것(글자·숫자)은 그대로 둔다. */
+  if (!isValidElement(children)) {
+    return Children.map(children, ch => (isValidElement(ch) ? <RO on={on}>{ch}</RO> : ch))
+  }
   const base = children.props.style || {}
   const next = {
     'aria-disabled': true,
