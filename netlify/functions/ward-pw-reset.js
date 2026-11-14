@@ -11,7 +11,11 @@
      그쪽은 CORS 헤더를 의도적으로 비워 둔 상태다(같은 사이트 전용).
 
    1) JWT 검증 (account-delete.js와 같은 패턴 — anon 클라이언트로 getUser)
-   2) ★ tenant 확인 — 그 신청이 호출자의 tenant에 속하는지 본다. 남의 tenant는 404로 끊는다.
+   2) ★ 권한 확인 — tenant_members.role 이 owner 또는 admin 이어야 한다. 아니면 403.
+        (vaccine-public-admin.js 와 **같은 방식**이다. 2026-11-14 이정화 님 승인 —
+         그 전에는 역할을 보지 않아, 로그인만 되면 **읽기 전용 계정도** 바꿀 수 있었다.
+         이 Function 은 service_role 로 쓰기 때문에 DB 의 뷰어 트리거가 막아 주지 못한다.)
+   2-2) ★ tenant 확인 — 그 신청이 호출자의 tenant에 속하는지 본다. 남의 tenant는 404로 끊는다.
    3) scrypt 해시 갱신 + pw_fail 0 · pw_locked_until null 초기화
 
    ★ 응답에 키·스택트레이스·DB 오류 원문을 싣지 않는다.
@@ -34,6 +38,9 @@ export const PW_SALT_B = 16   // 행별 salt 바이트 수 — hex 32자로 저�
 export const PW_KEYLEN = 64   // scrypt 파생키 바이트 수 — hex 128자로 저장
 export const PW_MSG    = `비밀번호는 숫자 ${PW_LEN}자리로 입력해 주세요`
 // PW_SPEC:END
+/* 권한 어휘 — vaccine-public-admin.js 와 같은 집합(관리 화면의 memberRole 판정과 맞춘다) */
+const ADMIN_ROLES = ['owner', 'admin']
+
 const validPw = v => typeof v === 'string' && new RegExp(`^\\d{${PW_LEN}}$`).test(v)
 const makeSalt = () => randomBytes(PW_SALT_B).toString('hex')
 const hashPw = (pw, salt) => new Promise((res, rej) =>
@@ -77,12 +84,15 @@ export default async (req) => {
 
   const admin = createClient(supaUrl, supaSrv, { auth: { persistSession: false, autoRefreshToken: false } })
 
-  /* 2) ★ tenant 확인 — 호출자가 속한 tenant의 신청만 손댈 수 있다 */
+  /* 2) ★ 권한 확인 — owner·admin 만. 그 밖(member·viewer)은 403.
+     ★ is_active 도 본다 — 중지된 계정은 관리자여도 막는다(admin-set-role 과 같은 뜻).
+     ★ 그다음 tenant 확인 — 호출자가 속한 tenant의 신청만 손댈 수 있다. */
   const { data: mem, error: mErr } = await admin
-    .from('tenant_members').select('tenant_id').eq('user_id', userData.user.id)
+    .from('tenant_members').select('tenant_id, role, is_active').eq('user_id', userData.user.id)
   if (mErr) { console.error('[ward-pw-reset] 소속 조회 실패:', mErr.message); return json({ ok: false, msg: '일시적인 오류입니다' }, 500) }
-  const tenantIds = (mem || []).map(m => m.tenant_id)
-  if (!tenantIds.length) return json({ ok: false, msg: '권한이 없습니다' }, 403)
+  const allowed = (mem || []).filter(m => ADMIN_ROLES.includes(String(m.role || '')) && m.is_active !== false)
+  if (!allowed.length) return json({ ok: false, msg: '권한이 없습니다' }, 403)
+  const tenantIds = allowed.map(m => m.tenant_id)
 
   const { data: rows, error: rErr } = await admin
     .from('ward_requests').select('id, ward').eq('id', requestId).in('tenant_id', tenantIds).limit(1)

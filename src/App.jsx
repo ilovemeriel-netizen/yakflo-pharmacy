@@ -11,6 +11,7 @@ import { formDirty, anyFilled } from './lib/pwaUpdate'
 import { useBusy } from './lib/useBusy.js'
 import { screenLabel, EC_COPY } from './lib/errorText.js'
 import { setReadOnlyRole, VIEWER_ROLE } from './lib/readOnly.js'
+import { RO } from './lib/readOnlyUi.jsx'
 import { toLoginEmail, ID_RULE_TEXT, displayAccount, rolePrefix, isLoginId } from './lib/loginId.js'
 import { leaveBlockReason } from './lib/leaveNotice.js'
 import { decomposeAtc } from './lib/atcMap'
@@ -542,6 +543,7 @@ function LocVocabDatalist({ id }) {
 export function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
   const { t, profile, memberRole } = useTheme(); const oc = dr.drug_code || ''
   const canDelete = memberRole !== VIEWER_ROLE && (profile?.role === 'admin' || memberRole === 'owner' || memberRole === 'admin')
+  const _ro = memberRole === VIEWER_ROLE   /* 읽기 전용이면 보이되 못 누른다 — lib/readOnlyUi */
   const isNew = !!dr.__register
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [f, sF] = useState({ drug_code: oc, drug_name: dr.drug_name || '', category: dr.category || '', ingredient_en: dr.ingredient_en || '', ingredient_kr: dr.ingredient_kr || '', efficacy_class: dr.efficacy_class || '', efficacy: dr.efficacy || '', manufacturer: dr.manufacturer || '', specification: dr.specification || '', unit: dr.unit || '', packaging: dr.packaging || dr.unit || '', total_qty: dr.total_qty ?? '', price_unit: dr.price_unit || 0, insurance_price: dr.insurance_price || 0, purchase_price: dr.purchase_price ?? '', edi_price: dr.edi_price ?? '', insurance_code: dr.insurance_code || '', current_qty: dr.current_qty || 0, expiry_date: dr.expiry_date || '', status: dr.status || '사용', narcotic_type: (dr.narcotic_type === '한외마약' ? '한외마약' : getNT(dr)), safety_stock: dr.safety_stock || 0, max_stock: dr.max_stock || 0, lot_no: dr.lot_no || '', insurance_type: dr.insurance_type || '급여', unit_mgmt: dr.unit_mgmt || '', prescription_type: dr.prescription_type || '', atc_code: dr.atc_code || '', storage_method: dr.storage_method || '실온', storage_location: dr.storage_location || '', memo: dr.memo || '', standard_code: dr.standard_code || '', additive: dr.additive || '', compound_type: dr.compound_type || '단일제', supplier_id: dr.supplier_id || '', is_high_alert: !!dr.is_high_alert, is_public_supply: !!dr.is_public_supply, caution_dose: !!dr.caution_dose, caution_shape: !!dr.caution_shape, caution_sound: !!dr.caution_sound })
@@ -910,14 +912,14 @@ export function DrugEditModal({ drug: dr, onClose, onSaved, onLotManage }) {
           </>)}
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}><button onClick={onClose} style={{ flex: 1, padding: 11, borderRadius: 8, border: `1px solid ${t.border}`, cursor: 'pointer', background: 'transparent', color: t.textM, fontSize: 13, fontWeight: 600 }}>취소</button><button onClick={save} disabled={saving || regInvalid} style={{ flex: 2, padding: 11, borderRadius: 8, border: 'none', cursor: (saving || regInvalid) ? 'not-allowed' : 'pointer', background: (saving || regInvalid) ? t.textL : t.accent, color: '#fff', fontSize: 13, fontWeight: 700 }}>{saving ? '저장 중...' : (isNew ? '등록' : '저장')}</button></div>
         {/* 관리자(profiles.role=admin) 또는 테넌트 owner/admin 전용 — 절제된 텍스트 버튼 */}
-        {!isNew && canDelete && <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${t.border}`, textAlign: 'right' }}>
+        {((!isNew && canDelete) || _ro) && <RO on={_ro}><div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${t.border}`, textAlign: 'right' }}>
           <button
             onClick={() => setShowDeleteModal(true)}
             onMouseEnter={e => { e.currentTarget.style.color = t.textM }}
             onMouseLeave={e => { e.currentTarget.style.color = t.textL }}
             style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10.5, color: t.textL, padding: '4px 6px', textDecoration: 'underline', fontWeight: 500, transition: 'color .15s' }}
           >약품 영구 삭제</button>
-        </div>}
+        </div></RO>}
       </div>
     </div>
     {showDeleteModal && <DrugDeleteConfirm drug={dr} onClose={() => setShowDeleteModal(false)} onDeleted={() => { setShowDeleteModal(false); onSaved?.(); onClose() }} />}
@@ -1189,6 +1191,7 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
        ★ 일반(member)은 **전과 똑같이 안 보인다** — 관리자·일반의 보임/숨김은 그대로. */
   const _mgr = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')
   const _menuRO = memberRole === VIEWER_ROLE
+  const _ro = _menuRO
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tenant, setTenant] = useState('')
   useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, [])
@@ -1243,7 +1246,7 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
       </div>
       <GnbSearch t={t} open360={open360} openSearch={openSearch} atcColor={atcColor} /><div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}><div className="cnc-date" style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 2 }}><span style={{ width: 7, height: 7, borderRadius: 4, background: t.green, boxShadow: '0 0 6px ' + t.green, flexShrink: 0 }} /><span style={{ fontSize: 11, fontWeight: 700, color: '#ffffff' }}>ONLINE</span>{tenant && <span style={{ fontSize: 11, fontWeight: 600, color: t.navHi, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tenant}>· {tenant}</span>}</div><div style={{ width: 1, height: 22, background: 'rgba(255,255,255,0.16)', margin: '0 2px', flexShrink: 0 }} />
         <button onClick={() => nav('mypage')} title="마이페이지" className="cnc-date" style={{ padding: '4px 10px', borderRadius: 6, border: m === 'mypage' ? `1px solid ${t.navHi}60` : '1px solid rgba(255,255,255,0.10)', background: m === 'mypage' ? t.navHi + '22' : 'rgba(255,255,255,0.04)', color: m === 'mypage' ? t.navHi : 'rgba(255,255,255,0.65)', cursor: 'pointer', fontSize: 11, fontWeight: 500, transition: 'all .15s' }}>{displayName}</button>
-        {isAdmin && <button onClick={() => nav('admin')} title="가입자 관리" style={{ padding: '4px 10px', borderRadius: 6, border: m === 'admin' ? `1px solid ${t.navHi}60` : '1px solid rgba(255,255,255,0.15)', background: m === 'admin' ? t.navHi + '22' : 'rgba(255,255,255,0.04)', color: m === 'admin' ? t.navHi : 'rgba(255,255,255,0.55)', cursor: 'pointer', fontSize: 10, fontWeight: 600 }}>관리</button>}
+        {(isAdmin || _ro) && <RO on={_ro}><button onClick={() => nav('admin')} title="가입자 관리" style={{ padding: '4px 10px', borderRadius: 6, border: m === 'admin' ? `1px solid ${t.navHi}60` : '1px solid rgba(255,255,255,0.15)', background: m === 'admin' ? t.navHi + '22' : 'rgba(255,255,255,0.04)', color: m === 'admin' ? t.navHi : 'rgba(255,255,255,0.55)', cursor: 'pointer', fontSize: 10, fontWeight: 600 }}>관리</button></RO>}
         <button onClick={logout} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 10, fontWeight: 500 }}>로그아웃</button>
         <button onClick={toggle} style={{ width: 38, height: 20, borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: dark ? t.navHi + '30' : 'rgba(255,255,255,0.08)', cursor: 'pointer', position: 'relative', padding: 0 }}><div style={{ width: 16, height: 16, borderRadius: 8, background: dark ? t.navHi : 'rgba(255,255,255,0.4)', position: 'absolute', top: 1, left: dark ? 19 : 1, transition: 'all .2s' }} /></button>
         <button className="cnc-hamburger" onClick={() => setMobileOpen(!mobileOpen)} style={{ display: 'none', width: 32, height: 32, borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: mobileOpen ? t.navHi + '20' : 'transparent', cursor: 'pointer', color: t.navText, fontSize: 18, alignItems: 'center', justifyContent: 'center' }}>{mobileOpen ? '✕' : '☰'}</button>
@@ -2122,7 +2125,7 @@ export function ET({ items, color, label, sub, editRow, editField, startEdit, sa
         <td style={{padding:'5px 6px'}}><SB s={d.status}/></td>
       </tr>})}</tbody></StandardTable>}</>}
 function ExpiryAlert({drugs,onEdit,focusLevel,onReload,onDispose}){
-  const{t,memberRole,profile}=useTheme();const canDispose=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin'||profile?.role==='admin');const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
+  const{t,memberRole,profile}=useTheme();const canDispose=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin'||profile?.role==='admin');const _ro=memberRole===VIEWER_ROLE;const[cats,setCats]=useState(CATS);const[stats,setStats]=useState(MAIN_STATS);const[aLv,setALv]=useState(focusLevel||null)
   const[editRow,setEditRow]=useState(null);const[editField,setEditField]=useState(null);const[resetKey,setResetKey]=useState(0);const[fb,setFb]=useState({})
   /* ★ 표의 칸을 고치는 중이면 미룬다 */
   useBusy('expiry-edit', editRow != null)
@@ -2318,7 +2321,7 @@ function AtcTable({ t, cols, rows, minWidth, colWidths, resetable, qfilter }) {
    Report·ColMenu 와 같은 이유다(실제 컴포넌트를 렌더해 봐야 「칸 수가 맞나」
    「뱃지가 뜨나」를 눈이 아니라 시험으로 지킬 수 있다). */
 export function StockStatus({drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust,onReload,onDispose}){
-  const{t,memberRole,profile}=useTheme();const canDispose=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin'||profile?.role==='admin');
+  const{t,memberRole,profile}=useTheme();const canDispose=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin'||profile?.role==='admin');const _ro=memberRole===VIEWER_ROLE;
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
   const[surge,setSurge]=useState(SURGE_ALL)   /* 급변 필터 — 머리글 메뉴와 칩이 **이 하나**를 같이 쓴다 */
   const[xlAsk,setXlAsk]=useState(false)
@@ -2578,8 +2581,8 @@ export function StockStatus({drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust
       <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
         <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} placeholder="검색..." style={{flex:1,minWidth:120,padding:'8px 12px',border:`1px solid ${t.border}`,borderRadius:8,fontSize:12,outline:'none',background:t.bg,color:t.text}}/>
         <button onClick={dlAsk} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>
-        {isTenantManager&&<button onClick={dlUsageTemplate} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 양식</button>}
-        {isTenantManager&&<button onClick={()=>setUOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 업로드</button>}
+        {(isTenantManager || _ro) && <RO on={_ro}><button onClick={dlUsageTemplate} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 양식</button></RO>}
+        {(isTenantManager || _ro) && <RO on={_ro}><button onClick={()=>setUOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 업로드</button></RO>}
         {/* ★ 「출고 자동집계」·「사용량 비교」는 재고관리 ▼ 「사용량 갱신」 화면으로 옮겼다 (2026-11-14) */}
 
         {/* ★ 「마약·향정 사용량 보기」는 향정마약 화면으로 옮겼다 (2026-11-14) */}
@@ -2709,7 +2712,7 @@ export function StockStatus({drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust
           <td style={{padding:'8px 10px',borderRight:'1px solid '+t.border}}><SB s={d.status}/></td>
           <td style={{padding:'8px 10px',borderRight:'1px solid '+t.border}}><div style={{display:'flex',flexDirection:'column',gap:3,alignItems:'flex-start'}}><Bd bg={sc(dirty?pSt:d.stockStatus)+'18'} color={sc(dirty?pSt:d.stockStatus)}>{dirty?pSt:d.stockStatus}</Bd></div></td>
           <td style={{padding:'8px 10px',fontSize:11,...exS(d.expiry_date,t),borderRight:'1px solid '+t.border}}>{d.expiry_date||'-'}</td>
-          <td style={{padding:'8px 6px',textAlign:'center',borderRight:'1px solid '+t.border}}>{d.last_adjusted_date&&<div style={{fontSize:8,color:t.amber,fontWeight:600,marginBottom:2}}>{d.last_adjusted_date}</div>}<button onClick={()=>onAdjust(d)} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.amber}`,background:d.last_adjusted_date?t.amberL:'transparent',color:t.amber,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>보정</button>{canDispose&&<button onClick={()=>onDispose(d)} title="폐기·반품 처리" style={{marginLeft:4,padding:'3px 8px',borderRadius:4,border:`1px solid ${t.red}`,background:'transparent',color:t.red,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>폐기/반품</button>}</td>
+          <td style={{padding:'8px 6px',textAlign:'center',borderRight:'1px solid '+t.border}}>{d.last_adjusted_date&&<div style={{fontSize:8,color:t.amber,fontWeight:600,marginBottom:2}}>{d.last_adjusted_date}</div>}<button onClick={()=>onAdjust(d)} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.amber}`,background:d.last_adjusted_date?t.amberL:'transparent',color:t.amber,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>보정</button>{(canDispose || _ro) && <RO on={_ro}><button onClick={()=>onDispose(d)} title="폐기·반품 처리" style={{marginLeft:4,padding:'3px 8px',borderRadius:4,border:`1px solid ${t.red}`,background:'transparent',color:t.red,cursor:'pointer',fontSize:9,fontWeight:600,whiteSpace:'nowrap'}}>폐기/반품</button></RO>}</td>
         </tr>})}</tbody>
       </StandardTable>
       <Pg page={page} setPage={setPage} tp={tp} fl={filtered} pp={PP} ends/>
@@ -3148,7 +3151,7 @@ function _mergeDrugMaster(prev, dm) {
   }
 }
 export function DrugRegister({onRefresh, drugs}) {
-  const { memberRole, profile } = useTheme(); const isOwner = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin')
+  const { memberRole, profile } = useTheme(); const isOwner = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin');const _ro=memberRole===VIEWER_ROLE
   const initForm={drug_code:'',drug_name:'',category:'경구제',manufacturer:'',ingredient_kr:'',ingredient_en:'',efficacy_class:'',efficacy:'',specification:'',unit:'',price_unit:'',insurance_price:'',insurance_type:'급여',insurance_code:'',current_qty:0,expiry_date:'',lot_no:'',storage_method:'실온',status:'사용',narcotic_type:'해당없음',prescription_type:'',atc_code:'',purchase_price:'',storage_location:'',memo:'',additive:'',compound_type:'단일제',is_high_alert:false,is_public_supply:false,caution_dose:false,caution_shape:false,caution_sound:false}
   const[form,setForm]=useState(initForm)
   const[msg,setMsg]=useState(null)
@@ -3608,11 +3611,11 @@ export function DrugRegister({onRefresh, drugs}) {
             </div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}><div><label style={lbl}>첨가제</label><input value={form.additive||''} onChange={e=>set('additive',e.target.value)} placeholder="자동채움·수정 가능" style={inp}/></div><div><label style={lbl}>복합/단일</label><select value={form.compound_type||'단일제'} onChange={e=>set('compound_type',e.target.value)} style={{...inp,background:'#fff'}}>{['단일제','복합제'].map(s=><option key={s}>{s}</option>)}</select></div></div>
             <div style={{marginBottom:16}}><label style={lbl}>비고</label><textarea value={form.memo||''} onChange={e=>set('memo',e.target.value)} rows={2} style={{...inp,resize:'vertical'}}/></div>
-            {isOwner && <div style={{marginBottom:16}}>
+            {(isOwner || _ro) && <RO on={_ro}><div style={{marginBottom:16}}>
               <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',padding:'6px 0'}}><input type="checkbox" checked={!!form.is_high_alert} onChange={e=>set('is_high_alert',e.target.checked)} style={{width:16,height:16,accentColor:'#D9342B'}}/><span style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:12,fontWeight:700,color:'#D9342B'}}><WarnTriangle size={13} />고위험 의약품으로 지정</span></label>
               <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',padding:'6px 0'}}><input type="checkbox" checked={!!form.is_public_supply} onChange={e=>set('is_public_supply',e.target.checked)} style={{width:16,height:16,accentColor:C.blue}}/><span style={{fontSize:12,fontWeight:700,color:C.blue}}>보건소 공급 (무상)</span></label>
               <div style={{marginTop:6}}><label style={{...lbl,marginBottom:6}}>주의 표시 (여러 개 선택 가능)</label><div style={{display:'flex',flexWrap:'wrap',gap:14,alignItems:'center'}}>{CAUTION_ORDER.map(x=><label key={x.kind} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}><input type="checkbox" checked={!!form[x.col]} onChange={e=>set(x.col,e.target.checked)} style={{width:16,height:16,accentColor:cautionCheckColor(themes.light, x.kind)}}/><CautionChip t={themes.light} kind={x.kind} label={x.label} /></label>)}</div></div>
-            </div>}
+            </div></RO>}
             <button onClick={submit} disabled={saving} style={{width:'100%',padding:12,borderRadius:10,border:'none',cursor:saving?'not-allowed':'pointer',background:saving?C.grayB:C.purple,color:'#fff',fontSize:14,fontWeight:700}}>
               {saving?'등록 중...':'약품 등록'}
             </button>
@@ -3719,7 +3722,7 @@ const txValidQty = v => {
 }
 /* ★ 시험에서 진짜 컴포넌트로 렌더하려고 내보낸다(ColMenu 와 같은 이유). 컴포넌트라 react-refresh 규칙에 걸리지 않는다. */
 export function TransactionForm({drugs,onReload,navFilter}){
-  const{t,memberRole,profile}=useTheme();const canDel=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin'||profile?.role==='admin');const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
+  const{t,memberRole,profile}=useTheme();const canDel=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin'||profile?.role==='admin');const _ro=memberRole===VIEWER_ROLE;const[delTx,setDelTx]=useState(null);const[delMsg,setDelMsg]=useState(null);
   const[tab,setTab]=useState(subFromHash()||'입고')
   /* ★ 입고·출고는 **장부의 정본**이라 지우는 길을 더 좁게 본다 — 2026-11-02 이정화 님 결정.
      이 약국의 관리자(tenant_members 의 owner·admin)만. 전역 프로필의 admin 은 빼서 DB 기준과 맞춘다.
@@ -4028,7 +4031,7 @@ export function TransactionForm({drugs,onReload,navFilter}){
         <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
           <button onClick={()=>setPpConfirm(null)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.border}`,background:'transparent',color:t.textM,cursor:'pointer',fontSize:12,fontWeight:700}}>취소</button>
           <button onClick={()=>_doSave(ppConfirm.inputPp,false)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.border}`,background:'transparent',color:t.textM,cursor:'pointer',fontSize:12,fontWeight:700}}>이번 입고만</button>
-          {canDel&&<button onClick={()=>_doSave(ppConfirm.inputPp,true)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>마스터도 변경</button>}
+          {(canDel || _ro) && <RO on={_ro}><button onClick={()=>_doSave(ppConfirm.inputPp,true)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>마스터도 변경</button></RO>}
         </div>
       </div>
     </div>}
@@ -4150,6 +4153,7 @@ const CHANGE_MGMT_W = 165
 function DrugChangePlans({ drugs, onReload, navFilter }) {
   const { t, memberRole, profile, user, setProfile } = useTheme()
   const canDel = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin')
+  const _ro = memberRole === VIEWER_ROLE   /* 읽기 전용이면 보이되 못 누른다 — lib/readOnlyUi */
   const canEdit = canDel
   const { so, TS, sk, sd, setSort } = useSort('base_date', 'desc')
   const [plans, setPlans] = useState([]); const [snap, setSnap] = useState({}); const [ld, setLd] = useState(true)
@@ -4487,7 +4491,7 @@ function DrugChangePlans({ drugs, onReload, navFilter }) {
             {(() => { const it = cntItems[p.from_drug_code]; if (!it || isApplied(it)) return null
               return <button disabled={cntBusy} onClick={async () => { const r = await buildApply([p.from_drug_code]); if (r && r.rows.length) setApplyAsk(r) }}
                 title="반영 시점 재고를 다시 읽어 차액만큼 조정합니다" style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.purple}`, background: 'transparent', color: t.purple, cursor: cntBusy ? 'default' : 'pointer', fontSize: 9, fontWeight: 700 }}>보정</button> })()}
-            {canDel && <button onClick={() => setDelP(p)} style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.red}`, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 9, fontWeight: 600 }}>삭제</button>}
+            {(canDel || _ro) && <RO on={_ro}><button onClick={() => setDelP(p)} style={{ padding: '2px 7px', borderRadius: 4, border: `1px solid ${t.red}`, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 9, fontWeight: 600 }}>삭제</button></RO>}
             </span>
           </td>
           </tr>
@@ -4688,6 +4692,7 @@ function WardAdmin() {
        so2()는 [...a].sort()로 **사본**을 만들므로 원본 items 배열도 오염되지 않는다. */
   const { so: so2, hs: hs2, SI: SI2, sk: sk2 } = useSort('')
   const isAdmin = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
+  const _ro = memberRole === VIEWER_ROLE   /* 읽기 전용이면 보이되 못 누른다 — lib/readOnlyUi */
   const [wins, setWins] = useState([]); const [reqs, setReqs] = useState([]); const [items, setItems] = useState([])
   const [ld, setLd] = useState(true); const [msg, setMsg] = useState(null)
   const [openRow, setOpenRow] = useState(null)          // 상세 대상 신청 id
@@ -4990,7 +4995,7 @@ function WardAdmin() {
               {w.notice ? ' · ' + w.notice : ''}
             </div>
             <button onClick={() => toggleWin(w)} style={{ padding: '5px 14px', borderRadius: 8, border: '1px solid ' + (w.is_open ? t.green : t.border), background: w.is_open ? t.green : t.card, color: w.is_open ? t.card : t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{w.is_open ? '열림 · 닫기' : '닫힘 · 열기'}</button>
-            {isAdmin && <button onClick={() => setDelWinTarget(w)} style={{ border: 'none', background: 'transparent', color: t.textL, cursor: 'pointer', fontSize: 11 }}>삭제</button>}
+            {(isAdmin || _ro) && <RO on={_ro}><button onClick={() => setDelWinTarget(w)} style={{ border: 'none', background: 'transparent', color: t.textL, cursor: 'pointer', fontSize: 11 }}>삭제</button></RO>}
           </div>))}</div>}
     </div>
 
@@ -5044,8 +5049,10 @@ function WardAdmin() {
           <select value={r.status} onChange={e => setStatus(r, e.target.value)} style={{ ...ip2, width: 'auto' }}>{WARD_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select>
           <button onClick={() => setPrintOne(r.id)} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>인쇄</button>
           {/* ★ 비밀번호 재설정(0084) — 기존 버튼 스타일 재사용. 배치는 인쇄 옆 한 자리만 늘린다 */}
-          <button onClick={() => { setPwTarget(r); setPwNew('') }} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + t.lavender, background: t.lavender + '22', color: t.purple, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>비밀번호 재설정</button>
-          {isAdmin && <button onClick={() => setDelTarget(r)} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>신청 삭제</button>}
+          {/* ★ 2026-11-14 — 서버(/api/ward/pw-reset)가 owner·admin 만 받도록 바뀌었다.
+              화면에서도 같은 잣대로 **보이되 못 누르게** 한다. 숨기지 않는다. */}
+          <RO on={!isAdmin}><button onClick={() => { setPwTarget(r); setPwNew('') }} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + t.lavender, background: t.lavender + '22', color: t.purple, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>비밀번호 재설정</button></RO>
+          {(isAdmin || _ro) && <RO on={_ro}><button onClick={() => setDelTarget(r)} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>신청 삭제</button></RO>}
           <button onClick={() => setOpenRow(null)} style={{ border: 'none', background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12 }}>닫기 ✕</button>
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -5066,7 +5073,7 @@ function WardAdmin() {
                 {cell('unit', it.unit, 'left')}
                 {cell('usage_qty', it.usage_qty, 'right')}
                 {cell('memo', it.memo, 'left')}
-                <td style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid ' + t.border }}>{isAdmin && <button onClick={() => delItem(it)} style={{ border: 'none', background: 'transparent', color: t.textL, cursor: 'pointer', fontSize: 11 }}>삭제</button>}</td>
+                <td style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid ' + t.border }}>{(isAdmin || _ro) && <RO on={_ro}><button onClick={() => delItem(it)} style={{ border: 'none', background: 'transparent', color: t.textL, cursor: 'pointer', fontSize: 11 }}>삭제</button></RO>}</td>
               </tr>
             })}</tbody>
         </table>
@@ -5378,6 +5385,7 @@ function InventoryCount({ drugs, onReload }) {
   const { t, profile, memberRole } = useTheme()
   const { so, sk, sd, setSort, TS } = useSort('count_date', 'desc')
   const isAdmin = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin'
+  const _ro = memberRole === VIEWER_ROLE   /* 읽기 전용이면 보이되 못 누른다 — lib/readOnlyUi */
   const [sess, setSess] = useState([]); const [items, setItems] = useState([])
   const [closed, setClosed] = useState([])          // 마감월 [{y,m}]
   const [ld, setLd] = useState(true); const [msg, setMsg] = useState(null)
@@ -5792,7 +5800,7 @@ function InventoryCount({ drugs, onReload }) {
               <td style={{ ...td, color: t.textM, fontSize: 11 }}>{r.applied_day || '-'}</td>
               <td style={{ ...td, textAlign: 'center', whiteSpace: 'nowrap' }}>
                 <button onClick={() => setSel(sel === r.id ? null : r.id)} style={{ padding: '4px 11px', borderRadius: 8, border: '1px solid ' + t.accent, background: 'transparent', color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{sel === r.id ? '닫기' : '열기'}</button>
-                {isAdmin && <button onClick={() => setDelT(r)} style={{ marginLeft: 6, padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>삭제</button>}
+                {(isAdmin || _ro) && <RO on={_ro}><button onClick={() => setDelT(r)} style={{ marginLeft: 6, padding: '4px 10px', borderRadius: 8, border: '1px solid ' + t.red, background: 'transparent', color: t.red, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>삭제</button></RO>}
               </td>
             </tr>
           })}</tbody>
@@ -6270,6 +6278,7 @@ function MRow2({label,cnt,amt,bg,fg}){return <tr><td style={{...mpTd,background:
 export function Report({drugs,onNav,onReload}){
   const{t,memberRole}=useTheme();
   const isOwner=memberRole==='owner'; // 마감·업로드 권한(고위험 체크박스와 동일 패턴)
+  const _ro = memberRole === VIEWER_ROLE   /* 읽기 전용이면 보이되 못 누른다 — lib/readOnlyUi */
   /* 거래일 정정 「모두 바꾸기」 권한 — 0107 RPC 와 **같은 기준**(owner·admin).
      화면에만 단추를 숨기는 것이 아니라 DB 함수도 같은 역할을 본다. */
   const isTenantManager=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin')
@@ -6686,12 +6695,12 @@ export function Report({drugs,onNav,onReload}){
             <button onClick={()=>setMono(v=>!v)} aria-pressed={!mono} aria-label={'엑셀 색상: '+(mono?'흑백':'컬러')} title={mono?'흑백판으로 내려받습니다 — 다시 누르면 컬러판':'컬러판으로 내려받습니다 — 누르면 흑백판'} style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${t.green}`,background:mono?'transparent':t.green,color:mono?t.green:'#fff',cursor:'pointer',fontSize:11,fontWeight:600}}>{mono?'흑백':'컬러'}</button>
           </>
         : <button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>}
-      {isOwner&&rtype==='monthly'&&<button onClick={()=>setUploadOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accentL,color:t.accent,cursor:'pointer',fontSize:11,fontWeight:600}}>스냅샷 업로드</button>}
-      {isOwner&&rtype==='monthly'&&<button onClick={requestRebuild} disabled={closing} title="선택 월 스냅샷을 집계해 사이드카 총계를 재기록(결재본 보호)" style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.purple}`,background:t.accentL,color:t.purple,cursor:closing?'not-allowed':'pointer',opacity:closing?0.5:1,fontSize:11,fontWeight:600}}>🧮 사이드카 재기록</button>}
+      {((isOwner && rtype==='monthly') || _ro) && <RO on={_ro}><button onClick={()=>setUploadOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.accent}`,background:t.accentL,color:t.accent,cursor:'pointer',fontSize:11,fontWeight:600}}>스냅샷 업로드</button></RO>}
+      {((isOwner && rtype==='monthly') || _ro) && <RO on={_ro}><button onClick={requestRebuild} disabled={closing} title="선택 월 스냅샷을 집계해 사이드카 총계를 재기록(결재본 보호)" style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.purple}`,background:t.accentL,color:t.purple,cursor:closing?'not-allowed':'pointer',opacity:closing?0.5:1,fontSize:11,fontWeight:600}}>🧮 사이드카 재기록</button></RO>}
       <button onClick={()=>window.print()} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>인쇄</button>
-      {isOwner&&(rtype==='monthly'
+      {(isOwner || _ro) && <RO on={_ro}>(rtype==='monthly'
         ? <button onClick={requestClose} disabled={closing||isFuture||monthClosed} title={monthClosed?'이미 스냅샷이 있어 재마감이 제한됩니다':isFuture?'미래 월은 마감할 수 없습니다':undefined} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:(closing||isFuture||monthClosed)?'not-allowed':'pointer',opacity:(closing||isFuture||monthClosed)?0.5:1,fontSize:11,fontWeight:700}}>{closing?'마감 중...':(monthClosed?'📋 마감됨':'📋 월마감')}</button>
-        : <button onClick={showAnnualInfo} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:700}}>📅 연마감</button>)}
+        : <button onClick={showAnnualInfo} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:700}}>📅 연마감</button>)</RO>}
     </div>
     {/* ★ 안내 띠는 **인쇄에서 뺀다**(no-print). 조작 결과를 알리는 글이지 보고서 내용이 아니다.
         ★ 그냥 「안 예쁘다」가 아니라 **쪽이 밀린다** — 월간 요약 블록은 min-height 265mm 이고
@@ -8494,6 +8503,7 @@ function RecoveryPage({ onDone }) {
 function Schedule({ drugs, onNav }) {
   const { t, memberRole, profile } = useTheme();
   const canEdit = memberRole === 'owner' || memberRole === 'admin' || profile?.role === 'admin';
+  const _ro = memberRole === VIEWER_ROLE   /* 읽기 전용이면 보이되 못 누른다 — lib/readOnlyUi */
   const _now = new Date();
   /* pad · ymd 는 모듈 스코프로 이동(파일 상단) — 식·동작 동일 */
   const todayStr = ymd(_now.getFullYear(), _now.getMonth() + 1, _now.getDate());
@@ -8563,7 +8573,7 @@ function Schedule({ drugs, onNav }) {
       <select value={m} onChange={e => setM(Number(e.target.value))} style={selStyle}>{Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}월</option>)}</select>
       <button onClick={() => shift(1)} style={navBtn}>›</button>
       <button onClick={() => { setY(_now.getFullYear()); setM(_now.getMonth() + 1) }} style={{ ...navBtn, fontWeight: 600, fontSize: 12 }}>오늘</button>
-      {canEdit && <button onClick={() => syncHolidays(y, true)} disabled={hidBusy} style={{ ...navBtn, fontWeight: 600, fontSize: 12, opacity: hidBusy ? 0.5 : 1, cursor: hidBusy ? 'not-allowed' : 'pointer' }} title="공공데이터포털 특일정보에서 해당 연도 공휴일을 다시 받아옵니다">{hidBusy ? '갱신 중…' : '공휴일 갱신'}</button>}
+      {(canEdit || _ro) && <RO on={_ro}><button onClick={() => syncHolidays(y, true)} disabled={hidBusy} style={{ ...navBtn, fontWeight: 600, fontSize: 12, opacity: hidBusy ? 0.5 : 1, cursor: hidBusy ? 'not-allowed' : 'pointer' }} title="공공데이터포털 특일정보에서 해당 연도 공휴일을 다시 받아옵니다">{hidBusy ? '갱신 중…' : '공휴일 갱신'}</button></RO>}
       {hidMsg && <span style={{ fontSize: 11, fontWeight: 600, color: msgIsGood(hidMsg) ? t.green : t.red }}>{hidMsg}</span>}
       <div style={{ flex: 1 }} />
       <span style={{ display: 'flex', gap: 10, fontSize: 10, color: t.textM, flexWrap: 'wrap' }}>{[['유효기한', t.red], ['약품변경', t.accent], ['월마감', t.amber], ['공휴일', HOLIDAY_COLOR], ['발주', '#804A87'], ['실사', '#019748'], ['마감', '#2E4A62'], ['업무', '#A8CF5C'], ['근무', '#92C8E0'], ['입퇴원', '#F39E94'], ['휴일', '#E2A6D4'], ['기타', '#BFA6D9']].map(([lbl, c]) => <span key={lbl}>{lbl === '공휴일' ? <span style={{ color: HOLIDAY_COLOR, fontWeight: 700 }}>공휴일</span> : <><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: c, marginRight: 4, verticalAlign: 'middle' }} />{lbl}</>}</span>)}</span>
@@ -8585,7 +8595,7 @@ function Schedule({ drugs, onNav }) {
     {/* 일자 상세 */}
     {dayDetail && <div onClick={() => setDayDetail(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div ref={dragDay.boxRef} onClick={e => e.stopPropagation()} style={{ background: t.cardSolid, borderRadius: 14, padding: '20px 24px', maxWidth: 440, width: '100%', border: '1px solid ' + t.border, boxShadow: t.shadowH, maxHeight: '80vh', overflowY: 'auto', transform: 'translate(' + dragDay.pos.x + 'px,' + dragDay.pos.y + 'px)' }}>
-        <div onMouseDown={dragDay.onDown} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, cursor: dragDay.dragging ? 'grabbing' : 'grab', userSelect: 'none' }}><span style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{dayDetail}</span>{canEdit && <button onClick={() => { dragEdit.reset(); setEditEv({ title: '', event_date: dayDetail, end_date: '', category: '발주', memo: '' }) }} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>+ 일정 추가</button>}</div>
+        <div onMouseDown={dragDay.onDown} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, cursor: dragDay.dragging ? 'grabbing' : 'grab', userSelect: 'none' }}><span style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{dayDetail}</span>{(canEdit || _ro) && <RO on={_ro}><button onClick={() => { dragEdit.reset(); setEditEv({ title: '', event_date: dayDetail, end_date: '', category: '발주', memo: '' }) }} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: t.accent, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>+ 일정 추가</button></RO>}</div>
         {dayList.length === 0 ? <div style={{ padding: 20, textAlign: 'center', color: t.textL, fontSize: 12 }}>일정 없음</div> : dayList.map((x, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 10px', borderBottom: '1px solid ' + t.border, borderRadius: 8 }}>
           <span onClick={() => { if (x.kind !== 'own' && x.nav) { setDayDetail(null); onNav(x.nav) } }} style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 7, cursor: x.kind !== 'own' ? 'pointer' : 'default', flex: 1 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: x.color, flexShrink: 0 }} /><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: t.text }}><Bd bg={x.color + '1A'} color={x.color}>{x.tag}</Bd> {x.label}{x.kind !== 'own' && <span style={{ color: t.textL, fontSize: 10 }}> · 읽기전용 ›</span>}{x.kind === 'own' && x.isRange ? <span style={{ color: t.textL, fontSize: 10 }}> · {x.start} ~ {x.end}</span> : null}{x.kind === 'own' && x.ev.memo ? <span style={{ color: t.textL, fontSize: 10 }}> · {x.ev.memo}</span> : null}</span></span>
           {x.kind === 'own' && canEdit && <span style={{ display: 'flex', gap: 4, flexShrink: 0 }}><button onClick={() => { dragEdit.reset(); setEditEv({ id: x.ev.id, title: x.ev.title, event_date: String(x.ev.event_date).slice(0, 10), end_date: x.ev.end_date ? String(x.ev.end_date).slice(0, 10) : '', category: x.ev.category || '기타', memo: x.ev.memo || '' }) }} style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid ' + t.border, background: t.bg, color: t.accent, cursor: 'pointer', fontSize: 10, fontWeight: 600 }}>편집</button></span>}
@@ -8888,6 +8898,7 @@ function AtcView({ drugs, onReload }) {
   const curFsp = ['FSP5', 'FSP4', 'FSP2'].map(s => ({ s, d: byFsp[s] }));
   const [swapN, setSwapN] = useState(10);
   const canEdit = memberRole === 'owner' || memberRole === 'admin' || (profile && profile.role === 'admin');
+  const _ro = memberRole === VIEWER_ROLE   /* 읽기 전용이면 보이되 못 누른다 — lib/readOnlyUi */
   const canSwap = canEdit && !temp; /* 임시 사용량 모드에서는 슬롯 교환·적용(DB 쓰기) 차단 */
   const [editMode, setEditMode] = useState(false);
   const [selSlot, setSelSlot] = useState(null);
@@ -9010,7 +9021,7 @@ function AtcView({ drugs, onReload }) {
     {assignSlot && <div className="no-print" onClick={() => setAssignSlot(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}><div onClick={ev => ev.stopPropagation()} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 20, maxWidth: 440, width: '100%' }}><div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 8 }}>슬롯 {assignSlot} 에 약품 배정</div><input value={assignQ} onChange={e => setAssignQ(e.target.value)} placeholder="약품코드·약품명·성분명 검색" style={{ width: '100%', padding: '8px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, boxSizing: 'border-box', background: t.bg, color: t.text, outline: 'none' }} /><div style={{ maxHeight: '42vh', overflowY: 'auto', marginTop: 8, border: '1px solid ' + t.border, borderRadius: 8 }}>{(drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d)).filter(d => { const kw = assignQ.trim().toLowerCase(); return !kw || String(d.drug_code || '').toLowerCase().includes(kw) || String(d.drug_name || '').toLowerCase().includes(kw) || String(d.ingredient_kr || '').toLowerCase().includes(kw); }).slice(0, 50).map((d, i) => <div key={i} onClick={() => runAssign(assignSlot, d.drug_code)} style={{ padding: '6px 10px', borderBottom: '1px solid ' + t.border, cursor: 'pointer', fontSize: 12 }} onMouseEnter={ev => ev.currentTarget.style.background = t.glass} onMouseLeave={ev => ev.currentTarget.style.background = ''}><b style={{ color: t.accent }}>{d.drug_name}</b> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}{d.atc_slot ? ' · 현재 ' + d.atc_slot : ''}</span></div>)}</div><div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}><button onClick={() => setAssignSlot(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>취소</button></div></div></div>}
     {pending && <div className="no-print" onClick={() => setPending(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}><div onClick={e => e.stopPropagation()} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 20, maxWidth: 460, width: '100%' }}><div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 10 }}>슬롯 교환 확인</div><div style={{ fontSize: 12, color: t.textM, lineHeight: 1.6, marginBottom: 18, whiteSpace: 'pre-line' }}>{pending.desc}</div><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button onClick={() => setPending(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>취소</button><button onClick={() => runSwaps(pending.pairs, pending.desc)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accent, color: t.navText, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>교환 실행</button></div></div></div>}
     {excludeModal && <div className="no-print" onClick={() => { setExcludeModal(false); setExcludeSel(null); setExcludeEtc(''); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1101, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}><div ref={dragX.boxRef} onClick={ev => ev.stopPropagation()} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 20, maxWidth: 460, width: '100%', transform: 'translate(' + dragX.pos.x + 'px,' + dragX.pos.y + 'px)' }}><div onMouseDown={dragX.onDown} style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 8, cursor: dragX.dragging ? 'grabbing' : 'grab', userSelect: 'none' }}>수기 조제 — 배정 제외 약품 추가</div><input value={excludeQ} onChange={e => setExcludeQ(e.target.value)} placeholder="약품코드·약품명·성분명 검색" style={{ width: '100%', padding: '8px 12px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, boxSizing: 'border-box', background: t.bg, color: t.text, outline: 'none' }} /><div style={{ maxHeight: '34vh', overflowY: 'auto', marginTop: 8, border: '1px solid ' + t.border, borderRadius: 8 }}>{(drugs || []).filter(d => d.category === '경구제' && d.status === '사용' && isSolid(d) && !d.atc_excluded).filter(d => { const kw = excludeQ.trim().toLowerCase(); return !kw || String(d.drug_code || '').toLowerCase().includes(kw) || String(d.drug_name || '').toLowerCase().includes(kw) || String(d.ingredient_kr || '').toLowerCase().includes(kw); }).slice(0, 50).map((d, i) => <div key={i} onClick={() => setExcludeSel(d)} style={{ padding: '6px 10px', borderBottom: '1px solid ' + t.border, cursor: 'pointer', fontSize: 12, background: excludeSel && excludeSel.drug_code === d.drug_code ? t.accentL : '' }}><b style={{ color: t.accent }}>{d.drug_name}</b> <span style={{ color: t.textL, fontSize: 10 }}>{d.drug_code}{d.atc_slot ? ' · 현재 ' + d.atc_slot : ''}</span></div>)}</div>{excludeSel && <div style={{ marginTop: 10 }}>{excludeSel.atc_slot && <div style={{ fontSize: 11, color: t.amber, fontWeight: 600, marginBottom: 6 }}>현재 슬롯 {excludeSel.atc_slot} 에 배정되어 있습니다. 제안에서만 제외되며 실제 슬롯은 유지됩니다.</div>}<div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontSize: 12, fontWeight: 700, color: t.accent }}>{excludeSel.drug_name}</span><span style={{ fontSize: 11, color: t.textM }}>사유</span><select value={excludeReason} onChange={e => setExcludeReason(e.target.value)} style={{ padding: '6px 10px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, background: t.bg, color: t.text, outline: 'none' }}>{EX_REASONS.map(r => <option key={r} value={r}>{r}</option>)}</select>{excludeReason === '기타' && <input value={excludeEtc} onChange={e => setExcludeEtc(e.target.value)} placeholder="사유 직접 입력" style={{ padding: '6px 10px', border: '1px solid ' + t.border, borderRadius: 8, fontSize: 12, background: t.bg, color: t.text, outline: 'none', minWidth: 140 }} />}</div></div>}<div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}><button onClick={() => { setExcludeModal(false); setExcludeSel(null); setExcludeEtc(''); }} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>취소</button><button onClick={saveExclude} disabled={!excludeSel} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + (excludeSel ? t.accent : t.border), background: excludeSel ? t.accent : t.bg, color: excludeSel ? t.navText : t.textL, cursor: excludeSel ? 'pointer' : 'default', fontSize: 12, fontWeight: 700 }}>저장</button></div></div></div>}
-    {manageModal && <div className="no-print" onClick={() => setManageModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}><div ref={dragM.boxRef} onClick={ev => ev.stopPropagation()} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 20, maxWidth: 720, width: '100%', maxHeight: '86vh', overflowY: 'auto', transform: 'translate(' + dragM.pos.x + 'px,' + dragM.pos.y + 'px)' }}><div onMouseDown={dragM.onDown} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap', cursor: dragM.dragging ? 'grabbing' : 'grab', userSelect: 'none' }}><span style={{ fontSize: 15, fontWeight: 800, color: t.text }}>수기 조제 관리</span>{B('수기 조제', t.amberL, t.amber, t.amber)}<span style={{ fontSize: 12, fontWeight: 700, color: t.textM }}>지정 {manualEx.length}건</span><span style={{ fontSize: 10, color: t.textL }}>순위 산정엔 포함, 슬롯 배정만 제외</span><div style={{ flex: 1 }} />{canEdit && <button onClick={() => { dragX.reset(); setExcludeModal(true); setExcludeSel(null); setExcludeQ(''); setExcludeReason('습기 취약'); setExcludeEtc(''); }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>+ 약품 추가</button>}<button onClick={() => setManageModal(false)} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>닫기</button></div>{manualEx.length ? <AtcTable t={t} minWidth={640} colWidths={[120, 200, 110, 76, 90, 80]} rows={[...manualEx].map(d => { const cur = (drugs || []).find(x => x.drug_code === d.drug_code); return { code: d.drug_code, name: d.drug_name, reason: d.atc_exclude_reason || '-', rank: rankFull.get(d.drug_code) || null, slot: (cur && cur.atc_slot) || '-', d }; })} cols={[{ k: 'code', h: '약품코드', align: 'left' }, { k: 'name', h: '약품명', align: 'left' }, { k: 'reason', h: '사유', align: 'left', filter: true, render: r => B(r.reason, t.amberL, t.amber, t.amber) }, { k: 'rank', h: '현재 순위', align: 'right', render: r => r.rank == null ? '-' : r.rank }, { k: 'slot', h: '현재 슬롯', align: 'center' }, { k: '_act', h: '해제', align: 'center', plain: true, render: r => canEdit ? <button onClick={() => unExclude(r.d)} style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>해제</button> : '-' }]} /> : <div style={{ fontSize: 12, color: t.textL, padding: '20px 0', textAlign: 'center' }}>수기 조제로 지정된 약품이 없습니다. 「+ 약품 추가」로 지정하세요.</div>}</div></div>}
+    {manageModal && <div className="no-print" onClick={() => setManageModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}><div ref={dragM.boxRef} onClick={ev => ev.stopPropagation()} style={{ background: t.card, borderRadius: 12, border: '1px solid ' + t.border, padding: 20, maxWidth: 720, width: '100%', maxHeight: '86vh', overflowY: 'auto', transform: 'translate(' + dragM.pos.x + 'px,' + dragM.pos.y + 'px)' }}><div onMouseDown={dragM.onDown} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap', cursor: dragM.dragging ? 'grabbing' : 'grab', userSelect: 'none' }}><span style={{ fontSize: 15, fontWeight: 800, color: t.text }}>수기 조제 관리</span>{B('수기 조제', t.amberL, t.amber, t.amber)}<span style={{ fontSize: 12, fontWeight: 700, color: t.textM }}>지정 {manualEx.length}건</span><span style={{ fontSize: 10, color: t.textL }}>순위 산정엔 포함, 슬롯 배정만 제외</span><div style={{ flex: 1 }} />{(canEdit || _ro) && <RO on={_ro}><button onClick={() => { dragX.reset(); setExcludeModal(true); setExcludeSel(null); setExcludeQ(''); setExcludeReason('습기 취약'); setExcludeEtc(''); }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: t.accentL, color: t.accent, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>+ 약품 추가</button></RO>}<button onClick={() => setManageModal(false)} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>닫기</button></div>{manualEx.length ? <AtcTable t={t} minWidth={640} colWidths={[120, 200, 110, 76, 90, 80]} rows={[...manualEx].map(d => { const cur = (drugs || []).find(x => x.drug_code === d.drug_code); return { code: d.drug_code, name: d.drug_name, reason: d.atc_exclude_reason || '-', rank: rankFull.get(d.drug_code) || null, slot: (cur && cur.atc_slot) || '-', d }; })} cols={[{ k: 'code', h: '약품코드', align: 'left' }, { k: 'name', h: '약품명', align: 'left' }, { k: 'reason', h: '사유', align: 'left', filter: true, render: r => B(r.reason, t.amberL, t.amber, t.amber) }, { k: 'rank', h: '현재 순위', align: 'right', render: r => r.rank == null ? '-' : r.rank }, { k: 'slot', h: '현재 슬롯', align: 'center' }, { k: '_act', h: '해제', align: 'center', plain: true, render: r => canEdit ? <button onClick={() => unExclude(r.d)} style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid ' + t.border, background: 'transparent', color: t.textM, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>해제</button> : '-' }]} /> : <div style={{ fontSize: 12, color: t.textL, padding: '20px 0', textAlign: 'center' }}>수기 조제로 지정된 약품이 없습니다. 「+ 약품 추가」로 지정하세요.</div>}</div></div>}
     <div className="no-print" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
       <div style={{ fontSize: 16, fontWeight: 700, color: t.accent, marginRight: 8 }}>ATC 카세트 배치</div>
       <span style={{ fontSize: 12, color: t.textM }}>색상 출력을 위해 인쇄 설정에서 「배경 그래픽」을 켜주세요</span>
@@ -9024,8 +9035,8 @@ function AtcView({ drugs, onReload }) {
         </div>}
       </div>
       <button onClick={() => window.print()} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.blue, background: t.blueL, color: t.blue, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>인쇄</button>
-      {canEdit && <button onClick={() => { setEditMode(v => !v); setSelSlot(null); }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: editMode ? t.accentL : t.card, color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{editMode ? '편집 종료' : '편집'}</button>}
-      {canEdit && <button onClick={() => { dragM.reset(); setManageModal(true); }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.amber, background: t.card, color: t.amber, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>수기 조제 관리{manualEx.length ? ' (' + manualEx.length + ')' : ''}</button>}
+      {(canEdit || _ro) && <RO on={_ro}><button onClick={() => { setEditMode(v => !v); setSelSlot(null); }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.accent, background: editMode ? t.accentL : t.card, color: t.accent, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{editMode ? '편집 종료' : '편집'}</button></RO>}
+      {(canEdit || _ro) && <RO on={_ro}><button onClick={() => { dragM.reset(); setManageModal(true); }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + t.amber, background: t.card, color: t.amber, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>수기 조제 관리{manualEx.length ? ' (' + manualEx.length + ')' : ''}</button></RO>}
       {editMode && <span style={{ fontSize: 10, color: t.textM }}>칸을 두 번 클릭해 교환{selSlot ? ' · 선택 ' + selSlot : ''}</span>}
       {msg && <span style={{ fontSize: 11, fontWeight: 600, color: t.accent }}>{msg}</span>}
     </div>
