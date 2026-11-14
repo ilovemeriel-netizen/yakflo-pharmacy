@@ -114,45 +114,33 @@ const clickChip = async (head) => {
 const mainTable = () => [...document.querySelectorAll('table')]
   .find(x => (x.querySelector('thead')?.textContent || '').includes('재고상태'))
 const mainText = () => (mainTable()?.querySelector('tbody')?.textContent) || ''
-/* 「3개월 이상 사용량 0」 판의 표 — 머리가 약품·구분·상태·현재고·재고금액·비고
+/* ★★ 2026-11-15 — 따로 열리던 **판을 없앴다**(B안). 같은 약이 판과 큰 표에 두 번
+     나오던 것을 하나로 합쳤다. 그래서 판을 보던 시험은 모두 **큰 표**를 본다.
    ★ 머리글이 ColMenu 라 글자 뒤에 정렬 표시(▲▼⇅)가 붙는다 — 떼고 본다. */
 const headText = th => th.textContent.replace(/[▲▼⇅]/g, '').trim()
-const panelHeads = () => [...(panelTable()?.querySelectorAll('thead th') || [])].map(headText)
+/* 6칸짜리 판 표가 **없어야** 한다 — 되살아나면 이 함수가 잡는다 */
 const panelTable = () => [...document.querySelectorAll('table')].find(x => {
   const h = [...x.querySelectorAll('thead th')].map(headText)
   return h.length === 6 && h[0] === '약품' && h[5] === '비고'
 })
-/* 머리글 한 칸 — ColMenu 는 <span><span>글자</span><span>▲</span></span> 꼴이다 */
-const headCell = label => [...(panelTable()?.querySelectorAll('thead th') || [])].find(th => headText(th) === label)
-const headLabel = label => headCell(label)?.querySelector('span')?.children[0]
-const headArrow = label => headCell(label)?.querySelector('span')?.children[1]
+/* 요약 띠 — 「반품·폐기 검토 후보」 글자가 든 작은 상자 */
+const band = () => [...document.querySelectorAll('div')].find(d =>
+  /반품·폐기 검토 후보/.test(d.textContent || '') && (d.textContent || '').length < 600)
+/* 재고상태 머리글 메뉴 열기 — 큰 표의 머리글이다 */
+const openStatusMenu = async () => {
+  const th = [...(mainTable()?.querySelectorAll('thead th') || [])].find(x => headText(x) === '재고상태')
+  expect(th, '재고상태 머리글이 없다').toBeTruthy()
+  await act(async () => { fireEvent.click(th.querySelector('span').children[0]) }); await settle(4)
+}
 /* 머리글 메뉴 — body 로 내보낸 포털(zIndex 9999) */
 const openMenu = () => [...document.querySelectorAll('div')].find(d => d.style && d.style.zIndex === '9999')
 const menuItems = () => [...(openMenu()?.querySelectorAll('button') || [])].map(b => b.textContent.replace('✓', '').trim())
-const clickHead = async (label) => { await act(async () => { fireEvent.click(headLabel(label)) }); await settle(4) }
-const clickArrow = async (label) => { await act(async () => { fireEvent.click(headArrow(label)) }); await settle(4) }
 const pickMenu = async (v) => {
   const b = [...(openMenu()?.querySelectorAll('button') || [])].find(x => x.textContent.replace('✓', '').trim() === v)
   expect(b, '메뉴에 「' + v + '」 가 없다').toBeTruthy()
   await act(async () => { fireEvent.click(b) }); await settle(4)
 }
-/* 판의 줄 이름 · 쪽 넘김 · 칩 */
-const panelNames = () => [...(panelTable()?.querySelectorAll('tbody tr') || [])]
-  .map(tr => (tr.querySelector('td div')?.textContent || '').trim())
-/* ★ 본 목록에도 같은 모양의 쪽 넘김이 있다 — **판 안의 것**만 봐야 한다.
-     판의 표를 감싼 상자(테두리 div) 안에 표와 쪽 넘김이 함께 들어 있다. */
-const pgBar = () => panelTable()?.parentElement?.parentElement
-const pgText = () => {
-  const el = [...(pgBar()?.querySelectorAll('span') || [])].find(x => /^\d+개 중 /.test(x.textContent.trim()))
-  return el ? el.textContent.trim() : null
-}
-const pgButton = (label) => [...(pgBar()?.querySelectorAll('button') || [])].find(b => b.textContent.trim() === label)
-const chipBtn = (head) => [...document.querySelectorAll('button')]
-  .find(x => new RegExp('^' + head + '( · [^0-9]+)? \\d+종$').test(x.textContent.trim()))
-const amtChip = () => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '재고금액 큰 순')
-const allChip = () => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '전부 보기')
-const press = async (el) => { expect(el, '단추가 없다').toBeTruthy(); await act(async () => { fireEvent.click(el) }); await settle(4) }
-/* 쪽 넘김 시험용 — 9개월 단계 25종 (20줄 + 5줄) */
+/* 많은 줄 시험용 — 9개월 단계 25종 */
 const BIG = Array.from({ length: 25 }, (_, i) => D({
   drug_code: 'B' + String(i + 1).padStart(2, '0'),
   drug_name: '큰약' + String(i + 1).padStart(2, '0') + '정',
@@ -160,9 +148,9 @@ const BIG = Array.from({ length: 25 }, (_, i) => D({
   current_qty: 10, purchase_price: (25 - i) * 1000, max_stock: i < 5 ? 5 : 30,
   ...W(0, 0, 0, 0),
 }))
-/* ★ 재고현황에도 「엑셀」 단추가 있다 — **판 안의 것**만 집어야 한다. title 로 가린다. */
-const btn = name => [...document.querySelectorAll('button')].find(b =>
-  b.getAttribute('title') === (name === '엑셀' ? '지금 보이는 줄을 엑셀로 내려받습니다' : 'A4 가로로 인쇄합니다'))
+/* ★ 단추 줄로 옮겼다 — 이름이 「사용량 0 엑셀」·「사용량 0 인쇄」라 재고현황 「엑셀」과 안 겹친다 */
+const btn = name => [...document.querySelectorAll('button')]
+  .find(b => b.textContent.trim() === '사용량 0 ' + name)
 
 beforeEach(() => {
   rpc.mockReset(); from.mockReset(); from.mockImplementation(() => chain())
@@ -287,18 +275,19 @@ describe('★★ ⑭⑮⑯ 단계 칩', () => {
     const body = document.body.textContent
     expect(body).toContain('모두 1종')
     expect(body).toContain('90,000')                     /* T9 = 10 × 9,000 */
-    const panel = panelTable().querySelector('tbody').textContent
-    expect(panel).toContain('아홉달안나가는정')
-    expect(panel).not.toContain('석달안나가는정')
-    expect(panel).not.toContain('여섯달안나가는정')
+    /* ★ 칩은 **재고상태 값만** 바꾼다 — 좁아지는 것은 큰 표다(따로 거르는 길이 없다) */
+    const main = mainText()
+    expect(main).toContain('아홉달안나가는정')
+    expect(main).not.toContain('석달안나가는정')
+    expect(main).not.toContain('여섯달안나가는정')
   })
   it('★ ⑯-2 「전체」로 돌아오면 다시 모두 보인다', async () => {
     await open()
     await clickCard(CARD)
     await clickChip('9개월')
     await clickChip('전체')
-    const panel = panelTable().querySelector('tbody').textContent
-    for (const nm of ['석달안나가는정', '여섯달안나가는정', '아홉달안나가는정']) expect(panel).toContain(nm)
+    const main = mainText()
+    for (const nm of ['석달안나가는정', '여섯달안나가는정', '아홉달안나가는정']) expect(main).toContain(nm)
   })
   it('★ ⑰ 12개월이 열리면 「코드 중지 검토」가 되고 안내가 바뀐다', async () => {
     cleanup()
@@ -338,30 +327,26 @@ describe('★★ ⑱ 카드를 누르면 본 목록이 단계 전부를 보여 �
   })
 })
 
-describe('★ ⑲⑳ 목록 — 금액 순·과잉 뱃지·상태 열', () => {
-  it('★ ⑲ 재고금액 큰 순으로 줄을 세운다', async () => {
+describe('★ ⑲⑳ 요약 띠 — 종수·금액·과잉이 큰 표를 따라간다', () => {
+  it('★ ⑲ 띠의 종수·금액이 큰 표에 보이는 줄과 같다', async () => {
     await open()
     await clickCard(CARD)
-    const rows = [...panelTable().querySelectorAll('tbody tr')].map(r => r.textContent)
-    expect(rows[0]).toContain('아홉달안나가는정')   /* 90,000 */
-    expect(rows[1]).toContain('여섯달안나가는정')   /* 50,000 */
-    expect(rows[2]).toContain('석달안나가는정')     /* 20,000 */
+    const b = band().textContent
+    expect(b, '세 종').toContain('모두 3종')
+    expect(b, '20,000 + 50,000 + 90,000').toContain('160,000')
+    expect([...(mainTable()?.querySelectorAll('tbody tr') || [])]).toHaveLength(3)
   })
-  it('⑳ 과잉 뱃지는 최대재고를 넘은 약에만 붙는다', async () => {
+  it('⑳ 띠의 과잉 수도 같은 줄에서 센다', async () => {
     await open()
     await clickCard(CARD)
-    const rows = [...panelTable().querySelectorAll('tbody tr')]
-    const six = rows.find(r => r.textContent.includes('여섯달안나가는정'))
-    const nine = rows.find(r => r.textContent.includes('아홉달안나가는정'))
-    expect(six.textContent).toContain('과잉')      /* 100 > 30 */
-    expect(nine.textContent).not.toContain('과잉') /* 10 < 30 */
+    expect(band().textContent, '여섯달 100 > 30').toContain('과잉 1종')
   })
-  it('⑳-2 판의 상태 열이 단계 글자를 적는다', async () => {
+  it('★ ⑳-2 큰 표 재고상태 칸이 단계 글자다 — 판이 없어도 보인다', async () => {
     await open()
     await clickCard(CARD)
-    expect(panelHeads()).toEqual(['약품', '구분', '상태', '현재고', '재고금액', '비고'])
-    const nine = [...panelTable().querySelectorAll('tbody tr')].find(r => r.textContent.includes('아홉달안나가는정'))
-    expect(nine.children[2].textContent).toBe('9개월 사용량 0')
+    const row = [...mainTable().querySelectorAll('tbody tr')].find(r => r.textContent.includes('아홉달안나가는정'))
+    expect(row, '줄이 없다').toBeTruthy()
+    expect(row.textContent).toContain('9개월 사용량 0')
   })
 })
 
@@ -450,128 +435,108 @@ describe('★★ ㉒ 인쇄·엑셀 — 읽기만 한다', () => {
 })
 
 /* ══════════════════════════════════════════════════════════════════════════
-   ★★ ㉓ 판 표 — 본 목록과 같은 머리글(StandardTable·ColMenu) + 쪽 넘김
-   (2026-11-14 이정화 님 승인 · ㉠-1 판만 HScroll 없이 · ㉡-1 구분 거르기 둠
-    · ㉢-1 처음 20줄씩 · ㉣ 한 쪽 20줄)
+   ★★ ㉓ B안 — 따로 열리던 판을 없앴다 (2026-11-15 이정화 님 승인)
+      · 칸을 누르면 **큰 표**만 걸러진다 · 다시 누르면 「전체」
+      · 재고상태 ▼ 에 묶음 항목 — 칸과 **같은 상태값**
+      · 단계 칩은 재고상태 값을 바꾸는 것으로만 동작
+      · 「사용량 0 엑셀」·「사용량 0 인쇄」는 칸을 골랐을 때만
    ══════════════════════════════════════════════════════════════════════════ */
-describe('★★ ㉓ 판 표 — 머리글·정렬·쪽 넘김', () => {
-  const openBig = (props = {}) => open({ drugs: BIG, ...props })
+describe('★★ ㉓ B안 — 판을 없애고 큰 표 하나로', () => {
+  it('★★ ① 따로 열리는 판이 **없다** — 같은 약이 두 번 나오지 않는다', async () => {
+    await open()
+    await clickCard(CARD)
+    expect(panelTable(), '6칸짜리 판 표가 되살아났다').toBeFalsy()
+    const shown = [...document.querySelectorAll('table')].filter(x => !x.closest('.ps'))
+    expect(shown, '화면에 보이는 표가 하나가 아니다').toHaveLength(1)
+    /* ★ 인쇄용 표(.ps)도 DOM 에는 있다 — 화면에 그리는 표만 센다 */
+    expect(shown[0].textContent.split('아홉달안나가는정').length - 1, '한 약이 두 번 나온다').toBe(1)
+  })
 
-  it('① 본 목록과 **같은 머리글 부품**을 쓴다 — 새 부품을 만들지 않았다', async () => {
-    await openBig(); await clickCard(CARD)
-    expect(panelHeads()).toEqual(['약품', '구분', '상태', '현재고', '재고금액', '비고'])
-    /* ColMenu 라면 글자 뒤에 정렬 표시가 붙는다 */
-    expect(headArrow('재고금액').textContent.trim()).toMatch(/[▲▼⇅]/)
-    expect(SRC).toContain('<StandardTable t={t} TS={unS.TS}')
-    /* ★ ㉠-1 — 판만 좌우 스크롤 단추 없이. 다른 표는 안 건드린다. */
-    expect(SRC).toContain('hf={_unHf} fontSize={11} noScroll')
+  it('★★ ② 칸을 다시 누르면 「전체」로 풀린다', async () => {
+    await open()
+    await clickCard(CARD)
+    expect([...mainTable().querySelectorAll('tbody tr')]).toHaveLength(3)
+    await clickCard(CARD)
+    expect(band(), '띠가 남아 있다').toBeFalsy()
+    expect(mainText(), '전체로 돌아오지 않았다').toContain('출고있는정')
   })
-  it('★ ㉠-1 다른 표는 좌우 스크롤 단추를 그대로 쓴다', () => {
-    /* noScroll 을 **안 고른 길**은 지금과 한 글자도 다르지 않아야 한다 */
-    expect(SRC).toContain('return noScroll ? <div style={{ overflowX: \'auto\' }}>{_tbl}</div> : <HScroll {...(hscroll || {})}>{_tbl}</HScroll>;')
-    const others = (SRC.match(/<StandardTable /g) || []).length
-    const withNo = (SRC.match(/noScroll\n|noScroll\r\n|fontSize=\{11\} noScroll/g) || []).length
-    expect(others, '표가 여러 곳에 있다').toBeGreaterThan(5)
-    expect(withNo, 'noScroll 을 쓴 곳은 판 하나뿐이다').toBe(1)
+
+  it('★★ ③ 재고상태 ▼ 에 **묶음 항목**이 있고, 단계 셋 바로 앞이다', async () => {
+    await open()
+    await openStatusMenu()
+    const items = menuItems()
+    expect(items, '묶음 항목이 없다').toContain(CARD)
+    expect(items.indexOf(CARD), '묶음이 3개월 바로 앞이 아니다').toBe(items.indexOf('3개월 사용량 0') - 1)
   })
-  it('② 머리글 ▲ 로 줄을 세운다 — 재고금액 오름차순', async () => {
-    await openBig(); await clickCard(CARD)
-    expect(panelNames()[0]).toBe('큰약01정')        /* 금액 큰 순 250,000 */
-    await clickArrow('재고금액')
-    expect(panelNames()[0]).toBe('큰약25정')        /* 오름차순 10,000 */
+
+  it('★★ ④ 메뉴에서 묶음을 고르면 **칸과 같은 상태**가 된다', async () => {
+    await open()
+    await openStatusMenu()
+    await pickMenu(CARD)
+    expect(band(), '메뉴로 골랐는데 띠가 안 뜬다').toBeTruthy()
+    expect([...mainTable().querySelectorAll('tbody tr')]).toHaveLength(3)
   })
-  it('★ ③ 머리글을 누르면 「재고금액 큰 순」 칩이 풀린다 — 차례가 둘이 되지 않는다', async () => {
-    await openBig(); await clickCard(CARD)
-    expect(amtChip().getAttribute('aria-pressed')).toBe('true')
-    await clickArrow('재고금액')
-    expect(amtChip().getAttribute('aria-pressed')).toBe('false')
+
+  it('★★ ⑤ 단계 칩은 **재고상태 값만** 바꾼다 — 따로 거르는 길이 없다', async () => {
+    await open()
+    await clickCard(CARD)
+    await clickChip('9개월')
+    await openStatusMenu()
+    const checked = [...(openMenu()?.querySelectorAll('button') || [])]
+      .filter(b => b.textContent.includes('✓')).map(b => b.textContent.replace('✓', '').trim())
+    expect(checked, '칩과 메뉴가 어긋났다').toContain('9개월 사용량 0')
   })
-  it('★ ④ 칩을 누르면 머리글 정렬이 풀리고 금액 큰 순으로 돌아온다', async () => {
-    await openBig(); await clickCard(CARD)
-    await clickArrow('재고금액')
-    expect(panelNames()[0]).toBe('큰약25정')
-    await press(amtChip())
-    expect(panelNames()[0]).toBe('큰약01정')
-    expect(amtChip().getAttribute('aria-pressed')).toBe('true')
+
+  it('★ ⑥ 단추는 **칸을 골랐을 때만** 보인다', async () => {
+    await open()
+    expect(btn('엑셀'), '안 골랐는데 단추가 보인다').toBeFalsy()
+    expect(btn('인쇄'), '안 골랐는데 단추가 보인다').toBeFalsy()
+    await clickCard(CARD)
+    expect(btn('엑셀'), '사용량 0 엑셀이 없다').toBeTruthy()
+    expect(btn('인쇄'), '사용량 0 인쇄가 없다').toBeTruthy()
+    await clickChip('9개월')
+    expect(btn('엑셀'), '단계 하나만 골라도 보여야 한다').toBeTruthy()
   })
-  it('★ ⑤ 판 정렬이 **본 목록 정렬을 건드리지 않는다**', async () => {
-    await openBig(); await clickCard(CARD)
-    const before = mainText()
-    await clickArrow('재고금액')
-    expect(mainText(), '본 목록까지 같이 뒤집혔다').toBe(before)
-  })
-  it('⑥ 처음에는 20줄씩 나오고 쪽 넘김이 있다', async () => {
-    await openBig(); await clickCard(CARD)
-    expect(panelNames()).toHaveLength(20)
-    expect(pgText()).toBe('25개 중 1–20')
-    expect(allChip().getAttribute('aria-pressed')).toBe('false')
-  })
-  it('⑦ 쪽을 넘기면 다음 줄이 나온다', async () => {
-    await openBig(); await clickCard(CARD)
-    await press(pgButton('2'))
-    expect(panelNames()).toHaveLength(5)
-    expect(panelNames()[0]).toBe('큰약21정')
-    expect(pgText()).toBe('25개 중 21–25')
-  })
-  it('⑧ 「전부 보기」를 켜면 전부 나오고 쪽 넘김이 사라진다', async () => {
-    await openBig(); await clickCard(CARD)
-    await press(allChip())
-    expect(panelNames()).toHaveLength(25)
-    expect(pgText(), '쪽 넘김이 남아 있다').toBeNull()
-    expect(allChip().getAttribute('aria-pressed')).toBe('true')
-  })
-  it('★★ ⑨ 「상태」 머리글 메뉴와 단계 칩은 **상태 하나**다 (양쪽 다)', async () => {
-    await open(); await clickCard(CARD)
-    /* 메뉴에서 고르면 → 칩이 눌린다 */
-    await clickHead('상태')
-    await pickMenu('9개월 사용량 0')
-    expect(chipBtn('9개월').getAttribute('aria-pressed')).toBe('true')
-    expect(chipBtn('전체').getAttribute('aria-pressed')).toBe('false')
-    /* 칩을 누르면 → 메뉴에 ✓ 가 따라간다 */
-    await press(chipBtn('3개월'))
-    await clickHead('상태')
-    const picked = [...openMenu().querySelectorAll('button')].filter(b => b.textContent.includes('✓'))
-      .map(b => b.textContent.replace('✓', '').trim())
-    expect(picked).toEqual(['3개월 사용량 0'])
-  })
-  it('⑩ 「상태」 메뉴에는 **쓸 수 있는 단계만** 나온다 — 12개월은 없다', async () => {
-    await open(); await clickCard(CARD)
-    await clickHead('상태')
-    expect(menuItems()).toEqual(['전체', '3개월 사용량 0', '6개월 사용량 0', '9개월 사용량 0'])
-  })
-  it('⑪ 「구분」·「비고」 거르기가 줄과 합계를 **함께** 좁힌다', async () => {
-    await openBig(); await clickCard(CARD)
-    expect(document.body.textContent).toContain('모두 25종')
-    await clickHead('구분'); await pickMenu('주사제')
-    expect(panelNames()).toHaveLength(12)            /* 홀수 번호 12종 */
-    expect(document.body.textContent).toContain('모두 12종')
-    /* 「비고」로 과잉만 — 과잉은 B01~B05 다섯 종, 그중 주사제는 둘(B02·B04) */
-    await clickHead('비고'); await pickMenu('과잉')
-    expect(panelNames()).toHaveLength(2)
-    expect(document.body.textContent).toContain('모두 2종')
-    expect(document.body.textContent).toContain('과잉 2종')
-  })
-  it('★ ⑫ 엑셀은 **지금 보이는 줄 전부**를 담는다 — 쪽에 묶이지 않는다', async () => {
-    await openBig(); await clickCard(CARD)
-    await press(pgButton('2'))                       /* 2쪽에는 5줄만 보인다 */
-    expect(panelNames()).toHaveLength(5)
+
+  it('★★ ⑦ 인쇄·엑셀 대상 = **큰 표에 보이는 줄**', async () => {
+    await open()
+    await clickCard(CARD)
+    expect(SRC, '대상이 큰 표가 아니다').toContain('const _unList=_unOn?filtered.map(')
     await act(async () => { fireEvent.click(btn('엑셀')) }); await settle(8)
-    expect(xl.aoa, '쪽에 묶여 5줄만 나갔다').toHaveLength(26)   /* 머리 1 + 25 */
-    expect(xl.aoa[1][1]).toBe('큰약01정')             /* 차례는 화면과 같다 */
+    expect(xl.aoa).toHaveLength(1 + [...mainTable().querySelectorAll('tbody tr')].length)
   })
-  it('⑬ 새 색을 만들지 않았다 · 원본 줄을 건드리지 않는다', async () => {
-    /* 판에 붙이는 재고금액·과잉은 **복사본**에만 붙는다 */
-    expect(SRC).toContain('const _unRows=_unSel.map(d=>({...d,__amt:')
-    expect(/\b_unSel\.(sort|splice|reverse)\(/.test(SRC), '원본을 건드렸다').toBe(false)
-    const hex = [...new Set((LIB.match(/#[0-9A-Fa-f]{3,8}/g) || []))]
-    expect(hex, '계산 파일에 색이 들어갔다').toEqual([])
+
+  it('★ ⑧ 판만 쓰던 상태·부품을 남기지 않았다', () => {
+    /* ★ setUnPages(인쇄 쪽 나눔)는 **남는다** — 이름이 겹치니 괄호까지 보고 가른다 */
+    for (const dead of ['setUnTier(', 'setUnPage(', 'setUnShowAll(', 'setUnCat(', 'setUnNote(', 'setUnAmt(', '_unHf', '재고금액 큰 순']) {
+      expect(SRC.includes(dead), '지운 ' + dead + ' 가 남아 있다').toBe(false)
+    }
+    expect(SRC.includes('전부 보기'), '판의 「전부 보기」가 남아 있다').toBe(false)
+    /* ★ StandardTable 의 noScroll 선택지 자체는 **남긴다** — 부품의 기능이지 판의 것이 아니다.
+         다만 지금은 **아무도 쓰지 않는다**(판이 유일한 사용처였다). */
+    expect((SRC.match(/noScroll/g) || []).length, 'noScroll 을 쓰는 곳이 생겼다').toBe(3)
+  })
+
+  it('★ ⑨ 12개월 안내 한 줄은 **띠에 그대로** 남았다', async () => {
+    await open()
+    await clickCard(CARD)
+    expect(band().textContent).toContain('12개월(코드 중지 검토)은 2026년 12월 마감 뒤')
+  })
+
+  it('★★ ⑩ 계산식·판정 차례를 건드리지 않았다', () => {
+    expect(SRC).toContain('{const _u=tierOf(d);if(_u)return tierLabel(_u);}')
+    expect(SRC).toContain("if(sf<=0)return q===0?'재고없음':'기준미설정';if(q<=sf)return'긴급'")
+    expect(LIB).toContain('export function tierOf')
+  })
+
+  it('★ ⑪ 많은 줄은 큰 표의 쪽 넘김이 맡는다 — 판 쪽 넘김을 따로 두지 않는다', async () => {
+    await open({ drugs: BIG })
+    await clickCard(CARD)
+    expect([...mainTable().querySelectorAll('tbody tr')], '큰 표는 한 쪽 20줄').toHaveLength(20)
+    expect(band().textContent).toContain('모두 25종')
   })
 })
 
-/* ══════════════════════════════════════════════════════════════════════════
-   ★★ ㉔ 본 목록 — 재고상태 메뉴 차례 · 옛 글자 「미사용」 없애기
-   (2026-11-14 이정화 님이 운영 화면에서 찾아 지시)
-   ══════════════════════════════════════════════════════════════════════════ */
 describe('★★ ㉔ 재고상태 메뉴 차례 · 「미사용」 글자', () => {
   /* 아홉 가지 재고상태가 모두 나오게 고른 줄들 */
   const ORDER_DRUGS = [
@@ -598,6 +563,8 @@ describe('★★ ㉔ 재고상태 메뉴 차례 · 「미사용」 글자', () =
     await clickMainHead('재고상태')
     expect(menuItems()).toEqual(['전체',
       '긴급', '주문필요', '정상', '과잉',
+      /* ★ 2026-11-15 — 묶음 항목이 단계 셋 **바로 앞**에 들어왔다(B안) */
+      '3개월 이상 사용량 0',
       '3개월 사용량 0', '6개월 사용량 0', '9개월 사용량 0',
       '기준미설정', '재고없음'])
   })
@@ -665,16 +632,16 @@ describe('★★ ㉔ 재고상태 메뉴 차례 · 「미사용」 글자', () =
    ★ ㉕ 마약·향정 표시 — 단계 판정은 마약도 그대로 타므로(2026-11-14 ㉮)
       판·인쇄·엑셀에서 눈에 띄게 한다. **기존 NT 뱃지**를 쓴다 — 새 색 없음.
    ══════════════════════════════════════════════════════════════════════════ */
-describe('★ ㉕ 판·인쇄·엑셀의 마약·향정 표시', () => {
+describe('★ ㉕ 큰 표·인쇄·엑셀의 마약·향정 표시', () => {
   const NARC = [
     D({ drug_code: 'NARC', drug_name: '마약안나가는주', category: '주사제', narcotic_type: '마약', ...W(0, 0, 0, 0), current_qty: 10, purchase_price: 5000 }),
     D({ drug_code: 'PSY', drug_name: '향정안나가는정', category: '경구제', narcotic_type: '향정', ...W(0, 0, 5, 5), current_qty: 10, purchase_price: 3000 }),
     D({ drug_code: 'HAN', drug_name: '한외안나가는정', category: '경구제', narcotic_type: '한외마약', ...W(0, 2, 2, 2), current_qty: 10, purchase_price: 1000 }),
     D({ drug_code: 'PLAIN', drug_name: '보통안나가는정', category: '경구제', ...W(0, 0, 0, 0), current_qty: 10, purchase_price: 2000 }),
   ]
-  it('★ ① 판에 마약·향정 뱃지가 붙는다 — 일반·한외마약에는 안 붙는다', async () => {
+  it('★ ① 큰 표에 마약·향정 뱃지가 붙는다 — 일반·한외마약에는 안 붙는다', async () => {
     await open({ drugs: NARC }); await clickCard(CARD)
-    const rowOf = nm => [...panelTable().querySelectorAll('tbody tr')].find(r => r.textContent.includes(nm))
+    const rowOf = nm => [...mainTable().querySelectorAll('tbody tr')].find(r => r.textContent.includes(nm))
     expect(rowOf('마약안나가는주').textContent).toContain('마약')
     expect(rowOf('향정안나가는정').textContent).toContain('향정')
     /* ★ 한외마약은 getNT 가 「일반」으로 본다 — 이정화 님 결정(일반과 같이 규칙 적용) */
@@ -696,7 +663,7 @@ describe('★ ㉕ 판·인쇄·엑셀의 마약·향정 표시', () => {
     expect(byCode('PSY')[2]).toBe('경구제 · 향정')
     expect(byCode('HAN')[2]).toBe('경구제')
     expect(byCode('PLAIN')[2]).toBe('경구제')
-    /* 판은 **기존 NT 부품**을 쓴다 — 색을 새로 적지 않는다 */
-    expect(SRC).toContain('{d.drug_code}<NT d={d} /></div></td>')
+    /* 큰 표는 **기존 NT 부품**을 쓴다 — 색을 새로 적지 않는다 */
+    expect(SRC).toContain('{d.drug_code}<NT d={d} /></td>')
   })
 })
