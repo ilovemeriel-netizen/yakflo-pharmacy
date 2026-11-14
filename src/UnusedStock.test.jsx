@@ -32,6 +32,7 @@ vi.mock('xlsx', () => {
 
 const { StockStatus } = await import('./App.jsx')
 const { ThemeCtx } = await import('./lib/theme')
+const { TIER_LABELS } = await import('./lib/unusedStock')
 const SRC = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8')
 const LIB = readFileSync(resolve(process.cwd(), 'src/lib/unusedStock.js'), 'utf8')
 
@@ -564,5 +565,80 @@ describe('★★ ㉓ 판 표 — 머리글·정렬·쪽 넘김', () => {
     expect(/\b_unSel\.(sort|splice|reverse)\(/.test(SRC), '원본을 건드렸다').toBe(false)
     const hex = [...new Set((LIB.match(/#[0-9A-Fa-f]{3,8}/g) || []))]
     expect(hex, '계산 파일에 색이 들어갔다').toEqual([])
+  })
+})
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ★★ ㉔ 본 목록 — 재고상태 메뉴 차례 · 옛 글자 「미사용」 없애기
+   (2026-11-14 이정화 님이 운영 화면에서 찾아 지시)
+   ══════════════════════════════════════════════════════════════════════════ */
+describe('★★ ㉔ 재고상태 메뉴 차례 · 「미사용」 글자', () => {
+  /* 아홉 가지 재고상태가 모두 나오게 고른 줄들 */
+  const ORDER_DRUGS = [
+    D({ drug_code: 'URG', drug_name: '긴급정', current_qty: 10, safety_stock: 20, monthly_avg: 3 }),
+    D({ drug_code: 'ORD', drug_name: '주문필요정', current_qty: 10, safety_stock: 5, monthly_avg: 30 }),
+    D({ drug_code: 'NOR', drug_name: '정상정', current_qty: 10, safety_stock: 5, monthly_avg: 3, max_stock: 30 }),
+    D({ drug_code: 'OVR', drug_name: '과잉정', current_qty: 40, safety_stock: 5, monthly_avg: 3, max_stock: 30 }),
+    D({ drug_code: 'NOS', drug_name: '기준없는정', current_qty: 10, safety_stock: 0 }),
+    D({ drug_code: 'NIL', drug_name: '재고없는정', current_qty: 0, safety_stock: 0 }),
+    D({ drug_code: 'K3', drug_name: '석달0정', ...W(0, 2, 2, 2) }),
+    D({ drug_code: 'K6', drug_name: '여섯달0정', ...W(0, 0, 5, 5) }),
+    D({ drug_code: 'K9', drug_name: '아홉달0정', ...W(0, 0, 0, 0) }),
+  ]
+  /* 본 목록 머리글 메뉴 */
+  const mainHead = label => [...(mainTable()?.querySelectorAll('thead th') || [])].find(th => headText(th) === label)
+  const clickMainHead = async (label) => {
+    const th = mainHead(label)
+    expect(th, '본 목록에 「' + label + '」 머리글이 없다').toBeTruthy()
+    await act(async () => { fireEvent.click(th.querySelector('span').children[0]) }); await settle(4)
+  }
+
+  it('★ ① 재고상태 메뉴 차례가 **정해진 대로**다 — 급한 것부터', async () => {
+    await open({ drugs: ORDER_DRUGS })
+    await clickMainHead('재고상태')
+    expect(menuItems()).toEqual(['전체',
+      '긴급', '주문필요', '정상', '과잉',
+      '3개월 사용량 0', '6개월 사용량 0', '9개월 사용량 0',
+      '기준미설정', '재고없음'])
+  })
+  it('② 지금 화면에 없는 상태는 메뉴에 안 나온다', async () => {
+    await open()                                  /* 기본 묶음 — 과잉·주문필요가 없다 */
+    await clickMainHead('재고상태')
+    const items = menuItems()
+    expect(items).not.toContain('과잉')
+    expect(items).not.toContain('주문필요')
+    /* 그래도 남은 것들의 **차례는 그대로**다 */
+    expect(items.indexOf('긴급')).toBeLessThan(items.indexOf('3개월 사용량 0'))
+    expect(items.indexOf('9개월 사용량 0')).toBeLessThan(items.indexOf('재고없음'))
+  })
+  it('★ ③ 12개월이 차면 9개월 **뒤·기준미설정 앞**에 저절로 들어간다', () => {
+    expect(SRC).toContain("const STOCK_STAT_ORDER = ['긴급','주문필요','정상','과잉',...TIER_LABELS,'기준미설정','재고없음']")
+    const i9 = TIER_LABELS.indexOf('9개월 사용량 0'), i12 = TIER_LABELS.indexOf('12개월 사용량 0')
+    expect(i12, '12개월이 9개월 뒤가 아니다').toBe(i9 + 1)
+  })
+
+  it('★★ ④ 재고현황 화면 글자에 「미사용」이 **0곳**이다', async () => {
+    /* 전년·최근3개월이 둘 다 0 인 약 — 옛 「미사용」 뱃지가 붙던 자리다(실측 31종, 7ATRP 등) */
+    await open({ drugs: [...ORDER_DRUGS, D({ drug_code: 'NOBASE', drug_name: '기준없는주', prev_year_usage: 0, recent_3m_usage: 0, safety_stock: 0, monthly_avg: 0 })] })
+    expect(document.body.textContent, '화면에 「미사용」이 남아 있다').not.toContain('미사용')
+    await clickCard(CARD)
+    expect(document.body.textContent, '카드를 누른 뒤에도 남으면 안 된다').not.toContain('미사용')
+  })
+  it('⑤ 전년·3개월이 둘 다 0 이면 「기준 없음」 뱃지가 붙는다', async () => {
+    await open({ drugs: [D({ drug_code: 'NOBASE', drug_name: '기준없는주', prev_year_usage: 0, recent_3m_usage: 0, safety_stock: 0, monthly_avg: 0 })] })
+    const row = [...(mainTable()?.querySelectorAll('tbody tr') || [])].find(r => r.textContent.includes('기준없는주'))
+    expect(row, '줄이 없다').toBeTruthy()
+    expect(row.textContent).toContain('기준 없음')
+    expect(row.textContent).toContain('기준미설정')     /* 재고상태는 그대로 */
+  })
+  it('★★ ⑥ 소스의 「미사용」은 **알림(유효기한) 화면 글자에만** 남는다', () => {
+    /* 주석은 뺀다 — 화면에 안 나오는 글자다 */
+    const code = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
+    /* 알림 화면이 쓰는 글자 — 이정화 님이 **그대로 두라고** 한 것들 */
+    const ALLOWED = ['미사용기간(일)', '미사용알림', '■미사용■', "l:'미사용'"]
+    let rest = code
+    for (const a of ALLOWED) rest = rest.split(a).join('')
+    const left = [...rest.matchAll(/미사용/g)].map(m => rest.slice(Math.max(0, m.index - 50), m.index + 30))
+    expect(left, '알림 화면 말고 「미사용」이 남아 있다:\n' + left.join('\n---\n')).toEqual([])
   })
 })
