@@ -105,7 +105,7 @@ describe('★★ ① 뷰어는 「사용량 갱신」 화면을 **본다**', () 
   })
 
   it('★ 주소로 들어온 뷰어를 **막지 않는다** — 일반(member)은 전과 같이 막는다', () => {
-    const i = APP.indexOf('function UsageUpdateView({ drugs, onReload }) {')
+    const i = APP.indexOf('function UsageUpdateView({ drugs, onReload, onBack }) {')
     expect(i, '화면 부품을 찾지 못했다').toBeGreaterThan(0)
     const fn = APP.slice(i, i + 2600)
     expect(fn).toContain(`const isViewer = memberRole === VIEWER_ROLE`)

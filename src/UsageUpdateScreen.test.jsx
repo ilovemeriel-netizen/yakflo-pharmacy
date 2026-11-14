@@ -111,9 +111,9 @@ describe('★★ ① 메뉴·주소·권한', () => {
     expect(APP).toContain("'vaccine', 'label', 'powder', 'usageupdate'];")
     expect(APP.includes("'usage-compare'"), '붙임표가 섞였다').toBe(false)
   })
-  it('화면 배선이 있다 — 이제 재고현황 탭 안이다', () => {
-    expect(APP).toContain(`{stockTab === 'check'`)
-    expect(APP).toContain(`<UsageUpdateView drugs={drugs} onReload={load} />`)
+  it('화면 배선이 있다 — 이제 재고현황의 「기준확인」 단추로 간다', () => {
+    expect(APP).toContain(`{menu === 'stock' && (stockTab === 'check'`)
+    expect(APP).toContain(`<UsageUpdateView drugs={drugs} onReload={load} onBack={() => goStockTab('stock')} />`)
   })
   /* ★★ 2026-11-14 업무 규칙 변경 — 뷰어는 **보되 못 쓴다**.
        바뀐 뒤의 모습은 ViewerUsageVisible.test.jsx 가 지킨다.
@@ -125,7 +125,7 @@ describe('★★ ① 메뉴·주소·권한', () => {
     expect(APP).toContain(`const stockTab = useSyncExternalStore(`)
   })
   it('★★ 주소로 들어와도 일반(member) 계정은 **화면이 막힌다**', () => {
-    const i = APP.indexOf('function UsageUpdateView({ drugs, onReload }) {')
+    const i = APP.indexOf('function UsageUpdateView({ drugs, onReload, onBack }) {')
     expect(i, '화면 부품을 찾지 못했다').toBeGreaterThan(0)
     const fn = APP.slice(i, i + 2200)
     expect(fn).toContain(`const isTenantManager = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')`)
@@ -160,7 +160,7 @@ describe('★★ ② 재고현황 단추 3개가 사라졌다', () => {
 describe('★★ ③ 창이 아니라 화면', () => {
   it('★ asScreen 이면 덮개·✕가 **없다**', async () => {
     await open({ asScreen: true })
-    expect(document.body.textContent).toContain('사용량 갱신 — 마감된 달 기준')
+    expect(document.body.textContent).toContain('기준확인 — 마감된 달 기준')
     /* 닫는 단추는 둘이다 — 머리의 ✕ 와 아래의 「닫기」. 화면에서는 **둘 다** 없어야 한다. */
     expect(screen.queryAllByRole('button', { name: '닫기' }), '닫는 단추가 남아 있다').toHaveLength(0)
     const fixed = [...document.querySelectorAll('div')].filter(d => d.style && d.style.position === 'fixed')
@@ -189,8 +189,9 @@ describe('★★ ③ 창이 아니라 화면', () => {
     expect(screen.queryByRole('button', { name: '출고 자동집계' })).toBeNull()
   })
   it('화면 부품이 자동집계를 **확인 창을 거쳐** 부른다', () => {
-    const i = APP.indexOf('function UsageUpdateView({ drugs, onReload }) {')
-    const fn = APP.slice(i, i + 2600)
+    const i = APP.indexOf('function UsageUpdateView({ drugs, onReload, onBack }) {')
+    /* ★ 2026-11-14 — 돌아가기 단추·한 줄 설명이 들어와 본문이 길어졌다 */
+    const fn = APP.slice(i, i + 3600)
     expect(fn).toContain('onRecompute={() => setAsk(true)}')
     expect(fn).toContain(`supabase.rpc('app_recompute_usage', { p_overwrite_manual: false })`)
     expect(fn).toContain('onConfirm={() => { setAsk(false); recompute() }}')

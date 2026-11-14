@@ -339,7 +339,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
       boxShadow: asScreen ? t.shadow : t.shadowH, boxSizing: 'border-box', textAlign: 'left' }}>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: t.text }}>{asScreen ? '사용량 갱신' : '사용량 비교'} — 마감된 달 기준</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: t.text }}>{asScreen ? '기준확인' : '사용량 비교'} — 마감된 달 기준</div>
         {/* ★ 재고현황에 있던 「출고 자동집계」를 여기로 옮겼다 — 같은 일(사용량 갱신)을 하는 자리다 */}
         {/* ★ 읽기 전용(뷰어)에게도 **보여 준다** — 다만 흐림·못 누름. 기존 「집계 중…」과 같은 모양이다. */}
         {asScreen && onRecompute && <button onClick={onRecompute} disabled={recomputing || !!readOnly}

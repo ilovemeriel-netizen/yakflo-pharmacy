@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, createContext, useContext, lazy, Suspense, Fragment, useSyncExternalStore } from 'react'
+import { useEffect, useState, useRef, createContext, useContext, lazy, Suspense, useSyncExternalStore } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { supabase } from './lib/supabase'
 import { passesDrugFilters } from './lib/drugFilter'
@@ -17,7 +17,7 @@ import { leaveBlockReason } from './lib/leaveNotice.js'
 import { decomposeAtc } from './lib/atcMap'
 import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLabel, TX_NEVER_DROP } from './lib/txTypes'
 import { vaccineTabFromHash } from './lib/vaccineRoute'
-import { STOCK_TABS, STOCK_TAB_DEFAULT, STOCK_TAB_LABEL, stockTabFromHash, stockHash, redirectOldHash } from './lib/stockRoute'
+import { STOCK_TABS, STOCK_TAB_DEFAULT, stockTabFromHash, stockHash, redirectOldHash } from './lib/stockRoute'
 import { handleScan as scanHandle, decodeGs1 as scanDecode, scanCountQty, scanAddItem, saveScanMapping, deactivateBarcode, listBarcodes, gtinCheckOk, ownCodeLooksLikeGs1, OWN_CODE_WARN } from './lib/scan'
 import { dbErrorMsg, noRowMsg, bulkFailKind } from './lib/dbError'
 import { msgIsGood, msgIsBad } from './lib/msgTone'
@@ -2328,7 +2328,7 @@ function AtcTable({ t, cols, rows, minWidth, colWidths, resetable, qfilter }) {
 /* ★ export 는 **시험을 위해서만** 붙였다 — 동작·화면은 한 글자도 바뀌지 않는다.
    Report·ColMenu 와 같은 이유다(실제 컴포넌트를 렌더해 봐야 「칸 수가 맞나」
    「뱃지가 뜨나」를 눈이 아니라 시험으로 지킬 수 있다). */
-export function StockStatus({drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust,onReload,onDispose}){
+export function StockStatus({onCheck,drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust,onReload,onDispose}){
   const{t,memberRole,profile}=useTheme();const canDispose=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin'||profile?.role==='admin');const _ro=memberRole===VIEWER_ROLE;
   const [filter,setFilter]=useState(nf?.filter||'전체');const [cats,setCats]=useState(CATS);const [stats,setStats]=useState(MAIN_STATS);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const{so,TS,sk,sd,setSort}=useSort('drug_name');
   const[surge,setSurge]=useState(SURGE_ALL)   /* 급변 필터 — 머리글 메뉴와 칩이 **이 하나**를 같이 쓴다 */
@@ -2591,6 +2591,10 @@ export function StockStatus({drugs,inv,navFilter:nf,unusedLatest,onEdit,onAdjust
         <button onClick={dlAsk} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button>
         {(isTenantManager || _ro) && <RO on={_ro}><button onClick={dlUsageTemplate} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.blue}`,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 양식</button></RO>}
         {(isTenantManager || _ro) && <RO on={_ro}><button onClick={()=>setUOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.amber}`,background:t.amberL,color:t.amber,cursor:'pointer',fontSize:11,fontWeight:600}}>사용량 업로드</button></RO>}
+        {/* ★ 「기준확인」 — 재고관리 ▼ 에서 옮겨 온 화면으로 간다(#stock/check · 2026-11-14 승인).
+            ★ 기존 단추 모양 그대로다 — 같은 안쪽여백·둥글기·글자 크기에 **이미 쓰는 보라 토큰**.
+            ★ 읽기 전용(뷰어)도 **누를 수 있다** — 보는 화면이기 때문이다. 쓰기는 그 화면 안에서 막는다. */}
+        <button onClick={()=>onCheck&&onCheck()} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.purple}`,background:t.purpleL,color:t.purple,cursor:'pointer',fontSize:11,fontWeight:600}}>기준확인</button>
         {/* ★ 「출고 자동집계」·「사용량 비교」는 재고관리 ▼ 「사용량 갱신」 화면으로 옮겼다 (2026-11-14) */}
 
         {/* ★ 「마약·향정 사용량 보기」는 향정마약 화면으로 옮겼다 (2026-11-14) */}
@@ -2874,7 +2878,7 @@ const NARC_PRINT_CSS=`
    ★ 쓰기는 관리자만. 읽기 전용(뷰어)은 **화면을 보되** 단추·체크가 흐림·못 누름이 된다
      (2026-11-14 이정화 님 승인). 일반(member)은 전과 같이 못 들어온다.
    ══════════════════════════════════════════════════════════════════════ */
-export function UsageUpdateView({ drugs, onReload }) {
+export function UsageUpdateView({ drugs, onReload, onBack }) {
   const { t, memberRole } = useTheme()
   const isTenantManager = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')
   const isViewer = memberRole === VIEWER_ROLE
@@ -2894,9 +2898,13 @@ export function UsageUpdateView({ drugs, onReload }) {
   }
   if (!isTenantManager && !isViewer) return <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자만 볼 수 있는 화면입니다.</div>
   return <div style={{ textAlign: 'left' }}>
-    {/* ★ 한 줄 설명 — 3단계로 마감 때 저절로 돌게 되어, 이 화면이 하는 일을 적어 둔다 */}
-    <div className="no-print" style={{ fontSize: 12, color: t.textM, marginBottom: 10, lineHeight: 1.7 }}>
-      월평균·안전재고를 마감월 출고로 다시 센 결과입니다 · 마감할 때 저절로 다시 셉니다</div>
+    {/* ★ 돌아가기 + 한 줄 설명. 단추는 **기존 모양** 그대로다(새 색 없음).
+        ★ 브라우저 뒤로 가기로도 돌아온다 — 주소가 #stock/check → #stock 으로 바뀌기 때문이다. */}
+    <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+      <button type="button" onClick={() => onBack && onBack()} style={{ padding: '6px 14px', borderRadius: 8,
+        border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>← 재고현황</button>
+      <span style={{ fontSize: 12, color: t.textM, lineHeight: 1.7 }}>월평균·안전재고를 마감월 출고로 다시 센 결과입니다 · 마감할 때 저절로 다시 셉니다</span>
+    </div>
     {msg && <div className="no-print" style={{ background: msg.ok ? t.greenL : t.redL, border: '1px solid ' + (msg.ok ? t.green : t.red),
       borderRadius: 8, padding: '10px 14px', marginBottom: 10, color: msg.ok ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>
       {(msg.ok ? '\u2705 ' : '\u2757 ') + msg.message}</div>}
@@ -8706,20 +8714,6 @@ function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?
 function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
 /* 입출고 월 선택: 해시 3번째 세그먼트(#transaction/out/2026-08). 없으면 현재 월(하위호환). 「전체」는 URL에 월 세그먼트 없음(→새로고침 시 현재 월로 복원). */
 function ymFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var m = seg[2]; if (m && /^[0-9]{4}-[0-9]{2}$/.test(m)) { var p = m.split('-'); return [Number(p[0]), Number(p[1])]; } var d = new Date(); return [d.getFullYear(), d.getMonth() + 1]; }
-/* ★ 재고현황 탭 띠 — 보고서의 월간/연간 띠와 **같은 모양**을 쓴다(새 색 없음).
-     구분선도 그 띠가 쓰는 것(너비 1 · 높이 20 · 테두리색)을 그대로 쓴다. */
-export function StockTabs({ tab, onTab }) {
-  const { t } = useTheme()
-  const st = active => ({ padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
-    fontSize: 13, fontWeight: 600, background: active ? t.accent : t.bg, color: active ? '#fff' : t.textM })
-  return <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-    {STOCK_TABS.map((k, i) => <Fragment key={k}>
-      {i > 0 && <div style={{ width: 1, height: 20, background: t.border, margin: '0 4px' }} />}
-      <button type="button" onClick={() => onTab(k)} style={st(tab === k)}>{STOCK_TAB_LABEL[k]}</button>
-    </Fragment>)}
-  </div>
-}
-
 /* ═══ ATC 카세트 배치 관리 (0064: atc_slot·fsp_slot·lasa_type·storage_light, drugs 단일 테이블·조인 없음) ═══ */
 function AtcView({ drugs, onReload }) {
   const { t, open360, memberRole, profile } = useTheme();
@@ -9562,12 +9556,9 @@ export default function App() {
           {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} onDispose={setDisposeDrug} />}
           {menu === 'idle' && <IdleCheck drugs={drugs} onReload={load} />}
           {menu === 'ward' && <WardAdmin />}
-          {menu === 'stock' && <>
-            <StockTabs tab={stockTab} onTab={goStockTab} />
-            {stockTab === 'check'
-              ? <UsageUpdateView drugs={drugs} onReload={load} />
-              : <StockStatus drugs={drugs} inv={inv} navFilter={nf} unusedLatest={unusedLatest} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
-          </>}
+          {menu === 'stock' && (stockTab === 'check'
+            ? <UsageUpdateView drugs={drugs} onReload={load} onBack={() => goStockTab('stock')} />
+            : <StockStatus drugs={drugs} inv={inv} navFilter={nf} unusedLatest={unusedLatest} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} onCheck={() => goStockTab('check')} />)}
           {menu === 'count' && <InventoryCount drugs={drugs} onReload={load} />}
           {menu === 'vaccine' && <><Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: t.textL, fontSize: 12 }}>불러오는 중...</div>}><VaccineManage ColMenu={ColMenu} useSort={useSort} ymd={ymd} todayYmd={todayYmd} /></Suspense><div className="no-print"><Ft /></div></>}
           {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} onReload={load} />}
