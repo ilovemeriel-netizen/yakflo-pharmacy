@@ -214,9 +214,11 @@ describe('★★ ③ 직전1개월 0 — auto 도 ▼ 급감 그대로', () => {
     expect(m.NULX, '아직 아무도 안 넣은 0 은 ? 확인 필요여야 한다').toBe('?')
   })
 
-  it('★ 「자동」 뱃지는 **이번에 건드리지 않았다**(2단계로 미룸)', () => {
-    expect(APP).toContain(`d.usage_source==='auto'&&d.monthly_avg?<span title="출고 기록 자동 계산값"`)
-    expect(APP.includes("usage_source==='manual'&&d.monthly_avg?<span"), '「수기」 뱃지는 2단계에서 넣는다').toBe(false)
+  /* ★ 2026-11-14 2단계 — 뱃지가 「자동」에서 **「수기」**로 뒤바뀌었다.
+       자세한 뜻은 StockUsageBadge.test.jsx 가 지킨다. */
+  it('★ 뱃지는 이제 **수기**에 붙는다', () => {
+    expect(APP).toContain(`d.usage_source==='manual'&&d.monthly_avg?<span`)
+    expect(APP.includes(`usage_source==='auto'&&d.monthly_avg?<span`), '옛 「자동」 뱃지가 남아 있다').toBe(false)
   })
 })
 

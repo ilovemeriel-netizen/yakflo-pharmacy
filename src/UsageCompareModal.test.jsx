@@ -128,12 +128,14 @@ describe('②③④⑤ 적용 — 한 번에, 두 칸만, 극소량은 null', ()
     expect(a.p_zero_missing).toBe(false)
   })
 
-  it('★ 극소량 줄은 r3 가 null 이다', async () => {
+  /* ★★ 2026-11-14 바뀜 — 극소량도 3개월 숫자를 **사실대로** 보낸다.
+       월평균·안전재고를 지키는 일은 DB(0133) 가 한다. */
+  it('★★ 극소량 줄도 r3 를 **사실대로** 보낸다', async () => {
     await applyNow()
     const rows = rpc.mock.calls[0][1].p_rows
     const ldmx = rows.find(r => r.code === 'LDMX')
     expect(ldmx).toBeTruthy()
-    expect(ldmx.r3).toBe(null)
+    expect(ldmx.r3, '3개월 칸은 숨기지 않는다').not.toBe(null)
     expect(ldmx.r1).toBe(0)
   })
 
