@@ -212,7 +212,7 @@ export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager,
         {p.mixed.length > 0 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 6 }}>
-              잣대가 섞이는 약품 {badge(p.mixed.length + '종 (3개월 출고 0 · 전년 쓰임 있음)', t.amberL, t.amber)}
+              잣대가 섞이는 약품 {badge(p.mixed.length + '종 (3개월 사용량 0 · 전년 쓰임 있음)', t.amberL, t.amber)}
             </div>
             <div style={{ fontSize: 11, color: t.textM, marginBottom: 6, lineHeight: 1.7 }}>
               최근 석 달 동안 <b>출고가 한 건도 없는데 전년에는 쓰임이 있던</b> 약품입니다.

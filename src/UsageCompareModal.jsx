@@ -30,7 +30,7 @@ const num = v => Number(v || 0).toLocaleString()
 const NOTE_W = 149
 const noteCell = { width: NOTE_W, boxSizing: 'border-box' }
 
-/* ── 인쇄 — 「3개월 출고 0」 재고 실사 리스트 ────────────────────────────
+/* ── 인쇄 — 「3개월 사용량 0」 재고 실사 리스트 ────────────────────────────
    ★ NARC_PRINT_CSS(향정 인쇄)와 **같은 방식**이다. 새 방식을 만들지 않는다.
    ★ 이 창은 덮개 위에 뜨는 모달이라 그대로 찍으면 검은 덮개까지 인쇄된다.
      그래서 인쇄할 표만 **body 바로 밑으로 따로 내보내고**(createPortal),
@@ -156,7 +156,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
         null = 전체. (2026-11-13 이정화 님 승인) */
   const [noteF, setNoteF] = useState(null)
   /* 인쇄 머리말에 적을 약국 이름 — Header 가 쓰는 것과 **같은 한 줄**(tenants.name).
-     ★ 「3개월 출고 0」으로 걸렀을 때만 읽는다 — 창을 열기만 해서는 조회하지 않는다.
+     ★ 「3개월 사용량 0」으로 걸렀을 때만 읽는다 — 창을 열기만 해서는 조회하지 않는다.
      ★ 못 읽어도 인쇄는 그대로 된다(이름만 비고 나머지는 같다). */
   const [org, setOrg] = useState('')
   const zeroOnly = noteF === 'zero'
@@ -336,12 +336,12 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
   )
   /* ★★ 비고 — 해당하는 뱃지를 **모두** 보여 준다(한 약에 둘·셋이 붙을 수 있다).
        ★ 거르기는 **글자가 아니라 약의 성질**로 한다. 글자로 거르면 「백신이면서
-         3개월 출고 0」인 약이 백신 쪽에만 걸려 **숫자가 어긋난다**
+         3개월 사용량 0」인 약이 백신 쪽에만 걸려 **숫자가 어긋난다**
          (2026-11-13 실측: 글자 기준 40줄 vs 성질 기준 42줄 — 칩은 42종).
        ★ 차례(= 비고 정렬 차례)도 이 줄 차례를 따른다. */
   const NOTE_DEFS = [
     { k: 'vac', label: '백신 — 제외', hit: r => r.vac, bg: t.blueL, fg: t.blue },
-    { k: 'zero', label: '3개월 출고 0', hit: r => r.zeroOut, bg: t.amberL, fg: t.amber },
+    { k: 'zero', label: '3개월 사용량 0', hit: r => r.zeroOut, bg: t.amberL, fg: t.amber },
     { k: 'tiny', label: '극소량 — 3개월 그대로', hit: r => r.tiny, bg: t.purpleL, fg: t.purple },
     { k: 'same', label: '차이 없음', hit: r => !r.changed, bg: '#F0F0EB', fg: t.textL },
   ]
@@ -408,7 +408,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
   const shownSet = new Set(shown.map(r => r.code))
   const hiddenPicked = [...finalPicked].filter(c => !shownSet.has(c)).length
 
-  /* ── 인쇄·엑셀 — 「3개월 출고 0」으로 걸렀을 때만 ────────────────────────
+  /* ── 인쇄·엑셀 — 「3개월 사용량 0」으로 걸렀을 때만 ────────────────────────
      ★ **읽기만 한다.** 체크·적용과 아무 상관이 없다 — 지금 **보이는 줄**을
        보이는 차례 그대로 내보낸다. 적용 대상 규칙은 건드리지 않는다. */
   const zeroPicked = noteF === 'zero'
@@ -441,8 +441,8 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
       ws['!cols'] = [{ wch: 14 }, { wch: 30 }, { wch: 9 }, { wch: 10 },
         { wch: 15 }, { wch: 15 }, { wch: 26 }, { wch: 11 }, { wch: 9 }, { wch: 9 }]
       const wb = XL.utils.book_new()
-      XL.utils.book_append_sheet(wb, ws, '3개월출고0')
-      XL.writeFile(wb, '재고실사_3개월출고0_' + ymdToday() + '.xlsx')
+      XL.utils.book_append_sheet(wb, ws, '3개월사용량0')
+      XL.writeFile(wb, '재고실사_3개월사용량0_' + ymdToday() + '.xlsx')
       onDone?.({ ok: true, message: '엑셀을 내려받았습니다 — ' + num(prnRows.length) + '줄' })
     } catch (e) {
       onDone?.({ ok: false, message: '엑셀을 만들지 못했습니다: ' + (e && e.message ? e.message : String(e)) })
@@ -492,7 +492,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
   }
 
   const prnTitle = <div className="up-title">
-    <div className="up-h">3개월 출고 0 재고 실사 리스트</div>
+    <div className="up-h">3개월 사용량 0 재고 실사 리스트</div>
     <div className="up-m">
       {org ? org + '  ·  ' : ''}출력 {new Date().toLocaleString('ko-KR', { hour12: false })}
       {'  ·  '}기준 최근 마감 {year}년 {month}월{'  ·  '}모두 {num(prnRows.length)}줄
@@ -545,7 +545,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
             border: '1px solid ' + (zeroOnly ? t.amber : 'transparent'),
             background: zeroOnly ? t.amber + '18' : t.amberL,
             color: t.amber, fontWeight: zeroOnly ? 700 : 600 }}>
-          {'3개월 출고 0 ' + s.zero + '종'}
+          {'3개월 사용량 0 ' + s.zero + '종'}
         </button>
         {badge('극소량 ' + s.tiny + '종', t.purpleL, t.purple)}
       </div>}
@@ -580,7 +580,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
 
       {!ready && !err && <div style={{ padding: '28px 0', textAlign: 'center', color: t.textL, fontSize: 12 }}>거래를 읽는 중…</div>}
 
-      {/* ★ 「3개월 출고 0」으로 걸렀을 때만 나온다 — 칩이든 비고 메뉴든 같은 상태(noteF)다.
+      {/* ★ 「3개월 사용량 0」으로 걸렀을 때만 나온다 — 칩이든 비고 메뉴든 같은 상태(noteF)다.
            단추 모양은 보고서 화면의 「엑셀」·「인쇄」와 **같은 값**이다(글자만·아이콘 없음·새 색 없음). */}
       {ready && zeroPicked && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
         <button onClick={dlXlsx} title="지금 보이는 줄을 엑셀로 내려받습니다" style={{ padding: '6px 14px', borderRadius: 8,

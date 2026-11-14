@@ -1,4 +1,4 @@
-/* 재고현황 「미사용」 — 화면에 붙인 판정·카드·목록·인쇄·엑셀 (2026-11-13 이정화 님 승인)
+/* 재고현황 「3개월 사용량 0」 — 화면에 붙인 판정·카드·목록·인쇄·엑셀 (2026-11-13 이정화 님 승인)
  *
  * 업무 규칙 — 직전 3개월 **실제 출고**가 0 이면 이유를 묻지 않고 발주·긴급 대상이 아니다.
  *   · 기준 기간 2026-07 부터 · 예외 없음 · 들인 지 3개월 안 된 약은 뺀다 · 현재고 0 은 「재고없음」
@@ -104,30 +104,30 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 describe('★ ①②③④ 판정 — 무엇이 미사용인가', () => {
-  it('① 3개월 실제 출고 0 이면 「미사용」이 된다', async () => {
+  it('① 3개월 실제 출고 0 이면 「3개월 사용량 0」이 된다', async () => {
     await open()
-    expect(cardNum('미사용')).toBe(2)          /* ZERO · ZERO2 */
+    expect(cardNum('3개월 사용량 0')).toBe(2)          /* ZERO · ZERO2 */
   })
   it('★ ② 들인 지 3개월 안 된 약은 판정에서 빠진다', async () => {
     await open()
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     expect(document.body.textContent).not.toContain('새로들인정')
   })
   it('★ ③ 현재고 0 은 「재고없음」으로 남는다', async () => {
     await open()
     expect(cardNum('재고없음')).toBe(1)        /* EMPTY */
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     expect(document.body.textContent).not.toContain('빈정')
   })
-  it('④ 한 번이라도 나간 약은 미사용이 아니다', async () => {
+  it('④ 한 번이라도 나간 약은 3개월 사용량 0 이 아니다', async () => {
     await open()
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     expect(document.body.textContent).not.toContain('출고있는정')
   })
 })
 
 describe('★★ ⑤⑥⑦ 판정 차례와 DB 무변경', () => {
-  it('⑤ 「미사용」은 긴급·주문필요보다 **먼저** 판정된다', () => {
+  it('⑤ 「3개월 사용량 0」은 긴급·주문필요보다 **먼저** 판정된다', () => {
     const i = SRC.indexOf('function stockStat(d){')
     const near = SRC.slice(i, i + 700)
     expect(near.indexOf('isUnusedStock(d)')).toBeGreaterThan(0)
@@ -176,21 +176,21 @@ describe('★★ ⑬ 카드 합 = 전체', () => {
   it('★ ⑬ 카드 숫자를 모두 더하면 「전체」와 같다 — 어디에도 안 잡히는 약이 없다', async () => {
     await open()
     const total = cardNum('전체')
-    const parts = ['긴급', '주문필요', '재고없음', '정상', '과잉', '미사용', '기준미설정']
+    const parts = ['긴급', '주문필요', '재고없음', '정상', '과잉', '3개월 사용량 0', '기준미설정']
       .map(k => cardNum(k))
     for (const [i, v] of parts.entries()) expect(v, parts[i] + ' 카드가 없다').not.toBeNull()
     expect(parts.reduce((a, b) => a + b, 0)).toBe(total)
   })
-  it('⑬-2 「미사용」 카드가 있다', async () => {
+  it('⑬-2 「3개월 사용량 0」 카드가 있다', async () => {
     await open()
-    expect(cardNum('미사용')).not.toBeNull()
+    expect(cardNum('3개월 사용량 0')).not.toBeNull()
   })
 })
 
 describe('★ ⑭⑮ 단계 칩', () => {
   it('★ ⑭ 기록이 모자란 단계는 못 누른다', async () => {
     await open()
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     const three = screen.getByRole('button', { name: /^3개월 \d+종$/ })
     expect(three.disabled).toBe(false)
     for (const k of ['6개월', '1년']) {
@@ -201,17 +201,17 @@ describe('★ ⑭⑮ 단계 칩', () => {
   it('★ ⑮ 6개월은 2026-12 마감 뒤, 1년은 2027-06 마감 뒤에 열린다', async () => {
     cleanup()
     await open({ unusedLatest: { y: 2026, m: 12 } })
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     expect(screen.getByRole('button', { name: /^6개월 \d+종$/ }).disabled).toBe(false)
     expect(screen.getByRole('button', { name: '1년 준비 중' }).disabled).toBe(true)
     cleanup()
     await open({ unusedLatest: { y: 2027, m: 6 } })
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     expect(screen.getByRole('button', { name: /^1년 \d+종$/ }).disabled).toBe(false)
   })
   it('⑭-2 안내 한 줄이 있다', async () => {
     await open()
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     expect(document.body.textContent).toContain('6개월은 2026년 12월 마감 뒤, 1년은 2027년 6월 마감 뒤')
   })
 })
@@ -219,7 +219,7 @@ describe('★ ⑭⑮ 단계 칩', () => {
 describe('★ ⑯⑰ 목록 — 금액 순·과잉 뱃지·상태 열', () => {
   it('★ ⑯ 재고금액 큰 순으로 줄을 세운다', async () => {
     await open()
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     /* ZERO2 = 100 × 500 = 50,000 · ZERO = 10 × 2,000 = 20,000 */
     const txt = document.body.textContent
     expect(txt.indexOf('하하안나가는정')).toBeLessThan(txt.indexOf('안나가는정</') === -1 ? txt.lastIndexOf('안나가는정') : txt.indexOf('안나가는정</'))
@@ -228,13 +228,13 @@ describe('★ ⑯⑰ 목록 — 금액 순·과잉 뱃지·상태 열', () => {
   })
   it('⑰ 과잉 뱃지는 최대재고를 넘은 약에만 붙는다', async () => {
     await open()
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     /* ZERO2(100 > 30) 만 과잉 · ZERO(10 < 30) 은 아니다 */
     expect(document.body.textContent).toContain('과잉')
   })
   it('⑰-2 상태 열이 있다', async () => {
     await open()
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     const heads = [...document.querySelectorAll('th')].map(x => x.textContent)
     expect(heads).toContain('상태')
     expect(heads).toContain('재고금액')
@@ -242,8 +242,11 @@ describe('★ ⑯⑰ 목록 — 금액 순·과잉 뱃지·상태 열', () => {
 })
 
 describe('★ ⑱ 색·라이브러리', () => {
-  it('⑱ 새 색을 만들지 않았다 — 미사용은 기존 회색을 쓴다', () => {
-    expect(SRC).toContain(`(s==='기준미설정'||s==='미사용')?t.textL:t.green`)
+  it('⑱ 새 색을 만들지 않았다 — 3개월 사용량 0 은 기존 회색을 쓴다', () => {
+    /* ★ 코드는 상태 글자를 **상수 한 곳**(UNUSED_LABEL)에서 가져온다 — 글자를 박아 넣지 않는다.
+         그래서 이름이 또 바뀌어도 고칠 자리가 한 곳뿐이다. */
+    expect(SRC).toContain(`(s==='기준미설정'||s===UNUSED_LABEL)?t.textL:t.green`)
+    expect(LIB).toContain(`export const UNUSED_LABEL = '3개월 사용량 0'`)
     const hex = [...new Set((LIB.match(/#[0-9A-Fa-f]{3,8}/g) || []))]
     expect(hex, '계산 파일에 색이 들어갔다').toEqual([])
   })
@@ -257,18 +260,18 @@ describe('★ ⑱ 색·라이브러리', () => {
 describe('★★ 인쇄·엑셀 — 읽기만 한다', () => {
   it('엑셀 11열 머리말이 정확하고 반품검토·비고는 빈칸이다', async () => {
     await open()
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     await act(async () => { fireEvent.click(btn('엑셀')) }); await settle(8)
     expect(xl.aoa[0]).toEqual(['약품코드', '약품명', '구분', '상태', '현재고', '구입단가', '재고금액', '과잉', '유효기한', '반품검토', '비고'])
     for (const r of xl.aoa.slice(1)) { expect(r[9]).toBe(''); expect(r[10]).toBe('') }
     expect(xl.ws.A2.t).toBe('s')
     expect(xl.ws.A2.z).toBe('@')
-    expect(xl.file).toMatch(/^미사용_3개월_\d{8}\.xlsx$/)
-    expect(xl.sheet).toBe('미사용3개월')
+    expect(xl.file).toMatch(/^재고_3개월사용량0_\d{8}\.xlsx$/)
+    expect(xl.sheet).toBe('3개월사용량0')
   })
   it('★ 엑셀·인쇄를 눌러도 DB 로 아무것도 가지 않는다', async () => {
     await open()
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     const before = from.mock.calls.length
     await act(async () => { fireEvent.click(btn('엑셀')) }); await settle(6)
     await act(async () => { fireEvent.click(btn('인쇄')) }); await settle(6)
@@ -278,10 +281,10 @@ describe('★★ 인쇄·엑셀 — 읽기만 한다', () => {
   })
   it('인쇄본에 제목·서명란·쪽 번호·반품검토 네모가 있다', async () => {
     await open()
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     const prn = document.querySelector('.ps-print')
     expect(prn, '인쇄 블록이 없다').toBeTruthy()
-    expect(prn.textContent).toContain('미사용 — 반품·폐기 검토 리스트')
+    expect(prn.textContent).toContain('3개월 사용량 0 — 반품·폐기 검토 리스트')
     expect(prn.querySelector('.ps-sign').textContent).toContain('검토자')
     expect(prn.querySelector('.ps-ft').textContent).toMatch(/^\d+ \/ \d+$/)
     expect(prn.textContent).toContain('□반품')
@@ -290,7 +293,7 @@ describe('★★ 인쇄·엑셀 — 읽기만 한다', () => {
   })
   it('★ 인쇄 규칙이 다른 화면에 번지지 않는다 — @page 는 누를 때만', async () => {
     await open()
-    await clickCard('미사용')
+    await clickCard('3개월 사용량 0')
     const styles = () => [...document.querySelectorAll('style')].map(s => s.textContent).join('\n')
     expect(styles()).toContain('.ps-print')
     expect(styles().includes('@page'), '누르지도 않았는데 @page 가 있다').toBe(false)

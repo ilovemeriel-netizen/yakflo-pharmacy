@@ -1,11 +1,11 @@
-/* 사용량 비교 창 — 「3개월 출고 0」 칩으로 거르기 (2026-11-13 이정화 님 승인)
+/* 사용량 비교 창 — 「3개월 사용량 0」 칩으로 거르기 (2026-11-13 이정화 님 승인)
  *
  * ★★ 이 창에는 **「적용」 단추**가 있다. 걸러서 **안 보이게 된 약**이
  *    적용에서 빠지거나, 엉뚱한 약이 들어가면 사용량이 틀린 약에 저장된다.
  *    그래서 ⑥⑦⑭ 를 **실제로 눌러서** 못 박는다.
  *
  * 승인받은 범위
- *   · 누를 수 있는 칩은 「3개월 출고 0」 **하나뿐** — 나머지 5개는 그대로
+ *   · 누를 수 있는 칩은 「3개월 사용량 0」 **하나뿐** — 나머지 5개는 그대로
  *   · 다시 누르면 풀린다
  *   · 눌림 모양은 재고현황 「급변」 단추와 같은 꼴 · **새 색 금지**
  *   · 적용 대상 규칙(원본 p.rows + 약품코드 Set) **변경 금지**
@@ -44,7 +44,7 @@ const DRUGS = [
   D({ drug_code: 'ZZ1', drug_name: '영출고하나정', recent_3m_usage: 50, recent_1m_usage: 0, monthly_avg: 17, safety_stock: 20 }),
   D({ drug_code: 'ZZ2', drug_name: '영출고둘정', recent_3m_usage: 20, recent_1m_usage: 0, monthly_avg: 7, safety_stock: 8 }),
 ]
-/* ZZ1·ZZ2 는 거래가 **한 줄도 없다** → 새 3개월 = 0, 옛 3개월 > 0 → 「3개월 출고 0」 */
+/* ZZ1·ZZ2 는 거래가 **한 줄도 없다** → 새 3개월 = 0, 옛 3개월 > 0 → 「3개월 사용량 0」 */
 const TXNS = [
   { drug_code: 'AAA', type: '출고', transaction_date: '2026-09-10', quantity: 9 },
   { drug_code: 'BBB', type: '출고', transaction_date: '2026-09-11', quantity: 600 },
@@ -80,7 +80,7 @@ const open = async (props = {}) => {
   await settle(10)
   return r
 }
-const chip = () => screen.getByRole('button', { name: /^3개월 출고 0 \d+종$/ })
+const chip = () => screen.getByRole('button', { name: /^3개월 사용량 0 \d+종$/ })
 const pressChip = async () => { await act(async () => { fireEvent.click(chip()) }); await settle(4) }
 const rowNames = () => [...document.querySelectorAll('tbody tr')]
   .map(tr => (tr.querySelector('td:nth-child(2) div')?.textContent || '').trim()).filter(Boolean)
@@ -100,8 +100,8 @@ const applyNow = async () => {
 beforeEach(() => { rpc.mockReset(); from.mockReset(); from.mockImplementation(() => mockTx(TXNS)) })
 afterEach(() => cleanup())
 
-describe('★ ①② 누를 수 있는 칩은 「3개월 출고 0」 하나뿐', () => {
-  it('① 「3개월 출고 0」 칩이 단추이고 눌림 상태를 알린다', async () => {
+describe('★ ①② 누를 수 있는 칩은 「3개월 사용량 0」 하나뿐', () => {
+  it('① 「3개월 사용량 0」 칩이 단추이고 눌림 상태를 알린다', async () => {
     await open()
     const b = chip()
     expect(b.tagName).toBe('BUTTON')
@@ -118,7 +118,7 @@ describe('★ ①② 누를 수 있는 칩은 「3개월 출고 0」 하나뿐',
 })
 
 describe('★ ③④⑤ 거르기 · 숫자 · 다시 누르면 풀림', () => {
-  it('③ 누르면 「3개월 출고 0」 인 줄만 남는다', async () => {
+  it('③ 누르면 「3개월 사용량 0」 인 줄만 남는다', async () => {
     await open()
     expect(rowNames()).toEqual(expect.arrayContaining(['가나다정', '영출고하나정']))
     await pressChip()

@@ -142,7 +142,7 @@ describe('②③④⑤ 적용 — 한 번에, 두 칸만, 극소량은 null', ()
     const codes = rpc.mock.calls[0][1].p_rows.map(r => r.code)
     expect(codes).toContain('CFO')
     expect(codes).not.toContain('TTFLU')   /* 백신 */
-    expect(codes).not.toContain('ALM')     /* 3개월 출고 0 */
+    expect(codes).not.toContain('ALM')     /* 3개월 사용량 0 */
   })
 
   it('체크를 켜면 그 약도 보낸다', async () => {
@@ -206,7 +206,7 @@ describe('표 — 극소량은 3개월을 그대로 둔다고 보인다', () => 
   it('비고 뱃지가 갈래를 알려 준다', async () => {
     await open()
     expect(screen.getByText('백신 — 제외')).toBeTruthy()
-    expect(screen.getByText('3개월 출고 0')).toBeTruthy()
+    expect(screen.getByText('3개월 사용량 0')).toBeTruthy()
     expect(screen.getByText('극소량 — 3개월 그대로')).toBeTruthy()
   })
 })
