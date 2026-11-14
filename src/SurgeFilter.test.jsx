@@ -26,13 +26,19 @@ const DRUGS = [
   mk('DN1', '경구제', 10), mk('DN2', '주사제', 49),
   mk('DN3', '경구제', 0),                    /* ★ 수기 0 — 사람이 「안 썼다」고 적었다 → 급감 그대로 */
   mk('OK1', '경구제', 100), mk('OK2', '주사제', 150),   /* 150 은 초과가 아니라 보통 */
-  /* ★ 확인필요 네 갈래 — 2026-11-01 규칙 */
+  /* ★★ 2026-11-14 규칙 변경(이정화 님 승인) — 「확인필요」는 **출처가 아직 비어 있는** 0 뿐이다.
+       전: manual 이 아니면(auto 포함) 모두 확인필요
+       후: auto 0 은 「출고로 **실제로 세어** 나온 0」이라 **▼ 급감**이다(수기 0 과 같다).
+       왜: 0130 부터 사용량 갱신의 「적용」이 auto 를 찍는다. 옛 잣대면 오늘 ▼ 급감인
+           146종이 다음 적용 때 한꺼번에 「?」로 넘어가 버린다.
+       그래서 DN4 가 늘고 CK4 가 사라졌다 — **줄 수는 그대로**다. */
+  mk('DN4', '주사제', 0, 'auto'),            /* ★ 자동으로 센 0 → ▼ 급감 */
+  /* ★ 확인필요 세 갈래 */
   mk('CK1', '경구제', null),                 /* ① 빈 값 */
   mk('CK2', '주사제', -5),                   /* ② 음수 (DB 에 제약이 없어 들어올 수 있다) */
   mk('CK3', '경구제', 0, null),              /* ③ 0 + usage_source 미설정 */
-  mk('CK4', '주사제', 0, 'auto'),            /* ③ 0 + 자동집계가 남긴 값 */
 ]
-const UP = 2, DN = 3, CHK = 4
+const UP = 2, DN = 4, CHK = 3
 
 vi.mock('./lib/supabase', () => {
   const result = data => Promise.resolve({ data, error: null })
@@ -107,13 +113,12 @@ describe('① 칩(B)으로 거르기', () => {
     expect(codes().sort()).toEqual(['UP1', 'UP2'])
     expect(countText(), '「○○개」도 따라온다').toBe(UP + '개')
   })
-  it('★ 「▼ 급감」 — 월평균 0.5배 **미만**인 줄만 (수기 0 포함)', async () => {
+  it('★ 「▼ 급감」 — 월평균 0.5배 **미만**인 줄만 (수기 0 · 자동 0 포함)', async () => {
     await ready()
     fireEvent.click(chip('▼ 급감'))
     await waitFor(() => expect(codes().length).toBe(DN))
-    expect(codes().sort()).toEqual(['DN1', 'DN2', 'DN3'])
+    expect(codes().sort()).toEqual(['DN1', 'DN2', 'DN3', 'DN4'])
     expect(codes(), '미입력 0 은 급감이 아니다').not.toContain('CK3')
-    expect(codes()).not.toContain('CK4')
   })
   it('딱 1.5배·0.5배는 급변이 아니다 — 초과·미만이다', async () => {
     await ready()
@@ -240,23 +245,25 @@ describe('⑤ 엑셀 — 급변이 걸렸을 때만 묻는다', () => {
     fireEvent.click(excel())
     await waitFor(() => expect(ask()).toBeTruthy())
     expect(ask().textContent).toContain('? 확인 필요 필터가 걸려 있습니다.')
-    expect(btn(/^보이는 줄만 \(4줄\)$/)).toBeTruthy()
+    /* ★ 2026-11-14 — 자동 0 이 급감으로 옮겨 가 확인필요가 4줄 → 3줄이 되었다 */
+    expect(btn(/^보이는 줄만 \(3줄\)$/)).toBeTruthy()
   })
 })
 
 /* ═══ ⑦ 확인필요 — 2026-11-01 추가 규칙 ═══
    0 이 두 가지 뜻으로 섞여 있던 것을 가른다.
      수기 0   = 사람이 「안 썼다」고 적었다 → ▼ 급감 (그대로)
+     자동 0   = 출고로 실제로 세어 0 이 나왔다 → ▼ 급감 (2026-11-14 부터)
      그 밖의 0·빈 값·음수 = 아직 못 믿는 값 → ? 확인 필요 (새로 뺀 것) */
-describe('⑦ 확인필요 — 네 갈래', () => {
+describe('⑦ 확인필요 — 세 갈래', () => {
   const row = c => [...document.querySelectorAll('tbody tr')]
     .find(tr => tr.querySelector('td').textContent.trim() === c)
 
-  it('★ 칩으로 거르면 네 갈래가 모두 나온다', async () => {
+  it('★ 칩으로 거르면 세 갈래가 모두 나온다', async () => {
     await ready()
     fireEvent.click(chip('? 확인 필요'))
     await waitFor(() => expect(codes().length).toBe(CHK))
-    expect(codes().sort()).toEqual(['CK1', 'CK2', 'CK3', 'CK4'])
+    expect(codes().sort()).toEqual(['CK1', 'CK2', 'CK3'])
   })
 
   it('★ 빈 값은 「-」 뒤에 ? 가 붙는다 (숫자 0 으로 꾸미지 않는다)', async () => {
@@ -277,13 +284,15 @@ describe('⑦ 확인필요 — 네 갈래', () => {
     expect(row('DN3').textContent).not.toContain('?')
     expect(row('CK3').textContent, '미설정 0 → 확인필요').toContain('?')
     expect(row('CK3').textContent).not.toContain('▼')
-    expect(row('CK4').textContent, '자동 0 → 확인필요').toContain('?')
+    /* ★ 2026-11-14 — 자동으로 센 0 은 확인필요가 **아니라** 급감이다 */
+    expect(row('DN4').textContent, '자동 0 → 급감').toContain('▼')
+    expect(row('DN4').textContent).not.toContain('?')
   })
 
   it('★ 확인필요 줄은 급증·빨강도 급감·파랑도 아니다 — 회색 그대로', async () => {
     await ready()
     const mark = c => [...row(c).querySelectorAll('span')].find(s => s.getAttribute('aria-label'))
-    for (const c of ['CK1', 'CK2', 'CK3', 'CK4']) {
+    for (const c of ['CK1', 'CK2', 'CK3']) {
       expect(mark(c).getAttribute('aria-label'), c).toBe('확인필요')
       /* 숫자를 감싼 span 의 색 — 빨강·파랑이 아니다 */
       const wrap = mark(c).parentElement
