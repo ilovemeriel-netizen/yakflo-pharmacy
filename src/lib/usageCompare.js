@@ -94,7 +94,10 @@ export function compareOne(d, m3, m1) {
           안 그러면 안전재고가 0 이 되어 판정 자체를 잃는다. */
   const zeroByRecord = basis === 0
   const tiny = raw === 0 && !zeroByRecord
-  const keep = raw == null || tiny
+  /* ★ 셈할 **바탕이 아예 없는** 약 — 마감 기록도 없고 전년도 없다.
+       이런 약은 3개월 숫자조차 보내지 않는다(보내면 DB 가 0 으로 셈해 기준을 지운다). */
+  const noBasis = raw == null
+  const keep = noBasis || tiny
   const nm = keep ? om : raw
   const nsf = keep ? osf : Math.ceil(raw * SAFETY_FACTOR)
   const nmx = keep ? omx : Math.round(raw * MAX_FACTOR)
@@ -106,7 +109,7 @@ export function compareOne(d, m3, m1) {
     code: d.drug_code, name: d.drug_name, category: d.category || '',
     qty: N(d.current_qty), py,
     o3, n3, o1, n1, om, nm, osf, nsf, omx, nmx,
-    tiny, vac, zeroOut, changed,
+    tiny, noBasis, vac, zeroOut, changed,
     /* 기본 체크 — 백신·출고0·차이없음은 꺼 둔다 */
     on: changed && !vac && !zeroOut,
     before: stockStat(d.current_qty, osf, om),
@@ -148,16 +151,20 @@ export function buildUsageCompare(drugs, txns, year, month) {
 /* ── 「적용」에 보낼 줄 ────────────────────────────────────────────────
    ★ 한 번의 호출로 보낸다 — `app_save_usage_bulk` 은 한 문장 UPDATE 라
      **전부 성공 아니면 전부 취소**다. 두 번 나눠 부르면 그 보장이 깨진다.
-   ★ 극소량(tiny)은 `r3` 를 **null** 로 보낸다. 그 함수는 `i.r3 is not null` 일 때만
-     3개월·월평균·안전재고·최대재고를 건드리므로, null 이면 **그 칸들이 그대로 남는다.**
-     직전1개월만 새 값으로 바뀐다. (2026-11-09 이정화 님 ⓐ 승인)
+   ★★ 2026-11-14 바뀜 — 「최근3개월사용량 칸은 **사실**이니 실제 숫자로 갱신하고,
+     월평균·안전재고만 반올림 규칙을 탄다」(이정화 님 결정).
+     그래서 극소량(tiny)도 `r3` 를 **그대로 보낸다.** 기준을 지키는 일은 **DB(0133)** 가 한다 —
+     `round(r3/3)=0` 인데 `r3>0` 이면 월평균·안전·최대를 그대로 둔다. 잣대가 **한 곳**에 있다.
+     전: tiny 면 r3 를 숨겨 3개월 칸까지 묵은 값으로 남았다 — 화면에는 새 숫자가 보이는데.
+   ★ 다만 **바탕이 아예 없는 약**(noBasis — 마감 기록도 전년도 없다)은 여전히 null 로 보낸다.
+     보내면 DB 가 `round(0/3)=0` 으로 셈해 **기준을 지운다**(화면 예고와 어긋난다).
    ★ 전년(py)은 보내지 않는다 — 수기 유지. */
 export const APPLY_FIELDS = ['recent_3m_usage', 'recent_1m_usage']
 export function applyRows(rows, picked) {
   const want = picked instanceof Set ? picked : new Set(picked || [])
   return (rows || [])
     .filter(r => want.has(r.code))
-    .map(r => ({ code: r.code, r3: r.tiny ? null : r.n3, r1: r.n1 }))
+    .map(r => ({ code: r.code, r3: r.noBasis ? null : r.n3, r1: r.n1 }))
 }
 
 /* 적용했을 때 실제로 달라지는 것 — 확인 문구에 쓴다 */

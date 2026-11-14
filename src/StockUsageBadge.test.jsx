@@ -1,17 +1,16 @@
 /* 재고현황 — 사용량 출처 표시.
 
-   ★ 왜 바꿨나
-     이 약제과에서는 최근3개월·최근1개월 사용량이 **원내 프로그램 값이 정본**이다.
-     대부분 양식 업로드로 넣고, 향정·마약(매월)·시즌 백신·처방 없이 나가는 일반약 몇 개·
-     약품외 품목은 수기로 보충한다. 출고 자동집계는 거의 쓰지 않는다.
-     그래서 「수기」는 **예외가 아니라 정상 경로**다(실측 651줄 중 648줄). 감사·규정상
-     표시 의무도 없다. 띄워 둘 이유가 없어 뗐다.
-     남는 것은 **출고 자동집계로 채워진 값**뿐이다(실측 3줄) — 그건 원내 프로그램 값이
-     아니므로 눈에 띄어야 한다.
+   ★★ 2026-11-14 뒤집혔다 (이정화 님 승인 · 2단계)
+     전제가 틀렸음이 드러났다 — 「수기」는 **사람이 넣은 값이 아니었다.**
+     「적용」 단추와 초기 사용량 업로드가 **조건 없이** 찍은 도장이었다
+     (사용 중 524종 중 499종이 manual · auto 는 0종이었다).
+     0130 으로 「적용」이 더는 도장을 안 찍게 했고, 0132 로 묵은 도장 474종을 풀었다.
+     이제 **manual 은 정말 손으로 지킬 값**만 뜻한다 — 마약·향정·한외마약·백신 **25종**.
+     그래서 눈에 띄어야 할 쪽이 **뒤바뀌었다**: 「자동」이 아니라 **「수기」**를 띄운다.
 
    ★ 고정하는 것
-     ① 수기(manual) 값에는 뱃지가 **없다**
-     ② 자동(auto) 값에만 「자동」 뱃지 + 툴팁
+     ① 수기(manual) 값에 **「수기」 뱃지 + 툴팁**
+     ② 자동(auto) 값에는 뱃지가 **없다**
      ③ usage_source 가 비었으면 뱃지 없음
      ④ 월평균 값·다른 열은 그대로
      ⑤ 머리글 툴팁 문구(모양은 불변 — title 만) */
@@ -79,18 +78,19 @@ async function ready() {
   await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBeGreaterThan(0))
 }
 
-describe('① 수기 값에는 뱃지를 띄우지 않는다', () => {
-  it('★ manual 줄에 「수기」가 없다', async () => {
+describe('① 수기 값에 「수기」 뱃지를 띄운다', () => {
+  it('★★ manual 줄에 「수기」 뱃지와 툴팁이 있다', async () => {
     await ready()
     const cell = cellOf('MAN', '월평균')
     expect(cell.textContent).toContain('100')
-    expect(cell.textContent, '수기 뱃지는 사라졌다').not.toContain('수기')
-    expect(cell.querySelector('span[title]'), '툴팁 달린 뱃지도 없다').toBeNull()
+    const badge = [...cell.querySelectorAll('span')].find(s => s.textContent.trim() === '수기')
+    expect(badge, '「수기」 뱃지').toBeTruthy()
+    expect(badge.getAttribute('title')).toBe('사람이 직접 넣은 값 — 출고 자동집계가 건너뜁니다')
   })
-  it('★ 화면 어디에도 「수기」 뱃지가 없다', async () => {
+  it('★ 화면 어디에도 「자동」 뱃지가 없다', async () => {
     await ready()
     const badges = [...document.querySelectorAll('tbody span')]
-      .filter(s => s.textContent.trim() === '수기')
+      .filter(s => s.textContent.trim() === '자동')
     expect(badges.length).toBe(0)
   })
   it('usage_source 가 비어 있어도 뱃지가 없다', async () => {
@@ -101,19 +101,17 @@ describe('① 수기 값에는 뱃지를 띄우지 않는다', () => {
   })
 })
 
-describe('② 자동 값에만 「자동」 뱃지', () => {
-  it('★ auto 줄에 「자동」 뱃지와 툴팁이 있다', async () => {
+describe('② 자동 값에는 뱃지가 없다', () => {
+  it('★★ auto 줄에는 뱃지가 없다 — 이제 자동이 보통이다', async () => {
     await ready()
     const cell = cellOf('AUT', '월평균')
-    const badge = [...cell.querySelectorAll('span')].find(s => s.textContent.trim() === '자동')
-    expect(badge, '「자동」 뱃지').toBeTruthy()
-    expect(badge.getAttribute('title'))
-      .toBe('출고 기록 자동 계산값')
+    expect(cell.textContent).toContain('50')
+    expect(cell.querySelector('span[title]'), '툴팁 달린 뱃지가 없어야 한다').toBeNull()
   })
   it('뱃지 모양은 쓰던 그대로다 — 새 색 없음', async () => {
     await ready()
-    const badge = [...cellOf('AUT', '월평균').querySelectorAll('span')]
-      .find(s => s.textContent.trim() === '자동')
+    const badge = [...cellOf('MAN', '월평균').querySelectorAll('span')]
+      .find(s => s.textContent.trim() === '수기')
     const s = badge.style
     expect(s.fontSize).toBe('8px')
     expect(s.fontWeight).toBe('700')
@@ -122,14 +120,14 @@ describe('② 자동 값에만 「자동」 뱃지', () => {
     /* 색은 기존 파랑 토큰 — jsdom 은 hex 를 rgb 로 돌려준다 */
     expect(s.color).toBe('rgb(46, 74, 98)')
   })
-  it('월평균이 없으면 자동이라도 뱃지가 없다 — 기존 조건 그대로', async () => {
+  it('월평균이 없으면 수기라도 뱃지가 없다 — 기존 조건 그대로', async () => {
     cleanup()
-    const noAvg = [{ ...DRUGS[1], drug_code: 'AU0', monthly_avg: null }]
+    const noAvg = [{ ...DRUGS[0], drug_code: 'AU0', monthly_avg: null }]
     render(<StockStatus drugs={noAvg} inv={[]} navFilter={null}
       onEdit={() => {}} onAdjust={() => {}} onReload={() => {}} onDispose={() => {}} />)
     await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBeGreaterThan(0))
     const cell = cellOf('AU0', '월평균')
-    expect([...cell.querySelectorAll('span')].some(s => s.textContent.trim() === '자동')).toBe(false)
+    expect([...cell.querySelectorAll('span')].some(s => s.textContent.trim() === '수기')).toBe(false)
   })
 })
 
@@ -155,9 +153,9 @@ describe('③ 머리글 툴팁 — 모양은 그대로, title 만', () => {
 describe('④ 값과 다른 열은 그대로', () => {
   it('월평균 숫자가 바뀌지 않았다', async () => {
     await ready()
-    expect(cellOf('MAN', '월평균').textContent.trim()).toBe('100')
+    expect(cellOf('MAN', '월평균').textContent).toContain('100')
     expect(cellOf('NUL', '월평균').textContent.trim()).toBe('20')
-    expect(cellOf('AUT', '월평균').textContent).toContain('50')
+    expect(cellOf('AUT', '월평균').textContent.trim()).toBe('50')
   })
   it('직전1개월 칸에는 뱃지를 넣지 않았다', async () => {
     await ready()
