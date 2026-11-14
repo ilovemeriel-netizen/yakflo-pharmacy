@@ -197,9 +197,11 @@ describe('③ 조건을 소스로 못 박는다', () => {
   /* ★ 2026-11-04 — 「사용량 올리기」가 파일 입력을 바로 여는 대신 **등록 모달**을 연다.
        묶인 조건(isTenantManager)은 그대로다. 모달 안의 「등록」 단추도 같은 조건을 보고,
        DB(0108)가 다시 판정하므로 화면만 숨기는 것이 아니다. */
-  it('★ 사용량 단추 2곳이 isTenantManager 로 묶였다', () => {
-    expect(APP).toContain('{isTenantManager&&<button onClick={dlUsageTemplate}')
-    expect(APP).toContain('{isTenantManager&&<button onClick={()=>setUOpen(true)}')
+  /* ★ 2026-11-14 — 뷰어에게는 **보이되 못 누르게** 바뀌었다(`|| _ro` + <RO>).
+       묶인 조건 isTenantManager 자체는 **그대로**다 — 관리자·일반의 보임/숨김 무변경. */
+  it('★ 사용량 단추 2곳이 isTenantManager 로 묶였다 (뷰어는 보이되 못 누름)', () => {
+    expect(APP).toContain('{(isTenantManager || _ro) && <RO on={_ro}><button onClick={dlUsageTemplate}')
+    expect(APP).toContain('{(isTenantManager || _ro) && <RO on={_ro}><button onClick={()=>setUOpen(true)}')
   })
 
   it('★ 출고관리 canDel 은 **그대로** 두고 탭별로 갈랐다', () => {
@@ -211,8 +213,10 @@ describe('③ 조건을 소스로 못 박는다', () => {
 
   it('★ 삭제 화면 5줄이 canDelTab 으로 바뀌었다 (단가 「마스터도 변경」은 canDel 그대로)', () => {
     expect((APP.match(/canDelTab&&/g) || []).length, '전체삭제·선택삭제·체크박스 열 2·칸 2').toBe(6)
-    expect(APP, '단가 확인 창은 건드리지 않았다')
-      .toContain('canDel&&<button onClick={()=>_doSave(ppConfirm.inputPp,true)}')
+    /* ★ 2026-11-14 — 단가 확인 창의 「마스터도 변경」도 뷰어에게 보이되 못 누른다.
+         조건 canDel 은 그대로이고 `|| _ro` 만 더했다. */
+    expect(APP, '단가 확인 창의 조건은 canDel 그대로다')
+      .toContain('{(canDel || _ro) && <RO on={_ro}><button onClick={()=>_doSave(ppConfirm.inputPp,true)}')
   })
 
   it('★ 발주관리·약품변경의 canDel 은 그대로 (건드리지 않았다)', () => {
