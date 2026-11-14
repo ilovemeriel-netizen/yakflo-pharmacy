@@ -136,7 +136,7 @@ describe('표 만들기', () => {
     expect([r.m3Before, r.m3After]).toEqual([0, 243.5])
     expect([r.maxBefore, r.maxAfter]).toEqual([153, 243])
   })
-  it('★ 잣대가 섞이는 약품을 따로 집는다 — 3개월 출고 0 · 전년 쓰임 있음', () => {
+  it('★ 잣대가 섞이는 약품을 따로 집는다 — 3개월 사용량 0 · 전년 쓰임 있음', () => {
     expect(p.mixed.map(r => r.code).sort()).toEqual(['MYPC', 'SENTIL5'])
     /* 알프람정은 전년이 0 이라 섞이지 않는다 */
     expect(p.mixed.map(r => r.code)).not.toContain('APR2')

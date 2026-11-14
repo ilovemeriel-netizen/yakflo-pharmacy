@@ -154,7 +154,7 @@ describe('★ 잣대가 섞이는 약품', () => {
   it('마이폴·센틸을 따로 집는다', async () => {
     await open()
     expect(screen.getByText('잣대가 섞이는 약품 2종')).toBeTruthy()
-    expect(screen.getByText(/2종 \(3개월 출고 0 · 전년 쓰임 있음\)/)).toBeTruthy()
+    expect(screen.getByText(/2종 \(3개월 사용량 0 · 전년 쓰임 있음\)/)).toBeTruthy()
   })
   it('값이 바뀌지 않는다고 분명히 적는다', async () => {
     await open()
@@ -166,7 +166,7 @@ describe('★ 잣대가 섞이는 약품', () => {
   it('★ 「값이 달라지는 표」보다 **앞**에 온다', async () => {
     await open()
     const body = document.body.textContent
-    expect(body.indexOf('잣대가 섞이는 약품 2종 (3개월 출고 0'))
+    expect(body.indexOf('잣대가 섞이는 약품 2종 (3개월 사용량 0'))
       .toBeLessThan(body.indexOf('달력 기준으로 다시 세면'))
   })
   it('전년·월평균·안전·최대·현재고를 함께 보여 준다', async () => {

@@ -37,7 +37,7 @@ const D = o => ({ drug_code: 'X', drug_name: '약', category: '경구제', statu
 
 /* ★ 일부러 이렇게 골랐다 —
      · AAA·BBB : 뱃지 없음 · 기본 **체크됨** → 거르면 화면 밖으로 간다
-     · VAC1    : 백신 + 3개월 출고 0 (뱃지 2개) ← **글자로 거르면 숨는 약**
+     · VAC1    : 백신 + 0으로 바뀌는 약 (뱃지 2개) ← **글자로 거르면 숨는 약**
      · VAC2    : 백신만
      · TRI     : 백신 + 출고0 + 극소량 (뱃지 **3개**)
      · SAME    : 차이 없음 → 「달라지는 약만 보기」를 켜면 **0줄**이 된다 */
@@ -49,7 +49,7 @@ const DRUGS = [
   D({ drug_code: 'TRI', drug_name: '세뱃지주', atc_code: 'J07CA02', recent_3m_usage: 5, recent_1m_usage: 2, prev_year_usage: 3, monthly_avg: 2, safety_stock: 2 }),
   D({ drug_code: 'SAME', drug_name: '그대로정', recent_3m_usage: 30, recent_1m_usage: 10, monthly_avg: 10, safety_stock: 12 }),
 ]
-/* VAC1·TRI 는 거래가 **한 줄도 없다** → 새 3개월 = 0 → 「3개월 출고 0」 */
+/* VAC1·TRI 는 거래가 **한 줄도 없다** → 새 3개월 = 0 → 「0으로 바뀌는 약」 */
 const TXNS = [
   { drug_code: 'AAA', type: '출고', transaction_date: '2026-09-10', quantity: 9 },
   { drug_code: 'BBB', type: '출고', transaction_date: '2026-09-11', quantity: 600 },
@@ -96,7 +96,7 @@ const open = async (props = {}) => {
   await settle(10)
   return r
 }
-const chip = () => screen.getByRole('button', { name: /^3개월 출고 0 \d+종$/ })
+const chip = () => screen.getByRole('button', { name: /^0으로 바뀌는 약 \d+종$/ })
 const pressChip = async () => { await act(async () => { fireEvent.click(chip()) }); await settle(4) }
 const menuItems = () => [...document.querySelectorAll('[data-menu="note"] button')]
   .map(b => b.getAttribute('data-item')).filter(v => v !== '전체')
@@ -140,8 +140,8 @@ describe('★ ①④⑤ 비고 머리글과 뱃지', () => {
   })
   it('★ ④ 해당하는 뱃지를 모두 보여 준다 — 둘도 셋도', async () => {
     await open()
-    expect(notesOf('백신하나주')).toEqual(['백신 — 제외', '3개월 출고 0'])
-    expect(notesOf('세뱃지주')).toEqual(['백신 — 제외', '3개월 출고 0', '극소량 — 3개월 그대로'])
+    expect(notesOf('백신하나주')).toEqual(['백신 — 제외', '0으로 바뀌는 약'])
+    expect(notesOf('세뱃지주')).toEqual(['백신 — 제외', '0으로 바뀌는 약', '극소량 — 3개월 그대로'])
     expect(notesOf('백신둘주')).toEqual(['백신 — 제외'])
     expect(notesOf('가나다정'), '뱃지가 없는 줄은 비어 있다').toEqual([])
   })
@@ -156,24 +156,24 @@ describe('★ ①④⑤ 비고 머리글과 뱃지', () => {
 })
 
 describe('★★ ②③ 거르기는 글자가 아니라 약의 성질로', () => {
-  it('★ ③ 백신이면서 3개월 출고 0 인 약도 「3개월 출고 0」에 걸린다', async () => {
+  it('★ ③ 백신이면서 0으로 바뀌는 약 인 약도 「0으로 바뀌는 약」에 걸린다', async () => {
     await open()
-    await pickMenu('3개월 출고 0')
+    await pickMenu('0으로 바뀌는 약')
     const names = rowNames().slice().sort()
     expect(names).toEqual(['백신하나주', '세뱃지주'])
   })
   it('★ ② 비고 거르기 줄 수 = 칩 숫자', async () => {
     await open()
     const n = Number((chip().textContent.match(/(\d+)종/) || [])[1])
-    await pickMenu('3개월 출고 0')
+    await pickMenu('0으로 바뀌는 약')
     expect(rowNames().length).toBe(n)
   })
   it('글자로 걸렀다면 백신 줄이 빠졌을 것이다 (이 시험의 뜻)', async () => {
     await open()
     /* 「백신하나주」의 비고에는 백신 뱃지가 **먼저** 적혀 있다 —
-       글자 하나만 보고 걸렀다면 이 약은 「3개월 출고 0」에서 빠졌다 */
+       글자 하나만 보고 걸렀다면 이 약은 「0으로 바뀌는 약」에서 빠졌다 */
     expect(notesOf('백신하나주')[0]).toBe('백신 — 제외')
-    await pickMenu('3개월 출고 0')
+    await pickMenu('0으로 바뀌는 약')
     expect(rowNames()).toContain('백신하나주')
   })
 })
@@ -183,7 +183,7 @@ describe('★★ ⑥⑦⑧ 칩과 메뉴는 상태 하나', () => {
     await open()
     expect(noteValue()).toBe('')
     await pressChip()
-    expect(noteValue()).toBe('3개월 출고 0')
+    expect(noteValue()).toBe('0으로 바뀌는 약')
     expect(chip().getAttribute('aria-pressed')).toBe('true')
   })
   it('★ ⑦ 메뉴에서 「전체」를 고르면 칩도 풀린다', async () => {
@@ -225,7 +225,7 @@ describe('★★ ⑪⑫⑬ 체크·적용·알림 띠', () => {
     await open()
     const before = checkedLabels().slice().sort()
     expect(before.length, '체크된 줄이 없다 — 시험이 뜻을 잃는다').toBeGreaterThan(0)
-    await pickMenu('3개월 출고 0')
+    await pickMenu('0으로 바뀌는 약')
     const all = document.querySelector('[data-menu="note"] button[data-item="전체"]')
     await act(async () => { fireEvent.click(all) }); await settle(4)
     expect(checkedLabels().slice().sort()).toEqual(before)
@@ -235,7 +235,7 @@ describe('★★ ⑪⑫⑬ 체크·적용·알림 띠', () => {
     const plain = JSON.stringify(await applyNow())
     a.unmount(); cleanup(); rpc.mockReset()
     await open()
-    await pickMenu('3개월 출고 0')     /* 체크된 약이 전부 화면 밖으로 간다 */
+    await pickMenu('0으로 바뀌는 약')     /* 체크된 약이 전부 화면 밖으로 간다 */
     expect(JSON.stringify(await applyNow())).toBe(plain)
   })
   it('⑬ 숨은 체크 알림 띠가 머리글 거르기에서도 뜬다', async () => {
@@ -243,7 +243,7 @@ describe('★★ ⑪⑫⑬ 체크·적용·알림 띠', () => {
     await open()
     const n = checkedLabels().length
     expect(document.body.textContent).not.toMatch(BAND)
-    await pickMenu('3개월 출고 0')
+    await pickMenu('0으로 바뀌는 약')
     const m = document.body.textContent.match(BAND)
     expect(m, '띠가 안 떴다').not.toBeNull()
     expect(Number(m[1])).toBe(n)
@@ -255,7 +255,7 @@ describe('★ ⑭ 메뉴에 올릴 거리', () => {
   it('⑭ 지금 0줄인 거리는 메뉴에 없다', async () => {
     await open()
     /* 「달라지는 약만 보기」가 켜져 있어 「차이 없음」은 0줄이다 */
-    expect(menuItems()).toEqual(['백신 — 제외', '3개월 출고 0', '극소량 — 3개월 그대로'])
+    expect(menuItems()).toEqual(['백신 — 제외', '0으로 바뀌는 약', '극소량 — 3개월 그대로'])
     expect(menuItems()).not.toContain('차이 없음')
   })
   it('⑭-2 「달라지는 약만 보기」를 끄면 「차이 없음」이 나타난다', async () => {
