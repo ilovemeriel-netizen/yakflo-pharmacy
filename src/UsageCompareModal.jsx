@@ -345,6 +345,26 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
   const shownSet = new Set(shown.map(r => r.code))
   const hiddenPicked = [...finalPicked].filter(c => !shownSet.has(c)).length
 
+  /* ★★ 표 머리 「전체 선택」 (2026-11-14 이정화 님 승인)
+       · **지금 보이는(걸러진) 줄만** 켜고 끈다 — 숨은 체크는 손대지 않는다.
+       · 일부만 켜져 있으면 **반쯤 표시**(indeterminate).
+       · 줄마다 누르는 toggle 과 **같은 길**(off/extra)만 쓴다 —
+         finalPicked · applyRows · 저장 규칙은 한 글자도 안 바뀐다. */
+  const allRef = useRef(null)
+  const shownPicked = shown.reduce((k, r) => k + (finalPicked.has(r.code) ? 1 : 0), 0)
+  const allOn = shown.length > 0 && shownPicked === shown.length
+  const someOn = shownPicked > 0 && !allOn
+  useEffect(() => { if (allRef.current) allRef.current.indeterminate = someOn }, [someOn])
+  function toggleAllShown() {
+    const want = !allOn   /* 하나라도 빠졌으면 **전부 켠다**, 다 켜져 있으면 전부 끈다 */
+    setOff(s => { const x = new Set(s)
+      for (const r of shown) if (r.on) { if (want) x.delete(r.code); else x.add(r.code) }
+      return x })
+    setExtra(s => { const x = new Set(s)
+      for (const r of shown) if (!r.on) { if (want) x.add(r.code); else x.delete(r.code) }
+      return x })
+  }
+
   const s = p ? p.summary : null
   const as = p ? applySummary(p.rows, finalPicked) : null
 
@@ -356,7 +376,7 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
        이 저장소 eslint 도 막는다. 속을 변수에 담아 두고 감싸기만 고른다. */
   const _inner = <>
     <div ref={box} onClick={asScreen ? undefined : (e => e.stopPropagation())} style={{ background: t.cardSolid, borderRadius: 14,
-      padding: '22px 26px', maxWidth: 980, width: '100%', border: `1px solid ${t.border}`,
+      padding: '22px 26px', maxWidth: asScreen ? 'none' : 980, width: '100%', border: `1px solid ${t.border}`,
       boxShadow: asScreen ? t.shadow : t.shadowH, boxSizing: 'border-box', textAlign: 'left' }}>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
@@ -457,7 +477,13 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
       {ready && <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, textAlign: 'left' }}>
           <thead><tr>
-            <th style={{ ...th, width: 34 }} aria-label="고르기" />
+            <th style={{ ...th, width: 34 }}>
+              <input ref={allRef} type="checkbox" checked={allOn} onChange={toggleAllShown}
+                aria-label="보이는 줄 전체 선택" disabled={!!readOnly || shown.length === 0}
+                title={readOnly ? READ_ONLY_MSG : '지금 보이는 ' + shown.length + '종을 모두 고르거나 풉니다'}
+                style={{ width: 15, height: 15, accentColor: t.accent,
+                  cursor: (readOnly || shown.length === 0) ? 'default' : 'pointer' }} />
+            </th>
             {[['name', '약품', th], ['n3', '직전3개월', thR], ['n1', '직전1개월', thR],
               ['nm', '월평균', thR], ['nsf', '안전재고', thR], ['after', '상태', th]].map(([k, lab, stl]) =>
               <th key={k} style={stl}>
@@ -531,8 +557,10 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
       confirm="적용" busy={applying}
       onClose={() => setConfirming(false)} onConfirm={apply} /></div>}
   </>
+  /* ★ 화면 갈래는 **폭을 꽉 채운다** — 뿌리 여백('20px 24px')은 UsageUpdateView 가 건다.
+       창(보고서 「사용량 비교 보기」) 갈래는 **한 글자도 안 바뀐다.** */
   return asScreen
-    ? <div style={{ textAlign: 'left', maxWidth: 980, margin: '0 auto' }}>{_inner}</div>
+    ? <div style={{ textAlign: 'left' }}>{_inner}</div>
     : <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
         zIndex: 1100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>{_inner}</div>
 }

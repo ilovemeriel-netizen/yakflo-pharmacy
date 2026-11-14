@@ -114,18 +114,21 @@ describe('★★ ① 재고현황 급변 칩 — 넷이 한 덩어리', () => {
   })
 })
 
-/* ══ ② 상자 가운데 · 머리 줄 맞춤 ═══════════════════════════════ */
-describe('★★ ② 기준확인 — 상자 가운데, 머리 줄도 왼쪽 맞춤', () => {
-  it('★ 화면일 때 상자가 가운데다', () => {
-    expect(UCM).toContain(`? <div style={{ textAlign: 'left', maxWidth: 980, margin: '0 auto' }}>{_inner}</div>`)
+/* ══ ② 상자 폭 — **가운데 980 을 되돌렸다**(2026-11-14 이정화 님 결정) ═════
+     좁은 창에서 양옆 여백이 1px 까지 줄고 다른 화면과 어긋나, 표준 폭으로 돌아갔다. */
+describe('★★ ② 기준확인 — 상자가 폭을 꽉 채운다', () => {
+  it('★ 화면일 때 가운데 정렬·maxWidth 가 **없다**', () => {
+    expect(UCM).toContain(`? <div style={{ textAlign: 'left' }}>{_inner}</div>`)
+    expect(UCM.includes(`maxWidth: 980, margin: '0 auto' }}>{_inner}`), '옛 가운데 정렬이 남았다').toBe(false)
   })
 
   it('★ 창(보고서 「사용량 비교」)은 **한 글자도 안 바뀐다**', () => {
     expect(UCM).toContain(`: <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',`)
   })
 
-  it('★ 머리 줄(← 재고현황)도 같은 틀 안이다 — 왼쪽이 맞는다', () => {
-    expect(APP).toContain(`flexWrap: 'wrap', maxWidth: 980, margin: '0 auto 10px' }}>`)
+  it('★ 머리 줄(← 재고현황)도 뿌리 여백만 탄다 — 왼쪽이 맞는다', () => {
+    expect(APP).toContain(`gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>`)
+    expect(APP.includes(`flexWrap: 'wrap', maxWidth: 980, margin: '0 auto 10px' }}>`), '옛 가운데 틀이 남았다').toBe(false)
   })
 })
 

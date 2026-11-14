@@ -2902,13 +2902,18 @@ export function UsageUpdateView({ drugs, onReload, onBack }) {
     onReload?.()
   }
   if (!isTenantManager && !isViewer) return <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자만 볼 수 있는 화면입니다.</div>
-  return <div style={{ textAlign: 'left' }}>
+  /* ★ 다른 화면과 **같은 뿌리 여백**을 쓴다(표준 '20px 24px', 17화면 공통) — 2026-11-14 이정화 님 승인.
+       앞서 넣었던 maxWidth 980 가운데 정렬은 **되돌렸다**: 좁은 창에서 양옆 여백이 1px 까지
+       줄어들었고, 다른 화면과 상자 폭·시작점이 어긋났다. */
+  return <div style={{ textAlign: 'left', padding: '20px 24px' }}>
     {/* ★ 돌아가기 + 한 줄 설명. 단추는 **기존 모양** 그대로다(새 색 없음).
         ★ 브라우저 뒤로 가기로도 돌아온다 — 주소가 #stock/check → #stock 으로 바뀌기 때문이다. */}
-    {/* ★ 흰 상자와 **왼쪽을 맞춘다** — 상자가 가운데(maxWidth 980)라 머리 줄도 같은 틀에 넣는다 */}
-    <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap', maxWidth: 980, margin: '0 auto 10px' }}>
+    {/* ★ 흰 상자와 **왼쪽을 맞춘다** — 상자가 폭을 꽉 채우므로 머리 줄도 같은 뿌리 여백만 탄다 */}
+    <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+      {/* ★ 재고현황의 「기준확인」 단추와 **같은 꼴**(보라 테두리 · 연보라 바탕)이다 —
+           기존 단추 모양이라 **새 색이 없다**. 회색 꼴은 메뉴 밑에서 잘 안 보였다. */}
       <button type="button" onClick={() => onBack && onBack()} style={{ padding: '6px 14px', borderRadius: 8,
-        border: '1px solid ' + t.border, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>← 재고현황</button>
+        border: '1px solid ' + t.purple, background: t.purpleL, color: t.purple, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>← 재고현황</button>
       <span style={{ fontSize: 12, color: t.textM, lineHeight: 1.7 }}>월평균·안전재고를 마감월 출고로 다시 센 결과입니다 · 마감할 때 저절로 다시 셉니다</span>
     </div>
     {msg && <div className="no-print" style={{ background: msg.ok ? t.greenL : t.redL, border: '1px solid ' + (msg.ok ? t.green : t.red),
