@@ -91,11 +91,20 @@ describe('★ 건드리지 않은 것', () => {
     expect(CODE).not.toContain('minWidth={1096}')
   })
 
-  it('★ StandardTable 은 한 글자도 바꾸지 않았다', () => {
-    const ST = between('function StandardTable(', '</table></HScroll>;')
+  it('★ StandardTable 의 고정 열 처리는 그대로다', () => {
+    /* ★ 2026-11-14 — 「3개월 이상 사용량 0」 판이 좌우 스크롤 단추 없이 그리려고
+         noScroll 갈래가 생겨, 끝 표시가 `</table></HScroll>;` 에서 바뀌었다.
+         이 시험이 지키려는 것은 **고정 열(sticky) 처리**이므로 거기만 본다. */
+    const ST = between('function StandardTable(', 'return noScroll ?')
+    expect(ST, 'StandardTable 을 못 찾았다').not.toBe('')
     expect(ST).toContain('left: c.sticky.left')          /* 적어 둔 값 그대로 쓴다 */
     expect(ST).not.toContain('ResizeObserver')
     expect(ST).not.toContain('--yk-l')
+  })
+  it('★ noScroll 을 안 고른 표는 지금까지와 똑같이 HScroll 로 감싼다', () => {
+    /* ★ 판 하나만 단추를 빼고, 나머지 표 열 곳은 **한 글자도 안 바뀐다**는 못 */
+    expect(CODE).toContain(': <HScroll {...(hscroll || {})}>{_tbl}</HScroll>;')
+    expect(CODE.split('noScroll').length - 1, 'noScroll 이 여기저기 퍼졌다').toBeLessThanOrEqual(4)
   })
 
   it('다른 화면의 고정 열도 그대로다 (약품목록 등)', () => {
