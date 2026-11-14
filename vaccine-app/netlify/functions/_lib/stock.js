@@ -26,28 +26,44 @@
      그래서 이 파일은 DB 없이 단위 시험할 수 있다(가짜 client 주입).
    ════════════════════════════════════════════════════════════════ */
 
-/* ── 상태 임계값 — ★ 이 파일 한 곳에만 둔다 ──────────────────────────────
-   소진: 남은 게 없다 / 부족: 열 개 이하 / 주의: 입고분의 1/4 아래로 떨어졌다 / 그 외 충분.
-   received 가 0 이면 비율을 낼 수 없으므로 '주의' 판정을 건너뛴다(0 으로 나누지 않는다). */
-export const LOW_QTY = 10
-export const WARN_RATIO = 0.25
-export function stockStatus(balance, received) {
-  const b = Number(balance || 0), r = Number(received || 0)
-  if (b <= 0) return '소진'
-  if (b <= LOW_QTY) return '부족'
-  if (r > 0 && b < r * WARN_RATIO) return '주의'
-  return '충분'
+/* ── 상태 — ★ 이 파일 한 곳에만 둔다 ─────────────────────────────────────
+   ★★ 2026-11-15 이정화 님 승인 — **약플로 안전재고와 같은 잣대**로 바꾼다.
+     예전에는 약품과 상관없이 「열 개 이하면 부족」이었다. 50개를 쓰는 독감도,
+     1년에 두 개 쓰는 백신도 같은 10 이어서 뜻이 맞지 않았다.
+
+       0            → 소진
+       잔량 ≤ 안전재고   → 부족   (약플로 「긴급」과 **같은 경계**)
+       잔량 ≤ 재주문점   → 주의   (약플로 「주문필요」와 **같은 경계**)
+       그 위          → 충분
+
+     재주문점 = max(올림(안전재고 + 월평균 ÷ 30 × 14), 1) — 약플로 stockStat 과 같은 식이다.
+
+   ★★ 안전재고 **0 은 값이다**(「0개만 있으면 된다」). 「기준 없음」이 아니다.
+     운영 drugs 1,133줄 가운데 safety_stock 이 NULL 인 줄은 **0줄**이고(2026-11-15 실측),
+     열 기본값도 0 이다. 그러므로 아래 LOW_QTY 갈래는 **약품을 아예 못 찾았을 때**만 탄다.
+
+   ★ 안전재고 숫자는 **공개 응답에 싣지 않는다** — 여기서 뱃지 글자만 만든다.
+   ★ 「3개월 사용량 0」 같은 **사용량 판정은 쓰지 않는다** — 재고 대 안전재고만 본다. */
+export const LOW_QTY = 10          /* 안전재고를 모를 때만 쓰는 옛 경계 */
+export const LEAD_TIME_DAYS = 14   /* 약플로 LEAD_TIME 과 같은 값 */
+
+/* 재주문점 — 약플로 stockStat 과 **같은 식**. 안전재고를 모르면 null. */
+export function reorderPoint(safety, monthlyAvg) {
+  if (safety == null || safety === '') return null
+  const sf = Number(safety) || 0
+  const ma = Number(monthlyAvg) || 0
+  return Math.max(Math.ceil(sf + (ma / 30) * LEAD_TIME_DAYS), 1)
 }
 
-/* ── 상시 백신(폐렴구균·대상포진)의 상태 — **3단계뿐이다** ────────────────
-   ★ 「주의」가 없는 까닭: 그 판정은 「입고량의 1/4 아래」인데, 상시 백신의 잔량은
-     약플로 재고현황(drugs.current_qty)에서 오고 **거기에는 입고 누계가 없다**.
-     없는 값으로 비율을 내면 거짓이 된다 — 그래서 아예 판정하지 않는다.
-   ★ 소진·부족의 기준값은 시즌 백신과 **같다**(2026-11-13 결정). */
-export function stockStatusAlways(qty) {
-  const b = Number(qty || 0)
-  if (b <= 0) return '소진'
-  if (b <= LOW_QTY) return '부족'
+/* 뱃지 — 시즌·상시 **모두 같은 길**을 탄다(2026-11-15). 잔량은 공개 잔량이다. */
+export function stockStatus(qty, safety, monthlyAvg) {
+  const q = Number(qty || 0)
+  if (q <= 0) return '소진'
+  /* 약품을 못 찾아 안전재고를 모를 때만 옛 규칙으로 받친다 */
+  if (safety == null || safety === '') return q <= LOW_QTY ? '부족' : '충분'
+  const sf = Number(safety) || 0
+  if (q <= sf) return '부족'
+  if (q <= reorderPoint(sf, monthlyAvg)) return '주의'
   return '충분'
 }
 
@@ -158,8 +174,10 @@ export async function loadStock(admin, tenantId, today) {
     /* ★ current_qty 를 함께 읽는다 — 상시 백신의 잔량이 여기서 온다.
        조회가 늘지 않는다(이미 약품명을 읽고 있던 그 조회에 칸만 더했다).
        ★ tenant_id 조건을 건다 — 이 파일 머리말의 규칙대로다(service_role 은 RLS 를 건너뛴다). */
+    /* ★ safety_stock·monthly_avg 를 함께 읽는다 — **뱃지를 서버에서 만들기 위한 것**이고,
+       이 숫자는 응답에 싣지 않는다(2026-11-15 이정화 님 승인). 조회는 늘지 않는다. */
     codes.length
-      ? admin.from('drugs').select('drug_code, drug_name, manufacturer, current_qty')
+      ? admin.from('drugs').select('drug_code, drug_name, manufacturer, current_qty, safety_stock, monthly_avg')
         .eq('tenant_id', tenantId).in('drug_code', codes)
       : Promise.resolve({ data: [], error: null }),
     /* ★ 상시 백신은 약플로 입출고로 줄어든다 — 그 마지막 시각도 「마지막 입력」에 넣는다.
@@ -191,9 +209,11 @@ export async function loadStock(admin, tenantId, today) {
     const qty = group === GROUP_ALWAYS
       ? Number(d.current_qty || 0)
       : Number(b.balance_qty || 0)
-    const status = group === GROUP_ALWAYS
-      ? stockStatusAlways(qty)
-      : stockStatus(qty, b.received_qty)
+    /* ★★ 시즌·상시 **모두** 약플로 안전재고와 잰다 (2026-11-15 이정화 님 승인 ⓐ).
+         잔량은 **공개 잔량**이다 — 방문자가 보는 숫자와 뱃지가 어긋나지 않게 한다.
+       ★ 시즌 백신의 공개 잔량(백신관리)과 약플로 현재고가 다른 것은 **설계된 운영**이다
+         (약플로는 월초 대량 업로드, 백신관리가 실시간·실사값). 맞추려 들지 않는다. */
+    const status = stockStatus(qty, d.safety_stock, d.monthly_avg)
     /* 값이 없으면 빈 문자열 — 화면이 그 줄을 그리지 않는다 */
     /* ★ 공개 제품명 (0128) — 적어 두었으면 **그대로** 쓴다.
          비어 있으면 예전처럼 약품명을 규칙으로 다듬는다(publicDrugName).

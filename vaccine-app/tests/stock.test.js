@@ -1,8 +1,10 @@
 /* 잔량 조회·판정 공용 모듈 — DB 없이 가짜 client 를 주입해 확인한다.
    보는 것: 상태 경계값 / 응답 필드가 딱 세 개 / 조회 순서와 병렬 / tenant_id 조건 유지 */
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
-  LOW_QTY, WARN_RATIO, stockStatus, stockStatusAlways, normGroup,
+  LOW_QTY, LEAD_TIME_DAYS, reorderPoint, stockStatus, normGroup,
   GROUP_SEASON, GROUP_ALWAYS, loadStock,
 } from '../netlify/functions/_lib/stock.js'
 
@@ -49,43 +51,69 @@ const DRUG = (drug_code, current_qty, drug_name = '', manufacturer = '') =>
   ({ drug_code, drug_name, manufacturer, current_qty })
 const BAL = (account_id, balance_qty, received_qty) => ({ account_id, balance_qty, received_qty })
 
-describe('stockStatus — 경계값', () => {
-  it('상수가 바뀌지 않았다', () => {
-    expect(LOW_QTY).toBe(10)
-    expect(WARN_RATIO).toBe(0.25)
+/* ══════════════════════════════════════════════════════════════════════════
+   ★★ 뱃지 — **약플로 안전재고와 같은 잣대** (2026-11-15 이정화 님 승인)
+     0 → 소진 / 잔량 ≤ 안전재고 → 부족 / 잔량 ≤ 재주문점 → 주의 / 그 위 → 충분
+     재주문점 = max(올림(안전재고 + 월평균÷30×14), 1) — 약플로 stockStat 과 같은 식
+   ★ 안전재고 **0 은 값이다**(「0개만 있으면 된다」). 「기준 없음」이 아니다.
+   ══════════════════════════════════════════════════════════════════════════ */
+describe('★★ stockStatus — 안전재고 기준 4단계', () => {
+  it('상수', () => {
+    expect(LOW_QTY, '안전재고를 모를 때만 쓰는 옛 경계').toBe(10)
+    expect(LEAD_TIME_DAYS, '약플로 LEAD_TIME 과 같아야 한다').toBe(14)
   })
-  it('0 이하는 소진', () => {
-    expect(stockStatus(0, 100)).toBe('소진')
-    expect(stockStatus(-1, 100)).toBe('소진')
-    expect(stockStatus(null, 100)).toBe('소진')
-  })
-  it('10 이하는 부족, 11 부터는 부족이 아니다', () => {
-    expect(stockStatus(1, 1000)).toBe('부족')
-    expect(stockStatus(10, 1000)).toBe('부족')
-    expect(stockStatus(11, 1000)).toBe('주의')
-  })
-  it('입고분의 1/4 미만이면 주의 — 정확히 1/4 은 충분', () => {
-    expect(stockStatus(24, 100)).toBe('주의')
-    expect(stockStatus(25, 100)).toBe('충분')
-    expect(stockStatus(26, 100)).toBe('충분')
-  })
-  it('received 가 0 이면 주의 판정을 건너뛴다(0 으로 나누지 않는다)', () => {
-    expect(stockStatus(50, 0)).toBe('충분')
-    expect(stockStatus(50, null)).toBe('충분')
-  })
-})
 
-describe('★ stockStatusAlways — 상시 백신은 3단계뿐', () => {
-  it('소진·부족의 기준값은 시즌과 같다', () => {
-    expect(stockStatusAlways(0)).toBe('소진')
-    expect(stockStatusAlways(-1)).toBe('소진')
-    expect(stockStatusAlways(null)).toBe('소진')
-    expect(stockStatusAlways(1)).toBe('부족')
-    expect(stockStatusAlways(LOW_QTY)).toBe('부족')
-    expect(stockStatusAlways(LOW_QTY + 1)).toBe('충분')
+  it('0 이하는 소진 — 안전재고와 상관없다', () => {
+    for (const sf of [0, 5, 50, null]) {
+      expect(stockStatus(0, sf, 10), String(sf)).toBe('소진')
+      expect(stockStatus(-1, sf, 10), String(sf)).toBe('소진')
+      expect(stockStatus(null, sf, 10), String(sf)).toBe('소진')
+    }
   })
-  it('★ 「주의」가 절대 나오지 않는다 — 입고 누계가 없어 비율을 낼 수 없다', () => {
-    for (let q = -5; q <= 500; q++) expect(stockStatusAlways(q), String(q)).not.toBe('주의')
+
+  it('★ 잔량 ≤ 안전재고 → 부족 (약플로 「긴급」과 같은 경계 · **이하**)', () => {
+    expect(stockStatus(4, 5, 0)).toBe('부족')
+    expect(stockStatus(5, 5, 0), '경계는 이하다').toBe('부족')
+    expect(stockStatus(6, 5, 0), '안전재고를 넘으면 부족이 아니다').not.toBe('부족')
+  })
+
+  it('★ 잔량 ≤ 재주문점 → 주의 (약플로 「주문필요」와 같은 경계)', () => {
+    /* 안전재고 5 · 월평균 30 → 재주문점 = 올림(5 + 30÷30×14) = 19 */
+    expect(reorderPoint(5, 30)).toBe(19)
+    expect(stockStatus(6, 5, 30)).toBe('주의')
+    expect(stockStatus(19, 5, 30), '경계는 이하다').toBe('주의')
+    expect(stockStatus(20, 5, 30)).toBe('충분')
+  })
+
+  it('★★ 안전재고 0 은 **값**이다 — 잔량이 있으면 부족이 아니다', () => {
+    /* 운영 drugs 1,133줄 가운데 safety_stock 이 NULL 인 줄은 0줄이다(2026-11-15 실측) */
+    expect(reorderPoint(0, 0), '최소 1 이다').toBe(1)
+    expect(stockStatus(1, 0, 0), '재주문점 1 이하라 주의').toBe('주의')
+    expect(stockStatus(2, 0, 0), '2개면 충분하다').toBe('충분')
+    expect(stockStatus(10, 0, 0), '옛 규칙이었다면 부족이었다').toBe('충분')
+  })
+
+  it('★ 안전재고를 **모를 때만** 옛 규칙(10개 이하 부족)으로 받친다', () => {
+    expect(stockStatus(10, null, 0)).toBe('부족')
+    expect(stockStatus(11, null, 0)).toBe('충분')
+    expect(stockStatus(10, undefined, 0)).toBe('부족')
+    expect(stockStatus(10, '', 0)).toBe('부족')
+    expect(reorderPoint(null, 10), '모르면 재주문점도 없다').toBeNull()
+  })
+
+  it('★ 사용량 판정(「3개월 사용량 0」 류)은 **쓰지 않는다** — 재고 대 안전재고만 본다', () => {
+    const SRC = readFileSync(resolve(process.cwd(), 'vaccine-app/netlify/functions/_lib/stock.js'), 'utf8')
+    /* 코드에 쓰이는 이름으로 본다 — 주석의 설명 문구까지 막지는 않는다 */
+    for (const bad of ['tierOf', 'recent_3m_usage', 'unusedStock', 'isUnusedLabel']) {
+      expect(SRC.includes(bad), bad + ' 를 뱃지 판정에 쓰면 안 된다').toBe(false)
+    }
+  })
+
+  it('★★ 안전재고 숫자는 **공개 응답에 싣지 않는다**', () => {
+    const SRC = readFileSync(resolve(process.cwd(), 'vaccine-app/netlify/functions/_lib/stock.js'), 'utf8')
+    const ret = SRC.slice(SRC.indexOf('return {\n      label:'), SRC.indexOf('}).sort('))
+    expect(ret.includes('safety_stock'), '안전재고가 응답에 샜다').toBe(false)
+    expect(ret.includes('monthly_avg'), '월평균이 응답에 샜다').toBe(false)
   })
 })
 
@@ -118,11 +146,25 @@ describe('★ 시즌/상시 — 잔량의 출처가 다르다 (2026-11-13)', () 
     expect(a.status).toBe('부족')
   })
 
-  it('★ 시즌은 지금까지와 똑같다 — 백신관리 잔량·4단계', async () => {
+  it('★★ 시즌도 **약플로 안전재고**로 잰다 — 입고 비율을 더는 쓰지 않는다', async () => {
     const got = await loadStock(fakeAdmin(base), TENANT, TODAY)
     const s = got.data.items.find(x => x.group === '시즌')
-    expect(s.qty).toBe(21)
-    expect(s.status).toBe('주의')      /* 150 의 25% 인 37.5 미만 */
+    expect(s.qty, '잔량은 백신관리 값 그대로다').toBe(21)
+    /* 가짜 drugs 에 안전재고가 없다 → 모를 때 갈래(10 초과면 충분) */
+    expect(s.status).toBe('충분')
+  })
+
+  it('★★ 시즌 — 안전재고가 있으면 그 잣대로 잰다', async () => {
+    /* 시즌 계정에도 약품코드를 달아 둔다 — 그래야 약플로 안전재고를 찾는다 */
+    const withSf = { ...base,
+      vaccine_accounts: ok([{ id: 'a1', season: '2026-2027', public_label: '독감(유료)', drug_code: 'D-SEASON' },
+        ACC_ALWAYS('a2', '폐렴구균(프로디악스23)', 'PRDX23-6')]),
+      drugs: ok([{ drug_code: 'D-SEASON', drug_name: '시즌약', manufacturer: '제약', current_qty: 99, safety_stock: 30, monthly_avg: 0 },
+        DRUG('PRDX23-6', 10, '프로디악스-23', '한국엠에스디(주)')]) }
+    const got = await loadStock(fakeAdmin(withSf), TENANT, TODAY)
+    const s = got.data.items.find(x => x.group === '시즌')
+    expect(s.qty, '잔량은 백신관리 값(21) 그대로 — 약플로 현재고(99)가 아니다').toBe(21)
+    expect(s.status, '21 ≤ 30 이라 부족').toBe('부족')
   })
 
   it('★ 상시인데 약품이 안 잡히면 0(소진) — 없는 숫자를 지어내지 않는다', async () => {
