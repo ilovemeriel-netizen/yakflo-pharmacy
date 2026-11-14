@@ -18,6 +18,7 @@ import { supabase } from './lib/supabase'
 import { buildUsageCompare, applyRows, applySummary, APPLY_FIELDS, closedWindow } from './lib/usageCompare'
 import { checkRowLimit } from './lib/rowLimit'
 import { dbErrorMsg } from './lib/dbError'
+import { READ_ONLY_MSG } from './lib/readOnly'
 
 const num = v => Number(v || 0).toLocaleString()
 
@@ -64,7 +65,7 @@ function monthLabel(year, month) {
   return m.join('·') + '월'
 }
 
-export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixedM, isTenantManager, onClose, onReload, onDone, Confirm, ColMenu, useSort, onRecompute, recomputing, asScreen }) {
+export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixedM, isTenantManager, readOnly, onClose, onReload, onDone, Confirm, ColMenu, useSort, onRecompute, recomputing, asScreen }) {
   const box = useRef(null)
   const [loaded, setLoaded] = useState(null)
   const [onlyMoved, setOnlyMoved] = useState(true)
@@ -336,9 +337,12 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: t.text }}>{asScreen ? '사용량 갱신' : '사용량 비교'} — 마감된 달 기준</div>
         {/* ★ 재고현황에 있던 「출고 자동집계」를 여기로 옮겼다 — 같은 일(사용량 갱신)을 하는 자리다 */}
-        {asScreen && onRecompute && <button onClick={onRecompute} disabled={recomputing} style={{ padding: '6px 14px', borderRadius: 8,
+        {/* ★ 읽기 전용(뷰어)에게도 **보여 준다** — 다만 흐림·못 누름. 기존 「집계 중…」과 같은 모양이다. */}
+        {asScreen && onRecompute && <button onClick={onRecompute} disabled={recomputing || !!readOnly}
+          title={readOnly ? READ_ONLY_MSG : undefined} style={{ padding: '6px 14px', borderRadius: 8,
           border: '1px solid ' + t.purple, background: t.purpleL, color: t.purple,
-          cursor: recomputing ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, opacity: recomputing ? 0.6 : 1 }}>
+          cursor: (recomputing || readOnly) ? 'default' : 'pointer', fontSize: 11, fontWeight: 600,
+          opacity: readOnly ? 0.45 : (recomputing ? 0.6 : 1) }}>
           {recomputing ? '집계 중…' : '출고 자동집계'}</button>}
         {!asScreen && <button onClick={onClose} aria-label="닫기" style={{ width: 32, height: 32, borderRadius: 8,
           border: `1px solid ${t.border}`, background: t.bg, color: t.textM, cursor: 'pointer', fontSize: 14 }}>✕</button>}
@@ -431,8 +435,9 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
               <tr key={r.code}>
                 <td style={td}>
                   <input type="checkbox" checked={finalPicked.has(r.code)} onChange={() => toggle(r)}
-                    aria-label={r.name + ' 적용하기'}
-                    style={{ width: 15, height: 15, accentColor: t.accent, cursor: 'pointer' }} />
+                    aria-label={r.name + ' 적용하기'} disabled={!!readOnly}
+                    title={readOnly ? READ_ONLY_MSG : undefined}
+                    style={{ width: 15, height: 15, accentColor: t.accent, cursor: readOnly ? 'default' : 'pointer' }} />
                 </td>
                 <td style={td}>
                   <div style={{ color: t.text, fontWeight: 600, fontSize: 11.5 }}>{r.name}</div>
@@ -466,8 +471,9 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
         <span style={{ display: 'flex', gap: 8 }}>
           {/* ★ 화면일 때는 닫을 곳이 없다 — 창일 때만 둔다 */}
           {!asScreen && btn('닫기', null, onClose)}
-          {isTenantManager && btn(applying ? '적용 중…' : '고른 ' + finalPicked.size + '종 적용', 'go',
-            () => setConfirming(true), applying || !ready || finalPicked.size === 0 || !!err || !!cutMsg)}
+          {/* ★ 읽기 전용(뷰어)에게도 **보여 준다** — 흐림·못 누름(btn 이 dis 일 때 쓰던 모양 그대로) */}
+          {(isTenantManager || readOnly) && btn(applying ? '적용 중…' : '고른 ' + finalPicked.size + '종 적용', 'go',
+            () => setConfirming(true), !!readOnly || applying || !ready || finalPicked.size === 0 || !!err || !!cutMsg)}
         </span>
       </div>
     </div>

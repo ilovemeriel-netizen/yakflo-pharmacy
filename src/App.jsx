@@ -1183,9 +1183,12 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 /* ═══ 헤더 — 반응형 (모바일 햄버거) ═══ */
 function Header({ menu: m, setMenu: sm, onRegister }) {
   const { t, dark, toggle, user, profile, setProfile, logout, openSearch, open360, memberRole } = useTheme()
-  /* ★ 「사용량 갱신」은 사용량을 **고치는** 화면이라 관리자에게만 보인다 —
-       옮기기 전 단추(canRecompute)와 **같은 잣대**다. 뷰어에게는 칸 자체가 안 생긴다. */
+  /* ★ 「사용량 갱신」 — **고치는** 것은 관리자만. 다만 읽기 전용(뷰어)에게는 **보여 준다.**
+       (2026-11-14 이정화 님 승인 — 뷰어는 약플로 **전체 흐름을 보기 위한** 계정이다.
+        화면은 보이고 쓰기 동작만 흐림·못 누름이 된다. 진짜 자물쇠는 DB 트리거다.)
+       ★ 일반(member)은 **전과 똑같이 안 보인다** — 관리자·일반의 보임/숨김은 그대로. */
   const _mgr = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')
+  const _menuRO = memberRole === VIEWER_ROLE
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tenant, setTenant] = useState('')
   useEffect(() => { let on = true; (async () => { const { data } = await supabase.from('tenants').select('name').limit(1).maybeSingle(); if (on && data && data.name) setTenant(data.name) })(); return () => { on = false } }, [])
@@ -1193,7 +1196,7 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
     { id: 'dashboard', l: '대시보드' },
     { id: 'alerts', l: '🔔 알림' },
     { id: 'druglist', l: '약품관리', landing: 'druglist', children: [{ id: 'druglist', l: '약품목록' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'locvocab', l: '보관위치' }] },
-    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, ...(_mgr ? [{ id: 'usageupdate', l: '사용량 갱신' }] : []), { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'count', l: '실사' }, { id: 'vaccine', l: '백신관리' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }, { id: 'ward', l: '병동신청' }] },
+    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, ...((_mgr || _menuRO) ? [{ id: 'usageupdate', l: '사용량 갱신' }] : []), { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'count', l: '실사' }, { id: 'vaccine', l: '백신관리' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }, { id: 'ward', l: '병동신청' }] },
     { id: 'transaction', l: '입출고' },
     { id: 'report', l: '보고서' },
     /* 가루약분리 — 조제관리 내림 목록에 한 칸만 더한다. 2026-11-10 이정화 님 승인 */
@@ -2857,16 +2860,19 @@ const NARC_PRINT_CSS=`
 /* ══════════════════════════════════════════════════════════════════════
    「사용량 갱신」 화면 — 재고관리 ▼ · 주소 #usageupdate (2026-11-14 이정화 님 승인)
    재고현황 단추 두 개(출고 자동집계 · 사용량 비교)가 여기로 왔다.
-   ★ 관리자만 — 뷰어는 메뉴 칸부터 안 보이고, 주소로 들어와도 막는다.
+   ★ 쓰기는 관리자만. 읽기 전용(뷰어)은 **화면을 보되** 단추·체크가 흐림·못 누름이 된다
+     (2026-11-14 이정화 님 승인). 일반(member)은 전과 같이 못 들어온다.
    ══════════════════════════════════════════════════════════════════════ */
 export function UsageUpdateView({ drugs, onReload }) {
   const { t, memberRole } = useTheme()
   const isTenantManager = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')
+  const isViewer = memberRole === VIEWER_ROLE
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
   const [ask, setAsk] = useState(false)
   /* 출고 자동집계 — 재고현황에 있던 것과 **같은 호출**이다(수기 보존 그대로) */
   async function recompute() {
+    if (isViewer) return   /* 단추가 못 눌리지만, 불려도 여기서 멈춘다 */
     setBusy(true)
     const { data, error } = await supabase.rpc('app_recompute_usage', { p_overwrite_manual: false })
     setBusy(false)
@@ -2875,13 +2881,13 @@ export function UsageUpdateView({ drugs, onReload }) {
     setTimeout(() => setMsg(null), 4000)
     onReload?.()
   }
-  if (!isTenantManager) return <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자만 볼 수 있는 화면입니다.</div>
+  if (!isTenantManager && !isViewer) return <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자만 볼 수 있는 화면입니다.</div>
   return <div style={{ textAlign: 'left' }}>
     {msg && <div className="no-print" style={{ background: msg.ok ? t.greenL : t.redL, border: '1px solid ' + (msg.ok ? t.green : t.red),
       borderRadius: 8, padding: '10px 14px', marginBottom: 10, color: msg.ok ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>
       {(msg.ok ? '\u2705 ' : '\u2757 ') + msg.message}</div>}
     <UsageCompareModal asScreen t={t} drugs={drugs.filter(d => String(d.status || '').trim() === '사용')}
-      isTenantManager={isTenantManager} onClose={() => {}} onReload={onReload}
+      isTenantManager={isTenantManager} readOnly={isViewer} onClose={() => {}} onReload={onReload}
       onDone={r => { setMsg(r); setTimeout(() => setMsg(null), 6000) }} Confirm={CountConfirmModal}
       ColMenu={ColMenu} useSort={useSort} onRecompute={() => setAsk(true)} recomputing={busy} />
     {ask && <CountConfirmModal t={t} title="출고 자동집계" tone={t.purple} busy={busy}
@@ -2894,10 +2900,13 @@ export function UsageUpdateView({ drugs, onReload }) {
 }
 
 export function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter,onReload}){
-  /* ★ 「마약·향정 사용량 보기」 — 재고현황에서 옮겨 왔다. 관리자만(옮기기 전과 같은 잣대) */
+  /* ★ 「마약·향정 사용량 보기」 — 재고현황에서 옮겨 왔다.
+       쓰기는 관리자만. 읽기 전용(뷰어)에게는 **보여 준다**(2026-11-14 이정화 님 승인) —
+       창은 열리되 「적용」이 흐림·못 누름이 된다. 일반(member)은 전과 같이 안 보인다. */
   const[npOpen,setNpOpen]=useState(false)
   const{t,memberRole}=useTheme();
   const _narcMgr=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin');
+  const _narcRO=memberRole===VIEWER_ROLE;
   const[stats,setStats]=useState(navFilter?.narcStatus||['사용']);
   const[cardF,setCardF]=useState('전체');
   const[search,setSearch]=useState('');
@@ -3004,7 +3013,7 @@ export function NarcoticMgmt({drugs,onEdit,onAdjust,navFilter,onReload}){
 
   return<div className="narc-root" style={{padding:'20px 24px'}}>
     <style>{NARC_PRINT_CSS}</style>
-    <div className="no-print" style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><div style={{fontSize:16,fontWeight:700,color:t.purple}}>향정·마약류 관리</div><span style={{display:'flex',gap:8}}>{/* ★ 재고현황에 있던 단추를 여기로 옮겼다 — 마약 일은 마약 화면에서 (2026-11-14) */}{_narcMgr&&<button onClick={()=>setNpOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.bg,color:t.purple,cursor:'pointer',fontSize:11,fontWeight:600}}>마약·향정 사용량 보기</button>}{npOpen&&<NarcoticUsageModal t={t} drugs={drugs} onClose={()=>setNpOpen(false)} isTenantManager={_narcMgr} onReload={onReload} Confirm={CountConfirmModal} ColMenu={ColMenu} useSort={useSort} />}<button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button><button onClick={narcPrint} title="브라우저 인쇄 창이 열립니다 — 「PDF로 저장」도 됩니다" style={{padding:'6px 16px',borderRadius:8,border:'1px solid '+t.blue,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11.5,fontWeight:700}}>인쇄</button></span></div>
+    <div className="no-print" style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><div style={{fontSize:16,fontWeight:700,color:t.purple}}>향정·마약류 관리</div><span style={{display:'flex',gap:8}}>{/* ★ 재고현황에 있던 단추를 여기로 옮겼다 — 마약 일은 마약 화면에서 (2026-11-14) */}{(_narcMgr||_narcRO)&&<button onClick={()=>setNpOpen(true)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+t.purple,background:t.bg,color:t.purple,cursor:'pointer',fontSize:11,fontWeight:600}}>마약·향정 사용량 보기</button>}{npOpen&&<NarcoticUsageModal t={t} drugs={drugs} onClose={()=>setNpOpen(false)} isTenantManager={_narcMgr} readOnly={_narcRO} onReload={onReload} Confirm={CountConfirmModal} ColMenu={ColMenu} useSort={useSort} />}<button onClick={dl} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${t.green}`,background:t.greenL,color:t.green,cursor:'pointer',fontSize:11,fontWeight:600}}>엑셀</button><button onClick={narcPrint} title="브라우저 인쇄 창이 열립니다 — 「PDF로 저장」도 됩니다" style={{padding:'6px 16px',borderRadius:8,border:'1px solid '+t.blue,background:t.blueL,color:t.blue,cursor:'pointer',fontSize:11.5,fontWeight:700}}>인쇄</button></span></div>
     {/* ═══ 인쇄 전용 — 화면에는 안 보이고 종이에만 나온다 ═══ */}
     <div className="narc-print">
       <div className="np-h">향정·마약류 보유 목록</div>
