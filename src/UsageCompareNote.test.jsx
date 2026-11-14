@@ -143,9 +143,9 @@ describe('★ ①④⑤ 비고 머리글과 뱃지', () => {
   })
   it('★ ④ 해당하는 뱃지를 모두 보여 준다 — 둘도 셋도', async () => {
     await open()
-    expect(notesOf('백신하나주')).toEqual(['백신 — 제외', '0으로 바뀌는 약'])
-    expect(notesOf('세뱃지주')).toEqual(['백신 — 제외', '0으로 바뀌는 약', '극소량 — 3개월 그대로'])
-    expect(notesOf('백신둘주')).toEqual(['백신 — 제외'])
+    expect(notesOf('백신하나주')).toEqual(['백신·마약류 — 제외', '0으로 바뀌는 약'])
+    expect(notesOf('세뱃지주')).toEqual(['백신·마약류 — 제외', '0으로 바뀌는 약', '극소량 — 3개월 그대로'])
+    expect(notesOf('백신둘주')).toEqual(['백신·마약류 — 제외'])
     expect(notesOf('가나다정'), '뱃지가 없는 줄은 비어 있다').toEqual([])
   })
   it('⑤ 뱃지 차례는 백신 → 출고0 → 극소량 → 차이없음', () => {
@@ -163,16 +163,16 @@ describe('★★ ②③ 거르기는 글자가 아니라 약의 성질로', () =
     /* 세뱃지주의 비고는 「백신 · 0으로 바뀌는 약 · 극소량」이다.
        첫 뱃지(백신)만 보고 걸렀다면 이 약은 극소량에서 빠졌을 것이다. */
     await open()
-    expect(notesOf('세뱃지주')[0]).toBe('백신 — 제외')
+    expect(notesOf('세뱃지주')[0]).toBe('백신·마약류 — 제외')
     await pickMenu('극소량 — 3개월 그대로')
     expect(rowNames()).toEqual(['세뱃지주'])
   })
   it('★ ② 비고 거르기 줄 수 = 그 성질을 가진 줄 수', async () => {
     await open()
     const all = rowNames()
-    const n = all.filter(nm => (notesOf(nm) || []).includes('백신 — 제외')).length
+    const n = all.filter(nm => (notesOf(nm) || []).includes('백신·마약류 — 제외')).length
     expect(n, '백신 줄이 없다 — 시험이 뜻을 잃는다').toBeGreaterThan(0)
-    await pickMenu('백신 — 제외')
+    await pickMenu('백신·마약류 — 제외')
     expect(rowNames().length).toBe(n)
   })
 })
@@ -181,19 +181,19 @@ describe('★★ ⑥⑦⑧ 비고 메뉴 하나로만 거른다 (칩은 없앴�
   it('★ ⑥ 메뉴에서 고르면 머리글이 그 값을 들고 있다', async () => {
     await open()
     expect(noteValue()).toBe('')
-    await pickMenu('백신 — 제외')
-    expect(noteValue()).toBe('백신 — 제외')
+    await pickMenu('백신·마약류 — 제외')
+    expect(noteValue()).toBe('백신·마약류 — 제외')
   })
   it('★ ⑦ 「전체」를 고르면 풀린다', async () => {
     await open()
-    await pickMenu('백신 — 제외')
+    await pickMenu('백신·마약류 — 제외')
     const all = document.querySelector('[data-menu="note"] button[data-item="전체"]')
     await act(async () => { fireEvent.click(all) }); await settle(4)
     expect(noteValue()).toBe('')
   })
   it('⑧ 다른 것을 고르면 그쪽으로 바뀐다', async () => {
     await open()
-    await pickMenu('백신 — 제외')
+    await pickMenu('백신·마약류 — 제외')
     await pickMenu('극소량 — 3개월 그대로')
     expect(noteValue()).toBe('극소량 — 3개월 그대로')
   })
@@ -213,7 +213,7 @@ describe('★ ⑨⑩ 비고 정렬', () => {
     await settle(4)
     const after = rowNames()
     expect(after.length).toBe(before.length)
-    expect(notesOf(after[0])[0], '첫 줄이 백신이 아니다').toBe('백신 — 제외')
+    expect(notesOf(after[0])[0], '첫 줄이 백신이 아니다').toBe('백신·마약류 — 제외')
     expect(notesOf(after[after.length - 1]), '맨 뒤는 뱃지 없는 줄이다').toEqual([])
   })
   it('⑩ 비고 정렬도 복사본만 세운다 — 원본을 안 건드린다', () => {
@@ -247,7 +247,7 @@ describe('★★ ⑪⑫⑬ 체크·적용·알림 띠', () => {
     const plain = JSON.stringify(await applyNow())
     a.unmount(); cleanup(); rpc.mockReset()
     await open()
-    await pickMenu('백신 — 제외')
+    await pickMenu('백신·마약류 — 제외')
     await act(async () => { fireEvent.click(document.querySelector('button[data-sort="note"]')) })
     await settle(4)
     expect(JSON.stringify(await applyNow())).toBe(plain)
@@ -269,7 +269,7 @@ describe('★ ⑭ 메뉴에 올릴 거리', () => {
   it('⑭ 지금 0줄인 거리는 메뉴에 없다', async () => {
     await open()
     /* 「달라지는 약만 보기」가 켜져 있어 「차이 없음」은 0줄이다 */
-    expect(menuItems()).toEqual(['백신 — 제외', '극소량 — 3개월 그대로'])
+    expect(menuItems()).toEqual(['백신·마약류 — 제외', '극소량 — 3개월 그대로'])
     expect(menuItems()).not.toContain('차이 없음')
   })
   it('★★ ⑭-0 「0으로 바뀌는 약」은 뱃지로만 남는다 — 거르기 거리에는 없다', async () => {
@@ -298,7 +298,7 @@ describe('★★ ⑱ 인쇄·엑셀은 창에서 사라졌다', () => {
     await open()
     expect(screen.queryByRole('button', { name: '엑셀' }), '엑셀 단추가 남아 있다').toBeNull()
     expect(screen.queryByRole('button', { name: '인쇄' }), '인쇄 단추가 남아 있다').toBeNull()
-    await pickMenu('백신 — 제외')
+    await pickMenu('백신·마약류 — 제외')
     expect(screen.queryByRole('button', { name: '엑셀' })).toBeNull()
     expect(screen.queryByRole('button', { name: '인쇄' })).toBeNull()
   })

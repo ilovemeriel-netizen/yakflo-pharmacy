@@ -52,6 +52,13 @@ export function closedWindow(year, month) {
    ★ 왜 빼나: 접종 철에 몰려 나가 평달 기준으로 안전재고를 잡으면 과하게 높아진다.
      운영 실측에서 「정상 → 긴급」이 되던 5종 중 4종이 백신이었다. */
 export const VACCINE_ATC = 'J07'
+/* ★★ 자동 저장에서 빼는 마약 구분 — DB 0136 과 **같은 목록**이다.
+     마약·향정 사용량은 NIMS 기준으로 손입력한다(2026-11-04 확정).
+     한외마약도 수기 25종에 들어 있다(0132). */
+export const LOCKED_NARCOTIC = ['마약', '향정', '한외마약']
+export function isLockedNarcotic(d) {
+  return LOCKED_NARCOTIC.indexOf(String((d && d.narcotic_type) || '').trim()) >= 0
+}
 export function isVaccine(d) {
   return String((d && d.atc_code) || '').startsWith(VACCINE_ATC)
 }
@@ -102,6 +109,12 @@ export function compareOne(d, m3, m1) {
   const nsf = keep ? osf : Math.ceil(raw * SAFETY_FACTOR)
   const nmx = keep ? omx : Math.round(raw * MAX_FACTOR)
   const vac = isVaccine(d)
+  /* ★★ 2026-11-15 — 백신·마약·향정·한외마약은 **「적용」 대상에서 아예 뺀다.**
+       예전에는 백신만 기본 체크를 꺼 두었는데, **체크는 켤 수 있었다.**
+       2026-11-14 01:24 「적용」으로 백신 7종이 바뀐 길이 그것이다.
+       이제 잠근다 — 줄마다 눌러도, 「전체 선택」으로도 안 켜진다.
+     ★ DB 0136 이 같은 목록을 막는다 — 화면과 DB 가 **같은 잣대**다. */
+  const locked = vac || isLockedNarcotic(d)
   /* 출고가 한 건도 없는데 저장값은 남아 있는 약 — 0 으로 떨어질 자리다 */
   const zeroOut = n3 === 0 && o3 > 0
   const changed = Math.abs(o3 - n3) >= 0.001 || Math.abs(o1 - n1) >= 0.001
@@ -109,9 +122,9 @@ export function compareOne(d, m3, m1) {
     code: d.drug_code, name: d.drug_name, category: d.category || '',
     qty: N(d.current_qty), py,
     o3, n3, o1, n1, om, nm, osf, nsf, omx, nmx,
-    tiny, noBasis, vac, zeroOut, changed,
-    /* 기본 체크 — 백신·출고0·차이없음은 꺼 둔다 */
-    on: changed && !vac && !zeroOut,
+    tiny, noBasis, vac, locked, zeroOut, changed,
+    /* 기본 체크 — 잠긴 약(백신·마약류)·출고0·차이없음은 꺼 둔다 */
+    on: changed && !locked && !zeroOut,
     before: stockStat(d.current_qty, osf, om),
     after: stockStat(d.current_qty, nsf, nm),
   }
@@ -140,6 +153,7 @@ export function buildUsageCompare(drugs, txns, year, month) {
       changed: by(r => r.changed),
       on: by(r => r.on),
       vac: by(r => r.vac),
+      locked: by(r => r.locked),
       zero: by(r => r.zeroOut),
       tiny: by(r => r.tiny),
       safety: rows.filter(r => r.on && r.osf !== r.nsf).length,
@@ -160,10 +174,14 @@ export function buildUsageCompare(drugs, txns, year, month) {
      보내면 DB 가 `round(0/3)=0` 으로 셈해 **기준을 지운다**(화면 예고와 어긋난다).
    ★ 전년(py)은 보내지 않는다 — 수기 유지. */
 export const APPLY_FIELDS = ['recent_3m_usage', 'recent_1m_usage']
+/* ★★ 잠긴 약은 여기서도 뺀다 — 화면이 어떻게 되든 **적용 줄에 안 들어간다**(마지막 빗장) */
 export function applyRows(rows, picked) {
   const want = picked instanceof Set ? picked : new Set(picked || [])
   return (rows || [])
-    .filter(r => want.has(r.code))
+    /* ★★ 잠긴 약(백신·마약·향정·한외마약)은 **무슨 일이 있어도 안 나간다** — 마지막 빗장.
+         화면에서 체크를 잠갔고 finalPicked 도 거르지만, 여기서 한 번 더 막는다.
+         2026-11-14 01:24 「적용」으로 백신 7종이 바뀐 일이 있었다. */
+    .filter(r => want.has(r.code) && !r.locked)
     .map(r => ({ code: r.code, r3: r.noBasis ? null : r.n3, r1: r.n1 }))
 }
 

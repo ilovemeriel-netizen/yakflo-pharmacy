@@ -22,6 +22,9 @@ import { READ_ONLY_MSG } from './lib/readOnly'
 
 /* ★ 「출고 자동집계」 설명 — 약플로가 이미 쓰는 방식(title)이다. 새 부품을 만들지 않는다.
      ★ 흐린(못 누르는) 단추에서도 브라우저가 띄워 준다. */
+/* 잠긴 체크에 붙는 설명 — 한 곳에만 둔다 */
+export const LOCKED_MSG = '백신·마약·향정·한외마약은 자동으로 바꾸지 않습니다 — 사용량은 손으로 넣습니다'
+
 export const RECOMPUTE_TIP = '마감한 달 출고로 사용량·안전재고를 다시 셉니다 · 마약·향정·백신·수기 약은 제외'
 
 const num = v => Number(v || 0).toLocaleString()
@@ -185,12 +188,15 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
   const finalPicked = useMemo(() => {
     const s = new Set()
     for (const r of (p ? p.rows : [])) {
+      /* ★★ 잠긴 약(백신·마약·향정·한외마약)은 **무슨 일이 있어도 안 들어간다** */
+      if (r.locked) continue
       if (r.on ? !off.has(r.code) : extra.has(r.code)) s.add(r.code)
     }
     return s
   }, [p, off, extra])
 
   function toggle(r) {
+    if (r.locked) return          /* 잠긴 약은 못 켠다 */
     if (r.on) {
       setOff(s => { const n = new Set(s); if (n.has(r.code)) n.delete(r.code); else n.add(r.code); return n })
     } else {
@@ -273,7 +279,8 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
          (2026-11-13 실측: 글자 기준 40줄 vs 성질 기준 42줄 — 칩은 42종).
        ★ 차례(= 비고 정렬 차례)도 이 줄 차례를 따른다. */
   const NOTE_DEFS = [
-    { k: 'vac', label: '백신 — 제외', hit: r => r.vac, bg: t.blueL, fg: t.blue },
+    /* ★ 2026-11-15 — 마약·향정·한외마약도 같은 뱃지로 묶는다(색·모양은 그대로) */
+    { k: 'vac', label: '백신·마약류 — 제외', hit: r => r.locked, bg: t.blueL, fg: t.blue },
     { k: 'zero', label: '0으로 바뀌는 약', hit: r => r.zeroOut, bg: t.amberL, fg: t.amber },
     { k: 'tiny', label: '극소량 — 3개월 그대로', hit: r => r.tiny, bg: t.purpleL, fg: t.purple },
     { k: 'same', label: '차이 없음', hit: r => !r.changed, bg: '#F0F0EB', fg: t.textL },
@@ -352,16 +359,19 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
          finalPicked · applyRows · 저장 규칙은 한 글자도 안 바뀐다. */
   const allRef = useRef(null)
   const shownPicked = shown.reduce((k, r) => k + (finalPicked.has(r.code) ? 1 : 0), 0)
-  const allOn = shown.length > 0 && shownPicked === shown.length
+  /* ★ 잠긴 약은 켤 수 없으므로 「다 켜졌나」를 셀 때 **분모에서 뺀다** */
+  const shownOpen = shown.reduce((k, r) => k + (r.locked ? 0 : 1), 0)
+  const allOn = shownOpen > 0 && shownPicked === shownOpen
   const someOn = shownPicked > 0 && !allOn
   useEffect(() => { if (allRef.current) allRef.current.indeterminate = someOn }, [someOn])
   function toggleAllShown() {
     const want = !allOn   /* 하나라도 빠졌으면 **전부 켠다**, 다 켜져 있으면 전부 끈다 */
+    /* ★★ 잠긴 약은 건너뛴다 — 「전체 선택」으로도 백신·마약류가 켜지지 않는다 */
     setOff(s => { const x = new Set(s)
-      for (const r of shown) if (r.on) { if (want) x.delete(r.code); else x.add(r.code) }
+      for (const r of shown) if (!r.locked && r.on) { if (want) x.delete(r.code); else x.add(r.code) }
       return x })
     setExtra(s => { const x = new Set(s)
-      for (const r of shown) if (!r.on) { if (want) x.add(r.code); else x.delete(r.code) }
+      for (const r of shown) if (!r.locked && !r.on) { if (want) x.add(r.code); else x.delete(r.code) }
       return x })
   }
 
@@ -479,8 +489,8 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
           <thead><tr>
             <th style={{ ...th, width: 34 }}>
               <input ref={allRef} type="checkbox" checked={allOn} onChange={toggleAllShown}
-                aria-label="보이는 줄 전체 선택" disabled={!!readOnly || shown.length === 0}
-                title={readOnly ? READ_ONLY_MSG : '지금 보이는 ' + shown.length + '종을 모두 고르거나 풉니다'}
+                aria-label="보이는 줄 전체 선택" disabled={!!readOnly || shownOpen === 0}
+                title={readOnly ? READ_ONLY_MSG : '지금 보이는 ' + shownOpen + '종을 모두 고르거나 풉니다 (백신·마약류는 빼고)'}
                 style={{ width: 15, height: 15, accentColor: t.accent,
                   cursor: (readOnly || shown.length === 0) ? 'default' : 'pointer' }} />
             </th>
@@ -501,9 +511,10 @@ export default function UsageCompareModal({ t, drugs, year: fixedY, month: fixed
               <tr key={r.code}>
                 <td style={td}>
                   <input type="checkbox" checked={finalPicked.has(r.code)} onChange={() => toggle(r)}
-                    aria-label={r.name + ' 적용하기'} disabled={!!readOnly}
-                    title={readOnly ? READ_ONLY_MSG : undefined}
-                    style={{ width: 15, height: 15, accentColor: t.accent, cursor: readOnly ? 'default' : 'pointer' }} />
+                    aria-label={r.name + ' 적용하기'} disabled={!!readOnly || !!r.locked}
+                    title={readOnly ? READ_ONLY_MSG : (r.locked ? LOCKED_MSG : undefined)}
+                    style={{ width: 15, height: 15, accentColor: t.accent,
+                      cursor: (readOnly || r.locked) ? 'default' : 'pointer' }} />
                 </td>
                 <td style={td}>
                   <div style={{ color: t.text, fontWeight: 600, fontSize: 11.5 }}>{r.name}</div>

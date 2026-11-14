@@ -48,6 +48,9 @@ const DRUGS = [
   D({ drug_code: 'BBB', drug_name: '하하하정', recent_3m_usage: 300, recent_1m_usage: 100, monthly_avg: 100, safety_stock: 120 }),
   D({ drug_code: 'VAC', drug_name: '백신주', atc_code: 'J07BB02', recent_3m_usage: 9, recent_1m_usage: 3, monthly_avg: 3, safety_stock: 4 }),
   D({ drug_code: 'TINY', drug_name: '극소량약', recent_3m_usage: 30, recent_1m_usage: 10, monthly_avg: 10, safety_stock: 12 }),
+  /* ★ 2026-11-15 — **잠기지 않았는데 기본 체크가 꺼진** 줄이 필요하다(섞인 상태를 만들려면).
+       출고가 한 건도 없는데 저장값이 남아 있는 약 = 「0으로 바뀌는 약」이다. */
+  D({ drug_code: 'ZERO', drug_name: '영으로가는정', recent_3m_usage: 30, recent_1m_usage: 10, monthly_avg: 10, safety_stock: 12 }),
 ]
 const TX = [
   { drug_code: 'AAA', type: '출고', transaction_date: '2026-09-10', quantity: 9 },
@@ -86,6 +89,8 @@ const open = async (props = {}) => {
 const chip = re => [...document.querySelectorAll('button')].find(b => re.test(b.textContent.trim()))
 const headCb = () => document.querySelector('thead input[type="checkbox"]')
 const rowCbs = () => [...document.querySelectorAll('tbody input[type="checkbox"]')]
+/* ★ 2026-11-15 — 백신·마약류는 체크가 **잠긴다**. 켤 수 있는 줄만 센다. */
+const openCbs = () => rowCbs().filter(c => !c.disabled)
 const pickedN = () => rowCbs().filter(c => c.checked).length
 const bandText = () => {
   const d = [...document.querySelectorAll('div')].find(x => /지금 안 보입니다/.test(x.textContent || '') && (x.textContent || '').length < 160)
@@ -144,15 +149,15 @@ describe('★★ ⑤ 표 머리 「전체 선택」 — 보이는 줄만', () =>
 
   it('★ 일부만 켜져 있으면 **반쯤 표시**다 (indeterminate)', async () => {
     await open()
-    const n = rowCbs().length, k = pickedN()
-    expect(k > 0 && k < n, `섞인 상태여야 한다 (켜짐 ${k} / 줄 ${n})`).toBe(true)
+    const n = openCbs().length, k = pickedN()
+    expect(k > 0 && k < n, `섞인 상태여야 한다 (켜짐 ${k} / 열린 줄 ${n})`).toBe(true)
     expect(headCb().indeterminate, '반쯤 표시').toBe(true)
     expect(headCb().checked, '다 켜진 것은 아니다').toBe(false)
   })
 
   it('★★ 누르면 보이는 줄이 **전부** 켜지고, 다시 누르면 전부 꺼진다', async () => {
     await open()
-    const n = rowCbs().length
+    const n = openCbs().length
     await act(async () => { fireEvent.click(headCb()) })
     expect(pickedN(), '전부 켜짐').toBe(n)
     expect(headCb().checked).toBe(true)
@@ -167,13 +172,14 @@ describe('★★ ⑤ 표 머리 「전체 선택」 — 보이는 줄만', () =>
     await open()
     /* 먼저 전부 켠다 */
     await act(async () => { fireEvent.click(headCb()) })
-    const all = rowCbs().length
+    const all = openCbs().length
     expect(all).toBeGreaterThan(1)
     /* 「백신 제외」로 거른다 — 백신 줄만 보인다 */
-    const vacChip = chip(/^백신 제외/)
-    expect(vacChip, '백신 제외 칩').toBeTruthy()
-    await act(async () => { fireEvent.click(vacChip) })
-    const shownN = rowCbs().length
+    /* ★ 잠기지 않은 줄로 걸러야 한다 — 백신은 체크가 잠겨 있어 끌 것이 없다 */
+    const tinyChip = chip(/^극소량/)
+    expect(tinyChip, '극소량 칩').toBeTruthy()
+    await act(async () => { fireEvent.click(tinyChip) })
+    const shownN = openCbs().length
     expect(shownN, '걸러져서 줄이 줄었다').toBeLessThan(all)
     /* 보이는 줄만 끈다 */
     await act(async () => { fireEvent.click(headCb()) })
@@ -187,7 +193,7 @@ describe('★★ ⑤ 표 머리 「전체 선택」 — 보이는 줄만', () =>
     await open()
     await act(async () => { fireEvent.click(headCb()) })      /* 전부 켬 */
     expect(bandText(), '다 보이면 띠가 없다').toBeNull()
-    await act(async () => { fireEvent.click(chip(/^백신 제외/)) })  /* 걸러서 숨김 */
+    await act(async () => { fireEvent.click(chip(/^극소량/)) })      /* 걸러서 숨김 */
     const txt = bandText()
     expect(txt, '숨은 체크 띠가 떠야 한다').toBeTruthy()
     expect(txt).toMatch(/체크한 \d+종 중 \d+종이 지금 안 보입니다/)
@@ -217,7 +223,7 @@ describe('★★ ⑤ 표 머리 「전체 선택」 — 보이는 줄만', () =>
   it('★ 「고른 N종 적용」 셈이 머리 체크를 따라 움직인다', async () => {
     await open()
     await act(async () => { fireEvent.click(headCb()) })
-    const n = rowCbs().length
+    const n = openCbs().length
     expect(screen.getByRole('button', { name: new RegExp('고른 ' + n + '종 적용') }), '적용 단추 셈').toBeTruthy()
   })
 })
