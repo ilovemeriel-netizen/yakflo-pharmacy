@@ -142,7 +142,7 @@ describe('②③④⑤ 적용 — 한 번에, 두 칸만, 극소량은 null', ()
     const codes = rpc.mock.calls[0][1].p_rows.map(r => r.code)
     expect(codes).toContain('CFO')
     expect(codes).not.toContain('TTFLU')   /* 백신 */
-    expect(codes).not.toContain('ALM')     /* 3개월 사용량 0 */
+    expect(codes).not.toContain('ALM')     /* 0으로 바뀌는 약 */
   })
 
   it('체크를 켜면 그 약도 보낸다', async () => {
@@ -205,9 +205,12 @@ describe('표 — 극소량은 3개월을 그대로 둔다고 보인다', () => 
 
   it('비고 뱃지가 갈래를 알려 준다', async () => {
     await open()
-    expect(screen.getByText('백신 — 제외')).toBeTruthy()
-    expect(screen.getByText('3개월 사용량 0')).toBeTruthy()
-    expect(screen.getByText('극소량 — 3개월 그대로')).toBeTruthy()
+    /* ★ 표 **안**만 본다 — 칩 줄과 안내 줄에도 같은 글자가 있어
+         화면 전체에서 찾으면 여러 개가 잡힌다(2026-11-14 안내 한 줄을 더하면서 겪음). */
+    const notes = [...document.querySelectorAll('tbody td:last-child')].map(x => x.textContent)
+    expect(notes.join('|')).toContain('백신 — 제외')
+    expect(notes.join('|')).toContain('0으로 바뀌는 약')
+    expect(notes.join('|')).toContain('극소량 — 3개월 그대로')
   })
 })
 

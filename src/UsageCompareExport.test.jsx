@@ -1,10 +1,10 @@
-/* 사용량 비교 창 — 「3개월 사용량 0」 인쇄·엑셀 (2026-11-13 이정화 님 승인)
+/* 사용량 비교 창 — 「0으로 바뀌는 약」 인쇄·엑셀 (2026-11-13 이정화 님 승인)
  *
  * ★★ 이 두 단추는 **읽기만** 한다. 체크·적용과 아무 상관이 없다.
  *    ⑭ 를 실제로 눌러서 **DB 로 아무것도 안 간다**는 것을 못 박는다.
  *
  * 승인받은 범위
- *   · 「3개월 사용량 0」으로 걸렀을 때만 단추가 나온다(칩이든 비고 메뉴든 같은 상태)
+ *   · 「0으로 바뀌는 약」으로 걸렀을 때만 단추가 나온다(칩이든 비고 메뉴든 같은 상태)
  *   · 단추는 보고서 화면의 「엑셀」·「인쇄」와 같은 모양 — 글자만, 아이콘·새 색 없음
  *   · 엑셀은 저장소에 이미 있는 xlsx(SheetJS) — **새 라이브러리 없음**
  *   · 엑셀 10열(직전3개월을 예전/지금 두 칸) · 차이 칸에 식 · 인쇄는 9열 한 칸
@@ -48,7 +48,7 @@ const D = o => ({ drug_code: 'X', drug_name: '약', category: '경구제', statu
   current_qty: 100, recent_3m_usage: 0, recent_1m_usage: 0, prev_year_usage: 0,
   monthly_avg: 0, safety_stock: 0, max_stock: 0, atc_code: '', ...o })
 
-/* ZZ1·VAC1 만 「3개월 사용량 0」이다. AAA·BBB 는 기본 체크된 줄이라 걸러지면 화면 밖으로 간다. */
+/* ZZ1·VAC1 만 「0으로 바뀌는 약」이다. AAA·BBB 는 기본 체크된 줄이라 걸러지면 화면 밖으로 간다. */
 const DRUGS = [
   D({ drug_code: 'AAA', drug_name: '가나다정', recent_3m_usage: 90, recent_1m_usage: 30, monthly_avg: 30, safety_stock: 36 }),
   D({ drug_code: 'BBB', drug_name: '하하하정', recent_3m_usage: 300, recent_1m_usage: 100, monthly_avg: 100, safety_stock: 120 }),
@@ -104,7 +104,7 @@ const open = async (props = {}) => {
   await settle(10)
   return r
 }
-const chip = () => screen.getByRole('button', { name: /^3개월 사용량 0 \d+종$/ })
+const chip = () => screen.getByRole('button', { name: /^0으로 바뀌는 약 \d+종$/ })
 const pressChip = async () => { await act(async () => { fireEvent.click(chip()) }); await settle(6) }
 const pickMenu = async (item) => {
   const b = document.querySelector('[data-menu="note"] button[data-item="' + item + '"]')
@@ -135,7 +135,7 @@ describe('★ ①②③④ 단추가 나오는 자리', () => {
   })
   it('③ 비고 메뉴로 걸러도 똑같이 나온다 — 칩과 같은 상태다', async () => {
     await open()
-    await pickMenu('3개월 사용량 0')
+    await pickMenu('0으로 바뀌는 약')
     expect(btn('엑셀')).toBeTruthy()
     expect(btn('인쇄')).toBeTruthy()
   })
@@ -203,12 +203,12 @@ describe('★ ⑧⑨⑩⑪ 엑셀 모양', () => {
   })
   it('⑪ 파일 이름과 시트 이름이 정해진 대로다', async () => {
     await open(); await pressChip(); await clickXlsx()
-    expect(xl.fileName).toMatch(/^재고실사_3개월사용량0_\d{8}\.xlsx$/)
-    expect(xl.sheetName).toBe('3개월사용량0')
+    expect(xl.fileName).toMatch(/^재고실사_0으로바뀌는약_\d{8}\.xlsx$/)
+    expect(xl.sheetName).toBe('0으로바뀌는약')
     /* ★ 날짜는 **그 지역 날짜**로 적는다 — toISOString() 은 UTC 라 자정 언저리에 하루 밀린다 */
     const d = new Date()
     const want = String(d.getFullYear()) + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0')
-    expect(xl.fileName).toBe('재고실사_3개월사용량0_' + want + '.xlsx')
+    expect(xl.fileName).toBe('재고실사_0으로바뀌는약_' + want + '.xlsx')
   })
   it('⑪-2 현재고·직전3개월 값이 화면과 같다', async () => {
     await open(); await pressChip(); await clickXlsx()
@@ -218,12 +218,12 @@ describe('★ ⑧⑨⑩⑪ 엑셀 모양', () => {
     expect(zz[3]).toBe(77)      /* 현재고 — 창이 이미 들고 있는 값(추가 조회 없음) */
     expect(zz[4]).toBe(50)      /* 직전3개월 예전 */
     expect(zz[5]).toBe(0)       /* 직전3개월 지금 */
-    expect(zz[6]).toBe('3개월 사용량 0')
+    expect(zz[6]).toBe('0으로 바뀌는 약')
   })
   it('⑪-3 비고는 해당하는 말을 모두 적는다', async () => {
     await open(); await pressChip(); await clickXlsx()
     const v = xl.aoa.slice(1).find(r => r[0] === 'VAC1')
-    expect(v[6]).toBe('백신 — 제외 · 3개월 사용량 0')
+    expect(v[6]).toBe('백신 — 제외 · 0으로 바뀌는 약')
   })
 })
 
@@ -294,13 +294,13 @@ describe('★ ⑬ 인쇄 — A4 가로 · 머리 반복 · 줄 안 잘림 · 약
   it('★ ⑬-0-5 비고 메뉴로 풀었다 걸어도 되살아나지 않는다', async () => {
     const pageRule = () => [...document.querySelectorAll('style')]
       .map(s => s.textContent).join('\n').includes('@page{size:A4 landscape')
-    await open(); await pickMenu('3개월 사용량 0')
+    await open(); await pickMenu('0으로 바뀌는 약')
     await act(async () => { fireEvent.click(btn('인쇄')) }); await settle(6)
     expect(pageRule()).toBe(true)
     const all = document.querySelector('[data-menu="note"] button[data-item="전체"]')
     await act(async () => { fireEvent.click(all) }); await settle(6)
     expect(pageRule(), '전체로 풀면 없어야 한다').toBe(false)
-    await pickMenu('3개월 사용량 0')
+    await pickMenu('0으로 바뀌는 약')
     expect(pageRule(), '★ 누르지도 않았는데 되살아났다').toBe(false)
   })
   it('★ ⑬-0-6 창을 닫으면 인쇄용 CSS 가 문서에서 사라진다', async () => {
@@ -334,7 +334,7 @@ describe('★ ⑬ 인쇄 — A4 가로 · 머리 반복 · 줄 안 잘림 · 약
     await open(); await pressChip()
     const prn = document.querySelector('.uc-print')
     expect(prn, '인쇄 블록이 없다').toBeTruthy()
-    expect(prn.textContent).toContain('3개월 사용량 0 재고 실사 리스트')
+    expect(prn.textContent).toContain('0으로 바뀌는 약 — 재고 실사 리스트')
     expect(prn.querySelector('.up-sign').textContent).toContain('실사자')
     expect(prn.querySelector('.up-sign').textContent).toContain('확인자')
     expect(prn.querySelector('.up-ft').textContent).toMatch(/^\d+ \/ \d+$/)
