@@ -102,26 +102,30 @@ afterEach(() => cleanup())
 
 describe('★★ ① 메뉴·주소·권한', () => {
   it('재고관리 ▼ 에 「사용량 갱신」이 **재고현황 바로 뒤**에 있다', () => {
-    /* ★ 2026-11-14 규칙 변경 — 뷰어에게도 보인다(_menuRO). 자리는 재고현황 바로 뒤로 그대로다. */
-    expect(APP).toContain(`{ id: 'stock', l: '재고현황' }, ...((_mgr || _menuRO) ? [{ id: 'usageupdate', l: '사용량 갱신' }] : []), { id: 'expiry', l: '유효기한' }`)
+    /* ★★ 2026-11-14(저녁) — 메뉴에서 **빠지고** 재고현황 안 탭(#stock/check)이 되었다.
+         바뀐 뒤의 모습은 StockCheckTab.test.jsx 가 지킨다. 여기서는 **빠졌다는 것**만 못 박는다. */
+    expect(APP).toContain(`{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }`)
   })
   it('주소가 기존 메뉴처럼 **붙여 쓴 한 낱말**이다', () => {
     /* ★ ROUTES 는 **순서를 지키는 파수꾼**(vaccineRoute.test)이 있어 끝에 붙인다 */
     expect(APP).toContain("'vaccine', 'label', 'powder', 'usageupdate'];")
     expect(APP.includes("'usage-compare'"), '붙임표가 섞였다').toBe(false)
   })
-  it('화면 배선이 있다', () => {
-    expect(APP).toContain(`{menu === 'usageupdate' && <UsageUpdateView drugs={drugs} onReload={load} />}`)
+  it('화면 배선이 있다 — 이제 재고현황의 「기준확인」 단추로 간다', () => {
+    expect(APP).toContain(`{menu === 'stock' && (stockTab === 'check'`)
+    expect(APP).toContain(`<UsageUpdateView drugs={drugs} onReload={load} onBack={() => goStockTab('stock')} />`)
   })
   /* ★★ 2026-11-14 업무 규칙 변경 — 뷰어는 **보되 못 쓴다**.
        바뀐 뒤의 모습은 ViewerUsageVisible.test.jsx 가 지킨다.
        여기서는 **일반(member)** 의 보임/숨김이 그대로인지만 못 박는다. */
-  it('★★ 일반(member) 계정에는 여전히 **메뉴 칸이 안 생긴다**', () => {
-    expect(APP).toContain(`const _mgr = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')`)
-    expect(APP).toContain(`...((_mgr || _menuRO) ? [{ id: 'usageupdate', l: '사용량 갱신' }] : [])`)
+  /* ★ 메뉴 칸이 아예 없어졌으므로 「일반에게 안 보인다」를 셀 자리가 없다.
+       재고현황은 누구나 보는 화면이고, 기준확인 탭 **안**에서 막는다(아래 시험). */
+  it('★★ 메뉴 칸이 아예 없다 — 재고현황 탭으로 옮겨 갔다', () => {
+    expect(APP.includes(`{ id: 'usageupdate', l: '사용량 갱신' }`), '메뉴 칸이 남아 있다').toBe(false)
+    expect(APP).toContain(`const stockTab = useSyncExternalStore(`)
   })
   it('★★ 주소로 들어와도 일반(member) 계정은 **화면이 막힌다**', () => {
-    const i = APP.indexOf('function UsageUpdateView({ drugs, onReload }) {')
+    const i = APP.indexOf('function UsageUpdateView({ drugs, onReload, onBack }) {')
     expect(i, '화면 부품을 찾지 못했다').toBeGreaterThan(0)
     const fn = APP.slice(i, i + 2200)
     expect(fn).toContain(`const isTenantManager = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')`)
@@ -156,7 +160,7 @@ describe('★★ ② 재고현황 단추 3개가 사라졌다', () => {
 describe('★★ ③ 창이 아니라 화면', () => {
   it('★ asScreen 이면 덮개·✕가 **없다**', async () => {
     await open({ asScreen: true })
-    expect(document.body.textContent).toContain('사용량 갱신 — 마감된 달 기준')
+    expect(document.body.textContent).toContain('기준확인 — 마감된 달 기준')
     /* 닫는 단추는 둘이다 — 머리의 ✕ 와 아래의 「닫기」. 화면에서는 **둘 다** 없어야 한다. */
     expect(screen.queryAllByRole('button', { name: '닫기' }), '닫는 단추가 남아 있다').toHaveLength(0)
     const fixed = [...document.querySelectorAll('div')].filter(d => d.style && d.style.position === 'fixed')
@@ -185,8 +189,9 @@ describe('★★ ③ 창이 아니라 화면', () => {
     expect(screen.queryByRole('button', { name: '출고 자동집계' })).toBeNull()
   })
   it('화면 부품이 자동집계를 **확인 창을 거쳐** 부른다', () => {
-    const i = APP.indexOf('function UsageUpdateView({ drugs, onReload }) {')
-    const fn = APP.slice(i, i + 2600)
+    const i = APP.indexOf('function UsageUpdateView({ drugs, onReload, onBack }) {')
+    /* ★ 2026-11-14 — 돌아가기 단추·한 줄 설명이 들어와 본문이 길어졌다 */
+    const fn = APP.slice(i, i + 3600)
     expect(fn).toContain('onRecompute={() => setAsk(true)}')
     expect(fn).toContain(`supabase.rpc('app_recompute_usage', { p_overwrite_manual: false })`)
     expect(fn).toContain('onConfirm={() => { setAsk(false); recompute() }}')
