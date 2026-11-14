@@ -147,14 +147,21 @@ describe('②③④⑤ 적용 — 한 번에, 두 칸만, 극소량은 null', ()
     expect(codes).not.toContain('ALM')     /* 0으로 바뀌는 약 */
   })
 
-  it('체크를 켜면 그 약도 보낸다', async () => {
+  /* ★★ 2026-11-15 이정화 님 승인 — 백신·마약·향정·한외마약은 **체크 자체가 잠긴다.**
+       예전에는 기본 체크만 꺼져 있고 사람이 켤 수 있었다. 2026-11-14 01:24 「적용」으로
+       백신 7종이 바뀐 길이 그것이다. 이제 눌러도 안 켜진다. */
+  it('★★ 백신은 체크가 **잠겨** 있다 — 눌러도 안 켜지고 적용에도 안 들어간다', async () => {
     await open()
-    fireEvent.click(screen.getByLabelText('지씨플루프리필드시린지주 적용하기'))
+    const cb = screen.getByLabelText('지씨플루프리필드시린지주 적용하기')
+    expect(cb.disabled, '백신 체크가 눌린다').toBe(true)
+    expect(cb.getAttribute('title')).toContain('손으로 넣습니다')
+    fireEvent.click(cb)
+    expect(cb.checked, '눌렀더니 켜졌다').toBe(false)
     fireEvent.click(screen.getByRole('button', { name: /적용$/ }))
     await act(async () => { await Promise.resolve() })
     fireEvent.click(screen.getByRole('button', { name: '적용' }))
     await act(async () => { await Promise.resolve() })
-    expect(rpc.mock.calls[0][1].p_rows.map(r => r.code)).toContain('TTFLU')
+    expect(rpc.mock.calls[0][1].p_rows.map(r => r.code)).not.toContain('TTFLU')
   })
 
   it('체크를 풀면 그 약은 빠진다', async () => {
@@ -210,7 +217,7 @@ describe('표 — 극소량은 3개월을 그대로 둔다고 보인다', () => 
     /* ★ 표 **안**만 본다 — 칩 줄과 안내 줄에도 같은 글자가 있어
          화면 전체에서 찾으면 여러 개가 잡힌다(2026-11-14 안내 한 줄을 더하면서 겪음). */
     const notes = [...document.querySelectorAll('tbody td:last-child')].map(x => x.textContent)
-    expect(notes.join('|')).toContain('백신 — 제외')
+    expect(notes.join('|')).toContain('백신·마약류 — 제외')
     expect(notes.join('|')).toContain('0으로 바뀌는 약')
     expect(notes.join('|')).toContain('극소량 — 3개월 그대로')
   })
