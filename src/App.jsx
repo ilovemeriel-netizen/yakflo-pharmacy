@@ -1184,7 +1184,9 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 }
 
 /* ═══ 헤더 — 반응형 (모바일 햄버거) ═══ */
-function Header({ menu: m, setMenu: sm, onRegister }) {
+/* ★ export 는 **시험에서 그려 보기 위한 것**이다 — 쓰는 곳은 이 파일뿐이다.
+     2026-11-15: 메뉴 칸을 실제로 눌러 주소가 바뀌는지 재려면 혼자 뜰 수 있어야 한다. */
+export function Header({ menu: m, setMenu: sm, onRegister }) {
   const { t, dark, toggle, user, profile, setProfile, logout, openSearch, open360, memberRole } = useTheme()
   /* ★★ 2026-11-14 — 「사용량 갱신」이 **재고현황 안 탭**(#stock/check)이 되었다.
        재고관리 ▼ 에서 뺐다(9 → 8칸). 옛 주소 #usageupdate 는 lib/stockRoute 가 넘겨 준다.
@@ -1208,7 +1210,20 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
     /* 부가기능 — 업무 메뉴 뒤에 덤으로 붙는 자리. 2026-11-06 이정화 님 승인 */
     { id: 'label', l: '부가기능', landing: 'label', children: [{ id: 'label', l: '약품식별 라벨 인쇄' }] },
   ]
-  function nav(id) { sm(id); setMobileOpen(false) }
+  /* ★★ 메뉴 칸 — 같은 메뉴의 **하위 주소**에 있을 때도 그 화면으로 돌아가게 한다.
+       지금까지는 setMenu 만 했는데, 이미 그 메뉴면 값이 안 바뀌어 **아무 일도 안 났다.**
+       재고현황은 하위 주소(#stock/check)가 **다른 화면**(기준확인)이라 그대로 머물렀다.
+       그래서 메뉴의 「재고현황」을 눌러도 재고현황이 안 나왔다(2026-11-15 실측·승인).
+     ★ 재고현황만 고친다 — 백신관리·입출고는 **건드리지 않는다**(이정화 님 결정 ⓑ·ⓒ).
+       그 둘은 같은 화면 안의 탭이라 보던 탭·달이 풀리는 쪽이 더 불편하다.
+     ★ 주소를 바꾸고 신호(yk:hash)를 쏘면 재고현황 탭은 **주소를 늘 읽으므로** 바로 따라온다. */
+  function nav(id) {
+    if (id === 'stock' && stockTabFromHash()) {
+      window.history.pushState({ ykMenu: 'stock', ykStockTab: STOCK_TAB_DEFAULT }, '', stockHash(STOCK_TAB_DEFAULT))
+      window.dispatchEvent(new Event('yk:hash'))
+    }
+    sm(id); setMobileOpen(false)
+  }
   /* ── 즐겨찾기(profiles.settings.favorites) — 화면 id 배열·상한 5. GnbNav 무관·Header 렌더 계층 ── */
   const FAV_MAX = 10
   const [favModal, setFavModal] = useState(false)
@@ -9513,17 +9528,21 @@ export default function App() {
           .cnc-nav-desktop { gap: 1px !important; }
           .cnc-nav-desktop button { padding: 6px 8px !important; font-size: 11px !important; }
         }
-        /* ═══ 반응형: 모바일 (≤768px) — PC와 동일 UI, 메뉴는 가로 스크롤 ═══ */
+        /* ═══ 반응형: 모바일 (≤768px) — PC와 동일 UI, 메뉴는 **두 줄로 접힘** ═══ */
         @media (max-width: 768px) {
-          /* 메뉴는 숨기지 않고 가로 스크롤로 모두 노출 */
+          /* ★★ 2026-11-15 이정화 님 승인 — 가로 스크롤(overflow-x: auto)을 **버린다.**
+               overflow 가 visible 이 아니면 그 상자는 **삐져나오는 자식을 자른다**(CSS 규칙).
+               하위 메뉴(▼)는 이 띠 **안에서** position:absolute 로 아래로 펼쳐지므로
+               통째로 잘렸다 — 열려 있어도 3px 만 보였다(760px 실측).
+               대신 **줄을 바꿔** 모두 노출한다. 자를 것이 없으니 하위 메뉴가 그대로 보인다.
+             ★ 이 블록은 768px **이하에서만** 적용된다 — PC(769px 이상)는 무변경이다. */
           .cnc-nav-desktop {
             justify-content: flex-start !important;
-            overflow-x: auto !important;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none;          /* Firefox */
-            flex-wrap: nowrap !important;
+            flex-wrap: wrap !important;
+            height: auto !important;        /* 인라인 height:44 를 푼다 — 두 줄이 들어가야 한다 */
+            min-height: 44px;
+            row-gap: 2px;   /* 두 줄이 될 때만 쓰인다 — 한 줄이면 높이가 44px 그대로다 */
           }
-          .cnc-nav-desktop::-webkit-scrollbar { display: none; }  /* WebKit */
           .cnc-nav-desktop button {
             white-space: nowrap !important;
             flex-shrink: 0 !important;
