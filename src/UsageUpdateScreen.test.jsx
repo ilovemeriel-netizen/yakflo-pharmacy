@@ -10,7 +10,8 @@
  *   · 적용 **직전에 거래를 다시 읽는다** — 달라졌으면 저장하지 않고 멈춘다
  *   · 그 달 출고가 바뀌면 **알림 띠** + 「다시 읽기」
  *
- * ★ 읽기 전용 계정에는 메뉴 칸부터 안 보인다(옮기기 전 단추와 같은 잣대).
+ * ★ 일반(member) 계정에는 메뉴 칸부터 안 보인다.
+ * ★ 읽기 전용(viewer)은 **보되 못 쓴다** — 2026-11-14 규칙 변경, ViewerUsageVisible.test.jsx 참조.
  * ★ 보고서 화면의 「사용량 비교 보기」는 **창 그대로**다 — 한 글자도 안 바뀐다.
  */
 import { useState } from 'react'
@@ -101,7 +102,8 @@ afterEach(() => cleanup())
 
 describe('★★ ① 메뉴·주소·권한', () => {
   it('재고관리 ▼ 에 「사용량 갱신」이 **재고현황 바로 뒤**에 있다', () => {
-    expect(APP).toContain(`{ id: 'stock', l: '재고현황' }, ...(_mgr ? [{ id: 'usageupdate', l: '사용량 갱신' }] : []), { id: 'expiry', l: '유효기한' }`)
+    /* ★ 2026-11-14 규칙 변경 — 뷰어에게도 보인다(_menuRO). 자리는 재고현황 바로 뒤로 그대로다. */
+    expect(APP).toContain(`{ id: 'stock', l: '재고현황' }, ...((_mgr || _menuRO) ? [{ id: 'usageupdate', l: '사용량 갱신' }] : []), { id: 'expiry', l: '유효기한' }`)
   })
   it('주소가 기존 메뉴처럼 **붙여 쓴 한 낱말**이다', () => {
     /* ★ ROUTES 는 **순서를 지키는 파수꾼**(vaccineRoute.test)이 있어 끝에 붙인다 */
@@ -111,17 +113,19 @@ describe('★★ ① 메뉴·주소·권한', () => {
   it('화면 배선이 있다', () => {
     expect(APP).toContain(`{menu === 'usageupdate' && <UsageUpdateView drugs={drugs} onReload={load} />}`)
   })
-  it('★★ 읽기 전용 계정에는 **메뉴 칸이 안 생긴다**', () => {
-    /* 옮기기 전 단추(canRecompute=isTenantManager)와 **같은 잣대**다 */
+  /* ★★ 2026-11-14 업무 규칙 변경 — 뷰어는 **보되 못 쓴다**.
+       바뀐 뒤의 모습은 ViewerUsageVisible.test.jsx 가 지킨다.
+       여기서는 **일반(member)** 의 보임/숨김이 그대로인지만 못 박는다. */
+  it('★★ 일반(member) 계정에는 여전히 **메뉴 칸이 안 생긴다**', () => {
     expect(APP).toContain(`const _mgr = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')`)
-    expect(APP).toContain(`...(_mgr ? [{ id: 'usageupdate', l: '사용량 갱신' }] : [])`)
+    expect(APP).toContain(`...((_mgr || _menuRO) ? [{ id: 'usageupdate', l: '사용량 갱신' }] : [])`)
   })
-  it('★★ 주소로 들어와도 읽기 전용 계정은 **화면이 막힌다**', () => {
+  it('★★ 주소로 들어와도 일반(member) 계정은 **화면이 막힌다**', () => {
     const i = APP.indexOf('function UsageUpdateView({ drugs, onReload }) {')
     expect(i, '화면 부품을 찾지 못했다').toBeGreaterThan(0)
     const fn = APP.slice(i, i + 2200)
     expect(fn).toContain(`const isTenantManager = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')`)
-    expect(fn).toContain('if (!isTenantManager) return')
+    expect(fn).toContain('if (!isTenantManager && !isViewer) return')
     expect(fn).toContain('관리자만 볼 수 있는 화면입니다.')
   })
 })
@@ -252,8 +256,9 @@ describe('★ ⑥ 향정마약 화면 단추', () => {
     expect(APP).toContain('>마약·향정 사용량 보기</button>}')
     expect(APP).toContain('{npOpen&&<NarcoticUsageModal t={t} drugs={drugs} onClose={()=>setNpOpen(false)}')
   })
-  it('★ 읽기 전용 계정에는 안 보인다', () => {
+  /* ★ 2026-11-14 — 뷰어에게도 보인다. 일반(member)에게는 전과 같이 안 보인다. */
+  it('★ 일반(member) 계정에는 안 보인다', () => {
     expect(APP).toContain(`const _narcMgr=memberRole!==VIEWER_ROLE&&(memberRole==='owner'||memberRole==='admin');`)
-    expect(APP).toContain('{_narcMgr&&<button onClick={()=>setNpOpen(true)}')
+    expect(APP).toContain('{(_narcMgr||_narcRO)&&<button onClick={()=>setNpOpen(true)}')
   })
 })

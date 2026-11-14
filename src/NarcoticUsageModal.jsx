@@ -23,13 +23,14 @@ import { buildNarcoticPreview, calendarWindow } from './lib/narcoticUsagePreview
 import { narcCodes } from './lib/usageParse'
 import { checkRowLimit } from './lib/rowLimit'
 import { dbErrorMsg } from './lib/dbError'
+import { READ_ONLY_MSG } from './lib/readOnly'
 
 const num = v => (v == null ? '—' : Number(v).toLocaleString())
 
 /* ★ Confirm = 부모가 넘겨 주는 `CountConfirmModal`(App.jsx:5676).
      import 하지 않고 prop 으로 받는다 — App.jsx 가 이 파일을 import 하므로
      거꾸로 import 하면 **순환 import** 가 된다. 부품은 같은 것을 그대로 쓴다. */
-export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager, onReload, Confirm, ColMenu, useSort }) {
+export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager, readOnly, onReload, Confirm, ColMenu, useSort }) {
   const now = new Date()
   /* 기준월 기본값 = 지난달. 월마감을 매월 초에 전달 것으로 하므로 그 달이 궁금한 달이다. */
   const [year, setYear] = useState(() => (now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()))
@@ -320,14 +321,15 @@ export default function NarcoticUsageModal({ t, drugs, onClose, isTenantManager,
             {/* ★ owner·admin 에게만 **DOM 에도** 둔다 — 사용량 단추 5곳과 같은 기준 */}
             {/* ★ 거래가 잘렸으면 **적용을 막는다**(cutMsg). 보여 준 숫자가 틀렸는데 적용되면
                 틀린 발주 기준이 저장된다 — 멈추는 쪽이 옳다. 모양은 기존 「끌 때」와 같다. */}
-            {isTenantManager && (
+            {/* ★ 읽기 전용(뷰어)에게도 **보여 준다** — 흐림·못 누름(2026-11-14 이정화 님 승인) */}
+            {(isTenantManager || readOnly) && (
               <button onClick={() => setConfirming(true)}
-                disabled={applying || !p.rows.length || !!cutMsg}
-                title={cutMsg ? '거래를 다 읽지 못해 숫자를 믿을 수 없습니다' : undefined}
+                disabled={applying || !p.rows.length || !!cutMsg || !!readOnly}
+                title={readOnly ? READ_ONLY_MSG : (cutMsg ? '거래를 다 읽지 못해 숫자를 믿을 수 없습니다' : undefined)}
                 style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${t.accent}`,
                   background: t.accent, color: '#fff',
-                  cursor: (applying || !p.rows.length || cutMsg) ? 'default' : 'pointer',
-                  fontSize: 12, fontWeight: 700, opacity: (applying || !p.rows.length || cutMsg) ? 0.5 : 1 }}>
+                  cursor: (applying || !p.rows.length || cutMsg || readOnly) ? 'default' : 'pointer',
+                  fontSize: 12, fontWeight: 700, opacity: (applying || !p.rows.length || cutMsg || readOnly) ? 0.5 : 1 }}>
                 {applying ? '적용 중…' : `${year}년 ${month}월 기준으로 적용`}
               </button>
             )}
