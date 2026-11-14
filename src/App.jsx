@@ -2190,11 +2190,19 @@ function ExpiryAlert({drugs,onEdit,focusLevel,onReload,onDispose}){
      ⓑ 아직 아무도 안 넣은 0(출고 자동집계가 남긴 것·초기값). 둘을 똑같이 ▼로 보여 주면
      ▼ 137개 중 119개가 「줄었다」가 아니라 「값이 없다」는 뜻이 된다 — 숫자를 못 믿게 된다.
      그래서 ⓑ·빈 값·음수는 ▼가 아니라 「?」로 따로 뺀다. 수기 0(ⓐ)은 그대로 ▼ 급감이다.
-     usage_source 가 'manual' 인지로 ⓐ·ⓑ 를 가른다 — 업로드·화면저장만 'manual' 을 찍는다. */
+     usage_source 로 ⓐ·ⓑ 를 가른다.
+
+   ★ 2026-11-14 — 잣대를 **「비어 있는가」**로 바꿨다(이정화 님 승인).
+     전: manual 이 아니면(=auto·NULL) 모두 ⓑ 로 봤다.
+     후: **출처가 아직 비어 있는 약만** ⓑ 다. auto 는 「출고로 **실제로 세어** 0 이 나온 것」이라
+         ⓐ 와 같이 ▼ 급감으로 본다.
+     왜 지금 바꾸나: 0130 부터 사용량 갱신의 「적용」이 auto 를 찍는다. 잣대를 그대로 두면
+         오늘 ▼ 급감인 146종이 다음 적용 때 **한꺼번에 「? 확인 필요」로 넘어가** 버린다.
+     ★ 오늘 기준으로 바뀌는 약은 **0종**이다 — 지금 auto 가 한 종도 없기 때문이다. */
 function surgeOf(ma, v1, src) {
   if (v1 == null || v1 === '') return SURGE_CHECK                     /* ① 빈 값 */
   if (v1 < 0) return SURGE_CHECK                                      /* ② 음수 — DB 에 제약이 없어 들어올 수 있다 */
-  if (Number(v1) === 0 && src !== 'manual') return SURGE_CHECK        /* ③ 미입력 0 (usage_source NULL·auto) */
+  if (Number(v1) === 0 && !src) return SURGE_CHECK                    /* ③ 미입력 0 — 출처가 **아직 비어 있는** 약만 */
   if (!(ma > 0)) return null
   return v1 > ma * 1.5 ? '급증' : v1 < ma * 0.5 ? '급감' : null
 }
