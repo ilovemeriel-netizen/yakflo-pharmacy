@@ -76,10 +76,20 @@ describe('③ 계산식을 새로 만들지 않았다', () => {
     expect(MAX_FACTOR).toBe(3)
   })
 
-  it('월평균 = 3개월÷3, 없으면 전년÷12, 둘 다 없으면 null', () => {
+  /* ★★ 2026-11-14 이정화 님 결정 — 3개월이 **0 이면 0** 이다. 전년으로 넘어가지 않는다.
+       「3개월 출고 0 이면 발주 대상 아님」과 맞춘다. 전년으로 받치는 것은
+       그 창의 **기록이 아예 없을 때(null)** 뿐이다. */
+  it('★ 3개월이 0 이면 월평균도 0 — 전년으로 넘어가지 않는다', () => {
+    expect(monthlyAvgOf(0, 120)).toBe(0)
+    expect(monthlyAvgOf(0, 0)).toBe(0)
+  })
+  it('3개월이 숫자면 그 값으로만 센다', () => {
     expect(monthlyAvgOf(300, 0)).toBe(100)
-    expect(monthlyAvgOf(0, 120)).toBe(10)
-    expect(monthlyAvgOf(0, 0)).toBe(null)
+    expect(monthlyAvgOf(9, 999)).toBe(3)
+  })
+  it('★ 3개월이 null(= 그 창의 기록이 없다)일 때만 전년÷12 로 받친다', () => {
+    expect(monthlyAvgOf(null, 120)).toBe(10)
+    expect(monthlyAvgOf(null, null)).toBe(null)
   })
 
   it('월평균에서 안전재고·최대재고가 나온다', () => {
