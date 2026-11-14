@@ -33,27 +33,33 @@ const code = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm
       .toEqual(['drug_code', 'id', 'public_drug_name', 'public_group', 'public_label', 'season'])
   })
 
-  it('★ drugs 에서 읽는 열은 drug_name · manufacturer · current_qty 뿐이다 — 단가는 읽지 않는다', () => {
+  it('★ drugs 에서 읽는 열 — 뱃지에 필요한 것까지만. 단가는 읽지 않는다', () => {
     const body = code(stock)
     const i = body.indexOf("from('drugs')")
     expect(i, "drugs 조회를 찾지 못했다").toBeGreaterThan(-1)
     const m = /\.select\('([^']*)'\)/.exec(body.slice(i))
     /* ★ current_qty 는 **상시 백신의 잔량**이다(2026-11-13 승인).
-         이미 공개하던 qty 와 같은 숫자라 새로 새는 것이 없다. */
+       ★★ 2026-11-15 — safety_stock·monthly_avg 가 더해졌다(이정화 님 승인).
+         뱃지를 **서버에서** 만들기 위한 것이고, 이 숫자는 **응답에 싣지 않는다** —
+         아래 「내보내지 않는다」 가 그것을 지킨다. */
     expect(m[1].split(',').map(s => s.trim()).sort())
-      .toEqual(['current_qty', 'drug_code', 'drug_name', 'manufacturer'])
+      .toEqual(['current_qty', 'drug_code', 'drug_name', 'manufacturer', 'monthly_avg', 'safety_stock'])
 
-    /* ★ 끝까지 금지 — 단가 3종과 입고·배정·LOT·유효기한. 여기 있는 글자가 하나라도
-         파일에 나타나면 시험이 깨진다(주석은 이미 걷어 낸 본문만 본다). */
+    /* ★ 끝까지 금지 — 단가 3종과 입고·배정·LOT·유효기한 */
     for (const bad of ['purchase_price', 'price_unit', 'edi_price',
-      'safety_stock', 'lot', 'expiry', 'allocated_qty']) {
+      'lot', 'expiry', 'allocated_qty']) {
       expect(body.includes(bad), 'drugs 에서 ' + bad + ' 를 읽으면 안 된다').toBe(false)
     }
     /* received_qty 는 잔량 뷰에서 오는 값이라 예외다(drugs 에서 오는 것이 아니다) */
     expect(body.includes('received_qty')).toBe(true)
 
-    /* ★ 읽은 재고를 **그대로 내보내지 않는다** — qty 라는 이름으로만 나간다 */
-    expect(body).not.toMatch(/current_qty\s*[,}]/)
+    /* ★★ 읽기는 해도 **내보내지 않는다** — 품목을 만드는 자리에 없어야 한다.
+         qty 라는 이름 하나로만 나간다. */
+    const ret = /return \{\s*label:[\s\S]*?\n\s*\}/.exec(body)
+    expect(ret, '품목을 만드는 자리를 찾지 못했다').toBeTruthy()
+    for (const bad of ['current_qty', 'safety_stock', 'monthly_avg']) {
+      expect(ret[0].includes(bad), bad + ' 가 공개 응답으로 샜다').toBe(false)
+    }
   })
 
   /* ★ 2026-11-13 — 약플로 입출고는 **시각 한 칸**만 읽는다.
