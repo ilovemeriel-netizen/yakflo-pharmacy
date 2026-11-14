@@ -104,7 +104,9 @@ describe('App.jsx — 처음 주소를 다시 쓸 때 하위 탭을 지우지 �
   it('★ replaceState 가 백신 하위 탭을 붙인다 (VaccineManage 는 lazy 라 뒤에 붙는다)', () => {
     /* 이 한 줄이 없으면 새로고침 때 #vaccine/survey → #vaccine 으로 깎여 탭이 사라진다 */
     expect(APP).toContain("const initVac = init === 'vaccine' ? vaccineTabFromHash() : null")
-    expect(APP).toContain("(initVac ? '/' + initVac : '')")
+    /* ★ 2026-11-14 — 재고현황 하위 탭(#stock/check)이 같은 식에 끼었다.
+         백신 꼬리를 붙이는 뜻은 그대로다 — 재고현황은 그 **뒤에** 붙는다. */
+    expect(APP).toContain("(initVac ? '/' + initVac : (initStk && initStk !== STOCK_TAB_DEFAULT ? '/' + initStk : ''))")
   })
   it('거래 관리의 하위 경로 규칙은 건드리지 않았다', () => {
     expect(APP).toContain("init === 'transaction' && initSub ? '/' + (TX_URL_KEY[initSub] || encodeURIComponent(initSub))")

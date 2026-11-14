@@ -95,10 +95,12 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 describe('★★ ① 뷰어는 「사용량 갱신」 화면을 **본다**', () => {
-  it('★ 메뉴 칸이 뷰어에게도 생긴다 — 일반(member)은 전과 같이 안 생긴다', () => {
-    expect(APP).toContain(`const _menuRO = memberRole === VIEWER_ROLE`)
-    expect(APP).toContain(`...((_mgr || _menuRO) ? [{ id: 'usageupdate', l: '사용량 갱신' }] : [])`)
-    /* ★ _mgr 의 뜻은 **그대로**다 — 관리자·일반의 잣대를 건드리지 않았다 */
+  /* ★★ 2026-11-14(저녁) — 메뉴 칸이 없어지고 **재고현황 안 탭**이 되었다.
+       뷰어는 재고현황을 보므로 탭도 보인다. 쓰기는 아래 ② 가 지킨다. */
+  it('★ 메뉴 칸 대신 재고현황 탭이 되었다 — 뷰어도 재고현황을 본다', () => {
+    expect(APP.includes(`{ id: 'usageupdate', l: '사용량 갱신' }`), '메뉴 칸이 남아 있다').toBe(false)
+    expect(APP).toContain(`const stockTab = useSyncExternalStore(`)
+    /* ★ _mgr 의 뜻은 **그대로**다 — 계정관리 「관리」 단추가 아직 쓴다 */
     expect(APP).toContain(`const _mgr = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')`)
   })
 

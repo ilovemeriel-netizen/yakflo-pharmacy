@@ -102,23 +102,27 @@ afterEach(() => cleanup())
 
 describe('★★ ① 메뉴·주소·권한', () => {
   it('재고관리 ▼ 에 「사용량 갱신」이 **재고현황 바로 뒤**에 있다', () => {
-    /* ★ 2026-11-14 규칙 변경 — 뷰어에게도 보인다(_menuRO). 자리는 재고현황 바로 뒤로 그대로다. */
-    expect(APP).toContain(`{ id: 'stock', l: '재고현황' }, ...((_mgr || _menuRO) ? [{ id: 'usageupdate', l: '사용량 갱신' }] : []), { id: 'expiry', l: '유효기한' }`)
+    /* ★★ 2026-11-14(저녁) — 메뉴에서 **빠지고** 재고현황 안 탭(#stock/check)이 되었다.
+         바뀐 뒤의 모습은 StockCheckTab.test.jsx 가 지킨다. 여기서는 **빠졌다는 것**만 못 박는다. */
+    expect(APP).toContain(`{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }`)
   })
   it('주소가 기존 메뉴처럼 **붙여 쓴 한 낱말**이다', () => {
     /* ★ ROUTES 는 **순서를 지키는 파수꾼**(vaccineRoute.test)이 있어 끝에 붙인다 */
     expect(APP).toContain("'vaccine', 'label', 'powder', 'usageupdate'];")
     expect(APP.includes("'usage-compare'"), '붙임표가 섞였다').toBe(false)
   })
-  it('화면 배선이 있다', () => {
-    expect(APP).toContain(`{menu === 'usageupdate' && <UsageUpdateView drugs={drugs} onReload={load} />}`)
+  it('화면 배선이 있다 — 이제 재고현황 탭 안이다', () => {
+    expect(APP).toContain(`{stockTab === 'check'`)
+    expect(APP).toContain(`<UsageUpdateView drugs={drugs} onReload={load} />`)
   })
   /* ★★ 2026-11-14 업무 규칙 변경 — 뷰어는 **보되 못 쓴다**.
        바뀐 뒤의 모습은 ViewerUsageVisible.test.jsx 가 지킨다.
        여기서는 **일반(member)** 의 보임/숨김이 그대로인지만 못 박는다. */
-  it('★★ 일반(member) 계정에는 여전히 **메뉴 칸이 안 생긴다**', () => {
-    expect(APP).toContain(`const _mgr = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')`)
-    expect(APP).toContain(`...((_mgr || _menuRO) ? [{ id: 'usageupdate', l: '사용량 갱신' }] : [])`)
+  /* ★ 메뉴 칸이 아예 없어졌으므로 「일반에게 안 보인다」를 셀 자리가 없다.
+       재고현황은 누구나 보는 화면이고, 기준확인 탭 **안**에서 막는다(아래 시험). */
+  it('★★ 메뉴 칸이 아예 없다 — 재고현황 탭으로 옮겨 갔다', () => {
+    expect(APP.includes(`{ id: 'usageupdate', l: '사용량 갱신' }`), '메뉴 칸이 남아 있다').toBe(false)
+    expect(APP).toContain(`const stockTab = useSyncExternalStore(`)
   })
   it('★★ 주소로 들어와도 일반(member) 계정은 **화면이 막힌다**', () => {
     const i = APP.indexOf('function UsageUpdateView({ drugs, onReload }) {')

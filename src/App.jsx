@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, createContext, useContext, lazy, Suspense } from 'react'
+import { useEffect, useState, useRef, createContext, useContext, lazy, Suspense, Fragment, useSyncExternalStore } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { supabase } from './lib/supabase'
 import { passesDrugFilters } from './lib/drugFilter'
@@ -17,6 +17,7 @@ import { leaveBlockReason } from './lib/leaveNotice.js'
 import { decomposeAtc } from './lib/atcMap'
 import { TX_TAB_TYPES, TX_DISPOSE, TX_RETURN, TX_ADJUST, TX_IN, TX_OUT, txColLabel, TX_NEVER_DROP } from './lib/txTypes'
 import { vaccineTabFromHash } from './lib/vaccineRoute'
+import { STOCK_TABS, STOCK_TAB_DEFAULT, STOCK_TAB_LABEL, stockTabFromHash, stockHash, redirectOldHash } from './lib/stockRoute'
 import { handleScan as scanHandle, decodeGs1 as scanDecode, scanCountQty, scanAddItem, saveScanMapping, deactivateBarcode, listBarcodes, gtinCheckOk, ownCodeLooksLikeGs1, OWN_CODE_WARN } from './lib/scan'
 import { dbErrorMsg, noRowMsg, bulkFailKind } from './lib/dbError'
 import { msgIsGood, msgIsBad } from './lib/msgTone'
@@ -1185,10 +1186,9 @@ function LotModal({ drug: dr, onClose, onSaved }) {
 /* ═══ 헤더 — 반응형 (모바일 햄버거) ═══ */
 function Header({ menu: m, setMenu: sm, onRegister }) {
   const { t, dark, toggle, user, profile, setProfile, logout, openSearch, open360, memberRole } = useTheme()
-  /* ★ 「사용량 갱신」 — **고치는** 것은 관리자만. 다만 읽기 전용(뷰어)에게는 **보여 준다.**
-       (2026-11-14 이정화 님 승인 — 뷰어는 약플로 **전체 흐름을 보기 위한** 계정이다.
-        화면은 보이고 쓰기 동작만 흐림·못 누름이 된다. 진짜 자물쇠는 DB 트리거다.)
-       ★ 일반(member)은 **전과 똑같이 안 보인다** — 관리자·일반의 보임/숨김은 그대로. */
+  /* ★★ 2026-11-14 — 「사용량 갱신」이 **재고현황 안 탭**(#stock/check)이 되었다.
+       재고관리 ▼ 에서 뺐다(9 → 8칸). 옛 주소 #usageupdate 는 lib/stockRoute 가 넘겨 준다.
+       ★ _mgr·_menuRO 는 계정관리 「관리」 단추가 아직 쓴다 — 지우지 않는다. */
   const _mgr = memberRole !== VIEWER_ROLE && (memberRole === 'owner' || memberRole === 'admin')
   const _menuRO = memberRole === VIEWER_ROLE
   const _ro = _menuRO
@@ -1199,7 +1199,7 @@ function Header({ menu: m, setMenu: sm, onRegister }) {
     { id: 'dashboard', l: '대시보드' },
     { id: 'alerts', l: '🔔 알림' },
     { id: 'druglist', l: '약품관리', landing: 'druglist', children: [{ id: 'druglist', l: '약품목록' }, { id: 'narcotic', l: '향정마약' }, { id: 'nonins', l: '비보험' }, { id: 'locvocab', l: '보관위치' }] },
-    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, ...((_mgr || _menuRO) ? [{ id: 'usageupdate', l: '사용량 갱신' }] : []), { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'count', l: '실사' }, { id: 'vaccine', l: '백신관리' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }, { id: 'ward', l: '병동신청' }] },
+    { id: 'stock', l: '재고관리', landing: 'stock', children: [{ id: 'stock', l: '재고현황' }, { id: 'expiry', l: '유효기한' }, { id: 'idle', l: '사용점검' }, { id: 'count', l: '실사' }, { id: 'vaccine', l: '백신관리' }, { id: 'change', l: '약품변경' }, { id: 'ordering', l: '발주업무' }, { id: 'ward', l: '병동신청' }] },
     { id: 'transaction', l: '입출고' },
     { id: 'report', l: '보고서' },
     /* 가루약분리 — 조제관리 내림 목록에 한 칸만 더한다. 2026-11-10 이정화 님 승인 */
@@ -2894,6 +2894,9 @@ export function UsageUpdateView({ drugs, onReload }) {
   }
   if (!isTenantManager && !isViewer) return <div style={{ maxWidth: 640, margin: '60px auto', padding: '40px 20px', textAlign: 'center', color: t.textL, fontSize: 14 }}>관리자만 볼 수 있는 화면입니다.</div>
   return <div style={{ textAlign: 'left' }}>
+    {/* ★ 한 줄 설명 — 3단계로 마감 때 저절로 돌게 되어, 이 화면이 하는 일을 적어 둔다 */}
+    <div className="no-print" style={{ fontSize: 12, color: t.textM, marginBottom: 10, lineHeight: 1.7 }}>
+      월평균·안전재고를 마감월 출고로 다시 센 결과입니다 · 마감할 때 저절로 다시 셉니다</div>
     {msg && <div className="no-print" style={{ background: msg.ok ? t.greenL : t.redL, border: '1px solid ' + (msg.ok ? t.green : t.red),
       borderRadius: 8, padding: '10px 14px', marginBottom: 10, color: msg.ok ? t.green : t.red, fontSize: 12, fontWeight: 600 }}>
       {(msg.ok ? '\u2705 ' : '\u2757 ') + msg.message}</div>}
@@ -6763,7 +6766,7 @@ export function Report({drugs,onNav,onReload}){
       <span style={{fontSize:12,color:t.textM,lineHeight:1.7}}>{reCalc&&!reCalc.err
         ? <><b style={{color:t.text}}>사용량을 이 마감 기준으로 다시 셌습니다 — {reCalc.n.toLocaleString()}종이 바뀌었습니다.</b> 마약·향정·한외마약·백신과 수기로 지킨 약은 그대로입니다.</>
         : <><b style={{color:t.text}}>사용량 비교표를 볼 수 있습니다.</b> 직전3개월·직전1개월을 이 마감 기준으로 다시 센 숫자입니다. 보기만 하며 저장하지 않습니다.</>}</span>
-      {reCalc&&!reCalc.err&&reCalc.n>0&&<button type="button" onClick={()=>setReOpen(true)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.accent,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>바뀐 약 {reCalc.n.toLocaleString()}종 보기</button>}
+      {reCalc&&!reCalc.err&&reCalc.n>0&&<button type="button" onClick={()=>{setReOpen(false);window.history.pushState({ykMenu:'stock',ykStockTab:'check'},'',stockHash('check'));window.dispatchEvent(new Event('yk:hash'));onNav&&onNav({menu:'stock'})}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.accent,background:t.accent,color:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>바뀐 약 {reCalc.n.toLocaleString()}종 보기</button>}
       <button type="button" onClick={()=>setUcOpen(true)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+t.accent,background:(reCalc&&!reCalc.err&&reCalc.n>0)?t.bg:t.accent,color:(reCalc&&!reCalc.err&&reCalc.n>0)?t.accent:'#fff',cursor:'pointer',fontSize:12,fontWeight:700}}>사용량 비교 보기</button>
     </div>}
 {ucMsg&&<div className="no-print" style={{background:ucMsg.ok?t.greenL:t.redL,border:'1px solid '+(ucMsg.ok?t.green:t.red),borderRadius:8,padding:'10px 14px',marginBottom:10,color:ucMsg.ok?t.green:t.red,fontSize:12,fontWeight:600,display:'flex',gap:10,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}}>
@@ -8703,6 +8706,20 @@ function routeFromHash() { const h = (window.location.hash || '').replace(/^#\/?
 function subFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var raw = seg[1]; if (!raw) return null; var d = decodeURIComponent(raw); var tab = TX_KEY_TAB[d] || d; return TX_TAB_TYPES.indexOf(tab) !== -1 ? tab : null; }
 /* 입출고 월 선택: 해시 3번째 세그먼트(#transaction/out/2026-08). 없으면 현재 월(하위호환). 「전체」는 URL에 월 세그먼트 없음(→새로고침 시 현재 월로 복원). */
 function ymFromHash() { var h = window.location.hash || ''; if (h.charAt(0) === '#') h = h.slice(1); if (h.charAt(0) === '/') h = h.slice(1); var seg = h.split('/'); var m = seg[2]; if (m && /^[0-9]{4}-[0-9]{2}$/.test(m)) { var p = m.split('-'); return [Number(p[0]), Number(p[1])]; } var d = new Date(); return [d.getFullYear(), d.getMonth() + 1]; }
+/* ★ 재고현황 탭 띠 — 보고서의 월간/연간 띠와 **같은 모양**을 쓴다(새 색 없음).
+     구분선도 그 띠가 쓰는 것(너비 1 · 높이 20 · 테두리색)을 그대로 쓴다. */
+export function StockTabs({ tab, onTab }) {
+  const { t } = useTheme()
+  const st = active => ({ padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
+    fontSize: 13, fontWeight: 600, background: active ? t.accent : t.bg, color: active ? '#fff' : t.textM })
+  return <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+    {STOCK_TABS.map((k, i) => <Fragment key={k}>
+      {i > 0 && <div style={{ width: 1, height: 20, background: t.border, margin: '0 4px' }} />}
+      <button type="button" onClick={() => onTab(k)} style={st(tab === k)}>{STOCK_TAB_LABEL[k]}</button>
+    </Fragment>)}
+  </div>
+}
+
 /* ═══ ATC 카세트 배치 관리 (0064: atc_slot·fsp_slot·lasa_type·storage_light, drugs 단일 테이블·조인 없음) ═══ */
 function AtcView({ drugs, onReload }) {
   const { t, open360, memberRole, profile } = useTheme();
@@ -9309,12 +9326,35 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  /* ★★ 재고현황 하위 탭 — **주소가 유일한 정본**이다(lib/stockRoute).
+       따로 담아 두지 않고 주소에서 **그때그때 읽는다.** 그래서
+         ① 주소와 화면이 어긋날 수가 없고(뒤로 가기·새로고침·링크 모두 저절로 맞는다)
+         ② effect 안에서 상태를 고칠 일이 없다.
+       pushState 는 popstate 를 띄우지 않으므로 우리 신호(yk:hash)를 하나 쏜다. */
+  const stockTab = useSyncExternalStore(
+    cb => {
+      window.addEventListener('popstate', cb)
+      window.addEventListener('yk:hash', cb)
+      return () => { window.removeEventListener('popstate', cb); window.removeEventListener('yk:hash', cb) }
+    },
+    () => stockTabFromHash() || STOCK_TAB_DEFAULT,
+    () => STOCK_TAB_DEFAULT,
+  )
+  function goStockTab(k) {
+    if (STOCK_TABS.indexOf(k) === -1) return
+    window.history.pushState({ ykMenu: 'stock', ykStockTab: k }, '', stockHash(k))
+    window.dispatchEvent(new Event('yk:hash'))
+  }
+
   /* SPA 뒤로가기: menu 전환을 브라우저 히스토리에 동기화(라우터 미도입·최소 침습).
      popstate→직전 약플로 화면 복원. URL 미변경(새로고침=대시보드, 기존 동작 유지). */
   useEffect(() => {
     const raw = (window.location.hash || '') + (window.location.search || '')
-    if (!/access_token|refresh_token|provider_token|type=recovery|[?&]code=|error=/.test(raw)) { const init = routeFromHash(); const initSub = subFromHash(); const initVac = init === 'vaccine' ? vaccineTabFromHash() : null; /* ★ 백신 하위 탭을 지우지 않는다 — VaccineManage 는 lazy 라 이 effect 뒤에 붙어 주소를 읽는다 */
-      const ih = '#' + init + (init === 'transaction' && initSub ? '/' + (TX_URL_KEY[initSub] || encodeURIComponent(initSub)) : (initVac ? '/' + initVac : '')); window.history.replaceState({ ykMenu: init, ykSub: initSub }, '', ih) }
+    /* ★★ 옛 주소 #usageupdate → #stock/check (2026-11-14). 즐겨찾기가 안 깨진다. */
+    const _old = redirectOldHash()
+    if (_old) { window.history.replaceState({ ykMenu: 'stock', ykStockTab: 'check' }, '', _old); window.dispatchEvent(new Event('yk:hash')) }
+    if (!/access_token|refresh_token|provider_token|type=recovery|[?&]code=|error=/.test(raw)) { const init = routeFromHash(); const initSub = subFromHash(); const initVac = init === 'vaccine' ? vaccineTabFromHash() : null; const initStk = init === 'stock' ? stockTabFromHash() : null; /* ★ 백신 하위 탭을 지우지 않는다 — VaccineManage 는 lazy 라 이 effect 뒤에 붙어 주소를 읽는다 */
+      const ih = '#' + init + (init === 'transaction' && initSub ? '/' + (TX_URL_KEY[initSub] || encodeURIComponent(initSub)) : (initVac ? '/' + initVac : (initStk && initStk !== STOCK_TAB_DEFAULT ? '/' + initStk : ''))); if (!_old) window.history.replaceState({ ykMenu: init, ykSub: initSub }, '', ih) }
     function onPop(e) { isPopRef.current = true; setMenu((e.state && e.state.ykMenu) || routeFromHash()) }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -9324,6 +9364,8 @@ export default function App() {
     if (isPopRef.current) { isPopRef.current = false; return }
     if (routeFromHash() === menu) return; // 딥링크가 sub 포함 해시를 이미 기록한 경우 덮어쓰지 않음(sub 보존)
     window.history.pushState({ ykMenu: menu }, '', '#' + menu)
+    /* ★ 재고현황으로 올 때는 주소가 '#stock' 이 되므로 탭도 저절로 기본(재고현황)이 된다 */
+    if (menu === 'stock') window.dispatchEvent(new Event('yk:hash'))
   }, [menu])
 
   /* 비보험 메뉴 진입 시 이전 화면의 필터 잔재(nf) 정리 — 비보험 기본값은 DrugList의 nonins prop이 담당(공유 nf 오염으로 약품목록에 비보험이 새던 문제 방지) */
@@ -9520,8 +9562,12 @@ export default function App() {
           {menu === 'expiry' && <ExpiryAlert drugs={drugs} onEdit={setEditDrug} focusLevel={nf?.focus} onReload={load} onDispose={setDisposeDrug} />}
           {menu === 'idle' && <IdleCheck drugs={drugs} onReload={load} />}
           {menu === 'ward' && <WardAdmin />}
-          {menu === 'usageupdate' && <UsageUpdateView drugs={drugs} onReload={load} />}
-          {menu === 'stock' && <StockStatus drugs={drugs} inv={inv} navFilter={nf} unusedLatest={unusedLatest} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
+          {menu === 'stock' && <>
+            <StockTabs tab={stockTab} onTab={goStockTab} />
+            {stockTab === 'check'
+              ? <UsageUpdateView drugs={drugs} onReload={load} />
+              : <StockStatus drugs={drugs} inv={inv} navFilter={nf} unusedLatest={unusedLatest} onEdit={setEditDrug} onAdjust={setAdjustDrug} onReload={load} onDispose={setDisposeDrug} />}
+          </>}
           {menu === 'count' && <InventoryCount drugs={drugs} onReload={load} />}
           {menu === 'vaccine' && <><Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: t.textL, fontSize: 12 }}>불러오는 중...</div>}><VaccineManage ColMenu={ColMenu} useSort={useSort} ymd={ymd} todayYmd={todayYmd} /></Suspense><div className="no-print"><Ft /></div></>}
           {menu === 'narcotic' && <NarcoticMgmt drugs={drugs} onEdit={setEditDrug} onAdjust={setAdjustDrug} navFilter={nf} onReload={load} />}
